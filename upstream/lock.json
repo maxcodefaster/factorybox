@@ -4,11 +4,13 @@
       "archive": "criu-castai-086df34a2da27125fa05e66ba4d6b63cbb220b2e.tar.gz",
       "commit": "086df34a2da27125fa05e66ba4d6b63cbb220b2e",
       "local_inputs_sha256": {
-        "upstream/patches/criu.patch": "a572b313e27c9a4bc0afc98cf12a3720c17cb58e2ab8915badc1687f02486812"
+        "upstream/patches/criu.patch": "a572b313e27c9a4bc0afc98cf12a3720c17cb58e2ab8915badc1687f02486812",
+        "upstream/patches/criu-factorybox-scope.patch": "435ebff1bd611c04da1de884c386d9a1923a497790f55116885e41c9e2a2cab4"
       },
       "overlays": {},
       "patches": [
-        "upstream/patches/criu.patch"
+        "upstream/patches/criu.patch",
+        "upstream/patches/criu-factorybox-scope.patch"
       ],
       "prefix": "criu-086df34a2da27125fa05e66ba4d6b63cbb220b2e",
       "prepared_files_sha256": {
@@ -552,7 +554,7 @@
         "criu/include/stats.h": "40176c0174df26d2f6381d3fcd2cbb171fd28632e67da7b71705f1baf7cc8a29",
         "criu/include/string.h": "11f914c9077aa61b3f1a2d98ec8a6f90ed46c33e43069805845af90956015eb6",
         "criu/include/sysbox-async-track.h": "3c317f1fcff4d3eeabb1c60bff7e47ed3de0fbb605c3b911b49570a9bac7cb9e",
-        "criu/include/sysbox-owned-scope.h": "6adea0b59c2735613d2a5bdb18dddd05d61c1fb83304074b8d9824455a369ccf",
+        "criu/include/sysbox-owned-scope.h": "0b7e6ef5fe4b6004e21a81cf9ba5325ebe453f94ab05b474af21264fd803dae6",
         "criu/include/sysctl.h": "69cad9d1ca91ade75600fc8d1d72f577339f724c6bc55eff10f1625eb993a395",
         "criu/include/sysfs_parse.h": "aabbf3b636c2fead71fb557e0558c12b2fc20695d458e3c7ea4f004ab42a8587",
         "criu/include/timens.h": "2800598a8bb6c672a414f69bcf966300be2930f1381d1db2552f810812017675",

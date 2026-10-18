@@ -1,0 +1,25 @@
+--- a/criu/include/sysbox-owned-scope.h
++++ b/criu/include/sysbox-owned-scope.h
+@@ -14,6 +14,7 @@
+ 	const char *mode = getenv("SYSBOX_FORK_COLLECT_SCOPE");
+ 	const char *prefix = "/sys/fs/cgroup";
+ 	const char *branch = "/sys/fs/cgroup/criu-probe-branch-";
++	const char *factorybox = "/sys/fs/cgroup/fbx-";
+ 	const char *id;
+ 	size_t i;
+ 
+@@ -22,9 +23,12 @@
+ 	if (!strcmp(freezer, "/sys/fs/cgroup/criu-probe-sysbox") ||
+ 	    !strcmp(freezer, "/sys/fs/cgroup/criu-probe-sysbox-copy"))
+ 		return freezer + strlen(prefix);
+-	if (strncmp(freezer, branch, strlen(branch)))
++	if (!strncmp(freezer, branch, strlen(branch)))
++		id = freezer + strlen(branch);
++	else if (!strncmp(freezer, factorybox, strlen(factorybox)))
++		id = freezer + strlen(factorybox);
++	else
+ 		return NULL;
+-	id = freezer + strlen(branch);
+ 	if (strlen(id) != 32)
+ 		return NULL;
+ 	for (i = 0; i < 32; i++) {

@@ -139,7 +139,8 @@ mise exec -- python3 tools/sources.py verify
 ```
 
 Preparation downloads immutable source archives, checks SHA-256, applies patches with zero fuzz
-and verifies the compiled CRIU sources against the experiment's recorded build. Upstream assertions
+and verifies the final source hashes. The CRIU inputs start from the experiment's recorded compiled
+sources, with later changes declared as ordered patches and updated final hashes. Upstream assertions
 are preserved. Declared compatibility patches correct diagnostic formatting, update an obsolete
 namespace mock and capability-function name, and give the registration fixture a real namespace
 reference. The original and prepared hashes of every changed test file are pinned in the lock.
@@ -169,6 +170,13 @@ mise exec -- python3 tools/build_criu.py
 
 This command uses the exact existing builder image, 2 CPUs, 1 GiB, no network and an owned
 temporary container. It records whether the resulting binary matches the historical build.
+Before compiling CRIU it runs 31 C regression cases against the actual prepared scope header.
+The original header rejects all three valid Factorybox ID cases; the added patch accepts only
+`/sys/fs/cgroup/fbx-` followed by exactly 32 lowercase hexadecimal characters. The explicit
+owned-collection mode is still required. The original experiment names remain accepted; missing
+mode, malformed IDs, unrelated roots, descendants and traversal paths remain rejected. All 31
+cases and the subsequent native CRIU build passed. This gate checks canonical scope admission,
+not kernel ownership by itself or successful checkpoint/restore.
 Reconstructing that builder from public inputs is still a release requirement; the local builder
 image is not a published Factorybox build dependency.
 

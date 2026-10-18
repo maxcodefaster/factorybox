@@ -22,11 +22,13 @@ def main():
     output.mkdir(parents=True)
     lock = ROOT / "upstream/lock.json"
     shutil.copyfile(lock, output / "source-lock.json")
+    shutil.copyfile(ROOT / "tests/criu-owned-scope.c", output / "criu-owned-scope.c")
     component = json.loads(lock.read_text())["components"]["criu"]
     result = {
         "schema": 1, "owner": owner, "container_name": name, "builder": BUILDER,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "source_lock_sha256": reference.sha(lock), "passed": False,
+        "scope_test_sha256": reference.sha(output / "criu-owned-scope.c"),
         "cleanup": False, "production_qualified": False,
     }
     attempted = False
@@ -49,6 +51,9 @@ def main():
             "cc --version > /output/toolchain.txt\n"
             "make --version >> /output/toolchain.txt\n"
             "protoc --version >> /output/toolchain.txt\n"
+            "cc -std=c11 -Wall -Wextra -Werror -iquote /source/criu/include "
+            "/output/criu-owned-scope.c -o /tmp/owned-scope-test\n"
+            "/tmp/owned-scope-test > /output/owned-scope.log 2>&1\n"
             "cp -R /source /tmp/criu-source\n"
             "make -C /tmp/criu-source -j2 criu/criu > /output/build.log 2>&1\n"
             "cp /tmp/criu-source/criu/criu /output/criu\n"
@@ -62,12 +67,17 @@ def main():
         (output / "stdout.txt").write_text(completed.stdout)
         (output / "stderr.txt").write_text(completed.stderr)
         result["exit_code"] = completed.returncode
+        scope_log = output / "owned-scope.log"
+        result["scope_gate_passed"] = scope_log.exists() and "owned-scope-cases=31 failures=0" in scope_log.read_text()
         if completed.returncode == 125:
             raise ValueError("builder container did not start: " + completed.stderr[-4096:])
         result["container_state"] = json.loads(
             reference.docker(["container", "inspect", name]))[0]["State"]
-        if completed.returncode or result["container_state"]["OOMKilled"]:
+        if (completed.returncode or result["container_state"]["OOMKilled"] or
+                not result["scope_gate_passed"]):
             raise ValueError("native CRIU build failed")
+        if reference.sha(output / "criu-owned-scope.c") != result["scope_test_sha256"]:
+            raise ValueError("native CRIU scope test input changed")
         result["binary_sha256"] = reference.sha(output / "criu")
         result["matches_historical_binary"] = result["binary_sha256"] == HISTORICAL
         result["version"] = (output / "version.txt").read_text().strip()
