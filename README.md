@@ -5,9 +5,10 @@ The intended lifecycle is start, checkpoint, independent RAM/filesystem fork, pa
 snapshot-RAM release, resume and deletion. It requires no KVM or custom kernel.
 
 This repository is being extracted from the existing runtime experiment. The retained reference
-contains the working checkpoint/fork/resume implementation and its regressions. The production
-lifecycle API has not yet been extracted. The current `factorybox` command provides version and
-platform inspection only.
+contains the working checkpoint/fork/resume implementation and its regressions. The current
+`factorybox` command provides version, platform inspection and an initial local start/state/delete
+API. Checkpoint, independent fork, RAM-releasing pause and resume still need extraction into that
+API. There is no production-qualified release.
 
 Sysbox containers share the Linux worker kernel. The initial isolation scope is separate workers
 per customer or trust domain. IDEs and agent harnesses are optional applications. Dev Containers
@@ -17,7 +18,8 @@ describe development workloads; they do not define the snapshot engine.
 
 | Path | Purpose |
 | --- | --- |
-| `cmd/factorybox` | Small diagnostic entry point during extraction |
+| `cmd/factorybox` | Diagnostics and local administrative lifecycle commands |
+| `internal/lifecycle` | Persisted start/delete intent, exact runtime/cgroup ownership and reconciliation |
 | `internal/platform` | Explicit reference-platform admission |
 | `internal/pageview` | Extracted logical snapshot reader and its native regressions |
 | `internal/snapshot` | Extracted CRIU pagemap codec and complete logical memory comparison |
@@ -51,6 +53,60 @@ mise exec -- go build -trimpath -buildvcs=false -o dist/factorybox ./cmd/factory
 reference platform alone does not qualify a node: filesystem, userfaultfd, ownership, leases and
 runtime installation need their own checks.
 
+## Local administrative lifecycle
+
+The first extracted API accepts a trusted, administrator-prepared OCI bundle. It runs only on the
+reference Linux platform, as worker root, with a private cgroup2 root that has a finite memory
+limit. Matching Sysbox manager and filesystem services must already be running inside that worker.
+The native fixture provides these services from the same verified component build.
+
+The controller requires the exact runtime executable and SHA-256:
+
+```sh
+factorybox --root /var/lib/factorybox \
+  --runtime /opt/factorybox/bin/sysbox-runc --runtime-sha256 "$SYSBOX_RUNC_SHA256" \
+  start --bundle /work/bundle workspace
+
+factorybox --root /var/lib/factorybox \
+  --runtime /opt/factorybox/bin/sysbox-runc --runtime-sha256 "$SYSBOX_RUNC_SHA256" \
+  state workspace
+
+factorybox --root /var/lib/factorybox \
+  --runtime /opt/factorybox/bin/sysbox-runc --runtime-sha256 "$SYSBOX_RUNC_SHA256" \
+  delete workspace
+```
+
+The state directory must be root-owned mode 0700. Factorybox copies the OCI configuration,
+resolves its rootfs path, assigns an ownership annotation and replaces caller-supplied cgroup
+paths with its own persisted identity. It records intent before creating the cgroup and saves
+its device, inode and mount identity before launching Sysbox. It executes the verified binary
+through its open descriptor. Operations take an exclusive lock; a launcher inherits that lock.
+
+Repeating a completed start reconciles the original process. An attempted start with no confirmed
+runtime state returns an uncertain-outcome error and preserves its evidence. It never silently
+repeats creation. Deletion checks runtime creation, ownership, saved configuration and cgroup
+identity before calling Sysbox. It retains the start request and deletion outcome. Deleted IDs
+cannot be reused.
+
+The input rootfs remains caller-owned and must be exclusive to one active sandbox in this state
+directory. Factorybox does not delete it. This administrative API is not an untrusted OCI-spec
+service or a portable runtime installer. Checkpoint/fork/pause/resume and their failure recovery
+remain on the sealed reference path until extracted and independently qualified.
+
+Run the extracted lifecycle proof on the existing worker:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID
+```
+
+All four native tests passed with zero skips in an owned 3-CPU/3-GiB fixture. They exercise actual
+Sysbox start, public CLI state/delete, reconciliation of a lost saved outcome without replacing the
+process, shared-rootfs rejection before create intent, uncertain-create preservation, and rejection
+of changed runtime creation, cgroup identity, configuration, executable digest and controller root.
+The fixture confirms exact container/volume cleanup and retains controller metadata and failed runs.
+It has no IDE or agent dependency. These are lifecycle correctness tests, not fork/resume benchmarks.
+
 ## Pinned sources
 
 ```sh
@@ -60,10 +116,12 @@ mise exec -- python3 tools/sources.py verify
 
 Preparation downloads immutable source archives, checks SHA-256, applies patches with zero fuzz
 and verifies the compiled CRIU sources against the experiment's recorded build. Upstream assertions
-are preserved. One error-construction fixture has an explicit format correction for Go vet; the
-original and prepared file hashes are both pinned in the lock. Every other original upstream test
-file must remain byte-for-byte unchanged. A fresh checkout can fetch these sources without the old
-experiment directory. `--offline` uses previously verified cached archives.
+are preserved. Declared compatibility patches correct diagnostic formatting, update an obsolete
+namespace mock and capability-function name, and give the registration fixture a real namespace
+reference. The original and prepared hashes of every changed test file are pinned in the lock.
+Every other original upstream test file must remain byte-for-byte unchanged. A fresh checkout can
+fetch these sources without the old experiment directory. `--offline` uses previously verified
+cached archives.
 
 Source preparation does not install a runtime, change the worker kernel or run the upstream suites.
 The selected CRIU source starts from the recorded CAST AI nested-namespace commit. It is not the
@@ -102,8 +160,9 @@ records native compiler/package versions and every context input. The manager in
 seccomp regressions. It does not establish complete upstream compatibility. APT dependencies are
 recorded but still need a pinned clean-machine reconstruction.
 The restore helper is in a separate package so the core library can compile under its natural
-Sysbox module name. The component build compiles that test package as a guard; execution is a
-separate native gate, and the full upstream Go gate keeps vet enabled.
+Sysbox module name. The component build compiles that test package and the full libcontainer
+integration package as guards; execution is a separate native gate. The full upstream Go gate
+keeps vet enabled.
 
 ## Retained reference
 
@@ -202,22 +261,56 @@ mise exec -- python3 tools/upstream_unit.py \
   --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID --suite libcontainer
 ```
 
+Run the full libcontainer integration package, or one exact test during diagnosis:
+
+```sh
+mise exec -- python3 tools/upstream_unit.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID --suite runc-integration
+mise exec -- python3 tools/upstream_unit.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --suite runc-integration --test TestExecInError
+```
+
+The integration package passed 47 tests with 12 explicit upstream skips after fixing lost exec
+errors. Sysbox's additional-process initializer now resolves the executable before closing its
+error channel and invokes the resolved path after closing internal FDs. The unchanged upstream
+test checks all 42 missing-executable attempts. The original failure and successful regression
+are retained separately.
+
 The runner checks runc, fs, mgr, ipc and each nested libs module, retaining failures and skips per
 test. It also rejects failed test events hidden by an upstream `TestMain` that exits zero.
 The test rootfs follows upstream's immutable Busybox ARM64 commit and has a recorded SHA-256.
+The full suite's private Docker daemon uses a uniquely owned Btrfs volume at `/var/lib/docker`,
+the upstream-expected `overlay2` driver, and a digest-pinned Alpine image under its local test alias.
+ID-mapping probes use a separate owned volume at `/var/lib/sysbox`, rather than the test image's
+overlay mount. Synthetic HugeTLB parser fixtures always exercise both configured fixture sizes,
+including negative cases on workers without configured HugeTLB pages.
+No worker Docker socket is mounted. The bounded test controller moves into its own cgroup leaf
+before enabling controllers within the private root; node-wide cgroups and sysctls stay untouched.
 Do not run the Sysbox umbrella Makefile on the Mac or retained worker. Its integration scripts need
 a separately prepared, isolated test environment and include host-oriented cleanup commands.
 
-The first complete Go-suite run remains a failed release gate. Other failures include outdated
-mock signatures, Go vet format diagnostics, IPC module bookkeeping, real namespace-file requirements
-in an older synthetic fixture, and cgroup integration assumptions that fail on this worker.
-The successful core package run does not waive these failures. The umbrella/Bats/systemd and CRIU
-ordinary checkpoint/restore suites remain unqualified.
+The complete fs module has passed 65 tests and 73 subtests with zero skips. Its positive registration
+fixture checks the retained namespace FD, and namespace-event tests check distinct UID/GID values.
+The complete ipc module has passed two tests and three subtests with zero skips, including a real
+local RPC server rejecting pre-registration, registration and update. Module bookkeeping and malformed
+client warnings are corrected with vet enabled.
+
+The mount-table parser accepts the observed empty cgroup2 source field while rejecting missing
+separators, missing required fields and incomplete reads. Original parser tests and the added
+regressions pass. The 17 other module suites passed in the preceding complete run, including both
+native ID-mapping capability tests. After the exec fix, the complete Runc module passed 273 tests
+and 227 subtests, with 14 explicit upstream skips. The manager's four shiftfs tests explicitly skip
+on this worker, which has no shiftfs module. These results come from the complete earlier run plus
+the affected complete Runc-module rerun, not from a second all-module invocation. The
+umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unqualified.
 
 ## Release requirements
 
 Factorybox has no production-qualified release yet. Required gates include:
 
+- Extract checkpoint, complete independent fork, RAM-releasing pause and resume into the public
+  lifecycle API, with their source-preservation and recovery behavior.
 - Pinned upstream Sysbox unit/core/integration suites and CRIU core checkpoint/restore suites.
   Failed or unrun required suites block qualification. Preserve upstream assertions.
 - Independent files and RAM across repeated forks, forks of resumed/forked sources and actual

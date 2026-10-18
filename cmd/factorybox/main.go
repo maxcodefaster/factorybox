@@ -10,8 +10,11 @@ import (
 
 func main() {
 	if len(os.Args) != 2 || (os.Args[1] != "version" && os.Args[1] != "doctor") {
-		fmt.Fprintln(os.Stderr, "usage: factorybox version|doctor")
-		os.Exit(2)
+		if err := runLifecycle(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	}
 	if os.Args[1] == "version" {
 		fmt.Println("factorybox development; runtime extraction in progress")

@@ -47,3 +47,6 @@ run = "python3 tools/reference_lifecycle.py"
 
 [tasks."upstream:unit"]
 run = "python3 tools/upstream_unit.py"
+
+[tasks."lifecycle:native"]
+run = "python3 tools/lifecycle_native.py"

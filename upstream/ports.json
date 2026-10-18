@@ -1,4 +1,14 @@
 {
+  "internal/lifecycle/cgroup_linux.go": {
+    "changes": [
+      "Port the reference's cgroup2 device, inode and mount-identity check to the local lifecycle controller.",
+      "Generate cgroup paths from persisted runtime IDs and save their kernel identity before starting Sysbox.",
+      "Retirement here only removes the exact empty directory. The complete replay-tree cleanup and its original regressions remain in the sealed reference."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/epoch_replay_cgroup_linux.go": "67e90debe549da5aa46f22cd32f4c542aad3e3ede37158e2c723755d9f1ea86c"
+    }
+  },
   "internal/pageview/pipe_file_linux.go": {
     "changes": [],
     "sources": {
