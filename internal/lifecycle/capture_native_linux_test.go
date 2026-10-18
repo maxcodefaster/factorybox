@@ -430,6 +430,29 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if err != nil || !replayedCheckpoint(recovered, afterDelete) {
 		t.Fatal("completed publication recovery depended on its original runtime", err)
 	}
+	// The caller-owned original overlay is no longer available at any saved
+	// source path. Keep its bytes offline, then restore the fixture's layout
+	// only for exact archival and the original cleanup hook.
+	if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
+		t.Fatal("detach original source overlay after runtime deletion", err)
+	}
+	offlineBundle := bundle + "-offline"
+	if err := os.Rename(bundle, offlineBundle); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Rename(offlineBundle, bundle); err != nil {
+			t.Error("restore owned source archive layout", err)
+			return
+		}
+		if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0,
+			"lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
+			t.Error("restore owned source fixture mount for exact cleanup", err)
+		}
+	})
+	if _, err := os.Lstat(view.Record.Rootfs); !os.IsNotExist(err) {
+		t.Fatal("original source filesystem path remained available", err)
+	}
 	for path, expected := range map[string]string{
 		"/filesystem/upper/state/marker":            "retained-source-file\n",
 		"/filesystem/volumes/docker/capture-marker": "private-daemon-before\n",
@@ -505,8 +528,10 @@ func TestRetainedCaptureNative(t *testing.T) {
 		}
 		t.Log("two complete filesystem siblings survive original-runtime deletion; target writes change neither checkpoint nor sibling; internal hardlinks and separate inodes verified")
 		t.Run("restore-without-original-and-fork-again", func(t *testing.T) {
-			restored := restoreMaterializedNative(t, engine, view.Record, generation, rightPath, "restored")
+			restored := forkNative(t, engine, view.Record, snapshotID, "restored", before)
 			assertRestoredNative(t, engine, restored, before)
+			forkFailuresNative(t, engine, view.Record.ID, snapshotID)
+			forkControllerLossNative(t, engine, view.Record, snapshotID, before)
 			forkFromRestoredNative(t, engine, restored, before)
 			if err := sysboxcapture.VerifyFilesystemSnapshot(ctx, generation, recovered.Filesystem); err != nil {
 				t.Fatal("restored descendant changed the original checkpoint", err)
@@ -518,7 +543,7 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if err != nil || !bytes.Equal(afterHostPanic, hostPanic) {
 		t.Fatal("restored descendant's virtual-setting write changed the worker kernel", err)
 	}
-	t.Logf("actual capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved RAM, virtual state, overlay files and a managed Docker-volume file after source mutation; worker kernel value unchanged; independent restore and descendant checks passed; public fork/pause/resume remain separate gates",
+	t.Logf("actual capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved RAM, virtual state, overlay files and a managed Docker-volume file after source mutation; original runtime deleted and its rootfs path unavailable during public fork/descendant checks; worker kernel value unchanged; pause/resume remain separate gates",
 		view.Record.RuntimeID, view.Runtime.PID, len(files))
 	t.Logf("individual CLI observation: checkpoint=%s integrity-verified replay=%s; not a fork/resume or p95 benchmark", captureElapsed, replayElapsed)
 }

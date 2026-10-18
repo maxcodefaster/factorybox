@@ -52,6 +52,9 @@ mkdir /output/controller-metadata
 index=0
 for file in /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/record.json \
             /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/config.json \
+            /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/restore-result.json \
+            /var/lib/sysbox/factorybox-lifecycle-*/controller*/forks/*/intent.json \
+            /var/lib/sysbox/factorybox-lifecycle-*/controller*/forks/*/preparation.json \
             /var/lib/sysbox/factorybox-lifecycle-*/controller*/runtime/*/state.json \
             /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/captures/*/guard/*.json; do
   if test -f "$file"; then

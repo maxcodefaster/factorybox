@@ -1,0 +1,151 @@
+--- a/factorybox_restore.go
++++ b/factorybox_restore.go
+@@ -397,6 +397,9 @@
+ 		if err != nil {
+ 			return err
+ 		}
++		if err := factoryboxRestoreComplete(request, state); err != nil {
++			return err
++		}
+ 		if err := json.NewEncoder(os.Stdout).Encode(state); err != nil {
+ 			return err
+ 		}
+--- /dev/null
++++ b/factorybox_restore_receipt.go
+@@ -0,0 +1,78 @@
++//go:build linux
++
++package main
++
++import (
++	"crypto/rand"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"os"
++	"strconv"
++	"time"
++
++	"github.com/opencontainers/runc/libcontainer"
++	"golang.org/x/sys/unix"
++)
++
++type factoryboxRestoreResult struct {
++	Version       int    `json:"version"`
++	Owner         string `json:"owner"`
++	RuntimeID     string `json:"runtime_id"`
++	RequestSHA256 string `json:"request_sha256"`
++	PID           int    `json:"pid"`
++	ProcessStart  string `json:"process_start"`
++	Created       string `json:"created"`
++	CompletedAt   string `json:"completed_at"`
++}
++
++// Commit successful completion before returning it through controller pipes.
++// A replacement controller must bind this receipt to both the request and the
++// still-running original target before it publishes the lifecycle outcome.
++func factoryboxRestoreComplete(request factoryboxRestoreRequest, state *libcontainer.State) error {
++	if state == nil || state.ID != "fbx-"+request.Owner || state.InitProcessPid <= 1 ||
++		state.InitProcessStartTime == 0 || state.Created.IsZero() {
++		return fmt.Errorf("restore completion lacks its original target identity")
++	}
++	data, err := json.Marshal(request)
++	if err != nil {
++		return err
++	}
++	hash := sha256.Sum256(data)
++	result := factoryboxRestoreResult{Version: 1, Owner: request.Owner, RuntimeID: state.ID,
++		RequestSHA256: hex.EncodeToString(hash[:]), PID: state.InitProcessPid,
++		ProcessStart: strconv.FormatUint(state.InitProcessStartTime, 10),
++		Created:      state.Created.UTC().Format(time.RFC3339Nano), CompletedAt: time.Now().UTC().Format(time.RFC3339Nano)}
++	data, err = json.Marshal(result)
++	if err != nil {
++		return err
++	}
++	fd, err := unix.Openat2(unix.AT_FDCWD, request.Root+"/objects/"+request.SandboxID, &unix.OpenHow{
++		Flags: unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC, Resolve: unix.RESOLVE_NO_SYMLINKS})
++	if err != nil {
++		return err
++	}
++	directory := os.NewFile(uintptr(fd), "original restore outcome directory")
++	defer directory.Close()
++	var nonce [16]byte
++	if _, err := rand.Read(nonce[:]); err != nil {
++		return err
++	}
++	name := ".restore-" + hex.EncodeToString(nonce[:])
++	fileFD, err := unix.Openat(fd, name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
++	if err != nil {
++		return err
++	}
++	defer unix.Unlinkat(fd, name, 0)
++	file := os.NewFile(uintptr(fileFD), name)
++	_, writeErr := file.Write(append(data, '\n'))
++	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
++		return err
++	}
++	if err := unix.Renameat2(fd, name, fd, "restore-result.json", unix.RENAME_NOREPLACE); err != nil {
++		return err
++	}
++	return directory.Sync()
++}
+--- /dev/null
++++ b/factorybox_restore_receipt_test.go
+@@ -0,0 +1,55 @@
++//go:build linux
++
++package main
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"os"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/opencontainers/runc/libcontainer"
++)
++
++func TestFactoryboxRestoreReceipt(t *testing.T) {
++	root := t.TempDir()
++	if err := os.MkdirAll(root+"/objects/forked", 0700); err != nil {
++		t.Fatal(err)
++	}
++	owner := strings.Repeat("a", 32)
++	request := factoryboxRestoreRequest{Version: 1, Owner: owner, Root: root, SandboxID: "forked", State: []byte("opaque saved state")}
++	state := &libcontainer.State{BaseState: libcontainer.BaseState{ID: "fbx-" + owner,
++		InitProcessPid: os.Getpid(), InitProcessStartTime: 12345, Created: time.Now().UTC()}}
++	if err := factoryboxRestoreComplete(request, state); err != nil {
++		t.Fatal(err)
++	}
++	path := root + "/objects/forked/restore-result.json"
++	data, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var result factoryboxRestoreResult
++	if err := json.Unmarshal(data, &result); err != nil {
++		t.Fatal(err)
++	}
++	raw, err := json.Marshal(request)
++	if err != nil {
++		t.Fatal(err)
++	}
++	hash := sha256.Sum256(raw)
++	if result.RequestSHA256 != hex.EncodeToString(hash[:]) || result.Owner != owner ||
++		result.PID != state.InitProcessPid || result.ProcessStart != "12345" || result.CompletedAt == "" {
++		t.Fatal("restore receipt is not bound to its exact request and original process")
++	}
++	if err := factoryboxRestoreComplete(request, state); err == nil {
++		t.Fatal("restore receipt overwritten")
++	}
++	again, err := os.ReadFile(path)
++	if err != nil || !bytes.Equal(data, again) {
++		t.Fatal("duplicate publication changed the original receipt", err)
++	}
++}

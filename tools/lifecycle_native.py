@@ -9,15 +9,17 @@ import shutil
 import subprocess
 import uuid
 
+import native_base
 import reference
 import reference_lifecycle
 import upstream_unit
 
 ROOT = reference.ROOT
 EXPECTED_TESTS = 5
+EXPECTED_CAPTURE_SUBTESTS = 16
 
 
-def archive_capture(archive, name, owner, result):
+def archive_capture(archive, name, owner, result, image):
     fixture = json.loads(reference.docker(["container", "inspect", name]))[0]
     if fixture["Config"].get("Labels", {}).get("com.factorybox.run") != owner:
         raise ValueError("capture fixture ownership changed before archive")
@@ -39,7 +41,7 @@ def archive_capture(archive, name, owner, result):
         "--mount", f"type=volume,source={name},target=/input,readonly",
         "--mount", f"type=bind,source={archive / 'output'},target=/output",
         "--mount", f"type=bind,source={archive / 'capture-archive.sh'},target=/archive.sh,readonly",
-        "--entrypoint", "/bin/bash", reference.BASE_ID, "/archive.sh",
+        "--entrypoint", "/bin/bash", image, "/archive.sh",
     ]
     result["archive_command"] = command
     try:
@@ -58,6 +60,7 @@ def main():
     parser.add_argument("--sysbox-build", required=True)
     parser.add_argument("--suite", choices=["lifecycle", "guard", "capture"], default="lifecycle")
     parser.add_argument("--criu-build", help="Required rebuilt CRIU artifact for --suite capture")
+    parser.add_argument("--native-base-build", help="Exact successful public-input native base build for --suite capture")
     parser.add_argument("--test", help="One exact native diagnostic test")
     options = parser.parse_args()
     if options.test and not re.fullmatch(r"TestNative[A-Za-z0-9_]+", options.test):
@@ -68,6 +71,8 @@ def main():
         parser.error("--suite capture requires --criu-build and runs its complete selected suite")
     if options.criu_build and options.suite != "capture":
         parser.error("--criu-build is only used by --suite capture")
+    if options.native_base_build and options.suite != "capture":
+        parser.error("--native-base-build is only used by --suite capture")
     build, components = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
     owner = uuid.uuid4().hex
@@ -86,9 +91,10 @@ def main():
                   "Actual retained-source CRIU capture, virtual FUSE state and independent overlay/"
                   "managed-volume backing with complete content/metadata comparison. "
                   "Public checkpoint, immutable replay and completed-capture publication recovery. "
-                  "Internal restore after original deletion, restored-source capture and independent "
-                  "descendant restore/mutation. Public fork/pause/resume and incomplete-CRIU "
-                  "recovery remain unqualified."
+                  "Public independent fork with unavailable original rootfs, restored-source capture, "
+                  "descendant independence, persisted restore completion and exact overlay deletion. "
+                  "Incomplete preparation/restore refuses replay; pause/resume and complete interrupted-"
+                  "CRIU recovery remain unqualified."
                   if options.suite == "capture" else
                   "Application-independent start/state/delete, saved-outcome recovery, rejection "
                   "before destructive actions and the actual CLI source guard on Sysbox. "
@@ -151,7 +157,13 @@ def main():
             shutil.copyfile(criu_build / "criu", inputs / "criu")
             result["component_sha256"] = {p.name: reference.sha(p) for p in inputs.iterdir()}
             result["criu_build"] = options.criu_build
-            image = reference.BASE_ID
+            if options.native_base_build:
+                image, base_result = native_base.load(options.native_base_build)
+                result["native_base_build"] = options.native_base_build
+                result["native_base_image_config"] = base_result["image_config"]
+                result["native_base_packages_sha256"] = base_result["packages_sha256"]
+            else:
+                image = reference.BASE_ID
         else:
             with (archive / "builder.log").open("x") as log:
                 subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
@@ -205,7 +217,10 @@ def main():
         result["passed_tests"] = sum(line.startswith("--- PASS: ") for line in text.splitlines())
         result["passed_subtests"] = sum(line.startswith(" ") and line.lstrip().startswith("--- PASS: ")
                                          for line in text.splitlines())
-        result["skipped_tests"] = sum(line.startswith("--- SKIP: ") for line in text.splitlines())
+        result["skipped_tests"] = sum(line.lstrip().startswith("--- SKIP: ") for line in text.splitlines())
+        if done.returncode == 125:
+            raise ValueError("native fixture container did not start: " +
+                             (archive / "stderr.txt").read_text()[-4096:])
         state = json.loads(reference.docker(["container", "inspect", name]))[0]["State"]
         result["container_state"] = state
         result["inputs_unchanged"] = all(reference.sha(archive / name) == expected
@@ -219,6 +234,7 @@ def main():
             result["passed_tests"] == (4 if options.suite == "capture" else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
+            (options.suite != "capture" or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS) and
             result.get("components_unchanged", True) and
             result["skipped_tests"] == 0)
         if not result["passed"]:
@@ -232,7 +248,7 @@ def main():
             if attempted:
                 if options.suite == "capture":
                     try:
-                        archive_capture(archive, name, owner, result)
+                        archive_capture(archive, name, owner, result, image)
                     except Exception as error:
                         preserve_volume = True
                         result["native_passed"] = result["passed"]

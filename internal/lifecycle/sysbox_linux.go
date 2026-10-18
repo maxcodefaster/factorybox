@@ -144,5 +144,31 @@ func (e *Engine) state(ctx context.Context, record Record, lock *os.File) (*Runt
 	if !rootfs.IsDir() || uint64(stat.Dev) != record.RootfsDevice || stat.Ino != record.RootfsInode {
 		return nil, fmt.Errorf("input rootfs identity changed")
 	}
+	if record.RootfsMountID != 0 {
+		identity, err := directoryIdentity(record.Rootfs)
+		if err != nil || identity.MountID != record.RootfsMountID {
+			return nil, fmt.Errorf("input rootfs mount identity changed: %v", err)
+		}
+	}
 	return &state, nil
+}
+
+func directoryIdentity(path string) (KernelObject, error) {
+	fd, err := unix.Open(path, unix.O_PATH|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return KernelObject{}, err
+	}
+	defer unix.Close(fd)
+	var stat unix.Stat_t
+	var extended unix.Statx_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		return KernelObject{}, err
+	}
+	if err := unix.Statx(fd, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &extended); err != nil {
+		return KernelObject{}, err
+	}
+	if extended.Mask&unix.STATX_MNT_ID == 0 || extended.Mnt_id == 0 {
+		return KernelObject{}, fmt.Errorf("directory mount identity is unknown")
+	}
+	return KernelObject{Device: uint64(stat.Dev), Inode: stat.Ino, MountID: extended.Mnt_id}, nil
 }

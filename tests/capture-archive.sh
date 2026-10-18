@@ -6,7 +6,9 @@ paths=()
 for base in /input/factorybox-lifecycle-*; do
   if ! test -d "$base"; then continue; fi
   for path in "$base"/controller/objects/*/captures \
-              "$base"/bundle/lower "$base"/bundle/upper "$base"/bundle/config.json; do
+              "$base"/controller/forks \
+              "$base"/bundle/lower "$base"/bundle/upper "$base"/bundle/config.json \
+              "$base"/bundle-offline/lower "$base"/bundle-offline/upper "$base"/bundle-offline/config.json; do
     if test -e "$path"; then paths+=("${path#/input/}"); fi
   done
 done

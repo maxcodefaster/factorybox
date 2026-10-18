@@ -958,7 +958,8 @@
         "upstream/patches/sysbox-runc-test-diagnostics.patch": "da69e0426c2c3189d067e50a0df31c46292395023f697f926cc3473f239ee3e8",
         "upstream/patches/sysbox-runc-exec-error.patch": "fcbcdd1333edd78eb57427cd70bee2f597f13f3e74c036284b25a1e352e46d03",
         "upstream/patches/sysbox-runc-state-snapshot.patch": "f7199706eea1a8cab1ea163e9fa8d41a6591a0262a75fbb2c8c473b31f531599",
-        "upstream/patches/sysbox-runc-factorybox-restore.patch": "77001ca91e2109509ecc995993fbdb73885cadb0c92b222922d70b42786a7758"
+        "upstream/patches/sysbox-runc-factorybox-restore.patch": "77001ca91e2109509ecc995993fbdb73885cadb0c92b222922d70b42786a7758",
+        "upstream/patches/sysbox-runc-restore-receipt.patch": "b997efb01f5850d0d08ba04f51f84545f862b7f2656d5ae1dd83b64a5147355f"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -985,7 +986,8 @@
         "upstream/patches/sysbox-runc-test-diagnostics.patch",
         "upstream/patches/sysbox-runc-exec-error.patch",
         "upstream/patches/sysbox-runc-state-snapshot.patch",
-        "upstream/patches/sysbox-runc-factorybox-restore.patch"
+        "upstream/patches/sysbox-runc-factorybox-restore.patch",
+        "upstream/patches/sysbox-runc-restore-receipt.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
@@ -1009,13 +1011,15 @@
       },
       "url": "https://codeload.github.com/nestybox/sysbox-runc/tar.gz/081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "prepared_files_sha256": {
-        "factorybox_restore.go": "bdc91169d288cbe261da6a874128150f3e363076acd7d423c270acb0a9788e38",
+        "factorybox_restore.go": "e7edaf48ea98470619bb1f23001204abea75204ba7198399133d419d96d2b295",
         "factorybox_restore_test.go": "96175516c7c5cebfacb6a89b1579cd7a824fb5934ec3683fbb6778f59c649927",
         "libcontainer/factorybox_restore_root_linux_test.go": "fd88c29e90203fa119cdab4149056a47fb6513c217e0508a2d566db17336d3e3",
         "main.go": "65cf1c08f2a4a898a9025855843433e944b39751a732a36447b2ccd2dff97a96",
         "libcontainer/experiment_seccomp_linux.go": "70fe8fdc7d2905f21fe51931be47be3b2098d791098426b3850c12b3d98ba0bf",
         "libcontainer/factoryboxrestore/factorybox_rootfs_linux.go": "f0b0328373c32b0466b49b12d18d707dd2133ad3e79b39863a2380ef2d4f0a84",
-        "libcontainer/factorybox_restore_cgroup_linux.go": "cec1f923bafee61a32bce65feebca1603e795c37ee9e845d41271b1b3660d04c"
+        "libcontainer/factorybox_restore_cgroup_linux.go": "cec1f923bafee61a32bce65feebca1603e795c37ee9e845d41271b1b3660d04c",
+        "factorybox_restore_receipt.go": "7635eac355fdce6275654fd1140150b17fc8919871ce68d59a00006092ef1324",
+        "factorybox_restore_receipt_test.go": "9577b54e7da495b8d861f1a10c8ce0d05e229a2637832264c89fc1405c3fffcd"
       }
     },
     "sysbox-tests": {

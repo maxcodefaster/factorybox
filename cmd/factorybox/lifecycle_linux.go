@@ -34,11 +34,12 @@ func runLifecycle(args []string) error {
 		return err
 	}
 	if flags.NArg() < 1 {
-		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA start|state|checkpoint|delete")
+		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA start|state|checkpoint|fork|delete")
 	}
 	command, remaining := flags.Arg(0), flags.Args()[1:]
 	bundle := ""
 	snapshot := ""
+	source := ""
 	if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
 		start.StringVar(&bundle, "bundle", "", "administrator-prepared OCI bundle")
@@ -58,6 +59,17 @@ func runLifecycle(args []string) error {
 		remaining = checkpoint.Args()
 		if snapshot == "" {
 			return fmt.Errorf("checkpoint requires --snapshot-id")
+		}
+	} else if command == "fork" {
+		fork := flag.NewFlagSet("fork", flag.ContinueOnError)
+		fork.StringVar(&source, "source", "", "sandbox that owns the published checkpoint")
+		fork.StringVar(&snapshot, "snapshot-id", "", "immutable checkpoint identity")
+		if err := fork.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = fork.Args()
+		if source == "" || snapshot == "" {
+			return fmt.Errorf("fork requires --source and --snapshot-id")
 		}
 	} else if command != "state" && command != "delete" {
 		return fmt.Errorf("unknown lifecycle command %q", command)
@@ -87,6 +99,8 @@ func runLifecycle(args []string) error {
 		view, err = engine.Inspect(ctx, remaining[0])
 	case "delete":
 		view, err = engine.Delete(ctx, remaining[0])
+	case "fork":
+		view, err = engine.Fork(ctx, source, snapshot, remaining[0])
 	}
 	if view.Record.ID != "" {
 		err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(view))

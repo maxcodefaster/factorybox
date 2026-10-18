@@ -92,7 +92,7 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 			len(state.Config.Shiftfs), state.Sysbox.ID, state.Sysbox.Fs.ID,
 			state.Sysbox.Fs.Active, state.Sysbox.Fs.Reg, state.Sysbox.Fs.Mountpoint)
 	}
-	if err := overlayLayout(request.Bundle); err != nil {
+	if err := CheckOverlayLayout(request.Bundle); err != nil {
 		return nil, err
 	}
 	roots := []filesystemRoot{{"lower", request.Bundle + "/lower"}, {"upper", request.Bundle + "/upper"}}
@@ -132,7 +132,9 @@ func filesystemHookCount(hooks map[string][]json.RawMessage) int {
 	return total
 }
 
-func overlayLayout(bundle string) error {
+var ErrOverlayAbsent = errors.New("admitted overlay mount is absent")
+
+func CheckOverlayLayout(bundle string) error {
 	file, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
 		return err
@@ -170,7 +172,7 @@ func overlayLayout(bundle string) error {
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	return fmt.Errorf("checkpoint overlay is absent from the controller mount namespace")
+	return ErrOverlayAbsent
 }
 
 func openDirectory(path string) (*os.File, error) {

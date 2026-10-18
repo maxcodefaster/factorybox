@@ -6,8 +6,8 @@ snapshot-RAM release, resume and deletion. It requires no KVM or custom kernel.
 
 This repository is being extracted from the existing runtime experiment. The retained reference
 contains the working checkpoint/fork/resume implementation and its regressions. The current
-`factorybox` command provides version, platform inspection and local start/state/checkpoint/delete
-commands. Independent fork, RAM-releasing pause and resume still need extraction into that API.
+`factorybox` command provides version, platform inspection and local start/state/checkpoint/fork/delete
+commands. RAM-releasing pause and resume still need extraction into that API.
 There is no production-qualified release.
 
 Sysbox containers share the Linux worker kernel. The initial isolation scope is separate workers
@@ -19,7 +19,7 @@ describe development workloads; they do not define the snapshot engine.
 | Path | Purpose |
 | --- | --- |
 | `cmd/factorybox` | Diagnostics and local administrative lifecycle commands |
-| `internal/lifecycle` | Persisted lifecycle/checkpoint intent, exact ownership and reconciliation |
+| `internal/lifecycle` | Persisted start/checkpoint/fork intent, exact ownership and reconciliation |
 | `internal/sysboxcapture` | Pinned modern libcontainer checkpoint adapter extracted from ramctl |
 | `internal/platform` | Explicit reference-platform admission |
 | `internal/pageview` | Extracted logical snapshot reader and its native regressions |
@@ -91,8 +91,8 @@ cannot be reused.
 
 The input rootfs remains caller-owned and must be exclusive to one active sandbox in this state
 directory. Factorybox does not delete it. This administrative API is not an untrusted OCI-spec
-service or a portable runtime installer. Fork/pause/resume and their failure recovery remain on
-the sealed reference path until extracted and independently qualified.
+service or a portable runtime installer. Pause/resume and complete interrupted-capture/restore
+recovery remain on the sealed reference path until extracted and independently qualified.
 
 Run the extracted lifecycle proof on the existing worker:
 
@@ -137,7 +137,8 @@ The ordinary retained-source RAM capture now has its own native gate:
 ```sh
 mise exec -- python3 tools/lifecycle_native.py \
   --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
-  --criu-build factorybox-build-criu-EXACT_RUN_ID --suite capture
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID --suite capture
 ```
 
 This uses the reference's pinned runc 1.3.4 library and CRIU Go RPC 6.3.0 behind the
@@ -153,8 +154,8 @@ an 8192-byte random RAM payload from a Go process inside
 Sysbox under a Factorybox identity. The same process advances its RAM state after thaw, while the
 captured page-file hashes stay unchanged. The combined capture now also includes the physical
 overlay backing layers and private managed volumes. The extended native test also restores an
-independent process and recaptures/restores its descendant. The public fork/pause/resume API and
-the full developer workload remain unqualified.
+independent process through the public fork command and recaptures/forks its descendant.
+Pause/resume and the full developer workload remain unqualified.
 
 Filesystem capture admits the saved ID-mapped, uncloned Sysbox overlay with no executable hooks.
 It verifies the controller's overlay mount names the bundle's exact `lower`, `upper` and `work`
@@ -192,12 +193,13 @@ import after removal of the original registration, independent target mutation, 
 and rollback on FUSE-server creation failure. Kernel-backed proc/sys resources still require CRIU;
 this snapshot captures Sysbox's own virtual datastore, not an arbitrary host kernel.
 
-The capture fixture uses 3 CPUs/3 GiB and the existing retained Linux image for CRIU's dependencies.
+The capture fixture uses 3 CPUs/3 GiB and the explicitly selected native-base build for dependencies.
 After its writers stop, a separate bounded helper archives only its owned capture and source-layer
 directories from a read-only volume. Archive failure retains the owned source volume and fails the
 gate. The passing run archived its source and images and confirmed complete container/volume cleanup.
-Clean-machine reconstruction of this base is still required. Public checkpoint publication has
-native proof; the full snapshot lifecycle and production qualification remain incomplete.
+The explicit native-base build removes the historical image dependency for this fixture.
+Public checkpoint/fork publication has native proof; the full snapshot lifecycle and production
+qualification remain incomplete.
 
 Use an immutable caller-chosen checkpoint ID to retry the same request:
 
@@ -252,10 +254,48 @@ The native test deletes the original runtime, restores its exact 8192-byte priva
 counter, virtual panic value, overlay marker and Docker-volume file. It then checkpoints that
 restored process, restores an independent descendant and mutates its RAM, files, private volume
 and virtual panic value. Its source's RAM/files/virtual values, the worker kernel value and the
-complete saved filesystem digests remain unchanged. Exact deletion and overlay
-cleanup pass with at most two live sandboxes. This is an internal native restore proof; a public
-idempotent fork operation, interrupted-restore recovery, pause/resume and full-workload performance
-distributions remain required.
+complete saved filesystem digests remain unchanged. Exact deletion and overlay cleanup pass with
+at most two live sandboxes.
+
+Fork from an already published checkpoint:
+
+```sh
+factorybox --root /var/lib/factorybox \
+  --runtime /opt/factorybox/bin/sysbox-runc --runtime-sha256 "$SYSBOX_RUNC_SHA256" \
+  --criu /opt/factorybox/bin/criu --criu-sha256 "$CRIU_SHA256" \
+  --manager-root /var/lib/sysbox/manager \
+  fork --source workspace --snapshot-id 0123456789abcdef0123456789abcdef branch-one
+```
+
+The target ID identifies one immutable fork request. Factorybox persists its runtime owner, source
+checkpoint digest, pinned recipe, OCI input and saved virtual/runtime metadata before preparing
+backing or creating a process. It verifies the complete saved generation and copies independent
+filesystem and RAM-image backing. It creates a private overlay and persists kernel identities
+before restore. The original runtime may already be deleted, and its old rootfs paths may be absent.
+Forking never checkpoints or freezes a later live source.
+
+The backend syncs its successful completion before returning it to the controller. The receipt
+binds the exact sealed request to its target owner, runtime creation and process start time.
+Repeated commands return the same running target. A lost controller outcome can be completed from
+that receipt without another restore. Missing or mismatched receipts and unfinished backing
+preparation refuse replay and preserve evidence. They do not yet provide automatic reconciliation
+of every interrupted preparation or CRIU failure.
+
+Ordinary start cannot reuse a reserved fork ID. Deletion verifies the original rootfs mount ID
+as well as its device/inode before unmounting a fork-owned overlay. A foreign bind mount of the
+same rootfs inode is rejected before stopping its process. Caller-owned start rootfs directories,
+retained fork backing, snapshots and history stay on disk. Deleted target IDs cannot be recreated.
+
+The native proof exercises public CLI replay, lost completion recovery, rejection of missing/wrong
+receipts, incomplete preparation and uncertain-restore preservation, source-rootfs independence and
+exact deletion. It also stops the actual public controller while its backend finishes, kills that
+controller after durable completion, and recovers the same process/owner/private RAM. A completed
+fork and its replay remain usable while the source checkpoint directory is unavailable.
+Two individual small-fixture observations measured 1.55 s and 1.03 s from public
+fork invocation to the first private RAM response, including verification, filesystem/image copies,
+mount, restore and receipt reconciliation. Other shared-worker observations have exceeded 3 s,
+reaching about 7 s during concurrent qualification work.
+These are complete small-fixture observations, not full developer-workload distributions or p95.
 
 ## Pinned sources
 
@@ -288,13 +328,17 @@ recipe changes, prepare one exact component again; the previous tree is retained
 mise exec -- python3 tools/sources.py prepare --component sysbox-runc --refresh
 ```
 
-The existing worker's retained Linux build image can compile the prepared CRIU source:
+Build an explicit native-test/CRIU toolchain from the pinned public Envbox image and the dated Ubuntu
+APT snapshot. Package signatures remain enabled; the snapshot's expired validity timestamp is
+accepted. The build records all installed package versions and the exact output image manifest:
 
 ```sh
-mise exec -- python3 tools/build_criu.py
+mise exec -- python3 tools/build_native_base.py
+mise exec -- python3 tools/build_criu.py \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
 ```
 
-This command uses the exact existing builder image, 2 CPUs, 1 GiB, no network and an owned
+The CRIU compile command uses that exact built image, 2 CPUs, 1 GiB, no network and an owned
 temporary container. It records whether the resulting binary matches the historical build.
 Before compiling CRIU it runs 31 C regression cases against the actual prepared scope header.
 The original header rejects all three valid Factorybox ID cases; the added patch accepts only
@@ -303,8 +347,9 @@ owned-collection mode is still required. The original experiment names remain ac
 mode, malformed IDs, unrelated roots, descendants and traversal paths remain rejected. All 31
 cases and the subsequent native CRIU build passed. This gate checks canonical scope admission,
 not kernel ownership by itself or successful checkpoint/restore.
-Reconstructing that builder from public inputs is still a release requirement; the local builder
-image is not a published Factorybox build dependency.
+The native base can be reconstructed without the historical experiment image. A repeatable compiler
+recipe does not by itself prove bit-identical CRIU output or production runtime qualification.
+The historical default builder remains available only when its exact retained image is present.
 
 Build the selected Sysbox runc, fs and mgr components from prepared sources:
 
@@ -459,7 +504,7 @@ separators, missing required fields and incomplete reads. Original parser tests 
 regressions pass. After adding virtual-state snapshots, all 18 Go module suites passed together
 in one native run: 393 top-level tests and 315 subtests. This includes the frozen FUSE export,
 independent import after source-registration removal, exact wire encoding and path-scope tests.
-After the new restore adapter, the complete Runc module passed 277 top-level tests and 227 subtests
+After the new restore receipt, the complete Runc module passed 278 top-level tests and 227 subtests
 with 14 explicit upstream skips. The unchanged modules retain their preceding combined pass. The manager's
 four shiftfs tests explicitly skip on this worker, which has no shiftfs module. The
 umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unqualified.
@@ -468,7 +513,7 @@ umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unquali
 
 Factorybox has no production-qualified release yet. Required gates include:
 
-- Extract complete independent fork, RAM-releasing pause and resume into the public
+- Extract RAM-releasing pause and resume into the public
   lifecycle API, with their source-preservation and recovery behavior.
 - Pinned upstream Sysbox unit/core/integration suites and CRIU core checkpoint/restore suites.
   Failed or unrun required suites block qualification. Preserve upstream assertions.

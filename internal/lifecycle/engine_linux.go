@@ -62,11 +62,13 @@ type Record struct {
 	Rootfs         string        `json:"rootfs"`
 	RootfsDevice   uint64        `json:"rootfs_device"`
 	RootfsInode    uint64        `json:"rootfs_inode"`
+	RootfsMountID  uint64        `json:"rootfs_mount_id,omitempty"`
 	RuntimeCreated string        `json:"runtime_created,omitempty"`
 	CgroupParent   KernelObject  `json:"cgroup_parent"`
 	Cgroup         *KernelObject `json:"cgroup,omitempty"`
 	Start          Operation     `json:"start"`
 	Delete         *Operation    `json:"delete,omitempty"`
+	Fork           *ForkOrigin   `json:"fork,omitempty"`
 }
 
 type View struct {
@@ -126,7 +128,7 @@ func Open(config Config) (_ *Engine, resultErr error) {
 			root.Close()
 		}
 	}()
-	for _, name := range []string{"objects", "runtime"} {
+	for _, name := range []string{"objects", "runtime", "forks"} {
 		if err := root.Mkdir(name, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 			return nil, err
 		}
@@ -211,7 +213,7 @@ func (e *Engine) validateRoot() error {
 	if err != nil || !os.SameFile(anchored, current) {
 		return fmt.Errorf("controller root identity changed: %v", err)
 	}
-	for _, path := range []string{e.config.Root, e.config.Root + "/objects", e.config.Root + "/runtime"} {
+	for _, path := range []string{e.config.Root, e.config.Root + "/objects", e.config.Root + "/runtime", e.config.Root + "/forks"} {
 		if err := privateDirectory(path); err != nil {
 			return err
 		}
@@ -258,6 +260,13 @@ func (e *Engine) read(id string) (Record, error) {
 	if record.Phase != "starting" && record.Phase != "running" &&
 		record.Phase != "deleting" && record.Phase != "deleted" {
 		return record, fmt.Errorf("invalid saved lifecycle phase")
+	}
+	if record.Fork != nil && (!sandboxID.MatchString(record.Fork.SourceID) ||
+		!tokenID.MatchString(record.Fork.CheckpointID) || !digest.MatchString(record.Fork.CheckpointSHA256) ||
+		record.Fork.RequestedAt == "" || record.Fork.SourceID == record.ID ||
+		record.InputBundle != e.config.Root+"/forks/"+record.ID+"/materialized/filesystem" ||
+		record.Rootfs != record.InputBundle+"/rootfs" || record.RootfsMountID == 0) {
+		return record, fmt.Errorf("saved fork ownership or backing layout differs")
 	}
 	config, err := e.root.ReadFile(object + "/config.json")
 	if err != nil || sum(config) != record.ConfigSHA256 {
@@ -309,6 +318,11 @@ func (e *Engine) Start(ctx context.Context, id, bundle string) (View, error) {
 	defer lock.Close()
 	object, err := objectPath(id)
 	if err != nil {
+		return View{}, err
+	}
+	if _, err := e.root.Lstat("forks/" + id); err == nil {
+		return View{}, fmt.Errorf("sandbox ID belongs to a persisted fork; repeat the fork command")
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return View{}, err
 	}
 	if err := canonical(bundle); err != nil {
@@ -369,6 +383,10 @@ func (e *Engine) Start(ctx context.Context, id, bundle string) (View, error) {
 }
 
 func (e *Engine) prepare(id, bundle, object string, input []byte) (Record, error) {
+	return e.prepareRecord(id, bundle, object, input, "", nil)
+}
+
+func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner string, origin *ForkOrigin) (Record, error) {
 	var record Record
 	var spec map[string]json.RawMessage
 	if err := json.Unmarshal(input, &spec); err != nil {
@@ -392,14 +410,22 @@ func (e *Engine) prepare(id, bundle, object string, input []byte) (Record, error
 		return record, fmt.Errorf("rootfs is not an accessible directory: %v", err)
 	}
 	stat := info.Sys().(*syscall.Stat_t)
+	rootIdentity, err := directoryIdentity(root.Path)
+	if err != nil {
+		return record, err
+	}
 	if err := e.exclusiveRootfs(root.Path, uint64(stat.Dev), stat.Ino); err != nil {
 		return record, err
 	}
-	var random [16]byte
-	if _, err := rand.Read(random[:]); err != nil {
-		return record, err
+	if owner == "" {
+		var random [16]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return record, err
+		}
+		owner = hex.EncodeToString(random[:])
+	} else if !tokenID.MatchString(owner) {
+		return record, fmt.Errorf("invalid persisted runtime owner")
 	}
-	owner := hex.EncodeToString(random[:])
 	parent, err := boundedCgroupRoot()
 	if err != nil {
 		return record, err
@@ -442,9 +468,12 @@ func (e *Engine) prepare(id, bundle, object string, input []byte) (Record, error
 	record = Record{Version: 1, ID: id, Owner: owner, RuntimeID: "fbx-" + owner,
 		RuntimeSHA256: e.config.RuntimeSHA256, BootID: e.boot, Phase: "starting",
 		InputBundle: bundle, InputSHA256: sum(input), ConfigSHA256: sum(config),
-		Rootfs: root.Path, RootfsDevice: uint64(stat.Dev), RootfsInode: stat.Ino,
+		Rootfs: root.Path, RootfsDevice: uint64(stat.Dev), RootfsInode: stat.Ino, RootfsMountID: rootIdentity.MountID,
 		CgroupParent: parent,
-		Start:        Operation{RequestedAt: now()}}
+		Start:        Operation{RequestedAt: now()}, Fork: origin}
+	if origin != nil {
+		record.Start.RequestedAt = origin.RequestedAt
+	}
 	if err := e.write(record); err != nil {
 		return record, err
 	}
@@ -539,6 +568,9 @@ func (e *Engine) Delete(ctx context.Context, id string) (View, error) {
 		return View{Record: record}, errors.Join(err, fmt.Errorf("runtime deletion is not confirmed"))
 	}
 	if err := e.retireEmptyCgroup(record); err != nil {
+		return View{Record: record}, err
+	}
+	if err := e.retireForkOverlay(record); err != nil {
 		return View{Record: record}, err
 	}
 	record.Phase, record.Delete.CompletedAt, record.Delete.Error = "deleted", now(), ""

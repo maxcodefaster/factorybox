@@ -1,4 +1,16 @@
 {
+  "internal/lifecycle/fork_linux.go": {
+    "changes": [
+      "Promote complete filesystem/image copying and fresh Sysbox restore into an application-independent public fork operation.",
+      "Persist immutable fork identity and pinned checkpoint/recipe before preparing backing or attempting runtime creation.",
+      "Reconcile completed restore receipts against original process birth and kernel identities; refuse ambiguous preparation or restore replay.",
+      "Verify and unmount only the fork-owned overlay, retaining source, backing and operation evidence."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/criu_sysbox_copy.go": "7b7c0bcc68d90aad3899bacbb325f96b1d724f03fc6c829d51f0cd2c58b54d01",
+      "upstream/overlays/sysbox-runc/experiment_copy.go": "812aab6fc70538481cb7e1ce3c04a5eb293170f003e531eba5c77ae75244ada6"
+    }
+  },
   "upstream/patches/sysbox-runc-factorybox-restore.patch": {
     "changes": [
       "Extract independent Sysbox registration, private-volume copy, prepared-child restore and seccomp listener handoff from the retained reference.",

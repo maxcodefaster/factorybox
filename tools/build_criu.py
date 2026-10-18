@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Build the pinned CRIU source in the existing isolated Linux builder."""
+"""Build pinned CRIU in an explicit isolated Linux toolchain."""
+import argparse
 import datetime
 import json
 import pathlib
@@ -7,6 +8,7 @@ import shutil
 import subprocess
 import uuid
 
+import native_base
 import reference
 import sources
 
@@ -16,6 +18,11 @@ HISTORICAL = "2b74a9712aa928245cdc43db1702083f4b87f454f4b077b7fe12b71dbfef3ab1"
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--native-base-build", help="Exact successful public-input native base build")
+    options = parser.parse_args()
+    builder, base_result = (native_base.load(options.native_base_build)
+                            if options.native_base_build else (BUILDER, None))
     owner = uuid.uuid4().hex
     name = "factorybox-build-criu-" + owner
     output = ROOT / "artifacts" / name
@@ -25,7 +32,8 @@ def main():
     shutil.copyfile(ROOT / "tests/criu-owned-scope.c", output / "criu-owned-scope.c")
     component = json.loads(lock.read_text())["components"]["criu"]
     result = {
-        "schema": 1, "owner": owner, "container_name": name, "builder": BUILDER,
+        "schema": 1, "owner": owner, "container_name": name, "builder": builder,
+        "native_base_build": options.native_base_build,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "source_lock_sha256": reference.sha(lock), "passed": False,
         "scope_test_sha256": reference.sha(output / "criu-owned-scope.c"),
@@ -47,7 +55,7 @@ def main():
             "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=384m",
             "--mount", f"type=bind,source={tree},target=/source,readonly",
             "--mount", f"type=bind,source={output},target=/output",
-            "--entrypoint", "/bin/sh", BUILDER, "-ec",
+            "--entrypoint", "/bin/sh", builder, "-ec",
             "cc --version > /output/toolchain.txt\n"
             "make --version >> /output/toolchain.txt\n"
             "protoc --version >> /output/toolchain.txt\n"
@@ -61,7 +69,9 @@ def main():
         ]
         result["command"] = command
         (output / "intent.json").write_text(json.dumps(result, indent=2) + "\n")
-        print(json.dumps({"building": str(output), "builder": BUILDER}), flush=True)
+        if base_result:
+            result["native_base_packages_sha256"] = base_result["packages_sha256"]
+        print(json.dumps({"building": str(output), "builder": builder}), flush=True)
         attempted = True
         completed = subprocess.run(command, text=True, capture_output=True, timeout=300)
         (output / "stdout.txt").write_text(completed.stdout)

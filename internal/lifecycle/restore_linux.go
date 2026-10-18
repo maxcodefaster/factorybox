@@ -5,8 +5,10 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
@@ -27,6 +29,48 @@ type restoreRequest struct {
 	ConfigSHA256 string `json:"config_sha256"`
 	State        []byte `json:"state"`
 	FsState      []byte `json:"fs_state"`
+}
+
+type restoreResult struct {
+	Version       int    `json:"version"`
+	Owner         string `json:"owner"`
+	RuntimeID     string `json:"runtime_id"`
+	RequestSHA256 string `json:"request_sha256"`
+	PID           int    `json:"pid"`
+	ProcessStart  string `json:"process_start"`
+	Created       string `json:"created"`
+	CompletedAt   string `json:"completed_at"`
+}
+
+func (e *Engine) restoreCompleted(ctx context.Context, lock *os.File, target Record, request restoreRequest) (restoreResult, *RuntimeState, error) {
+	var result restoreResult
+	object, err := objectPath(target.ID)
+	if err != nil {
+		return result, nil, err
+	}
+	if err := e.readCheckpointJSON(object+"/restore-result.json", &result); err != nil {
+		return result, nil, fmt.Errorf("restore completion is unconfirmed; refusing another restore: %w", err)
+	}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return result, nil, err
+	}
+	if result.Version != 1 || result.Owner != target.Owner || result.RuntimeID != target.RuntimeID ||
+		result.RequestSHA256 != sum(data) || result.PID <= 1 || result.ProcessStart == "" || result.CompletedAt == "" {
+		return result, nil, fmt.Errorf("restore receipt differs from its exact request")
+	}
+	state, err := e.state(ctx, target, lock)
+	if err != nil || state == nil || state.Status != "running" || state.PID != result.PID {
+		return result, state, errors.Join(err, fmt.Errorf("restore receipt does not identify its running original target"))
+	}
+	created, createdErr := time.Parse(time.RFC3339Nano, state.Created)
+	recorded, recordedErr := time.Parse(time.RFC3339Nano, result.Created)
+	start, startErr := processBirth(state.PID)
+	if createdErr != nil || recordedErr != nil || !created.Equal(recorded) ||
+		startErr != nil || start != result.ProcessStart {
+		return result, state, fmt.Errorf("restored process birth or runtime creation differs from its receipt")
+	}
+	return result, state, nil
 }
 
 func (e *Engine) restore(ctx context.Context, lock *os.File, target Record, request restoreRequest) error {
@@ -72,7 +116,10 @@ func (e *Engine) restore(ctx context.Context, lock *os.File, target Record, requ
 	if _, err := unix.FcntlInt(file.Fd(), unix.F_ADD_SEALS, captureRequestSeals); err != nil {
 		return err
 	}
-	_, err = e.commandFiles(ctx, lock, []*os.File{file}, "--criu", e.config.Criu,
-		"factorybox-restore", target.RuntimeID)
+	if _, err := e.commandFiles(ctx, lock, []*os.File{file}, "--criu", e.config.Criu,
+		"factorybox-restore", target.RuntimeID); err != nil {
+		return err
+	}
+	_, _, err = e.restoreCompleted(ctx, lock, target, request)
 	return err
 }
