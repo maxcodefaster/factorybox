@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "flavor": "h",
+  "cycles": 2,
+  "cases": [
+    {"name": "maps00", "args": ["--filename=payload"]},
+    {"name": "maps01"},
+    {"name": "cow00"},
+    {"name": "pipe00"},
+    {"name": "pipe01"},
+    {"name": "pthread01"},
+    {"name": "futex"},
+    {"name": "sockets_spair"},
+    {"name": "socket_queues"},
+    {"name": "eventfs00"},
+    {"name": "epoll"},
+    {"name": "signalfd00"},
+    {"name": "timers"},
+    {"name": "timerfd"},
+    {"name": "file_cloexec"},
+    {"name": "file_append", "args": ["--filename=payload"]},
+    {"name": "file_locks00", "args": ["--filename=payload"], "criu_args": ["--file-locks"]},
+    {"name": "memfd00"}
+  ]
+}

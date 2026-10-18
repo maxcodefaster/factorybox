@@ -413,6 +413,37 @@ The native base can be reconstructed without the historical experiment image. A 
 recipe does not by itself prove bit-identical CRIU output or production runtime qualification.
 The historical default builder remains available only when its exact retained image is present.
 
+Run the selected ordinary CRIU checkpoint/restore core cases:
+
+```sh
+mise exec -- python3 tools/criu_core.py \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+```
+
+All 18 unchanged upstream C tests passed with zero skips and two complete ordinary dump/restore
+cycles each. They cover file/anonymous/shared mappings, copy-on-write, threads and TLS, futexes,
+pipes, Unix socket queues, eventfd/epoll/signalfd, timers, descriptor flags, append mode, file locks
+and memfd contents/metadata. Each cycle confirms that the original processes exit and the restored
+root keeps its namespace PID with a new process birth. Each test then executes its own original
+assertions, must finish in `PASS` and cannot hide an earlier `FAIL` behind a later `PASS`.
+
+`tests/criu-core-cases.json` declares the selection and required arguments. The adapter uses the
+upstream static C daemon/readiness/SIGTERM protocol in host flavor inside its owned PID/net/IPC
+container. It checks descriptors and refuses unadmitted hooks, dependencies and flavors.
+It preserves compiler `-Werror` and every original test assertion. It does not invoke `zdtm.py`'s
+entry point, which unconditionally configures global hugepages. `/proc/sys/vm` is read-only in the
+fixture. The test source crosses the Mac file share as a hash-verified archive, preserving dangling
+upstream symlinks. A first adapter attempt failed restore because unreaped killed children still
+held their dead session leader's PID. The adapter now waits for and reaps the complete original
+test tree before restoration.
+
+The bounded 3-CPU/3-GiB gate records exact source/binary identities, per-cycle timings and original
+logs/images, then archives its stopped owned volume before cleanup. This qualifies these 18
+ordinary C cases on the reference ARM64 worker. It does not qualify the full ZDTM matrix, namespace
+flavors, a complete developer workload or a latency distribution. The 1030 verified unchanged CRIU
+test files are an integrity count, not an execution count.
+
 Build the selected Sysbox runc, fs and mgr components from prepared sources:
 
 ```sh
@@ -569,7 +600,8 @@ independent import after source-registration removal, exact wire encoding and pa
 After the new resume adapter, the complete Runc module passed 279 top-level tests and 227 subtests
 with 14 explicit upstream skips. The unchanged modules retain their preceding combined pass. The manager's
 four shiftfs tests explicitly skip on this worker, which has no shiftfs module. The
-umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unqualified.
+umbrella/Bats/systemd and the wider CRIU checkpoint/restore matrix remain unqualified.
+The separately selected 18 ordinary CRIU C cases have passed their two-cycle gate.
 
 ## Release requirements
 

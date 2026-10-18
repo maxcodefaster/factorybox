@@ -39,6 +39,9 @@ run = "python3 tools/native_failure.py"
 [tasks."criu:build"]
 run = "python3 tools/build_criu.py"
 
+[tasks."criu:core"]
+run = "python3 tools/criu_core.py"
+
 [tasks."native-base:build"]
 run = "python3 tools/build_native_base.py"
 
