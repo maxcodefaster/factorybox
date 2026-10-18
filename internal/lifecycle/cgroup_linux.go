@@ -82,6 +82,31 @@ func (e *Engine) validateCgroup(record Record) error {
 	return nil
 }
 
+// A stopped init does not prove that its descendants are gone. Resume admits
+// only the verified original cgroup tree with no remaining process and with its
+// freezer cleared. Inspect cgroup.events through the identity-checked directory.
+func (e *Engine) requireEmptyCgroup(record Record) error {
+	if err := e.validateCgroup(record); err != nil {
+		return err
+	}
+	group, err := captureGuardOpen(cgroupRoot + "/" + record.RuntimeID)
+	if err != nil {
+		return err
+	}
+	defer group.Close()
+	identity, err := cgroupFDIdentity(int(group.Fd()))
+	if err != nil || record.Cgroup == nil || identity != *record.Cgroup {
+		return fmt.Errorf("resume original cgroup identity changed: %v", err)
+	}
+	events, err := captureGuardEvents(group)
+	populated, hasPopulated := events["populated"]
+	frozen, hasFrozen := events["frozen"]
+	if err != nil || !hasPopulated || !hasFrozen || populated != 0 || frozen != 0 {
+		return fmt.Errorf("resume requires its empty original cgroup with a cleared freezer: %v", err)
+	}
+	return e.validateCgroup(record)
+}
+
 func (e *Engine) prepareCgroup(record *Record) error {
 	if record.Cgroup != nil {
 		return e.validateCgroup(*record)

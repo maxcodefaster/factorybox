@@ -287,6 +287,13 @@ as well as its device/inode before unmounting a fork-owned overlay. A foreign bi
 same rootfs inode is rejected before stopping its process. Caller-owned start rootfs directories,
 retained fork backing, snapshots and history stay on disk. Deleted target IDs cannot be recreated.
 
+Before mounting a new fork overlay, Factorybox persists the uncovered mountpoint's device, inode
+and mount identity, bound to the fork owner, OCI input and checkpoint digest. If runtime deletion
+and overlay unmount finished but the controller lost its final saved outcome, repeated deletion
+can confirm that same empty original directory and finish its tombstone. A replacement directory
+or foreign bind mount is rejected and retained. Forks without this original mountpoint proof
+refuse this recovery; an absent mount alone is insufficient.
+
 The native proof exercises public CLI replay, lost completion recovery, rejection of missing/wrong
 receipts, incomplete preparation and uncertain-restore preservation, source-rootfs independence and
 exact deletion. It also stops the actual public controller while its backend finishes, kills that
@@ -335,6 +342,13 @@ worker-wide changes. Its completion receipt binds the request to the renewed pro
 the original runtime ID, owner and creation time. Repeated requests and lost controller outcomes
 reconcile that process. Unconfirmed restores refuse a second restore.
 
+Resume also requires the entire original cgroup tree to be empty with its freezer cleared.
+The controller checks events through the identity-verified original cgroup before changing pause
+intent, before preparing images and immediately before the restore call. A native negative fixture
+places an unrelated process in a child cgroup while the original init is stopped. Resume refuses
+before creating its operation directory, retains the identical pause record and leaves that process
+alive. The original admission check accepted this fixture; the regression now passes.
+
 The native pause suite uses an actual 32-MiB anonymous payload with a retained checksum:
 
 ```sh
@@ -356,7 +370,7 @@ An earlier terminating-writer draft copied filesystem backing before CRIU's own 
 the native resume check rejected the mismatch. The selected path captures the complete backing
 after the retained writer and stops processes only after successful backing. Saved images/source
 data survive failed transitions. Automatic recovery of every failed capture, partial preparation,
-resume failure or lost deletion outcome still requires hardening. Recovery requires the same live
+resume failure or partially completed runtime deletion still requires hardening. Recovery requires the same live
 worker and unchanged exclusive working backing; worker restart/cross-node migration remain unsupported.
 
 ## Pinned sources

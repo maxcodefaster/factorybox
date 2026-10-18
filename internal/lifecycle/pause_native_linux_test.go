@@ -9,11 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"factorybox/internal/sysboxcapture"
+	"golang.org/x/sys/unix"
 )
 
 func pauseNativeCLI(engine *Engine, id, snapshot string) (View, error) {
@@ -130,6 +132,46 @@ func TestPauseNative(t *testing.T) {
 	if _, err := engine.Delete(ctx, "paused-fork"); err != nil {
 		t.Fatal(err)
 	}
+	t.Run("reject-populated-resume-before-intent", func(t *testing.T) {
+		leaf := cgroupRoot + "/" + paused.Record.RuntimeID + "/owned-negative-fixture"
+		if err := os.Mkdir(leaf, 0755); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := os.Remove(leaf); err != nil {
+				t.Error("remove only the owned empty negative-test leaf", err)
+			}
+		}()
+		command := exec.Command("/bin/sleep", "60")
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			command.Process.Kill()
+			command.Wait()
+		}()
+		if err := os.WriteFile(leaf+"/cgroup.procs", []byte(strconv.Itoa(command.Process.Pid)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		original, err := engine.root.ReadFile("objects/pausable/record.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, rejected := transitionNativeCLI(engine, "resume", "pausable", snapshot)
+		if rejected == nil || !strings.Contains(rejected.Error(), "empty original cgroup") {
+			t.Fatal("resume accepted an unrelated process below its stopped original cgroup", rejected)
+		}
+		unchanged, err := engine.root.ReadFile("objects/pausable/record.json")
+		if err != nil || string(original) != string(unchanged) {
+			t.Fatal("populated resume changed persisted pause intent", err)
+		}
+		if err := unix.Kill(command.Process.Pid, 0); err != nil {
+			t.Fatal("rejected resume changed the unrelated owned fixture process", err)
+		}
+		if _, err := engine.root.Lstat("objects/pausable/resumes/" + snapshot); !os.IsNotExist(err) {
+			t.Fatal("populated resume prepared images before rejecting admission", err)
+		}
+	})
 	resumeBegin := time.Now()
 	resumed, err := transitionNativeCLI(engine, "resume", "pausable", snapshot)
 	if err != nil {

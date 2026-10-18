@@ -52,6 +52,27 @@ type forkPreparation struct {
 	PreparedAt   string                            `json:"prepared_at"`
 }
 
+// Save the uncovered mountpoint before overlay mount. After a lost final
+// deletion write, its exact identity proves that the original unmount finished.
+// An absent mount alone cannot distinguish this directory from a replacement.
+type forkOverlayOrigin struct {
+	Version          int          `json:"version"`
+	Owner            string       `json:"owner"`
+	Rootfs           string       `json:"rootfs"`
+	InputSHA256      string       `json:"input_sha256"`
+	CheckpointSHA256 string       `json:"checkpoint_sha256"`
+	Mountpoint       KernelObject `json:"mountpoint"`
+}
+
+func (origin forkOverlayOrigin) validate(owner, rootfs, inputSHA, checkpointSHA string) error {
+	if origin.Version != 1 || origin.Owner != owner || origin.Rootfs != rootfs ||
+		origin.InputSHA256 != inputSHA || origin.CheckpointSHA256 != checkpointSHA ||
+		origin.Mountpoint.Device == 0 || origin.Mountpoint.Inode == 0 || origin.Mountpoint.MountID == 0 {
+		return fmt.Errorf("fork overlay origin differs from its original request")
+	}
+	return nil
+}
+
 // Fork starts an independent target from an already published checkpoint.
 // The immutable target ID is also the request's idempotency identity.
 func (e *Engine) Fork(ctx context.Context, sourceID, snapshotID, targetID string) (View, error) {
@@ -384,12 +405,39 @@ func (e *Engine) forkOverlay(bundle, operation string, intent forkIntent) error 
 	} else if data, err := os.ReadFile(bundle + "/config.json"); err != nil || sum(data) != sum(intent.OCI) {
 		return fmt.Errorf("prepared fork OCI input changed: %v", err)
 	}
-	// The target-specific intent and complete backing manifest are durable.
+	mounted := sysboxcapture.CheckOverlayLayout(bundle)
+	if mounted != nil && !errors.Is(mounted, sysboxcapture.ErrOverlayAbsent) {
+		return fmt.Errorf("fork rootfs has an unexpected existing mount: %w", mounted)
+	}
+	var origin forkOverlayOrigin
+	err := e.readCheckpointJSON(operation+"/overlay-origin.json", &origin)
+	if errors.Is(err, os.ErrNotExist) {
+		if mounted == nil {
+			return fmt.Errorf("fork overlay exists without its original mountpoint intent")
+		}
+		base, err := directoryIdentity(bundle + "/rootfs")
+		if err != nil {
+			return err
+		}
+		origin = forkOverlayOrigin{Version: 1, Owner: intent.Owner, Rootfs: bundle + "/rootfs",
+			InputSHA256: sum(intent.OCI), CheckpointSHA256: intent.Origin.CheckpointSHA256, Mountpoint: base}
+		if err := e.publishCheckpoint(operation, "overlay-origin.json", origin); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	if err := origin.validate(intent.Owner, bundle+"/rootfs", sum(intent.OCI), intent.Origin.CheckpointSHA256); err != nil {
+		return err
+	}
+	// The target intent, backing manifest and uncovered mountpoint are durable.
 	// A matching existing overlay can only be reused before runtime creation.
-	if err := sysboxcapture.CheckOverlayLayout(bundle); err == nil {
+	if mounted == nil {
 		return nil
-	} else if !errors.Is(err, sysboxcapture.ErrOverlayAbsent) {
-		return fmt.Errorf("fork rootfs has an unexpected existing mount: %w", err)
+	}
+	base, err := directoryIdentity(bundle + "/rootfs")
+	if err != nil || base != origin.Mountpoint {
+		return fmt.Errorf("fork original mountpoint identity changed: %v", err)
 	}
 	entries, err := os.ReadDir(bundle + "/rootfs")
 	if err != nil || len(entries) != 0 {
@@ -455,10 +503,28 @@ func (e *Engine) retireForkOverlay(record Record) error {
 		return nil
 	}
 	if record.InputBundle != e.config.Root+"/forks/"+record.ID+"/materialized/filesystem" ||
-		record.Rootfs != record.InputBundle+"/rootfs" {
+		record.Rootfs != record.InputBundle+"/rootfs" || record.Phase != "deleting" || record.Delete == nil {
 		return fmt.Errorf("fork deletion overlay is outside its persisted target")
 	}
+	var origin forkOverlayOrigin
+	if err := e.readCheckpointJSON("forks/"+record.ID+"/overlay-origin.json", &origin); err != nil {
+		return fmt.Errorf("fork deletion original mountpoint is unconfirmed: %w", err)
+	}
+	if err := origin.validate(record.Owner, record.Rootfs, record.InputSHA256, record.Fork.CheckpointSHA256); err != nil {
+		return err
+	}
 	if err := sysboxcapture.CheckOverlayLayout(record.InputBundle); err != nil {
+		if errors.Is(err, sysboxcapture.ErrOverlayAbsent) {
+			identity, err := directoryIdentity(record.Rootfs)
+			if err != nil || identity != origin.Mountpoint {
+				return fmt.Errorf("fork deletion unmounted rootfs identity changed: %v", err)
+			}
+			entries, err := os.ReadDir(record.Rootfs)
+			if err != nil || len(entries) != 0 {
+				return fmt.Errorf("fork deletion original mountpoint is not empty: %v", err)
+			}
+			return nil
+		}
 		return err
 	}
 	info, err := os.Lstat(record.Rootfs)

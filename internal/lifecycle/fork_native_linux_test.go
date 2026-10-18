@@ -447,12 +447,59 @@ func forkFromRestoredNative(t *testing.T, engine *Engine, restored View, expecte
 	if err := sysboxcapture.VerifyFilesystemSnapshot(ctx, generation, checkpoint.Filesystem); err != nil {
 		t.Fatal("descendant mutation changed its source checkpoint", err)
 	}
-	if _, err := engine.Delete(ctx, descendant.Record.ID); err != nil {
+	deleted, err := engine.Delete(ctx, descendant.Record.ID)
+	if err != nil {
 		t.Fatal("delete public fork with its owned overlay", err)
 	}
 	if err := sysboxcapture.CheckOverlayLayout(descendant.Record.InputBundle); !errors.Is(err, sysboxcapture.ErrOverlayAbsent) {
 		t.Fatal("public fork deletion retained or changed its host overlay", err)
 	}
+	t.Run("lost-delete-outcome-after-unmount", func(t *testing.T) {
+		lost := deleted.Record
+		operation := *lost.Delete
+		operation.CompletedAt, operation.Error = "", "controller deletion outcome lost"
+		lost.Phase, lost.Delete = "deleting", &operation
+		if err := engine.write(lost); err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := engine.write(deleted.Record); err != nil {
+				t.Error(err)
+			}
+		}()
+		rootfs := lost.Rootfs
+		if err := unix.Mount(rootfs, rootfs, "", unix.MS_BIND, ""); err != nil {
+			t.Fatal(err)
+		}
+		_, foreignMount := engine.Delete(ctx, lost.ID)
+		unmountErr := unix.Unmount(rootfs, 0)
+		if foreignMount == nil || unmountErr != nil {
+			t.Fatal("lost deletion accepted or removed a foreign bind mount", foreignMount, unmountErr)
+		}
+		if err := os.Rename(rootfs, rootfs+".held"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(rootfs, 0700); err != nil {
+			os.Rename(rootfs+".held", rootfs)
+			t.Fatal(err)
+		}
+		_, foreignDirectory := engine.Delete(ctx, lost.ID)
+		removeErr := os.Remove(rootfs)
+		renameErr := os.Rename(rootfs+".held", rootfs)
+		if foreignDirectory == nil || removeErr != nil || renameErr != nil {
+			t.Fatal("lost deletion accepted a replacement mountpoint directory",
+				foreignDirectory, removeErr, renameErr)
+		}
+		recovered, err := engine.Delete(ctx, lost.ID)
+		if err != nil || recovered.Record.Phase != "deleted" || recovered.Runtime != nil ||
+			recovered.Record.Owner != lost.Owner || recovered.Record.RuntimeCreated != lost.RuntimeCreated ||
+			recovered.Record.Delete.CompletedAt == "" {
+			t.Fatal("lost final deletion outcome did not reconcile its original unmounted rootfs", err)
+		}
+		if _, err := os.Stat(lost.InputBundle + "/upper"); err != nil {
+			t.Fatal("reconciled deletion removed retained fork backing", err)
+		}
+	})
 	if _, err := forkNativeCLI(engine, restored.Record.ID, snapshot, "descendant"); err == nil {
 		t.Fatal("fork replay recreated a deleted target identity")
 	}

@@ -65,6 +65,9 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 		return View{Record: record, Runtime: state}, err
 	}
 	if record.Phase == "paused" {
+		if err := e.requireEmptyCgroup(record); err != nil {
+			return View{Record: record}, err
+		}
 		record.Phase = "resuming"
 		record.Pause.Resume = &Operation{RequestedAt: now()}
 		if err := e.write(record); err != nil {
@@ -77,6 +80,9 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 	request := e.resumeRequest(record)
 	relative := "objects/" + id + "/resumes/" + snapshot
 	if !record.Pause.Resume.Attempted {
+		if err := e.requireEmptyCgroup(record); err != nil {
+			return View{Record: record}, err
+		}
 		if err := e.prepareResume(ctx, lock, record, relative, request); err != nil {
 			return View{Record: record}, err
 		}
@@ -197,7 +203,7 @@ func (e *Engine) resumeRuntime(ctx context.Context, lock *os.File, record Record
 	if record.Phase != "resuming" || record.Pause == nil || record.Pause.Resume == nil || !record.Pause.Resume.Attempted {
 		return fmt.Errorf("resume requires persisted attempted intent")
 	}
-	if err := e.validateCgroup(record); err != nil {
+	if err := e.requireEmptyCgroup(record); err != nil {
 		return err
 	}
 	criu, err := openRuntime(e.config.Criu, e.config.CriuSHA256)
