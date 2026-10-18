@@ -85,7 +85,8 @@ def main():
                   if options.suite == "guard" else
                   "Actual retained-source CRIU capture, virtual FUSE state and independent overlay/"
                   "managed-volume backing with complete content/metadata comparison. "
-                  "No fork, restore or public checkpoint qualification."
+                  "Public checkpoint, immutable replay and completed-capture publication recovery. "
+                  "No fork, restore or incomplete-CRIU recovery qualification."
                   if options.suite == "capture" else
                   "Application-independent start/state/delete, saved-outcome recovery, rejection "
                   "before destructive actions and the actual CLI source guard on Sysbox. "

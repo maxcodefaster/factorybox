@@ -461,9 +461,18 @@ func (e *Engine) startCaptureGuard(source Record, pid int) (_ *captureGuard, res
 }
 
 func (e *Engine) startCaptureGuardWithExecutable(source Record, pid int, executable string) (_ *captureGuard, resultErr error) {
+	return e.startCheckpointGuard(source, pid, executable, "", nil)
+}
+
+func (e *Engine) startCheckpointGuard(source Record, pid int, executable, captureID string, intent *checkpointIntent) (_ *captureGuard, resultErr error) {
 	var token [16]byte
-	if _, err := rand.Read(token[:]); err != nil {
-		return nil, err
+	if captureID == "" {
+		if _, err := rand.Read(token[:]); err != nil {
+			return nil, err
+		}
+		captureID = hex.EncodeToString(token[:])
+	} else if !tokenID.MatchString(captureID) {
+		return nil, fmt.Errorf("checkpoint identity must be 32 lowercase hexadecimal characters")
 	}
 	start, err := processBirth(pid)
 	if err != nil {
@@ -480,7 +489,7 @@ func (e *Engine) startCaptureGuardWithExecutable(source Record, pid int, executa
 	if err := privateDirectory(filepath.Join(e.config.Root, captures)); err != nil {
 		return nil, err
 	}
-	generation := captures + "/" + hex.EncodeToString(token[:])
+	generation := captures + "/" + captureID
 	if err := e.root.Mkdir(generation, 0700); err != nil {
 		return nil, err
 	}
@@ -492,8 +501,28 @@ func (e *Engine) startCaptureGuardWithExecutable(source Record, pid int, executa
 		return nil, err
 	}
 	config := captureGuardConfig{Version: 1, Source: source, PID: pid, Start: start,
-		Token: hex.EncodeToString(token[:]), Evidence: filepath.Join(e.config.Root, generation, "guard"),
+		Token: captureID, Evidence: filepath.Join(e.config.Root, generation, "guard"),
 		Controller: os.Getpid(), Root: e.config.Root, RecordSHA: sum(sourceData)}
+	if intent != nil {
+		directory, err := e.root.Open(generation)
+		if err != nil {
+			return nil, err
+		}
+		writeErr := captureGuardWrite(directory, "checkpoint-intent.json", intent)
+		closeErr := directory.Close()
+		if err := errors.Join(writeErr, closeErr); err != nil {
+			return nil, err
+		}
+		for _, path := range []string{captures, object} {
+			parent, err := e.root.Open(path)
+			if err != nil {
+				return nil, err
+			}
+			if err := errors.Join(parent.Sync(), parent.Close()); err != nil {
+				return nil, err
+			}
+		}
+	}
 	guard := &captureGuard{config: config}
 	defer func() {
 		if resultErr != nil {

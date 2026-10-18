@@ -218,6 +218,42 @@ func captureFilesystem(roots []filesystemRoot, destination string) (*FilesystemS
 	return result, nil
 }
 
+// VerifyFilesystemSnapshot reads every saved tree again and checks the exact
+// content/metadata digest. Saved paths must belong to this generation.
+func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *FilesystemSnapshot) error {
+	if snapshot == nil || snapshot.Version != 1 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
+		return fmt.Errorf("filesystem snapshot root set is absent or invalid")
+	}
+	seen := map[string]bool{}
+	for _, tree := range snapshot.Roots {
+		allowed := tree.Name == "lower" || tree.Name == "upper"
+		for _, kind := range managedDirectories {
+			allowed = allowed || tree.Name == "volumes/"+kind
+		}
+		if !allowed || seen[tree.Name] || tree.Saved != generation+"/filesystem/"+tree.Name {
+			return fmt.Errorf("filesystem snapshot root escaped its generation or is duplicated")
+		}
+		seen[tree.Name] = true
+		directory, err := openDirectory(tree.Saved)
+		if err != nil {
+			return err
+		}
+		actual, readErr := fingerprintTree(ctx, directory, nil, false)
+		closeErr := directory.Close()
+		if err := errors.Join(readErr, closeErr); err != nil {
+			return err
+		}
+		if actual.SHA256 != tree.SHA256 || actual.Entries != tree.Entries ||
+			actual.FileBytes != tree.FileBytes || actual.HashedBytes != tree.HashedBytes {
+			return fmt.Errorf("saved filesystem tree changed: %s", tree.Name)
+		}
+	}
+	if !seen["lower"] || !seen["upper"] {
+		return fmt.Errorf("filesystem snapshot omitted an overlay layer")
+	}
+	return nil
+}
+
 func cloneFilesystemTree(ctx context.Context, source *os.File, destination string) (FilesystemTree, error) {
 	expected, err := fingerprintTree(ctx, source, nil, false)
 	if err != nil {

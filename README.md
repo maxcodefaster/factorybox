@@ -6,9 +6,9 @@ snapshot-RAM release, resume and deletion. It requires no KVM or custom kernel.
 
 This repository is being extracted from the existing runtime experiment. The retained reference
 contains the working checkpoint/fork/resume implementation and its regressions. The current
-`factorybox` command provides version, platform inspection and an initial local start/state/delete
-API. Checkpoint, independent fork, RAM-releasing pause and resume still need extraction into that
-API. There is no production-qualified release.
+`factorybox` command provides version, platform inspection and local start/state/checkpoint/delete
+commands. Independent fork, RAM-releasing pause and resume still need extraction into that API.
+There is no production-qualified release.
 
 Sysbox containers share the Linux worker kernel. The initial isolation scope is separate workers
 per customer or trust domain. IDEs and agent harnesses are optional applications. Dev Containers
@@ -19,7 +19,7 @@ describe development workloads; they do not define the snapshot engine.
 | Path | Purpose |
 | --- | --- |
 | `cmd/factorybox` | Diagnostics and local administrative lifecycle commands |
-| `internal/lifecycle` | Persisted start/delete intent, exact runtime/cgroup ownership and reconciliation |
+| `internal/lifecycle` | Persisted lifecycle/checkpoint intent, exact ownership and reconciliation |
 | `internal/sysboxcapture` | Pinned modern libcontainer checkpoint adapter extracted from ramctl |
 | `internal/platform` | Explicit reference-platform admission |
 | `internal/pageview` | Extracted logical snapshot reader and its native regressions |
@@ -91,8 +91,8 @@ cannot be reused.
 
 The input rootfs remains caller-owned and must be exclusive to one active sandbox in this state
 directory. Factorybox does not delete it. This administrative API is not an untrusted OCI-spec
-service or a portable runtime installer. Checkpoint/fork/pause/resume and their failure recovery
-remain on the sealed reference path until extracted and independently qualified.
+service or a portable runtime installer. Fork/pause/resume and their failure recovery remain on
+the sealed reference path until extracted and independently qualified.
 
 Run the extracted lifecycle proof on the existing worker:
 
@@ -129,8 +129,8 @@ and counter survive; the unrelated actor remains independent.
 Guard operations hold original cgroup, PID and directory handles, and check the unchanged sandbox
 record and worker boot. Thread traversal has depth/count bounds and rejects foreign mounts.
 Sysbox's ordinary manager pause changes ownership and volume state, so guarded capture uses the
-original kernel cgroup freezer directly. The public snapshot commands, actual CRIU command
-reconciliation, snapshot backing and network-lock recovery still need extraction and qualification.
+original kernel cgroup freezer directly. Failed or interrupted CRIU command reconciliation and
+network-lock recovery still need extraction and qualification.
 
 The ordinary retained-source RAM capture now has its own native gate:
 
@@ -148,7 +148,7 @@ executable before capture. It retains the operation lock and writes its own inte
 starts. The source guard remains in its capture transaction until the caller acknowledges completion.
 
 Four native checks passed without skips: configuration-view preservation, empty-hook admission,
-complete filesystem copy/rejection cases, and the actual combined capture. The CRIU test captures
+complete filesystem copy/rejection cases, and the public checkpoint command. The CRIU test captures
 an 8192-byte random RAM payload from a Go process inside
 Sysbox under a Factorybox identity. The same process advances its RAM state after thaw, while the
 captured page-file hashes stay unchanged. The combined capture now also includes the physical
@@ -195,8 +195,37 @@ The capture fixture uses 3 CPUs/3 GiB and the existing retained Linux image for 
 After its writers stop, a separate bounded helper archives only its owned capture and source-layer
 directories from a read-only volume. Archive failure retains the owned source volume and fails the
 gate. The passing run archived its source and images and confirmed complete container/volume cleanup.
-Clean-machine reconstruction of this base is still required. The public snapshot API remains
-incomplete; this internal capture path is not a production-qualified checkpoint interface.
+Clean-machine reconstruction of this base is still required. Public checkpoint publication has
+native proof; the full snapshot lifecycle and production qualification remain incomplete.
+
+Use an immutable caller-chosen checkpoint ID to retry the same request:
+
+```sh
+factorybox --root /var/lib/factorybox \
+  --runtime /opt/factorybox/bin/sysbox-runc --runtime-sha256 "$SYSBOX_RUNC_SHA256" \
+  --criu /opt/factorybox/bin/criu --criu-sha256 "$CRIU_SHA256" \
+  --manager-root /var/lib/sysbox/manager \
+  checkpoint --snapshot-id 0123456789abcdef0123456789abcdef workspace
+```
+
+Checkpoint saves intent before starting the source guard. It captures RAM, virtual Sysbox state,
+overlay layers and admitted private volumes while the source is frozen. It syncs the complete
+capture result before acknowledging the final safe point, then thaws the original source.
+It publishes ready metadata atomically without replacing an existing generation. Every replay
+verifies the original request, all image/metadata hashes and complete filesystem tree digests.
+Records have explicit size, regular-file and ownership checks.
+
+An incomplete capture refuses a second capture under the same ID. If capture completed but ready
+publication was lost, recovery requires the original guard's completed outcome and unchanged
+source identity. It checks the frozen source for tracers before thawing. It durably records that
+recovery so another lost publication reuses the same result, including after source deletion.
+This does not yet recover a failed or interrupted CRIU operation.
+
+The native CLI test proves identical replay, rejection of corrupted metadata and changed manifests,
+oversized/symlinked record rejection, incomplete-capture refusal, unresolved-guard refusal, repeated
+publication recovery and independence after source deletion. One small-fixture observation measured
+0.732 s for the complete CLI checkpoint and 0.062 s for integrity-verified replay. These include
+integrity work and are individual observations, not fork/resume measurements or p95.
 
 ## Pinned sources
 

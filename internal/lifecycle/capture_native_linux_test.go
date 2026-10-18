@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -174,33 +175,39 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if len(before.Payload) != 8192 || before.Counter != 0 {
 		t.Fatal("RAM actor did not initialize its private payload")
 	}
-	lock, err := engine.lock()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Close()
-	guard, err := engine.startCaptureGuardWithExecutable(view.Record, view.Runtime.PID, "/factorybox")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ended := false
-	defer func() {
-		if !ended {
-			if err := guard.finish(true); err != nil {
-				t.Errorf("source guard retained unresolved capture: %v", err)
-			}
+	snapshotID := strings.Repeat("d", 32)
+	generation := engine.config.Root + "/objects/captured/captures/" + snapshotID
+	checkpoint := func() (Checkpoint, error) {
+		command := exec.Command("/factorybox", "--root", engine.config.Root,
+			"--runtime", engine.config.Runtime, "--runtime-sha256", engine.config.RuntimeSHA256,
+			"--criu", engine.config.Criu, "--criu-sha256", engine.config.CriuSHA256,
+			"--manager-root", engine.config.ManagerRoot, "checkpoint", "--snapshot-id", snapshotID, "captured")
+		output, err := command.CombinedOutput()
+		var result Checkpoint
+		if err != nil {
+			return result, fmt.Errorf("%w: %s", err, output)
 		}
-	}()
-	if err := guard.freeze(true); err != nil {
+		if err := json.Unmarshal(output, &result); err != nil {
+			return result, fmt.Errorf("checkpoint output: %w: %s", err, output)
+		}
+		return result, nil
+	}
+	started := time.Now()
+	saved, err := checkpoint()
+	captureElapsed := time.Since(started)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := guard.capturePhase(true); err != nil {
-		t.Fatal(err)
+	if saved.ID != snapshotID || saved.SourcePID != view.Runtime.PID || saved.ReleasedAt == "" || len(saved.Files) == 0 {
+		t.Fatal("public checkpoint did not publish its exact generation and source release")
 	}
-	fsStatePath := filepath.Dir(guard.config.Evidence) + "/sysbox-state.json"
-	if err := engine.capture(ctx, guard, lock, "/factorybox"); err != nil {
-		t.Fatal(err)
+	started = time.Now()
+	replayed, err := checkpoint()
+	replayElapsed := time.Since(started)
+	if err != nil || !replayedCheckpoint(saved, replayed) {
+		t.Fatal("checkpoint replay created another generation or changed outcome", err)
 	}
+	fsStatePath := generation + "/sysbox-state.json"
 	fsState, err := os.ReadFile(fsStatePath)
 	if err != nil {
 		t.Fatal(err)
@@ -215,7 +222,7 @@ func TestRetainedCaptureNative(t *testing.T) {
 		strings.TrimSpace(string(virtual.Data["/proc/sys/kernel/panic"])) != "17" {
 		t.Fatalf("FUSE snapshot did not capture its source's virtual value: %v", err)
 	}
-	images := filepath.Dir(guard.config.Evidence) + "/images"
+	images := generation + "/images"
 	files, err := filepath.Glob(images + "/pages-*.img")
 	if err != nil || len(files) == 0 {
 		t.Fatalf("actual captured memory pages absent: %v", err)
@@ -233,7 +240,6 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if !payloadFound {
 		t.Fatal("complete ordinary page writer did not contain the source's private RAM payload")
 	}
-	generation := filepath.Dir(guard.config.Evidence)
 	for path, expected := range map[string]string{
 		"/filesystem/upper/state/marker":            "retained-source-file\n",
 		"/filesystem/volumes/docker/capture-marker": "private-daemon-before\n",
@@ -254,25 +260,79 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if target, err := os.Readlink(generation + "/filesystem/upper/state/marker-link"); err != nil || target != "marker" {
 		t.Fatal("captured symlink target differs", err)
 	}
-	if err := guard.capturePhase(false); err != nil {
-		t.Fatal(err)
-	}
-	if err := guard.freeze(false); err != nil {
-		t.Fatal(err)
-	}
-	err = guard.finish(false)
-	ended = true
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.Close(); err != nil {
-		t.Fatal(err)
-	}
 	writeVirtual("29")
 	preserved, err := os.ReadFile(fsStatePath)
 	if err != nil || !bytes.Equal(preserved, fsState) {
 		t.Fatal("source virtual-setting mutation changed the saved checkpoint", err)
 	}
+	if err := os.WriteFile(fsStatePath, append(append([]byte(nil), fsState...), ' '), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, corruptErr := checkpoint()
+	if err := os.WriteFile(fsStatePath, fsState, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if corruptErr == nil {
+		t.Fatal("checkpoint replay accepted corrupted metadata")
+	}
+	readyPath := generation + "/checkpoint.json"
+	readyBytes, err := os.ReadFile(readyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkCorruptManifest := func(name string, change func(Checkpoint) Checkpoint) {
+		t.Helper()
+		t.Run(name, func(t *testing.T) {
+			original, err := engine.readCheckpoint("objects/captured/captures/"+snapshotID, "checkpoint.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := json.Marshal(change(original))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(readyPath, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, rejected := checkpoint()
+			if err := os.WriteFile(readyPath, readyBytes, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if rejected == nil {
+				t.Fatal("checkpoint accepted a changed manifest")
+			}
+		})
+	}
+	checkCorruptManifest("filesystem-root-omission", func(value Checkpoint) Checkpoint {
+		value.Filesystem.Roots = value.Filesystem.Roots[:2]
+		return value
+	})
+	checkCorruptManifest("capture-timestamp-change", func(value Checkpoint) Checkpoint {
+		value.CapturedAt = now()
+		return value
+	})
+	t.Run("oversized-record-and-symlink", func(t *testing.T) {
+		if err := os.WriteFile(readyPath, append(append([]byte(nil), readyBytes...), bytes.Repeat([]byte(" "), checkpointManifestLimit)...), 0600); err != nil {
+			t.Fatal(err)
+		}
+		_, oversized := checkpoint()
+		if err := os.Rename(readyPath, readyPath+".oversized"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(readyPath+".oversized", readyPath); err != nil {
+			t.Fatal(err)
+		}
+		_, symlink := checkpoint()
+		if err := os.Remove(readyPath); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(readyPath, readyBytes, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if oversized == nil || symlink == nil {
+			t.Fatal("checkpoint accepted an oversized or symlinked record", oversized, symlink)
+		}
+	})
 	control, err := engine.lock()
 	if err != nil {
 		t.Fatal(err)
@@ -312,8 +372,62 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if err != nil || observed.Runtime == nil || observed.Runtime.PID != view.Runtime.PID {
 		t.Fatalf("capture replaced or lost its source: %+v: %v", observed, err)
 	}
+	// Simulate losing only the final publication after a fully persisted
+	// capture and source release. Recovery must reuse the captured result,
+	// even though the source's RAM, files and virtual state have advanced.
+	if err := os.Rename(readyPath, generation+"/checkpoint-original.json"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(generation+"/capture-result.json", generation+"/capture-result-hidden.json"); err != nil {
+		t.Fatal(err)
+	}
+	_, incomplete := checkpoint()
+	if err := os.Rename(generation+"/capture-result-hidden.json", generation+"/capture-result.json"); err != nil {
+		t.Fatal(err)
+	}
+	if incomplete == nil || !strings.Contains(incomplete.Error(), "refusing a second capture") {
+		t.Fatal("incomplete generation silently repeated capture", incomplete)
+	}
+	guardOutcome := generation + "/guard/guard-outcome.json"
+	if err := os.Rename(guardOutcome, guardOutcome+".hidden"); err != nil {
+		t.Fatal(err)
+	}
+	_, unresolved := checkpoint()
+	if err := os.Rename(guardOutcome+".hidden", guardOutcome); err != nil {
+		t.Fatal(err)
+	}
+	if unresolved == nil || !strings.Contains(unresolved.Error(), "guard outcome is unresolved") {
+		t.Fatal("checkpoint recovery raced an unresolved guard", unresolved)
+	}
+	recovered, err := checkpoint()
+	if err != nil || recovered.CapturedAt != saved.CapturedAt || recovered.SourcePID != saved.SourcePID {
+		t.Fatal("completed capture was repeated or failed publication recovery", err)
+	}
+	again, err := checkpoint()
+	if err != nil || !replayedCheckpoint(recovered, again) {
+		t.Fatal("recovered checkpoint replay changed its result", err)
+	}
+	// A second lost publication must reuse the durable recovery outcome too.
+	if err := os.Rename(readyPath, generation+"/checkpoint-first-recovery.json"); err != nil {
+		t.Fatal(err)
+	}
+	again, err = checkpoint()
+	if err != nil || !replayedCheckpoint(recovered, again) {
+		t.Fatal("repeated publication recovery changed its result", err)
+	}
 	if _, err := engine.Delete(ctx, "captured"); err != nil {
 		t.Fatal("delete original after complete capture", err)
+	}
+	afterDelete, err := checkpoint()
+	if err != nil || !replayedCheckpoint(recovered, afterDelete) {
+		t.Fatal("ready checkpoint depended on its original runtime", err)
+	}
+	if err := os.Rename(readyPath, generation+"/checkpoint-before-delete.json"); err != nil {
+		t.Fatal(err)
+	}
+	afterDelete, err = checkpoint()
+	if err != nil || !replayedCheckpoint(recovered, afterDelete) {
+		t.Fatal("completed publication recovery depended on its original runtime", err)
 	}
 	for path, expected := range map[string]string{
 		"/filesystem/upper/state/marker":            "retained-source-file\n",
@@ -326,4 +440,11 @@ func TestRetainedCaptureNative(t *testing.T) {
 	}
 	t.Logf("actual capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved RAM, virtual state, overlay files and a managed Docker-volume file after source mutation; worker kernel value unchanged; restore remains a separate gate",
 		view.Record.RuntimeID, view.Runtime.PID, len(files))
+	t.Logf("individual CLI observation: checkpoint=%s integrity-verified replay=%s; not a fork/resume or p95 benchmark", captureElapsed, replayElapsed)
+}
+
+func replayedCheckpoint(a, b Checkpoint) bool {
+	left, _ := json.Marshal(a)
+	right, _ := json.Marshal(b)
+	return bytes.Equal(left, right)
 }

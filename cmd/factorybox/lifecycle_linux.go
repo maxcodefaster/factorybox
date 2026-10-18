@@ -27,14 +27,18 @@ func runLifecycle(args []string) error {
 	flags.StringVar(&config.Root, "root", "", "private worker state directory")
 	flags.StringVar(&config.Runtime, "runtime", "", "exact Sysbox executable")
 	flags.StringVar(&config.RuntimeSHA256, "runtime-sha256", "", "required executable SHA-256")
+	flags.StringVar(&config.Criu, "criu", "", "exact CRIU executable for checkpoint")
+	flags.StringVar(&config.CriuSHA256, "criu-sha256", "", "required CRIU SHA-256 for checkpoint")
+	flags.StringVar(&config.ManagerRoot, "manager-root", "", "private Sysbox manager data root")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() < 1 {
-		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA start|state|delete")
+		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA start|state|checkpoint|delete")
 	}
 	command, remaining := flags.Arg(0), flags.Args()[1:]
 	bundle := ""
+	snapshot := ""
 	if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
 		start.StringVar(&bundle, "bundle", "", "administrator-prepared OCI bundle")
@@ -44,6 +48,16 @@ func runLifecycle(args []string) error {
 		remaining = start.Args()
 		if bundle == "" {
 			return fmt.Errorf("start requires --bundle")
+		}
+	} else if command == "checkpoint" {
+		checkpoint := flag.NewFlagSet("checkpoint", flag.ContinueOnError)
+		checkpoint.StringVar(&snapshot, "snapshot-id", "", "immutable 32-character hexadecimal checkpoint identity")
+		if err := checkpoint.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = checkpoint.Args()
+		if snapshot == "" {
+			return fmt.Errorf("checkpoint requires --snapshot-id")
 		}
 	} else if command != "state" && command != "delete" {
 		return fmt.Errorf("unknown lifecycle command %q", command)
@@ -58,6 +72,13 @@ func runLifecycle(args []string) error {
 	defer engine.Close()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if command == "checkpoint" {
+		result, err := engine.Checkpoint(ctx, remaining[0], snapshot)
+		if result.ID != "" {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
 	var view lifecycle.View
 	switch command {
 	case "start":
