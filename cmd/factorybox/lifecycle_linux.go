@@ -34,7 +34,7 @@ func runLifecycle(args []string) error {
 		return err
 	}
 	if flags.NArg() < 1 {
-		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA start|state|checkpoint|fork|delete")
+		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA start|state|checkpoint|fork|pause|resume|delete")
 	}
 	command, remaining := flags.Arg(0), flags.Args()[1:]
 	bundle := ""
@@ -50,15 +50,15 @@ func runLifecycle(args []string) error {
 		if bundle == "" {
 			return fmt.Errorf("start requires --bundle")
 		}
-	} else if command == "checkpoint" {
-		checkpoint := flag.NewFlagSet("checkpoint", flag.ContinueOnError)
+	} else if command == "checkpoint" || command == "pause" || command == "resume" {
+		checkpoint := flag.NewFlagSet(command, flag.ContinueOnError)
 		checkpoint.StringVar(&snapshot, "snapshot-id", "", "immutable 32-character hexadecimal checkpoint identity")
 		if err := checkpoint.Parse(remaining); err != nil {
 			return err
 		}
 		remaining = checkpoint.Args()
 		if snapshot == "" {
-			return fmt.Errorf("checkpoint requires --snapshot-id")
+			return fmt.Errorf("%s requires --snapshot-id", command)
 		}
 	} else if command == "fork" {
 		fork := flag.NewFlagSet("fork", flag.ContinueOnError)
@@ -101,6 +101,10 @@ func runLifecycle(args []string) error {
 		view, err = engine.Delete(ctx, remaining[0])
 	case "fork":
 		view, err = engine.Fork(ctx, source, snapshot, remaining[0])
+	case "pause":
+		view, err = engine.Pause(ctx, remaining[0], snapshot)
+	case "resume":
+		view, err = engine.Resume(ctx, remaining[0], snapshot)
 	}
 	if view.Record.ID != "" {
 		err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(view))

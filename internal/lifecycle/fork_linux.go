@@ -410,6 +410,16 @@ func (e *Engine) forkRestoreRequest(intent forkIntent, target Record) restoreReq
 }
 
 func (e *Engine) reconcileFork(ctx context.Context, lock *os.File, intent forkIntent, record Record) (View, error) {
+	if record.Start.CompletedAt != "" && record.Pause != nil {
+		if record.Phase == "running" && record.Pause.Resume != nil && record.Pause.Resume.CompletedAt != "" {
+			_, state, err := e.resumeCompleted(ctx, lock, record)
+			return View{Record: record, Runtime: state}, err
+		}
+		if record.Phase == "paused" {
+			state, err := e.state(ctx, record, lock)
+			return View{Record: record, Runtime: state}, err
+		}
+	}
 	if record.Phase != "starting" && record.Phase != "running" {
 		return View{Record: record}, fmt.Errorf("cannot fork into a %s target identity", record.Phase)
 	}

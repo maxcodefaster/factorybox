@@ -29,6 +29,7 @@ type captureGuardConfig struct {
 	Controller int    `json:"controller"`
 	Root       string `json:"root"`
 	RecordSHA  string `json:"record_sha256"`
+	StopSource bool   `json:"stop_source,omitempty"`
 }
 
 type captureGuardAnchors struct {
@@ -36,14 +37,15 @@ type captureGuardAnchors struct {
 }
 
 type captureGuard struct {
-	config captureGuardConfig
-	anchor captureGuardAnchors
-	socket *os.File
-	cmd    *exec.Cmd
-	done   chan error
-	exit   error
-	exited bool
-	unsafe bool
+	config  captureGuardConfig
+	anchor  captureGuardAnchors
+	socket  *os.File
+	cmd     *exec.Cmd
+	done    chan error
+	exit    error
+	exited  bool
+	unsafe  bool
+	stopped bool
 }
 
 // CaptureGuardCommand is an internal re-exec entry point. The CLI and native
@@ -75,6 +77,17 @@ func (anchor captureGuardAnchors) close() error {
 }
 
 func captureGuardValidate(config captureGuardConfig, anchor captureGuardAnchors) error {
+	return captureGuardValidateState(config, anchor, false)
+}
+
+func captureGuardValidateStopped(config captureGuardConfig, anchor captureGuardAnchors) error {
+	if !config.StopSource {
+		return fmt.Errorf("guard has no persisted source-stop intent")
+	}
+	return captureGuardValidateState(config, anchor, true)
+}
+
+func captureGuardValidateState(config captureGuardConfig, anchor captureGuardAnchors, stopped bool) error {
 	object, err := objectPath(config.Source.ID)
 	if err != nil || config.Version != 1 || config.Source.Version != 1 ||
 		config.PID <= 1 || config.Controller <= 1 || config.PID == config.Controller ||
@@ -142,7 +155,9 @@ func captureGuardValidate(config captureGuardConfig, anchor captureGuardAnchors)
 		return fmt.Errorf("guard source belongs to a different worker boot: %v", err)
 	}
 	poll := []unix.PollFd{{Fd: int32(anchor.pid.Fd()), Events: unix.POLLIN}}
-	if n, err := unix.Poll(poll, 0); err != nil || n != 0 {
+	n, err := unix.Poll(poll, 0)
+	if err != nil || (!stopped && n != 0) ||
+		(stopped && (n != 1 || poll[0].Revents&unix.POLLIN == 0 || poll[0].Revents&unix.POLLNVAL != 0)) {
 		return fmt.Errorf("guard source pidfd is exited or invalid: %v", err)
 	}
 	descriptor, err := os.ReadFile(fmt.Sprintf("/proc/self/fdinfo/%d", anchor.pid.Fd()))
@@ -152,10 +167,22 @@ func captureGuardValidate(config captureGuardConfig, anchor captureGuardAnchors)
 	pidMatches := false
 	for _, line := range strings.Split(string(descriptor), "\n") {
 		fields := strings.Fields(line)
-		pidMatches = pidMatches || (len(fields) == 2 && fields[0] == "Pid:" && fields[1] == fmt.Sprint(config.PID))
+		pidMatches = pidMatches || (len(fields) == 2 && fields[0] == "Pid:" &&
+			(fields[1] == fmt.Sprint(config.PID) || (stopped && fields[1] == "-1")))
 	}
 	if !pidMatches {
 		return fmt.Errorf("guard pidfd does not identify the saved source PID")
+	}
+	if stopped {
+		events, err := captureGuardEvents(anchor.group)
+		if err != nil || events["populated"] != 0 {
+			return fmt.Errorf("stopped source still has populated owned cgroups: %v", err)
+		}
+		threads, err := captureGuardThreads(config, anchor)
+		if err != nil || len(threads) != 0 {
+			return fmt.Errorf("stopped source still has owned threads or a foreign mount: %v", err)
+		}
+		return nil
 	}
 	stamp, err := processBirth(config.PID)
 	if err != nil || stamp != config.Start {
@@ -375,7 +402,7 @@ func captureGuardServe() (resultErr error) {
 	if _, err := socket.Write([]byte("armed:" + config.Token)); err != nil {
 		return err
 	}
-	unsafe := false
+	unsafe, stopped := false, false
 	var request []byte
 	for {
 		request, err = captureGuardRead(3, -1)
@@ -390,6 +417,9 @@ func captureGuardServe() (resultErr error) {
 			}
 			unsafe, name, acknowledgement = true, "guard-capture-entered.json", "capture-held:"
 		case "capture-returned:" + config.Token:
+			if config.StopSource {
+				return fmt.Errorf("terminating capture requires stopped-source acknowledgement")
+			}
 			if !unsafe {
 				return fmt.Errorf("guard capture completion has no matching entry")
 			}
@@ -398,11 +428,24 @@ func captureGuardServe() (resultErr error) {
 					map[string]any{"token": config.Token, "capture_in_flight": true, "error": err.Error()}))
 			}
 			unsafe, name, acknowledgement = false, "guard-capture-returned.json", "capture-safe:"
+		case "capture-stopped:" + config.Token:
+			if !unsafe || !config.StopSource {
+				return fmt.Errorf("stopped capture has no matching terminating intent")
+			}
+			if err := captureGuardValidateStopped(config, anchor); err != nil {
+				return errors.Join(err, captureGuardWrite(anchor.evidence, "guard-capture-rejected.json",
+					map[string]any{"token": config.Token, "capture_in_flight": true, "error": err.Error()}))
+			}
+			unsafe, stopped, name, acknowledgement = false, true, "guard-capture-stopped.json", "source-stopped:"
 		}
 		if name == "" {
 			break
 		}
-		if err := captureGuardValidate(config, anchor); err != nil {
+		validate := captureGuardValidate
+		if stopped {
+			validate = captureGuardValidateStopped
+		}
+		if err := validate(config, anchor); err != nil {
 			return err
 		}
 		if err := captureGuardWrite(anchor.evidence, name, map[string]any{
@@ -417,6 +460,14 @@ func captureGuardServe() (resultErr error) {
 	reason := "controller_disconnected"
 	status := ""
 	switch string(request) {
+	case "disarm-stopped:" + config.Token:
+		if unsafe || !stopped {
+			return fmt.Errorf("cannot disarm an unconfirmed stopped source")
+		}
+		if err := captureGuardValidateStopped(config, anchor); err != nil {
+			return err
+		}
+		reason, status = "controller_disarmed_stopped_source", "source_stopped_guard_disarmed"
 	case "disarm:" + config.Token:
 		if unsafe {
 			return fmt.Errorf("cannot disarm while capture completion is unproved")
@@ -436,7 +487,12 @@ func captureGuardServe() (resultErr error) {
 	default:
 		return fmt.Errorf("guard request does not match its exact intent")
 	}
-	if status == "" && unsafe {
+	if status == "" && config.StopSource && captureGuardValidateStopped(config, anchor) == nil {
+		status = "original_source_stopped_capture_unconfirmed"
+		if stopped {
+			status = "source_stopped_guard_disarmed"
+		}
+	} else if status == "" && unsafe {
 		// An orphaned ramctl/CRIU child may still be capturing. Preserve the
 		// original frozen source until a new controller reconciles that
 		// command and validates tracer/thread state. EOF is not a safe point.
@@ -503,6 +559,9 @@ func (e *Engine) startCheckpointGuard(source Record, pid int, executable, captur
 	config := captureGuardConfig{Version: 1, Source: source, PID: pid, Start: start,
 		Token: captureID, Evidence: filepath.Join(e.config.Root, generation, "guard"),
 		Controller: os.Getpid(), Root: e.config.Root, RecordSHA: sum(sourceData)}
+	if intent != nil {
+		config.StopSource = intent.StopSource
+	}
 	if intent != nil {
 		directory, err := e.root.Open(generation)
 		if err != nil {
@@ -639,13 +698,36 @@ func (guard *captureGuard) captureOperationReturned() error {
 	if !guard.unsafe {
 		return fmt.Errorf("capture operation is outside its guarded transaction")
 	}
+	if guard.config.StopSource {
+		return captureGuardValidateStopped(guard.config, guard.anchor)
+	}
 	return captureGuardCaptureReturned(guard.config, guard.anchor)
+}
+
+func (guard *captureGuard) captureStopped() error {
+	if !guard.unsafe || !guard.config.StopSource {
+		return fmt.Errorf("stopped capture has no guarded terminating transaction")
+	}
+	if err := guard.check(); err != nil {
+		return err
+	}
+	if _, err := guard.socket.Write([]byte("capture-stopped:" + guard.config.Token)); err != nil {
+		return err
+	}
+	packet, err := captureGuardRead(int(guard.socket.Fd()), 2000)
+	if err != nil || string(packet) != "source-stopped:"+guard.config.Token {
+		return fmt.Errorf("stopped source was not acknowledged: %v", err)
+	}
+	guard.unsafe, guard.stopped = false, true
+	return nil
 }
 
 func (guard *captureGuard) finish(recoverSource bool) (resultErr error) {
 	defer func() { resultErr = errors.Join(resultErr, guard.anchor.close(), guard.socket.Close()) }()
 	request := "disarm:"
-	if recoverSource {
+	if guard.stopped && !recoverSource {
+		request = "disarm-stopped:"
+	} else if recoverSource {
 		request = "recover:"
 	}
 	if _, err := guard.socket.Write([]byte(request + guard.config.Token)); err != nil {
@@ -670,7 +752,12 @@ func (guard *captureGuard) finish(recoverSource bool) (resultErr error) {
 	if resultErr != nil {
 		status := "original_source_held_for_capture_reconciliation"
 		var err error
-		if guard.unsafe {
+		if guard.config.StopSource && captureGuardValidateStopped(guard.config, guard.anchor) == nil {
+			status = "original_source_stopped_capture_unconfirmed"
+			if guard.stopped {
+				status = "source_stopped_guard_disarmed"
+			}
+		} else if guard.unsafe {
 			status, err = captureGuardHold(guard.config, guard.anchor)
 		} else {
 			status, err = captureGuardRecover(guard.config, guard.anchor)

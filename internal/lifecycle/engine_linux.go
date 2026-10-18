@@ -49,26 +49,28 @@ type Operation struct {
 // Record retains the original start request even after deletion. An attempted
 // create with no runtime state has an uncertain outcome and is never reissued.
 type Record struct {
-	Version        int           `json:"version"`
-	ID             string        `json:"id"`
-	Owner          string        `json:"owner"`
-	RuntimeID      string        `json:"runtime_id"`
-	RuntimeSHA256  string        `json:"runtime_sha256"`
-	BootID         string        `json:"boot_id"`
-	Phase          string        `json:"phase"`
-	InputBundle    string        `json:"input_bundle"`
-	InputSHA256    string        `json:"input_sha256"`
-	ConfigSHA256   string        `json:"config_sha256"`
-	Rootfs         string        `json:"rootfs"`
-	RootfsDevice   uint64        `json:"rootfs_device"`
-	RootfsInode    uint64        `json:"rootfs_inode"`
-	RootfsMountID  uint64        `json:"rootfs_mount_id,omitempty"`
-	RuntimeCreated string        `json:"runtime_created,omitempty"`
-	CgroupParent   KernelObject  `json:"cgroup_parent"`
-	Cgroup         *KernelObject `json:"cgroup,omitempty"`
-	Start          Operation     `json:"start"`
-	Delete         *Operation    `json:"delete,omitempty"`
-	Fork           *ForkOrigin   `json:"fork,omitempty"`
+	Version        int              `json:"version"`
+	ID             string           `json:"id"`
+	Owner          string           `json:"owner"`
+	RuntimeID      string           `json:"runtime_id"`
+	RuntimeSHA256  string           `json:"runtime_sha256"`
+	BootID         string           `json:"boot_id"`
+	Phase          string           `json:"phase"`
+	InputBundle    string           `json:"input_bundle"`
+	InputSHA256    string           `json:"input_sha256"`
+	ConfigSHA256   string           `json:"config_sha256"`
+	Rootfs         string           `json:"rootfs"`
+	RootfsDevice   uint64           `json:"rootfs_device"`
+	RootfsInode    uint64           `json:"rootfs_inode"`
+	RootfsMountID  uint64           `json:"rootfs_mount_id,omitempty"`
+	RuntimeCreated string           `json:"runtime_created,omitempty"`
+	CgroupParent   KernelObject     `json:"cgroup_parent"`
+	Cgroup         *KernelObject    `json:"cgroup,omitempty"`
+	Start          Operation        `json:"start"`
+	Delete         *Operation       `json:"delete,omitempty"`
+	Fork           *ForkOrigin      `json:"fork,omitempty"`
+	Pause          *PauseOperation  `json:"pause,omitempty"`
+	PauseHistory   []PauseOperation `json:"pause_history,omitempty"`
 }
 
 type View struct {
@@ -258,7 +260,7 @@ func (e *Engine) read(id string) (Record, error) {
 		return record, fmt.Errorf("saved sandbox identity or worker boot differs")
 	}
 	if record.Phase != "starting" && record.Phase != "running" &&
-		record.Phase != "deleting" && record.Phase != "deleted" {
+		record.Phase != "deleting" && record.Phase != "deleted" && record.Phase != "pausing" && record.Phase != "paused" && record.Phase != "resuming" {
 		return record, fmt.Errorf("invalid saved lifecycle phase")
 	}
 	if record.Fork != nil && (!sandboxID.MatchString(record.Fork.SourceID) ||
@@ -532,6 +534,9 @@ func (e *Engine) Delete(ctx context.Context, id string) (View, error) {
 	record, err := e.read(id)
 	if err != nil {
 		return View{}, err
+	}
+	if record.Phase == "pausing" || record.Phase == "resuming" {
+		return View{Record: record}, fmt.Errorf("pause/resume is unresolved; repeat its exact request before deleting")
 	}
 	state, err := e.state(ctx, record, lock)
 	if err != nil {

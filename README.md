@@ -6,8 +6,8 @@ snapshot-RAM release, resume and deletion. It requires no KVM or custom kernel.
 
 This repository is being extracted from the existing runtime experiment. The retained reference
 contains the working checkpoint/fork/resume implementation and its regressions. The current
-`factorybox` command provides version, platform inspection and local start/state/checkpoint/fork/delete
-commands. RAM-releasing pause and resume still need extraction into that API.
+`factorybox` command provides version, platform inspection and local
+start/state/checkpoint/fork/pause/resume/delete commands.
 There is no production-qualified release.
 
 Sysbox containers share the Linux worker kernel. The initial isolation scope is separate workers
@@ -91,8 +91,8 @@ cannot be reused.
 
 The input rootfs remains caller-owned and must be exclusive to one active sandbox in this state
 directory. Factorybox does not delete it. This administrative API is not an untrusted OCI-spec
-service or a portable runtime installer. Pause/resume and complete interrupted-capture/restore
-recovery remain on the sealed reference path until extracted and independently qualified.
+service or a portable runtime installer. Complete interrupted-capture/restore recovery and
+full developer-workload qualification remain incomplete.
 
 Run the extracted lifecycle proof on the existing worker:
 
@@ -155,7 +155,8 @@ Sysbox under a Factorybox identity. The same process advances its RAM state afte
 captured page-file hashes stay unchanged. The combined capture now also includes the physical
 overlay backing layers and private managed volumes. The extended native test also restores an
 independent process through the public fork command and recaptures/forks its descendant.
-Pause/resume and the full developer workload remain unqualified.
+The separate pause suite covers RAM release and repeated resume. The full developer workload
+remains unqualified.
 
 Filesystem capture admits the saved ID-mapped, uncloned Sysbox overlay with no executable hooks.
 It verifies the controller's overlay mount names the bundle's exact `lower`, `upper` and `work`
@@ -296,6 +297,67 @@ fork invocation to the first private RAM response, including verification, files
 mount, restore and receipt reconciliation. Other shared-worker observations have exceeded 3 s,
 reaching about 7 s during concurrent qualification work.
 These are complete small-fixture observations, not full developer-workload distributions or p95.
+
+Pause retains the original Sysbox runtime ID and creation identity while releasing its processes
+and snapshot payload cache:
+
+```sh
+factorybox --root /var/lib/factorybox \
+  --runtime /opt/factorybox/bin/sysbox-runc --runtime-sha256 "$SYSBOX_RUNC_SHA256" \
+  --criu /opt/factorybox/bin/criu --criu-sha256 "$CRIU_SHA256" \
+  --manager-root /var/lib/sysbox/manager \
+  pause --snapshot-id aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa branch-one
+
+factorybox --root /var/lib/factorybox \
+  --runtime /opt/factorybox/bin/sysbox-runc --runtime-sha256 "$SYSBOX_RUNC_SHA256" \
+  --criu /opt/factorybox/bin/criu --criu-sha256 "$CRIU_SHA256" \
+  --manager-root /var/lib/sysbox/manager \
+  resume --snapshot-id aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa branch-one
+```
+
+Pause persists intent, freezes the original source and uses the ordinary complete retained-source
+writer. It copies and syncs filesystem/image backing at that frozen point before stopping only the
+original cgroup through its pinned descriptor. The stop intent follows complete backing and a final
+untraced-source check. The guard accepts completion only after its original PID-fd has exited and
+the original cgroup tree is empty. It clears that empty cgroup's freezer so Sysbox reports stopped.
+It does not call Sysbox manager pause, unregister services or change worker-wide settings.
+
+The pause snapshot is ordinary file-backed storage. Pause rejects RAM-backed payloads, syncs their
+files and applies `POSIX_FADV_DONTNEED` only to its owned page images. `mincore` checks their resident
+pages without faulting them in. Completion requires zero resident payload bytes. The retained pause
+record includes compact before/after cgroup memory and snapshot residency observations.
+
+Resume verifies that the exclusive working filesystem still matches the pause point. It copies
+private restore images, persists the attempted operation, reconstructs the ID-mapped root in a
+private mount namespace and restores through the pinned Sysbox/CRIU path. It refreshes filesystem
+and manager namespace bindings before releasing tasks. A per-operation CRIU configuration avoids
+worker-wide changes. Its completion receipt binds the request to the renewed process while retaining
+the original runtime ID, owner and creation time. Repeated requests and lost controller outcomes
+reconcile that process. Unconfirmed restores refuse a second restore.
+
+The native pause suite uses an actual 32-MiB anonymous payload with a retained checksum:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID --suite pause
+```
+
+It proves anonymous source memory falling to zero, complete RAM payload files moving from resident
+to zero resident bytes, a fork from the stopped checkpoint, identical resumed RAM/files/private
+volume/virtual values, receipt recovery, an independent fork of a resumed source, and a second
+pause/resume of modified current state. It retains pause history and immutable runtime identities
+with renewed process IDs. The bounded fixture uses 3 CPUs/3 GiB, at most two live sandboxes and a
+180-second test timeout within its 240-second runner deadline. These observations do not qualify
+the full developer workload or sub-3-second p95.
+
+An earlier terminating-writer draft copied filesystem backing before CRIU's own `/tmp` creation;
+the native resume check rejected the mismatch. The selected path captures the complete backing
+after the retained writer and stops processes only after successful backing. Saved images/source
+data survive failed transitions. Automatic recovery of every failed capture, partial preparation,
+resume failure or lost deletion outcome still requires hardening. Recovery requires the same live
+worker and unchanged exclusive working backing; worker restart/cross-node migration remain unsupported.
 
 ## Pinned sources
 
@@ -504,7 +566,7 @@ separators, missing required fields and incomplete reads. Original parser tests 
 regressions pass. After adding virtual-state snapshots, all 18 Go module suites passed together
 in one native run: 393 top-level tests and 315 subtests. This includes the frozen FUSE export,
 independent import after source-registration removal, exact wire encoding and path-scope tests.
-After the new restore receipt, the complete Runc module passed 278 top-level tests and 227 subtests
+After the new resume adapter, the complete Runc module passed 279 top-level tests and 227 subtests
 with 14 explicit upstream skips. The unchanged modules retain their preceding combined pass. The manager's
 four shiftfs tests explicitly skip on this worker, which has no shiftfs module. The
 umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unqualified.
@@ -513,8 +575,8 @@ umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unquali
 
 Factorybox has no production-qualified release yet. Required gates include:
 
-- Extract RAM-releasing pause and resume into the public
-  lifecycle API, with their source-preservation and recovery behavior.
+- Complete bounded failure recovery across public lifecycle transitions, including partial
+  capture/preparation/restore and lost deletion outcomes.
 - Pinned upstream Sysbox unit/core/integration suites and CRIU core checkpoint/restore suites.
   Failed or unrun required suites block qualification. Preserve upstream assertions.
 - Independent files and RAM across repeated forks, forks of resumed/forked sources and actual

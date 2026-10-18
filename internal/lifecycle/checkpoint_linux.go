@@ -33,6 +33,7 @@ type checkpointIntent struct {
 	CriuSHA256    string `json:"criu_sha256"`
 	ManagerRoot   string `json:"manager_root"`
 	RequestedAt   string `json:"requested_at"`
+	StopSource    bool   `json:"stop_source,omitempty"`
 }
 
 type CheckpointFile struct {
@@ -55,6 +56,7 @@ type Checkpoint struct {
 	CapturedAt    string                            `json:"captured_at"`
 	ReleasedAt    string                            `json:"released_at,omitempty"`
 	SourcePID     int                               `json:"source_pid"`
+	SourceStopped bool                              `json:"source_stopped,omitempty"`
 	Files         []CheckpointFile                  `json:"files"`
 	Filesystem    *sysboxcapture.FilesystemSnapshot `json:"filesystem"`
 }
@@ -105,6 +107,10 @@ func (e *Engine) Checkpoint(ctx context.Context, id, snapshot string) (_ Checkpo
 	if record.Phase != "running" {
 		return Checkpoint{}, fmt.Errorf("checkpoint requires a running source")
 	}
+	return e.captureCheckpoint(ctx, lock, record, snapshot, relative, false)
+}
+
+func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Record, snapshot, relative string, stopSource bool) (_ Checkpoint, resultErr error) {
 	if !digest.MatchString(e.config.CriuSHA256) || !filepath.IsAbs(e.config.ManagerRoot) {
 		return Checkpoint{}, fmt.Errorf("checkpoint requires pinned CRIU and an explicit manager root")
 	}
@@ -126,9 +132,9 @@ func (e *Engine) Checkpoint(ctx context.Context, id, snapshot string) (_ Checkpo
 	if err != nil {
 		return Checkpoint{}, err
 	}
-	intent := checkpointIntent{Version: 1, ID: snapshot, SourceID: id, Owner: record.Owner, RuntimeID: record.RuntimeID,
+	intent := checkpointIntent{Version: 1, ID: snapshot, SourceID: record.ID, Owner: record.Owner, RuntimeID: record.RuntimeID,
 		BootID: record.BootID, ConfigSHA256: record.ConfigSHA256, RuntimeSHA256: record.RuntimeSHA256,
-		CriuSHA256: e.config.CriuSHA256, ManagerRoot: e.config.ManagerRoot, RequestedAt: now()}
+		CriuSHA256: e.config.CriuSHA256, ManagerRoot: e.config.ManagerRoot, RequestedAt: now(), StopSource: stopSource}
 	guard, err := e.startCheckpointGuard(record, state.PID, executable, snapshot, &intent)
 	if err != nil {
 		return Checkpoint{}, err
@@ -152,14 +158,21 @@ func (e *Engine) Checkpoint(ctx context.Context, id, snapshot string) (_ Checkpo
 	if err != nil {
 		return Checkpoint{}, err
 	}
+	captured.SourceStopped = stopSource
 	if err := e.publishCheckpoint(relative, "capture-result.json", captured); err != nil {
 		return captured, err
 	}
-	if err := guard.capturePhase(false); err != nil {
-		return captured, err
-	}
-	if err := guard.freeze(false); err != nil {
-		return captured, err
+	if stopSource {
+		if err := guard.captureStopped(); err != nil {
+			return captured, err
+		}
+	} else {
+		if err := guard.capturePhase(false); err != nil {
+			return captured, err
+		}
+		if err := guard.freeze(false); err != nil {
+			return captured, err
+		}
 	}
 	err = guard.finish(false)
 	finished = true
@@ -308,6 +321,9 @@ func (e *Engine) verifyCheckpoint(ctx context.Context, record Record, id, relati
 		intent.ManagerRoot != result.ManagerRoot || intent.RequestedAt == "" {
 		return fmt.Errorf("checkpoint manifest differs from its original intent")
 	}
+	if intent.StopSource != result.SourceStopped {
+		return fmt.Errorf("checkpoint source-stop mode differs from its persisted intent")
+	}
 	return sysboxcapture.VerifyFilesystemSnapshot(ctx, filepath.Join(e.config.Root, relative), result.Filesystem)
 }
 
@@ -353,6 +369,9 @@ func (e *Engine) reconcileCheckpoint(ctx context.Context, record Record, id, rel
 }
 
 func (e *Engine) recoverCheckpointSource(relative string, record Record, id string, captured Checkpoint) (_ string, resultErr error) {
+	if captured.SourceStopped {
+		return e.recoverStoppedCheckpoint(relative, record, id, captured)
+	}
 	var config captureGuardConfig
 	if err := e.readCheckpointJSON(relative+"/guard/guard-intent.json", &config); err != nil {
 		return "", err

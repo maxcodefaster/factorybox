@@ -43,12 +43,16 @@ type restoreResult struct {
 }
 
 func (e *Engine) restoreCompleted(ctx context.Context, lock *os.File, target Record, request restoreRequest) (restoreResult, *RuntimeState, error) {
-	var result restoreResult
 	object, err := objectPath(target.ID)
 	if err != nil {
-		return result, nil, err
+		return restoreResult{}, nil, err
 	}
-	if err := e.readCheckpointJSON(object+"/restore-result.json", &result); err != nil {
+	return e.operationCompleted(ctx, lock, target, request, object+"/restore-result.json")
+}
+
+func (e *Engine) operationCompleted(ctx context.Context, lock *os.File, target Record, request any, receipt string) (restoreResult, *RuntimeState, error) {
+	var result restoreResult
+	if err := e.readCheckpointJSON(receipt, &result); err != nil {
 		return result, nil, fmt.Errorf("restore completion is unconfirmed; refusing another restore: %w", err)
 	}
 	data, err := json.Marshal(request)

@@ -311,6 +311,32 @@ func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *
 	return nil
 }
 
+// VerifyLiveFilesystemSnapshot requires the stopped worker-owned backing to
+// remain exactly at the pause point before restoring RAM into that runtime.
+func VerifyLiveFilesystemSnapshot(ctx context.Context, snapshot *FilesystemSnapshot) error {
+	if snapshot == nil || snapshot.Version != 1 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
+		return fmt.Errorf("live pause backing is absent or invalid")
+	}
+	for _, tree := range snapshot.Roots {
+		if !cleanAbsolute(tree.Source) {
+			return fmt.Errorf("live pause backing path is not canonical")
+		}
+		directory, err := openDirectory(tree.Source)
+		if err != nil {
+			return err
+		}
+		actual, readErr := fingerprintTree(ctx, directory, nil, false)
+		closeErr := directory.Close()
+		if err := errors.Join(readErr, closeErr); err != nil {
+			return err
+		}
+		if !sameFilesystemTree(actual, tree) {
+			return fmt.Errorf("stopped working filesystem changed after pause: %s", tree.Name)
+		}
+	}
+	return nil
+}
+
 func cloneFilesystemTree(ctx context.Context, source *os.File, destination string) (FilesystemTree, error) {
 	expected, err := fingerprintTree(ctx, source, nil, false)
 	if err != nil {

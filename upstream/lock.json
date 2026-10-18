@@ -959,7 +959,8 @@
         "upstream/patches/sysbox-runc-exec-error.patch": "fcbcdd1333edd78eb57427cd70bee2f597f13f3e74c036284b25a1e352e46d03",
         "upstream/patches/sysbox-runc-state-snapshot.patch": "f7199706eea1a8cab1ea163e9fa8d41a6591a0262a75fbb2c8c473b31f531599",
         "upstream/patches/sysbox-runc-factorybox-restore.patch": "77001ca91e2109509ecc995993fbdb73885cadb0c92b222922d70b42786a7758",
-        "upstream/patches/sysbox-runc-restore-receipt.patch": "b997efb01f5850d0d08ba04f51f84545f862b7f2656d5ae1dd83b64a5147355f"
+        "upstream/patches/sysbox-runc-restore-receipt.patch": "b997efb01f5850d0d08ba04f51f84545f862b7f2656d5ae1dd83b64a5147355f",
+        "upstream/patches/sysbox-runc-factorybox-resume.patch": "7da699508761d0c60b46fe4c777c34c50a6f3bf5713669bc5e98c3298c9f5459"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -987,7 +988,8 @@
         "upstream/patches/sysbox-runc-exec-error.patch",
         "upstream/patches/sysbox-runc-state-snapshot.patch",
         "upstream/patches/sysbox-runc-factorybox-restore.patch",
-        "upstream/patches/sysbox-runc-restore-receipt.patch"
+        "upstream/patches/sysbox-runc-restore-receipt.patch",
+        "upstream/patches/sysbox-runc-factorybox-resume.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
@@ -1014,12 +1016,16 @@
         "factorybox_restore.go": "e7edaf48ea98470619bb1f23001204abea75204ba7198399133d419d96d2b295",
         "factorybox_restore_test.go": "96175516c7c5cebfacb6a89b1579cd7a824fb5934ec3683fbb6778f59c649927",
         "libcontainer/factorybox_restore_root_linux_test.go": "fd88c29e90203fa119cdab4149056a47fb6513c217e0508a2d566db17336d3e3",
-        "main.go": "65cf1c08f2a4a898a9025855843433e944b39751a732a36447b2ccd2dff97a96",
-        "libcontainer/experiment_seccomp_linux.go": "70fe8fdc7d2905f21fe51931be47be3b2098d791098426b3850c12b3d98ba0bf",
-        "libcontainer/factoryboxrestore/factorybox_rootfs_linux.go": "f0b0328373c32b0466b49b12d18d707dd2133ad3e79b39863a2380ef2d4f0a84",
+        "main.go": "b88ed6bbd8de228d4363d92c3b053365e9097418fbf42bd446f09680b961bd17",
+        "libcontainer/experiment_seccomp_linux.go": "09547f4889b780c25a73a8eb11732fe3fdf8e54ec82073edce6123bb47727f7f",
+        "libcontainer/factoryboxrestore/factorybox_rootfs_linux.go": "307a1b1cf240d92cb9edfdc19e9a5f8a40d47d2dd4986a934dc0ba61b6817a9d",
         "libcontainer/factorybox_restore_cgroup_linux.go": "cec1f923bafee61a32bce65feebca1603e795c37ee9e845d41271b1b3660d04c",
-        "factorybox_restore_receipt.go": "7635eac355fdce6275654fd1140150b17fc8919871ce68d59a00006092ef1324",
-        "factorybox_restore_receipt_test.go": "9577b54e7da495b8d861f1a10c8ce0d05e229a2637832264c89fc1405c3fffcd"
+        "factorybox_restore_receipt.go": "2e55536c7807779d87b715bd5457d329ee4bf6f86b942ddfbdc577122b046e83",
+        "factorybox_restore_receipt_test.go": "9577b54e7da495b8d861f1a10c8ce0d05e229a2637832264c89fc1405c3fffcd",
+        "factorybox_resume_test.go": "3a891cc4bd6e60bafc5d671129305bd73b7a3e089b1aa720fac63c60e4ca5030",
+        "factorybox_resume.go": "49f75891dfbd1757f70330264e48b8e4ca504f46986ad67ac22a6ed92f563ccb",
+        "libcontainer/container_linux.go": "4c51a329fcbe32f04957798a8649dffab09ef0126065d14a9e5799966f826c26",
+        "libcontainer/criu_opts_linux.go": "8238e48519cc801d579c5ae5284647e1ab403ee0527d7d560fbdb1c7ae528188"
       }
     },
     "sysbox-tests": {

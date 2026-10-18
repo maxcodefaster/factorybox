@@ -41,9 +41,14 @@ fi
 if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
   /sysboxcapture.test -test.v -test.timeout=10s
   test_pattern='^TestRetainedCaptureNative$'
+  if test "${FACTORYBOX_NATIVE_PAUSE:-}" = 1; then
+    test_pattern='^TestPauseNative$'
+  fi
 fi
 set +e
-/lifecycle.test -test.v -test.timeout=90s -test.run "$test_pattern"
+test_timeout=90s
+if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then test_timeout=180s; fi
+/lifecycle.test -test.v "-test.timeout=$test_timeout" -test.run "$test_pattern"
 status=$?
 set -e
 # Retain only controller metadata. Never traverse guest roots, manager mounts

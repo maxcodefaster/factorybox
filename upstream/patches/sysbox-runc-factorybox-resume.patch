@@ -1,0 +1,478 @@
+--- a/factorybox_restore_receipt.go
++++ b/factorybox_restore_receipt.go
+@@ -32,24 +32,35 @@
+ // A replacement controller must bind this receipt to both the request and the
+ // still-running original target before it publishes the lifecycle outcome.
+ func factoryboxRestoreComplete(request factoryboxRestoreRequest, state *libcontainer.State) error {
+-	if state == nil || state.ID != "fbx-"+request.Owner || state.InitProcessPid <= 1 ||
++	data, err := factoryboxCompletionData(request.Owner, request, state)
++	if err != nil {
++		return err
++	}
++	return factoryboxStoreCompletion(request.Root+"/objects/"+request.SandboxID, "restore-result.json", data)
++}
++
++func factoryboxCompletionData(owner string, request any, state *libcontainer.State) ([]byte, error) {
++	if state == nil || state.ID != "fbx-"+owner || state.InitProcessPid <= 1 ||
+ 		state.InitProcessStartTime == 0 || state.Created.IsZero() {
+-		return fmt.Errorf("restore completion lacks its original target identity")
++		return nil, fmt.Errorf("restore completion lacks its original target identity")
+ 	}
+ 	data, err := json.Marshal(request)
+ 	if err != nil {
+-		return err
++		return nil, err
+ 	}
+ 	hash := sha256.Sum256(data)
+-	result := factoryboxRestoreResult{Version: 1, Owner: request.Owner, RuntimeID: state.ID,
++	result := factoryboxRestoreResult{Version: 1, Owner: owner, RuntimeID: state.ID,
+ 		RequestSHA256: hex.EncodeToString(hash[:]), PID: state.InitProcessPid,
+ 		ProcessStart: strconv.FormatUint(state.InitProcessStartTime, 10),
+ 		Created:      state.Created.UTC().Format(time.RFC3339Nano), CompletedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+-	data, err = json.Marshal(result)
+-	if err != nil {
+-		return err
++	return json.Marshal(result)
++}
++
++func factoryboxStoreCompletion(path, destination string, data []byte) error {
++	if destination != "restore-result.json" && destination != "resume-result.json" {
++		return fmt.Errorf("unknown completion record")
+ 	}
+-	fd, err := unix.Openat2(unix.AT_FDCWD, request.Root+"/objects/"+request.SandboxID, &unix.OpenHow{
++	fd, err := unix.Openat2(unix.AT_FDCWD, path, &unix.OpenHow{
+ 		Flags: unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC, Resolve: unix.RESOLVE_NO_SYMLINKS})
+ 	if err != nil {
+ 		return err
+@@ -71,7 +82,7 @@
+ 	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
+ 		return err
+ 	}
+-	if err := unix.Renameat2(fd, name, fd, "restore-result.json", unix.RENAME_NOREPLACE); err != nil {
++	if err := unix.Renameat2(fd, name, fd, destination, unix.RENAME_NOREPLACE); err != nil {
+ 		return err
+ 	}
+ 	return directory.Sync()
+--- /dev/null
++++ b/factorybox_resume.go
+@@ -0,0 +1,287 @@
++//go:build linux
++
++package main
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"regexp"
++	"strings"
++	"syscall"
++	"time"
++
++	criu "github.com/checkpoint-restore/go-criu/v4/rpc"
++	sh "github.com/nestybox/sysbox-libs/idShiftUtils"
++	"github.com/nestybox/sysbox-runc/libcontainer/factoryboxrestore"
++	"github.com/opencontainers/runc/libcontainer"
++	"github.com/opencontainers/runc/libcontainer/utils"
++	"github.com/urfave/cli"
++	"golang.org/x/sys/unix"
++)
++
++type factoryboxResumeRequest struct {
++	Version        int    `json:"version"`
++	SandboxID      string `json:"sandbox_id"`
++	Owner          string `json:"owner"`
++	Root           string `json:"root"`
++	Filesystem     string `json:"filesystem"`
++	Images         string `json:"images"`
++	ManagerRoot    string `json:"manager_root"`
++	SnapshotID     string `json:"snapshot_id"`
++	ConfigSHA256   string `json:"config_sha256"`
++	RuntimeCreated string `json:"runtime_created"`
++}
++
++type factoryboxResumeRecord struct {
++	Version        int    `json:"version"`
++	ID             string `json:"id"`
++	Owner          string `json:"owner"`
++	RuntimeID      string `json:"runtime_id"`
++	ConfigSHA256   string `json:"config_sha256"`
++	Rootfs         string `json:"rootfs"`
++	InputBundle    string `json:"input_bundle"`
++	RuntimeCreated string `json:"runtime_created"`
++	Phase          string `json:"phase"`
++	BootID         string `json:"boot_id"`
++	Cgroup         *struct {
++		Device  uint64 `json:"device"`
++		Inode   uint64 `json:"inode"`
++		MountID uint64 `json:"mount_id"`
++	} `json:"cgroup"`
++	Pause *struct {
++		SnapshotID  string `json:"snapshot_id"`
++		CompletedAt string `json:"completed_at"`
++		Resume      *struct {
++			Attempted bool `json:"attempted"`
++		} `json:"resume"`
++	} `json:"pause"`
++}
++
++func factoryboxResumeIdentity(request factoryboxResumeRequest, runtimeRoot, target string, originalGroup *os.File) error {
++	if os.Geteuid() != 0 || request.Version != 1 ||
++		!regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`).MatchString(request.SandboxID) ||
++		!regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(request.Owner) ||
++		!regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(request.SnapshotID) ||
++		target != "fbx-"+request.Owner || !factoryboxRestorePath(request.Root) ||
++		runtimeRoot != request.Root+"/runtime" || !factoryboxRestorePath(request.Filesystem) ||
++		!factoryboxRestorePath(request.ManagerRoot) ||
++		request.Images != request.Root+"/objects/"+request.SandboxID+"/resumes/"+request.SnapshotID+"/images" {
++		return fmt.Errorf("resume request is outside its persisted runtime")
++	}
++	fd, err := unix.Openat2(unix.AT_FDCWD, request.Root+"/objects/"+request.SandboxID+"/record.json", &unix.OpenHow{
++		Flags: unix.O_RDONLY | unix.O_CLOEXEC, Resolve: unix.RESOLVE_NO_SYMLINKS})
++	if err != nil {
++		return err
++	}
++	file := os.NewFile(uintptr(fd), "original resume record")
++	data, readErr := io.ReadAll(io.LimitReader(file, (1<<20)+1))
++	if err := errors.Join(readErr, file.Close()); err != nil {
++		return err
++	}
++	if len(data) > 1<<20 {
++		return fmt.Errorf("resume record exceeds bound")
++	}
++	var record factoryboxResumeRecord
++	if err := json.Unmarshal(data, &record); err != nil {
++		return err
++	}
++	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
++	if err != nil {
++		return err
++	}
++	if record.Version != 1 || record.ID != request.SandboxID || record.Owner != request.Owner ||
++		record.RuntimeID != target || record.ConfigSHA256 != request.ConfigSHA256 ||
++		record.Rootfs != request.Filesystem+"/rootfs" || record.InputBundle != request.Filesystem ||
++		record.RuntimeCreated != request.RuntimeCreated || record.Phase != "resuming" ||
++		strings.TrimSpace(string(boot)) != record.BootID || record.Cgroup == nil ||
++		record.Pause == nil || record.Pause.SnapshotID != request.SnapshotID || record.Pause.CompletedAt == "" ||
++		record.Pause.Resume == nil || !record.Pause.Resume.Attempted {
++		return fmt.Errorf("resume differs from its original operation intent")
++	}
++	config, err := os.ReadFile(request.Root + "/objects/" + request.SandboxID + "/config.json")
++	if err != nil {
++		return err
++	}
++	digest := sha256.Sum256(config)
++	if hex.EncodeToString(digest[:]) != request.ConfigSHA256 {
++		return fmt.Errorf("resume OCI config changed")
++	}
++	group, err := unix.Open("/sys/fs/cgroup/"+target, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
++	if err != nil {
++		return err
++	}
++	defer unix.Close(group)
++	identity := group
++	if originalGroup != nil {
++		identity = int(originalGroup.Fd())
++	}
++	var saved, current unix.Stat_t
++	var extended unix.Statx_t
++	var filesystem unix.Statfs_t
++	if err := errors.Join(unix.Fstat(identity, &saved), unix.Fstat(group, &current),
++		unix.Statx(identity, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &extended), unix.Fstatfs(identity, &filesystem)); err != nil {
++		return err
++	}
++	if filesystem.Type != unix.CGROUP2_SUPER_MAGIC || extended.Mask&unix.STATX_MNT_ID == 0 ||
++		uint64(saved.Dev) != record.Cgroup.Device || saved.Ino != record.Cgroup.Inode ||
++		extended.Mnt_id != record.Cgroup.MountID || saved.Dev != current.Dev || saved.Ino != current.Ino {
++		return fmt.Errorf("resume original cgroup identity changed")
++	}
++	return factoryboxRestoreLock(request.Root, 4)
++}
++
++func factoryboxResumeContainer(context *cli.Context, request factoryboxResumeRequest) (libcontainer.Container, error) {
++	container, err := getContainer(context)
++	if err != nil {
++		return nil, err
++	}
++	status, err := container.Status()
++	if err != nil || status != libcontainer.Stopped {
++		return nil, fmt.Errorf("resume requires its stopped original runtime: %v", err)
++	}
++	config := container.Config()
++	_, annotations := utils.Annotations(config.Labels)
++	state, err := container.State()
++	if err != nil {
++		return nil, err
++	}
++	hooks := 0
++	for _, entries := range config.Hooks {
++		hooks += len(entries)
++	}
++	if annotations["io.factorybox.owner"] != request.Owner || config.Rootfs != request.Filesystem+"/rootfs" ||
++		config.Cgroups == nil || config.Cgroups.Path != "/fbx-"+request.Owner ||
++		config.RootfsUidShiftType != sh.IDMappedMount || config.RootfsCloned || hooks != 0 ||
++		len(config.ShiftfsMounts) != 0 || len(config.UidMappings) != 1 || len(config.GidMappings) != 1 ||
++		state.Created.UTC().Format(time.RFC3339Nano) != request.RuntimeCreated ||
++		state.Sysbox.Id != "fbx-"+request.Owner || state.Sysbox.Fs == nil || !state.Sysbox.Fs.Reg {
++		return nil, fmt.Errorf("saved resume runtime identity or configuration differs")
++	}
++	for _, namespace := range config.Namespaces {
++		if namespace.Path != "" {
++			return nil, fmt.Errorf("resume cannot join external namespaces")
++		}
++	}
++	return container, nil
++}
++
++var factoryboxResumeCommand = cli.Command{
++	Name: "factorybox-resume",
++	Action: func(context *cli.Context) error {
++		if err := checkArgs(context, 1, exactArgs); err != nil {
++			return err
++		}
++		var request factoryboxResumeRequest
++		if err := factoryboxRestoreRead(5, &request); err != nil {
++			return err
++		}
++		target := context.Args().First()
++		if err := factoryboxResumeIdentity(request, context.GlobalString("root"), target, nil); err != nil {
++			return err
++		}
++		if _, err := factoryboxResumeContainer(context, request); err != nil {
++			return err
++		}
++		groupFD, err := unix.Open("/sys/fs/cgroup/"+target, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
++		if err != nil {
++			return err
++		}
++		group := os.NewFile(uintptr(groupFD), "original resume cgroup")
++		defer group.Close()
++		fd, err := unix.MemfdCreate("factorybox-resume", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
++		if err != nil {
++			return err
++		}
++		file := os.NewFile(uintptr(fd), "prepared resume request")
++		defer file.Close()
++		if err := json.NewEncoder(file).Encode(request); err != nil {
++			return err
++		}
++		if _, err := file.Seek(0, 0); err != nil {
++			return err
++		}
++		if _, err := unix.FcntlInt(file.Fd(), unix.F_ADD_SEALS, factoryboxRestoreSeals); err != nil {
++			return err
++		}
++		lock := os.NewFile(4, "inherited resume operation lock")
++		defer lock.Close()
++		command := exec.Command("/proc/self/exe", "--root", context.GlobalString("root"), "--criu", context.GlobalString("criu"),
++			"factorybox-resume-prepared", target)
++		command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNS}
++		command.ExtraFiles = []*os.File{file, lock, group}
++		command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
++		return command.Run()
++	},
++}
++
++var factoryboxPreparedResumeCommand = cli.Command{
++	Name: "factorybox-resume-prepared", Hidden: true,
++	Action: func(context *cli.Context) error {
++		if err := checkArgs(context, 1, exactArgs); err != nil {
++			return err
++		}
++		var request factoryboxResumeRequest
++		if err := factoryboxRestoreRead(3, &request); err != nil {
++			return err
++		}
++		target := context.Args().First()
++		group := os.NewFile(5, "original resume cgroup")
++		defer group.Close()
++		if err := factoryboxResumeIdentity(request, context.GlobalString("root"), target, group); err != nil {
++			return err
++		}
++		container, err := factoryboxResumeContainer(context, request)
++		if err != nil {
++			return err
++		}
++		if err := unix.Mount("", "/", "", unix.MS_PRIVATE|unix.MS_REC, ""); err != nil {
++			return err
++		}
++		if err := factoryboxrestore.FactoryboxResumeRoot(container.Config(), request.Filesystem, request.ManagerRoot, request.SnapshotID); err != nil {
++			return err
++		}
++		options := &libcontainer.CriuOpts{SysboxSeccompRestore: true, FactoryboxResume: true,
++			FactoryboxConfigFile: filepath.Dir(request.Images) + "/criu.conf",
++			ImagesDirectory:      request.Images, WorkDirectory: request.Images,
++			ShellJob: true, FileLocks: true, EmptyNs: 0, TcpEstablished: true, ManageCgroupsMode: criu.CriuCgMode_FULL}
++		process := &libcontainer.Process{Init: true, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}
++		if err := container.Restore(process, options); err != nil {
++			return err
++		}
++		if err := factoryboxResumeIdentity(request, context.GlobalString("root"), target, group); err != nil {
++			return err
++		}
++		freezeFD, err := unix.Openat(int(group.Fd()), "cgroup.freeze", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++		if err != nil {
++			return err
++		}
++		freeze := os.NewFile(uintptr(freezeFD), "original resumed cgroup.freeze")
++		_, writeErr := freeze.WriteString("0")
++		if err := errors.Join(writeErr, freeze.Close()); err != nil {
++			return err
++		}
++		state, err := container.State()
++		if err != nil {
++			return err
++		}
++		status, err := container.Status()
++		if err != nil || status != libcontainer.Running {
++			return fmt.Errorf("resumed original runtime is not running: %v", err)
++		}
++		data, err := factoryboxCompletionData(request.Owner, request, state)
++		if err != nil {
++			return err
++		}
++		if err := factoryboxStoreCompletion(filepath.Dir(request.Images), "resume-result.json", data); err != nil {
++			return err
++		}
++		return json.NewEncoder(os.Stdout).Encode(state)
++	},
++}
+--- /dev/null
++++ b/factorybox_resume_test.go
+@@ -0,0 +1,25 @@
++//go:build linux
++
++package main
++
++import (
++	"strings"
++	"testing"
++)
++
++func TestFactoryboxResumeRejectsForeignLayout(t *testing.T) {
++	owner := strings.Repeat("a", 32)
++	request := factoryboxResumeRequest{Version: 1, SandboxID: "workspace", Owner: owner, Root: "/owned",
++		Filesystem: "/owned/filesystem", ManagerRoot: "/owned/manager", SnapshotID: strings.Repeat("b", 32),
++		Images: "/foreign/images"}
++	if err := factoryboxResumeIdentity(request, "/owned/runtime", "fbx-"+owner, nil); err == nil ||
++		!strings.Contains(err.Error(), "outside its persisted runtime") {
++		t.Fatal("foreign resume image path was not rejected before filesystem access", err)
++	}
++	request.Images = "/owned/objects/workspace/resumes/" + request.SnapshotID + "/images"
++	request.SandboxID = "../foreign"
++	if err := factoryboxResumeIdentity(request, "/owned/runtime", "fbx-"+owner, nil); err == nil ||
++		!strings.Contains(err.Error(), "outside its persisted runtime") {
++		t.Fatal("foreign logical identity was not rejected before filesystem access", err)
++	}
++}
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1549,6 +1549,9 @@
+ 	}
+ 
+ 	c.handleCriuConfigurationFile(req.Opts)
++	if criuOpts.FactoryboxConfigFile != "" {
++		req.Opts.ConfigFile = proto.String(criuOpts.FactoryboxConfigFile)
++	}
+ 
+ 	if err := c.handleRestoringNamespaces(req.Opts, &extraFiles); err != nil {
+ 		return err
+@@ -1967,12 +1970,16 @@
+ 			return err
+ 		}
+ 		// create a timestamp indicating when the restored checkpoint was started
+-		c.created = time.Now().UTC()
++		if !opts.FactoryboxResume {
++			c.created = time.Now().UTC()
++		} else if c.created.IsZero() || !factoryboxRestoreCgroup(c.id, c.config.Labels, c.config.Cgroups.Path) {
++			return fmt.Errorf("resume lacks its original Factorybox creation identity")
++		}
+ 		if _, err := c.updateState(r); err != nil {
+ 			return err
+ 		}
+ 		if c.experimentBridge != nil {
+-			if err := c.experimentRebindFs(int(pid)); err != nil {
++			if err := c.experimentRebindFs(int(pid), opts.FactoryboxResume); err != nil {
+ 				return err
+ 			}
+ 			if _, err := c.updateState(r); err != nil {
+--- a/libcontainer/criu_opts_linux.go
++++ b/libcontainer/criu_opts_linux.go
+@@ -13,6 +13,8 @@
+ }
+ 
+ type CriuOpts struct {
++	FactoryboxResume        bool               // retain an admitted Factorybox runtime creation identity
++	FactoryboxConfigFile    string             // per-operation CRIU settings, no worker-wide configuration
+ 	SysboxSeccompRestore    bool               // owned experiment; listener handoff before resume
+ 	ImagesDirectory         string             // directory for storing image files
+ 	WorkDirectory           string             // directory to cd and write logs/pidfiles/stats to
+--- a/libcontainer/experiment_seccomp_linux.go
++++ b/libcontainer/experiment_seccomp_linux.go
+@@ -153,7 +153,7 @@
+ 	}
+ }
+ 
+-func (c *linuxContainer) experimentRebindFs(pid int) error {
++func (c *linuxContainer) experimentRebindFs(pid int, resume bool) error {
+ 	uid, gid := c.config.UidMappings[0], c.config.GidMappings[0]
+ 	data := &sysboxFsGrpc.ContainerData{Id: c.id, InitPid: int32(pid), Hostname: c.config.Hostname,
+ 		UidFirst: int32(uid.HostID), UidSize: int32(uid.Size), GidFirst: int32(gid.HostID), GidSize: int32(gid.Size)}
+@@ -170,7 +170,7 @@
+ 	if err := sysboxFsGrpc.SendContainerRegistration(data); err != nil {
+ 		return err
+ 	}
+-	if !c.sysbox.Fs.Reg {
++	if !c.sysbox.Fs.Reg || resume {
+ 		// A fresh fork has no manager process/namespace identity yet. Bind it
+ 		// before CRIU releases any task or the copied Docker daemon resumes.
+ 		if err := c.sysbox.Mgr.Update(fmt.Sprintf("/proc/%d/ns/user", pid), fmt.Sprintf("/proc/%d/ns/net", pid),
+--- a/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go
++++ b/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go
+@@ -32,6 +32,21 @@
+ 		len(config.UidMappings) != 1 || len(config.GidMappings) != 1 {
+ 		return fmt.Errorf("restore overlay is outside its persisted Factorybox request")
+ 	}
++	return factoryboxMapRoot(config, bundle, manager, bundle+"/restore-work")
++}
++
++func FactoryboxResumeRoot(config configs.Config, bundle, manager, token string) error {
++	if config.Cgroups == nil || !factoryboxRestoreCgroup(strings.TrimPrefix(config.Cgroups.Path, "/"), config.Labels, config.Cgroups.Path) ||
++		config.Rootfs != bundle+"/rootfs" || config.RootfsUidShiftType != sh.IDMappedMount ||
++		filepath.Clean(bundle) != bundle || !filepath.IsAbs(bundle) ||
++		!regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(token) ||
++		len(config.UidMappings) != 1 || len(config.GidMappings) != 1 {
++		return fmt.Errorf("resume overlay is outside its persisted Factorybox request")
++	}
++	return factoryboxMapRoot(config, bundle, manager, bundle+"/resume-work-"+token)
++}
++
++func factoryboxMapRoot(config configs.Config, bundle, manager, work string) error {
+ 	current, err := os.Readlink("/proc/self/ns/mnt")
+ 	if err != nil {
+ 		return err
+@@ -67,7 +82,6 @@
+ 	if err := unix.Unmount(config.Rootfs, 0); err != nil {
+ 		return err
+ 	}
+-	work := bundle + "/restore-work"
+ 	if err := os.Mkdir(work, 0700); err != nil {
+ 		return err
+ 	}
+--- a/main.go
++++ b/main.go
+@@ -127,6 +127,8 @@
+ 		factoryboxFsSnapshotCommand,
+ 		factoryboxRestoreCommand,
+ 		factoryboxPreparedRestoreCommand,
++		factoryboxResumeCommand,
++		factoryboxPreparedResumeCommand,
+ 		resumeCommand,
+ 		runCommand,
+ 		specCommand,

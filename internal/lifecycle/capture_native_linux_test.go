@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,8 +24,10 @@ import (
 )
 
 type captureActorState struct {
-	Payload []byte `json:"payload"`
-	Counter int    `json:"counter"`
+	Payload      []byte `json:"payload"`
+	Counter      int    `json:"counter"`
+	BallastSHA   string `json:"ballast_sha,omitempty"`
+	BallastBytes int    `json:"ballast_bytes,omitempty"`
 }
 
 func TestCaptureActor(t *testing.T) {
@@ -34,6 +37,19 @@ func TestCaptureActor(t *testing.T) {
 	state := captureActorState{Payload: make([]byte, 8192)}
 	if _, err := rand.Read(state.Payload); err != nil {
 		t.Fatal(err)
+	}
+	var ballast []byte
+	if os.Getenv("FACTORYBOX_CAPTURE_BALLAST") == "1" {
+		var err error
+		ballast, err = unix.Mmap(-1, 0, 32<<20, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := rand.Read(ballast); err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.Sum256(ballast)
+		state.BallastSHA, state.BallastBytes = fmt.Sprintf("%x", digest), len(ballast)
 	}
 	if err := os.Mkdir("/state", 0700); err != nil {
 		t.Fatal(err)
@@ -80,6 +96,11 @@ func TestCaptureActor(t *testing.T) {
 			case "advance":
 				state.Payload[0] ^= 0xff
 				state.Counter++
+				if len(ballast) != 0 {
+					ballast[0] ^= 0xff
+					digest := sha256.Sum256(ballast)
+					state.BallastSHA = fmt.Sprintf("%x", digest)
+				}
 				if err := os.WriteFile("/state/marker", []byte("source-after\n"), 0600); err != nil {
 					t.Error(err)
 				}

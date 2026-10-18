@@ -1,4 +1,34 @@
 {
+  "internal/lifecycle/pause_linux.go": {
+    "changes": [
+      "Persist an application-independent pause transition and retain the original runtime identity.",
+      "Use the selected complete retained-source writer and verified filesystem/image backing, then stop only the original pinned cgroup after successful capture.",
+      "Acknowledge an exited original PID-fd and empty original cgroup; preserve incomplete transition evidence for reconciliation."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/descendant_pause_linux.go": "ee0dd05a17af3d64ac0bbfda9f23bb4c0d37afcf922d9d1867d3b7a3e09f6372"
+    }
+  },
+  "internal/lifecycle/resume_linux.go": {
+    "changes": [
+      "Extract retained-identity restore into the public lifecycle with immutable operation identities and a durable backend receipt.",
+      "Verify unchanged exclusive working backing, restore from private complete images, refresh namespace bindings and retain the original runtime creation identity.",
+      "Keep vendor configuration and namespace mapping behind the pinned Sysbox adapter."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/descendant_pause_linux.go": "ee0dd05a17af3d64ac0bbfda9f23bb4c0d37afcf922d9d1867d3b7a3e09f6372",
+      "upstream/overlays/sysbox-runc/experiment_restore.go": "cdcd5cf1ee5f9a26e79de65a35770ce3d2a61c3737c16d0a644254ef24e45ee4"
+    }
+  },
+  "internal/lifecycle/pause_memory_linux.go": {
+    "changes": [
+      "Replace reference-specific RAM-image retirement with targeted synced file-cache release for the selected ordinary file-backed writer.",
+      "Record original-cgroup memory counters and verify zero payload residency using mincore; reject RAM-backed payload storage and avoid global cache settings."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/descendant_pause_linux.go": "ee0dd05a17af3d64ac0bbfda9f23bb4c0d37afcf922d9d1867d3b7a3e09f6372"
+    }
+  },
   "internal/lifecycle/fork_linux.go": {
     "changes": [
       "Promote complete filesystem/image copying and fresh Sysbox restore into an application-independent public fork operation.",

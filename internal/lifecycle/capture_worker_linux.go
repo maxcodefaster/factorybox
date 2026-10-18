@@ -103,7 +103,56 @@ func captureWorkerServe() (resultErr error) {
 	if err != nil {
 		return err
 	}
+	if request.Guard.StopSource {
+		return captureStopSource(request.Guard, anchors, captured)
+	}
 	return captureGuardCaptureReturned(request.Guard, anchors)
+}
+
+func captureStopSource(config captureGuardConfig, anchors captureGuardAnchors, captured sysboxcapture.Result) error {
+	if !config.StopSource || captured.SourcePID != config.PID || !captured.CompleteWriter ||
+		!captured.LeaveRunning || captured.Filesystem == nil {
+		return fmt.Errorf("source stop lacks its complete retained-source snapshot")
+	}
+	if err := captureGuardCaptureReturned(config, anchors); err != nil {
+		return err
+	}
+	if err := captureGuardWrite(anchors.evidence, "capture-stop-intent.json", map[string]any{
+		"token": config.Token, "source_pid": config.PID, "source_start": config.Start,
+		"capture": captured,
+	}); err != nil {
+		return err
+	}
+	fd, err := unix.Openat(int(anchors.group.Fd()), "cgroup.kill", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	file := os.NewFile(uintptr(fd), "original captured source cgroup.kill")
+	_, writeErr := file.WriteString("1")
+	if err := errors.Join(writeErr, file.Close()); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if err := captureGuardValidateStopped(config, anchors); err == nil {
+			// Old Sysbox checks its freezer before reporting process exit.
+			// Clear only this already-empty original cgroup's freezer.
+			fd, err := unix.Openat(int(anchors.group.Fd()), "cgroup.freeze",
+				unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+			if err != nil {
+				return err
+			}
+			freezer := os.NewFile(uintptr(fd), "empty captured source freezer")
+			_, writeErr := freezer.WriteString("0")
+			if err := errors.Join(writeErr, freezer.Close()); err != nil {
+				return err
+			}
+			return captureGuardValidateStopped(config, anchors)
+		} else if time.Now().After(deadline) {
+			return fmt.Errorf("captured original source did not stop: %w", err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 }
 
 func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File, executable string) error {

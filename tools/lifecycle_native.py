@@ -58,7 +58,7 @@ def archive_capture(archive, name, owner, result, image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause"], default="lifecycle")
     parser.add_argument("--criu-build", help="Required rebuilt CRIU artifact for --suite capture")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for --suite capture")
     parser.add_argument("--test", help="One exact native diagnostic test")
@@ -67,12 +67,13 @@ def main():
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
-    if options.suite == "capture" and (not options.criu_build or options.test):
-        parser.error("--suite capture requires --criu-build and runs its complete selected suite")
-    if options.criu_build and options.suite != "capture":
-        parser.error("--criu-build is only used by --suite capture")
-    if options.native_base_build and options.suite != "capture":
-        parser.error("--native-base-build is only used by --suite capture")
+    capture_mode = options.suite in ["capture", "pause"]
+    if capture_mode and (not options.criu_build or options.test):
+        parser.error("capture/pause suites require --criu-build and run their complete selected suite")
+    if options.criu_build and not capture_mode:
+        parser.error("--criu-build is only used by capture/pause suites")
+    if options.native_base_build and not capture_mode:
+        parser.error("--native-base-build is only used by capture/pause suites")
     build, components = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
     owner = uuid.uuid4().hex
@@ -88,13 +89,18 @@ def main():
                   "foreign-mount rejection. "
                   "Kernel RAM actors only; not complete Sysbox capture qualification."
                   if options.suite == "guard" else
+                  "Public pause/resume with complete 32-MiB private RAM, original-cgroup anonymous "
+                  "memory release, zero resident file-backed snapshot payload, retained runtime "
+                  "identity, repeated cycles, receipt reconciliation and independent fork of a "
+                  "resumed source. Full developer workload and complete failure recovery remain unqualified."
+                  if options.suite == "pause" else
                   "Actual retained-source CRIU capture, virtual FUSE state and independent overlay/"
                   "managed-volume backing with complete content/metadata comparison. "
                   "Public checkpoint, immutable replay and completed-capture publication recovery. "
                   "Public independent fork with unavailable original rootfs, restored-source capture, "
                   "descendant independence, persisted restore completion and exact overlay deletion. "
-                  "Incomplete preparation/restore refuses replay; pause/resume and complete interrupted-"
-                  "CRIU recovery remain unqualified."
+                  "Incomplete preparation/restore refuses replay. Pause/resume has a separate gate; "
+                  "complete interrupted-CRIU recovery remains unqualified."
                   if options.suite == "capture" else
                   "Application-independent start/state/delete, saved-outcome recovery, rejection "
                   "before destructive actions and the actual CLI source guard on Sysbox. "
@@ -112,16 +118,16 @@ def main():
         cli = archive / "factorybox"
         subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-o", str(cli),
                         "./cmd/factorybox"], cwd=ROOT, env=env, check=True, timeout=120)
-        if options.suite == "capture":
+        if capture_mode:
             subprocess.run(["go", "test", "-c", "-o", str(archive / "sysboxcapture.test"),
                             "./internal/sysboxcapture"], cwd=ROOT, env=env, check=True, timeout=120)
         for script in ["lifecycle-native.sh", "private-cgroup-delegation.sh"]:
             shutil.copyfile(ROOT / "tests" / script, archive / script)
-        if options.suite == "capture":
+        if capture_mode:
             shutil.copyfile(ROOT / "tests/capture-archive.sh", archive / "capture-archive.sh")
         input_files = [binary, cli, archive / "lifecycle-native.sh",
                        archive / "private-cgroup-delegation.sh"]
-        if options.suite == "capture":
+        if capture_mode:
             input_files.append(archive / "sysboxcapture.test")
             input_files.append(archive / "capture-archive.sh")
         result["inputs_sha256"] = {p.name: reference.sha(p) for p in input_files}
@@ -142,7 +148,7 @@ def main():
                    "type=image,compression=uncompressed", "--tag", name,
                    "--metadata-file", str(archive / "builder-metadata.json"),
                    "-f", str(dockerfile), str(build / "context")]
-        if options.suite == "capture":
+        if capture_mode:
             criu_build, criu = reference_lifecycle.component_build(
                 options.criu_build, "factorybox-build-criu-")
             inputs = archive / "components"
@@ -184,7 +190,8 @@ def main():
             "--env", "FACTORYBOX_NATIVE_LIFECYCLE=1",
             "--env", "FACTORYBOX_UPSTREAM_CONTAINER=1",
             "--env", "FACTORYBOX_NATIVE_CAPTURE_GUARD=" + ("1" if options.suite == "guard" else "0"),
-            "--env", "FACTORYBOX_NATIVE_RETAINED_CAPTURE=" + ("1" if options.suite == "capture" else "0"),
+            "--env", "FACTORYBOX_NATIVE_RETAINED_CAPTURE=" + ("1" if capture_mode else "0"),
+            "--env", "FACTORYBOX_NATIVE_PAUSE=" + ("1" if options.suite == "pause" else "0"),
             "--env", "FACTORYBOX_NATIVE_TEST=" + (options.test or ""),
             "--env", "FACTORYBOX_RUNTIME_SHA256=" + components["binary_sha256"]["sysbox-runc"],
             "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB",
@@ -197,7 +204,7 @@ def main():
             "--mount", f"type=bind,source={archive / 'private-cgroup-delegation.sh'},target=/delegate.sh,readonly",
             "--entrypoint", "/bin/bash", image, "/native.sh",
         ]
-        if options.suite == "capture":
+        if capture_mode:
             extra = [
                 "--env", "FACTORYBOX_CRIU_SHA256=" + criu["binary_sha256"],
                 "--mount", f"type=bind,source={inputs},target=/component-input,readonly",
@@ -211,7 +218,7 @@ def main():
         reference.docker(["volume", "create", "--label", "com.factorybox.run=" + owner, name])
         attempted = True
         with (archive / "stdout.txt").open("x") as log, (archive / "stderr.txt").open("x") as errors:
-            done = subprocess.run(command, stdout=log, stderr=errors, timeout=150)
+            done = subprocess.run(command, stdout=log, stderr=errors, timeout=240 if capture_mode else 150)
         result["exit_code"] = done.returncode
         text = (archive / "stdout.txt").read_text()
         result["passed_tests"] = sum(line.startswith("--- PASS: ") for line in text.splitlines())
@@ -225,16 +232,17 @@ def main():
         result["container_state"] = state
         result["inputs_unchanged"] = all(reference.sha(archive / name) == expected
                                          for name, expected in result["inputs_sha256"].items())
-        if options.suite == "capture":
+        if capture_mode:
             result["components_unchanged"] = all(
                 reference.sha(inputs / component) == expected
                 for component, expected in result["component_sha256"].items())
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
-            result["passed_tests"] == (4 if options.suite == "capture" else
+            result["passed_tests"] == (4 if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite != "capture" or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS) and
+            (options.suite != "pause" or result["passed_subtests"] == 2) and
             result.get("components_unchanged", True) and
             result["skipped_tests"] == 0)
         if not result["passed"]:
@@ -246,7 +254,7 @@ def main():
         preserve_volume = False
         try:
             if attempted:
-                if options.suite == "capture":
+                if capture_mode:
                     try:
                         archive_capture(archive, name, owner, result, image)
                     except Exception as error:
