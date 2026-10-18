@@ -1,4 +1,37 @@
 {
+  "internal/lifecycle/capture_guard_linux.go": {
+    "changes": [
+      "Extract the source guard protocol, PID-fd checks, safe thaw, unsafe hold and controller fallback.",
+      "Replace fixed experiment paths with a persisted sandbox record, its exact hash and an original controller-root descriptor.",
+      "Dispatch the helper explicitly through a private re-exec command; do not run helpers from package initialization.",
+      "Preserve capture-entry, intermediate-return and final acknowledged-completion semantics."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/descendant_guard_linux.go": "86f85a08cd1911d3577369e66dfaf7e588b8fbd5ebec86b0b725eaf70de0dab4"
+    }
+  },
+  "internal/lifecycle/capture_guard_linux_test.go": {
+    "changes": [
+      "Carry all eleven original native controller/helper/tracer and disarm scenarios with their original assertions.",
+      "Build the source cgroup from a saved Factorybox record and use generated capture evidence paths instead of fixed experiment paths.",
+      "Add rejection of a foreign cgroup bind mount and an actual CLI-helper cycle on a real Sysbox process."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/descendant_guard_linux_test.go": "31f5eb78853ee6dbbfbbc50918ad2953c89ffb0ea8966a5b39742cb71d8507ac"
+    }
+  },
+  "internal/lifecycle/capture_process_linux.go": {
+    "changes": [
+      "Port process-start identity parsing and strict cgroup counter parsing.",
+      "Retain the complete owned-thread check while traversing through directory descriptors with depth, count and mount-identity bounds.",
+      "Freeze only the guarded original cgroup; do not call Sysbox manager pause/resume."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/criu_sysbox_retained.go": "1d30ca06e477c5595009215da4a226ab7a05a29c3583390bc89442c6b1a2603b",
+      "tests/reference/driver/cmd/lab/criu_sysbox_snapshot.go": "a6e10b8ed71790cd565192cf2fe2cb5318680ec21c2a2276794bd6a9be840f93",
+      "tests/reference/driver/cmd/lab/descendant_linux.go": "c2c98614ef4c4a17630f6b0e20d357cfb615496c53673c5f6a0030e99c198886"
+    }
+  },
   "internal/lifecycle/cgroup_linux.go": {
     "changes": [
       "Port the reference's cgroup2 device, inode and mount-identity check to the local lifecycle controller.",

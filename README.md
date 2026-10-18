@@ -100,12 +100,36 @@ mise exec -- python3 tools/lifecycle_native.py \
   --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID
 ```
 
-All four native tests passed with zero skips in an owned 3-CPU/3-GiB fixture. They exercise actual
+All five native tests passed with zero skips in an owned 3-CPU/3-GiB fixture. They exercise actual
 Sysbox start, public CLI state/delete, reconciliation of a lost saved outcome without replacing the
 process, shared-rootfs rejection before create intent, uncertain-create preservation, and rejection
 of changed runtime creation, cgroup identity, configuration, executable digest and controller root.
+The fifth test runs the CLI's extracted source guard against an actual Sysbox process. Its original
+PID, runtime creation and overlay UID/GID survive raw cgroup freeze, acknowledged capture-phase
+transitions and disarm. This test performs no CRIU dump.
 The fixture confirms exact container/volume cleanup and retains controller metadata and failed runs.
 It has no IDE or agent dependency. These are lifecycle correctness tests, not fork/resume benchmarks.
+
+The extracted guard carries the reference's controller/helper/tracer failure cases:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID --suite guard
+```
+
+This separate 1-CPU/256-MiB private-cgroup fixture uses two kernel RAM actors. All twelve subtests
+passed with zero skips and confirmed owned cleanup. It retains the eleven original scenarios and
+adds rejection of a foreign cgroup bind mount. A safe source can
+thaw after controller loss. An unacknowledged capture remains frozen for reconciliation, including
+after an intermediate writer return. Helper death is reported even when the surviving controller
+recovers the source. A live tracer prevents acknowledgement. The original process birth, RAM nonce
+and counter survive; the unrelated actor remains independent.
+
+Guard operations hold original cgroup, PID and directory handles, and check the unchanged sandbox
+record and worker boot. Thread traversal has depth/count bounds and rejects foreign mounts.
+Sysbox's ordinary manager pause changes ownership and volume state, so guarded capture uses the
+original kernel cgroup freezer directly. The public snapshot commands, actual CRIU command
+reconciliation, snapshot backing and network-lock recovery still need extraction and qualification.
 
 ## Pinned sources
 

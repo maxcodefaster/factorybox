@@ -5,6 +5,10 @@ test "${FACTORYBOX_NATIVE_LIFECYCLE:-}" = 1
 test -d /output
 test -d /var/lib/sysbox
 test -n "${FACTORYBOX_RUNTIME_SHA256:-}"
+test_pattern='^TestNative'
+if test "${FACTORYBOX_NATIVE_CAPTURE_GUARD:-}" = 1; then
+  test_pattern='^TestCaptureGuardNative$'
+else
 mkdir /busybox
 tar -xzf /busybox-rootfs.tar.gz -C /busybox
 . /delegate.sh > /output/cgroup-delegation.txt
@@ -22,7 +26,7 @@ for attempt in $(seq 1 150); do
 done
 test -S /run/sysbox/sysfs-seccomp.sock
 test -S /run/sysbox/sysmgr.sock
-test_pattern='^TestNative'
+fi
 if test -n "${FACTORYBOX_NATIVE_TEST:-}"; then
   [[ "$FACTORYBOX_NATIVE_TEST" =~ ^TestNative[A-Za-z0-9_]+$ ]]
   test_pattern="^${FACTORYBOX_NATIVE_TEST}$"
@@ -37,7 +41,8 @@ mkdir /output/controller-metadata
 index=0
 for file in /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/record.json \
             /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/config.json \
-            /var/lib/sysbox/factorybox-lifecycle-*/controller*/runtime/*/state.json; do
+            /var/lib/sysbox/factorybox-lifecycle-*/controller*/runtime/*/state.json \
+            /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/captures/*/guard/*.json; do
   if test -f "$file"; then
     index=$((index + 1))
     cp -- "$file" "/output/controller-metadata/$index.json"

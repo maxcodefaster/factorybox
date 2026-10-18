@@ -28,6 +28,10 @@ func cgroupIdentity(path string) (KernelObject, error) {
 		return KernelObject{}, err
 	}
 	defer unix.Close(fd)
+	return cgroupFDIdentity(fd)
+}
+
+func cgroupFDIdentity(fd int) (KernelObject, error) {
 	var stat unix.Stat_t
 	var filesystem unix.Statfs_t
 	var extended unix.Statx_t

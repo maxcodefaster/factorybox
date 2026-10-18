@@ -14,16 +14,19 @@ import reference_lifecycle
 import upstream_unit
 
 ROOT = reference.ROOT
-EXPECTED_TESTS = 4
+EXPECTED_TESTS = 5
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
+    parser.add_argument("--suite", choices=["lifecycle", "guard"], default="lifecycle")
     parser.add_argument("--test", help="One exact native diagnostic test")
     options = parser.parse_args()
     if options.test and not re.fullmatch(r"TestNative[A-Za-z0-9_]+", options.test):
         parser.error("--test must be one exact native test name")
+    if options.test and options.suite == "guard":
+        parser.error("the guard suite always runs all failure/disarm cases")
     build, components = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
     owner = uuid.uuid4().hex
@@ -34,9 +37,14 @@ def main():
     result = {
         "schema": 1, "owner": owner, "container_name": name, "volume_name": name,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "component_build": options.sysbox_build, "test": options.test,
-        "scope": "Application-independent start/state/delete only, including saved-outcome recovery "
-                 "and rejection before destructive actions. Not checkpoint/fork/pause/resume qualification.",
+        "component_build": options.sysbox_build, "test": options.test, "suite": options.suite,
+        "scope": ("Extracted source guard's eleven retained native failure/disarm cases and "
+                  "foreign-mount rejection. "
+                  "Kernel RAM actors only; not complete Sysbox capture qualification."
+                  if options.suite == "guard" else
+                  "Application-independent start/state/delete, saved-outcome recovery, rejection "
+                  "before destructive actions and the actual CLI source guard on Sysbox. "
+                  "No CRIU capture; not checkpoint/fork/pause/resume qualification."),
         "passed": False, "cleanup": False, "production_qualified": False,
     }
     attempted = False
@@ -82,9 +90,12 @@ def main():
         command = [
             *reference.DOCKER, "run", "--pull=never", "--name", name,
             "--label", "com.factorybox.run=" + owner, "--privileged", "--cgroupns=private",
-            "--cpus=3", "--memory=3g", "--pids-limit=512", "--network=none",
+            "--cpus=" + ("1" if options.suite == "guard" else "3"),
+            "--memory=" + ("256m" if options.suite == "guard" else "3g"),
+            "--pids-limit=512", "--network=none",
             "--env", "FACTORYBOX_NATIVE_LIFECYCLE=1",
             "--env", "FACTORYBOX_UPSTREAM_CONTAINER=1",
+            "--env", "FACTORYBOX_NATIVE_CAPTURE_GUARD=" + ("1" if options.suite == "guard" else "0"),
             "--env", "FACTORYBOX_NATIVE_TEST=" + (options.test or ""),
             "--env", "FACTORYBOX_RUNTIME_SHA256=" + components["binary_sha256"]["sysbox-runc"],
             "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB",
@@ -108,6 +119,8 @@ def main():
         result["exit_code"] = done.returncode
         text = (archive / "stdout.txt").read_text()
         result["passed_tests"] = sum(line.startswith("--- PASS: ") for line in text.splitlines())
+        result["passed_subtests"] = sum(line.startswith(" ") and line.lstrip().startswith("--- PASS: ")
+                                         for line in text.splitlines())
         result["skipped_tests"] = sum(line.startswith("--- SKIP: ") for line in text.splitlines())
         state = json.loads(reference.docker(["container", "inspect", name]))[0]["State"]
         result["container_state"] = state
@@ -115,7 +128,8 @@ def main():
                                          for name, expected in result["inputs_sha256"].items())
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
-            result["passed_tests"] == (1 if options.test else EXPECTED_TESTS) and
+            result["passed_tests"] == (1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
+            (options.suite != "guard" or result["passed_subtests"] == 12) and
             result["skipped_tests"] == 0)
         if not result["passed"]:
             raise ValueError("native lifecycle qualification failed")
