@@ -19,9 +19,10 @@ import (
 )
 
 type captureRequest struct {
-	Guard      captureGuardConfig `json:"guard"`
-	Criu       string             `json:"criu"`
-	CriuSHA256 string             `json:"criu_sha256"`
+	Guard       captureGuardConfig `json:"guard"`
+	Criu        string             `json:"criu"`
+	CriuSHA256  string             `json:"criu_sha256"`
+	ManagerRoot string             `json:"manager_root"`
 }
 
 const captureRequestSeals = unix.F_SEAL_WRITE | unix.F_SEAL_GROW | unix.F_SEAL_SHRINK | unix.F_SEAL_SEAL
@@ -97,6 +98,7 @@ func captureWorkerServe() (resultErr error) {
 		Owner: request.Guard.Source.Owner, Rootfs: request.Guard.Source.Rootfs,
 		RuntimeCreated: request.Guard.Source.RuntimeCreated, PID: request.Guard.PID,
 		Generation: filepath.Dir(request.Guard.Evidence), Criu: request.Criu,
+		Bundle: request.Guard.Source.InputBundle, ManagerRoot: request.ManagerRoot,
 	})
 	if err != nil {
 		return err
@@ -132,7 +134,7 @@ func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File
 		return fmt.Errorf("capture frozen FUSE state: %w", err)
 	}
 	data, err := json.Marshal(captureRequest{Guard: guard.config, Criu: e.config.Criu,
-		CriuSHA256: e.config.CriuSHA256})
+		CriuSHA256: e.config.CriuSHA256, ManagerRoot: e.config.ManagerRoot})
 	if err != nil {
 		return err
 	}

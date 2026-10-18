@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 type captureActorState struct {
@@ -35,6 +37,21 @@ func TestCaptureActor(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("/state/marker", []byte("retained-source-file\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link("/state/marker", "/state/marker-hardlink"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("marker", "/state/marker-link"); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Setxattr("/state/marker", "user.factorybox", []byte("captured-xattr"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Mkfifo("/state/fifo", 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("/var/lib/docker/capture-marker", []byte("private-daemon-before\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	server, err := net.Listen("unix", "/state/control.sock")
@@ -61,6 +78,12 @@ func TestCaptureActor(t *testing.T) {
 			case "advance":
 				state.Payload[0] ^= 0xff
 				state.Counter++
+				if err := os.WriteFile("/state/marker", []byte("source-after\n"), 0600); err != nil {
+					t.Error(err)
+				}
+				if err := os.WriteFile("/var/lib/docker/capture-marker", []byte("private-daemon-after\n"), 0600); err != nil {
+					t.Error(err)
+				}
 			case "get":
 			default:
 				t.Error("unknown RAM actor request")
@@ -108,6 +131,7 @@ func TestRetainedCaptureNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine.config.Criu, engine.config.CriuSHA256 = "/out/criu", os.Getenv("FACTORYBOX_CRIU_SHA256")
+	engine.config.ManagerRoot = "/var/lib/sysbox/manager"
 	ctx := context.Background()
 	view, err := engine.Start(ctx, "captured", bundle)
 	if err != nil {
@@ -209,6 +233,27 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if !payloadFound {
 		t.Fatal("complete ordinary page writer did not contain the source's private RAM payload")
 	}
+	generation := filepath.Dir(guard.config.Evidence)
+	for path, expected := range map[string]string{
+		"/filesystem/upper/state/marker":            "retained-source-file\n",
+		"/filesystem/volumes/docker/capture-marker": "private-daemon-before\n",
+	} {
+		data, err := os.ReadFile(generation + path)
+		if err != nil || string(data) != expected {
+			t.Fatalf("filesystem checkpoint content differs: %s: %v", path, err)
+		}
+	}
+	one, err := os.Stat(generation + "/filesystem/upper/state/marker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := os.Stat(generation + "/filesystem/upper/state/marker-hardlink")
+	if err != nil || !os.SameFile(one, two) {
+		t.Fatal("captured hardlink relationship lost", err)
+	}
+	if target, err := os.Readlink(generation + "/filesystem/upper/state/marker-link"); err != nil || target != "marker" {
+		t.Fatal("captured symlink target differs", err)
+	}
 	if err := guard.capturePhase(false); err != nil {
 		t.Fatal(err)
 	}
@@ -248,6 +293,15 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if err != nil || after.Counter != 1 || !bytes.Equal(after.Payload, expected) {
 		t.Fatalf("original RAM process did not continue independently: %v", err)
 	}
+	for path, expected := range map[string]string{
+		"/filesystem/upper/state/marker":            "retained-source-file\n",
+		"/filesystem/volumes/docker/capture-marker": "private-daemon-before\n",
+	} {
+		data, err := os.ReadFile(generation + path)
+		if err != nil || string(data) != expected {
+			t.Fatalf("source filesystem mutation changed checkpoint: %s: %v", path, err)
+		}
+	}
 	for path, expected := range hashes {
 		data, err := os.ReadFile(path)
 		if err != nil || sum(data) != expected {
@@ -258,6 +312,18 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if err != nil || observed.Runtime == nil || observed.Runtime.PID != view.Runtime.PID {
 		t.Fatalf("capture replaced or lost its source: %+v: %v", observed, err)
 	}
-	t.Logf("actual CRIU capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved RAM backing plus virtual value 17 after source mutation to 29; worker kernel value unchanged; filesystem snapshot and restore remain separate gates",
+	if _, err := engine.Delete(ctx, "captured"); err != nil {
+		t.Fatal("delete original after complete capture", err)
+	}
+	for path, expected := range map[string]string{
+		"/filesystem/upper/state/marker":            "retained-source-file\n",
+		"/filesystem/volumes/docker/capture-marker": "private-daemon-before\n",
+	} {
+		data, err := os.ReadFile(generation + path)
+		if err != nil || string(data) != expected {
+			t.Fatalf("source deletion removed captured filesystem state: %s: %v", path, err)
+		}
+	}
+	t.Logf("actual capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved RAM, virtual state, overlay files and a managed Docker-volume file after source mutation; worker kernel value unchanged; restore remains a separate gate",
 		view.Record.RuntimeID, view.Runtime.PID, len(files))
 }

@@ -36,6 +36,7 @@ type Config struct {
 	RuntimeSHA256 string
 	Criu          string
 	CriuSHA256    string
+	ManagerRoot   string
 }
 
 type Operation struct {

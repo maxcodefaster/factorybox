@@ -83,8 +83,9 @@ def main():
                   "foreign-mount rejection. "
                   "Kernel RAM actors only; not complete Sysbox capture qualification."
                   if options.suite == "guard" else
-                  "Actual retained-source CRIU capture with a private state view and an 8192-byte "
-                  "RAM payload. No filesystem snapshot, fork or restore qualification."
+                  "Actual retained-source CRIU capture, virtual FUSE state and independent overlay/"
+                  "managed-volume backing with complete content/metadata comparison. "
+                  "No fork, restore or public checkpoint qualification."
                   if options.suite == "capture" else
                   "Application-independent start/state/delete, saved-outcome recovery, rejection "
                   "before destructive actions and the actual CLI source guard on Sysbox. "
@@ -212,7 +213,7 @@ def main():
                 for component, expected in result["component_sha256"].items())
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
-            result["passed_tests"] == (2 if options.suite == "capture" else
+            result["passed_tests"] == (4 if options.suite == "capture" else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             result.get("components_unchanged", True) and

@@ -1,4 +1,17 @@
 {
+  "internal/sysboxcapture/filesystem_linux.go": {
+    "changes": [
+      "Port the proved GNU cp archive/reflink path for physical overlay backing directories and private Sysbox-managed volumes.",
+      "Require the actual single-lower overlay layout, explicit manager root and saved ID-mapped Sysbox mount identities; reject unowned external binds.",
+      "Capture both lower and upper independently rather than assuming the administrator-provided lower is already an immutable template.",
+      "Add complete content, mode, UID/GID, mtime, link, device and xattr digests, foreign-mount rejection and independent-inode checks.",
+      "Hash hardlinked payloads once per inode inside each frozen-tree scan while retaining every path and link relationship."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/criu_sysbox_copy.go": "7b7c0bcc68d90aad3899bacbb325f96b1d724f03fc6c829d51f0cd2c58b54d01",
+      "upstream/overlays/sysbox-runc/experiment_copy.go": "812aab6fc70538481cb7e1ce3c04a5eb293170f003e531eba5c77ae75244ada6"
+    }
+  },
   "internal/sysboxcapture/capture_linux.go": {
     "changes": [
       "Extract the ordinary complete retained-source checkpoint options, mapped image ownership and final regular-file ownership checks.",

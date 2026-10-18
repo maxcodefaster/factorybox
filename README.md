@@ -147,11 +147,35 @@ unchanged. The worker verifies a sealed request, original kernel handles and the
 executable before capture. It retains the operation lock and writes its own intent before CRIU
 starts. The source guard remains in its capture transaction until the caller acknowledges completion.
 
-Both native checks passed without skips: the configuration-view test preserves all Sysbox-only
-fields, and the actual CRIU test captures an 8192-byte random RAM payload from a Go process inside
+Four native checks passed without skips: configuration-view preservation, empty-hook admission,
+complete filesystem copy/rejection cases, and the actual combined capture. The CRIU test captures
+an 8192-byte random RAM payload from a Go process inside
 Sysbox under a Factorybox identity. The same process advances its RAM state after thaw, while the
-captured page-file hashes stay unchanged. This test includes no filesystem snapshot, independent
-fork, restore or pause. It is not a latency benchmark.
+captured page-file hashes stay unchanged. The combined capture now also includes the physical
+overlay backing layers and private managed volumes. It includes no independent fork, restore or
+pause qualification.
+
+Filesystem capture admits the saved ID-mapped, uncloned Sysbox overlay with no executable hooks.
+It verifies the controller's overlay mount names the bundle's exact `lower`, `upper` and `work`
+directories. The worker's manager root is explicit. Every external bind must be a recognized
+private manager volume, the source's Sysbox FUSE tree or `/dev/null`; unowned binds are rejected.
+This initial policy is not arbitrary mount or filesystem support.
+
+The worker copies `lower`, `upper` and all admitted private volume directories through pinned
+directory handles with the reference's `cp -a --reflink=auto` behavior. Source and saved trees
+receive complete content/metadata digests. Copies must have independent inodes and preserve
+UID/GID, mode, mtime, hardlink relationships, symlink targets, device identities and extended
+attributes. The native fixture includes whiteouts, FIFO/socket nodes, sparse file data and a
+trusted overlay xattr. Physical inode identities and ctime are not promised to remain equal.
+Foreign mounts and xattr corruption are detected. Source marker and Docker-volume mutations,
+followed by original-runtime deletion, leave the captured files intact.
+
+Each tree records entry counts, logical file bytes, actually hashed bytes and charged capture
+time. Hardlinked payloads are hashed once per inode per frozen-tree scan. In two individual
+observations of the small native fixture, repeated logical payload reads dropped from about
+471 MB to 19 MB and the recorded filesystem phase changed from 1.59 s to 0.32 s. The workload
+contained nine roots and 472 entries, mostly an empty private runtime. These observations are
+not a full developer-workload fork/resume distribution or p95.
 
 The guarded capture also exports Sysbox's virtual proc/sys state at that same frozen point.
 A root-only Unix RPC returns a bounded, versioned snapshot of its cached virtual values,

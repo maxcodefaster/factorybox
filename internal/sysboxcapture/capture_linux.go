@@ -30,17 +30,20 @@ type Request struct {
 	PID            int
 	Generation     string
 	Criu           string
+	Bundle         string
+	ManagerRoot    string
 }
 
 type Result struct {
-	SourcePID       int    `json:"source_pid"`
-	MappedUID       int    `json:"mapped_uid"`
-	MappedGID       int    `json:"mapped_gid"`
-	SourceStateSHA  string `json:"source_state_sha256"`
-	Images          string `json:"images"`
-	LeaveRunning    bool   `json:"leave_running"`
-	CompleteWriter  bool   `json:"complete_writer"`
-	SnapshotEntries int    `json:"snapshot_entries"`
+	SourcePID       int                 `json:"source_pid"`
+	MappedUID       int                 `json:"mapped_uid"`
+	MappedGID       int                 `json:"mapped_gid"`
+	SourceStateSHA  string              `json:"source_state_sha256"`
+	Images          string              `json:"images"`
+	LeaveRunning    bool                `json:"leave_running"`
+	CompleteWriter  bool                `json:"complete_writer"`
+	SnapshotEntries int                 `json:"snapshot_entries"`
+	Filesystem      *FilesystemSnapshot `json:"filesystem,omitempty"`
 }
 
 func sha(data []byte) string {
@@ -109,6 +112,10 @@ func Capture(request Request) (Result, error) {
 	if err := writePrivate(request.Generation+"/source-state.json", original); err != nil {
 		return result, err
 	}
+	filesystem, err := planFilesystem(request, original)
+	if err != nil {
+		return result, err
+	}
 	// Only this private copy gets the RPC configuration annotation. Load()
 	// presents a read-only view, and successful dump does not replace the
 	// original Sysbox state with the modern library's configuration schema.
@@ -164,6 +171,24 @@ func Capture(request Request) (Result, error) {
 	after, err := os.ReadFile(path)
 	if err != nil || sha(after) != result.SourceStateSHA {
 		return result, fmt.Errorf("capture changed the original Sysbox state: %v", err)
+	}
+	result.Filesystem, err = captureFilesystem(filesystem, request.Generation+"/filesystem")
+	if err != nil {
+		return result, err
+	}
+	filesystemData, err := json.MarshalIndent(result.Filesystem, "", "  ")
+	if err != nil {
+		return result, err
+	}
+	if err := writePrivate(request.Generation+"/filesystem.json", append(filesystemData, '\n')); err != nil {
+		return result, err
+	}
+	generation, err := os.Open(request.Generation)
+	if err != nil {
+		return result, err
+	}
+	if err := errors.Join(generation.Sync(), generation.Close()); err != nil {
+		return result, err
 	}
 	result.SnapshotEntries, err = ownImages(result.Images, result.MappedUID, result.MappedGID)
 	if err != nil {
