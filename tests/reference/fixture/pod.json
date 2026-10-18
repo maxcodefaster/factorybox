@@ -1,0 +1,417 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "labels": {
+      "app.kubernetes.io/part-of": "runtime-fork-experiment",
+      "experiment-run": "55b6ee4798654813b8c12563da8bb22c"
+    },
+    "name": "criu-nested-probe",
+    "namespace": "runtime-fork-experiment"
+  },
+  "spec": {
+    "activeDeadlineSeconds": 420,
+    "automountServiceAccountToken": false,
+    "containers": [
+      {
+        "args": [
+          "attempt=0\nwhile ! test -f /experiment/theia/client-ready; do\n  attempt=$((attempt+1))\n  if test \"$attempt\" -ge 90; then printf \"1\\n\" > /experiment/exit-code; exit 1; fi\n  sleep 1\ndone\n/pipe-keeper > /experiment/pipe-store-keeper.log 2>&1 &\npipe_keeper_pid=$!\npipe_ready=0\nwhile ! test -f /experiment/pipe-store/ready.json; do\n  if ! kill -0 \"$pipe_keeper_pid\" 2>/dev/null; then printf '1\\n' > /experiment/exit-code; exit 1; fi\n  pipe_ready=$((pipe_ready+1))\n  if test \"$pipe_ready\" -ge 100; then printf '1\\n' > /experiment/exit-code; exit 1; fi\n  sleep 0.05\ndone\npython3 -c 'import datetime,json,pathlib,sys,time; p=pathlib.Path(\"/experiment/pipe-store/helper-lifecycle.json\"); p.write_text(json.dumps({\"pid\":int(sys.argv[1]),\"observed_at\":datetime.datetime.now(datetime.timezone.utc).isoformat(),\"monotonic_ns\":time.monotonic_ns(),\"fixture_keeper_deadline_seconds\":390})+\"\\n\")' \"$pipe_keeper_pid\"\n/lab criu-probe\nstatus=$?\ntouch /experiment/pipe-store/finish\nif ! wait \"$pipe_keeper_pid\"; then status=1; fi\nprintf '%s\\n' \"$status\" > /experiment/exit-code\nexec sleep infinity\n"
+        ],
+        "command": [
+          "/bin/sh",
+          "-c"
+        ],
+        "image": "runtime-fork-criu-probe@sha256:927c79689e924af92cb5d146cf12253301ca41e0ca721817e6f5542641a5f178",
+        "imagePullPolicy": "Never",
+        "name": "probe",
+        "resources": {
+          "limits": {
+            "cpu": "3",
+            "ephemeral-storage": "12Gi",
+            "memory": "3Gi"
+          },
+          "requests": {
+            "cpu": "3",
+            "memory": "128Mi"
+          }
+        },
+        "securityContext": {
+          "privileged": true
+        },
+        "volumeMounts": [
+          {
+            "mountPath": "/experiment",
+            "name": "evidence"
+          },
+          {
+            "name": "rootfs-template",
+            "mountPath": "/opt/probe-rootfs-cache",
+            "readOnly": true
+          }
+        ],
+        "env": [
+          {
+            "name": "CRIU_SYSBOX_PROBE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_COW_CAPTURE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_COMMITTED_SNAPSHOT",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_WORKER_CANARY",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_RICH_EPOCH",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_RICH_EPOCH_CHAIN",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_EPOCH_BACKED_RESUME",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_VERIFY_OVERLAP",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_VERIFY_TEST_FAIL",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_EPOCH_PIPELINE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_EPOCH_PIPELINE_ABORT",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_EPOCH_RAM_PARENT",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_EPOCH_REBASE",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_RAM_CAPTURE",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_RETAIN_SOURCE",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_LAZY_INHERIT",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_PARENT_MANIFEST_REUSE",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_LAZY_WP",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_CGROUP_PREFIX_REUSE",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_DUMP_LOW_LOG",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_NETWORK",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_COMPOSE",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_TOOLS",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_LAZY",
+            "value": "1"
+          },
+          {
+            "name": "CRIU_SYSBOX_LAZY_PREFETCH",
+            "value": "0"
+          },
+          {
+            "name": "CRIU_SYSBOX_THEIA",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_PIPE_CAPTURE",
+            "value": "observe"
+          },
+          {
+            "name": "RUNTIME_FORK_PIPE_READ",
+            "value": "lazy"
+          },
+          {
+            "name": "RUNTIME_FORK_PIPE_RAW_BASE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_PIPE_PREIMAGES",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_PIPE_GUARD_AUDIT",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_PIPE_COMBINED_DIGEST",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_PREP_OVERLAP",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_ROOTFS_CACHE",
+            "value": "/opt/probe-rootfs-cache"
+          },
+          {
+            "name": "RUNTIME_FORK_ROOTFS_CACHE_SHA256",
+            "value": "9d3da49ff9b0c374c1a7168f2acf131a1c7d838f77440d407cd14a5007392c7a"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_INHERIT_PROOF",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_INHERITED_TARGET",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_DIRECT_RANGE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_PAGE_INPUT_LEASE_ONLY",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_STREAM_ORACLE",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_SINGLE_CAPTURE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_FAST_SOURCE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_COMPLETE_RAM",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_PRESSURE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_GRAPH_PROFILE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_TARGET_CERTIFICATE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_SOURCE_CERTIFICATE",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_SOURCE_SYNC",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_DEPTH",
+            "value": "2"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_PAUSE",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_POST_RESUME_FORK",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_LAZY",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_LAZY_RESUME",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_LEASED_BACKING",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_RAM",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_REFLINK",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_GUARD",
+            "value": "1"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_COW",
+            "value": "0"
+          },
+          {
+            "name": "RUNTIME_FORK_DESCENDANT_PIPE",
+            "value": "0"
+          }
+        ]
+      },
+      {
+        "name": "ide",
+        "image": "registry.open-factory-envbox-smoke.svc.cluster.local:5000/open-factory/developer-ide@sha256:754716b40f21ef21232fafd0addcc3fe8224bb4c96716cf3994af762b339e3e9",
+        "imagePullPolicy": "Never",
+        "command": [
+          "/bin/sh",
+          "-c",
+          "node /experiment/theia-client.cjs http://127.0.0.1:4400 4401 > /experiment/theia/native-client.log 2>&1 & exec node /opt/factory/theia/lib/backend/main.js /experiment --hostname 0.0.0.0 --port 4400 --session-preference security.workspace.trust.enabled=false"
+        ],
+        "env": [
+          {
+            "name": "HOME",
+            "value": "/home/node"
+          },
+          {
+            "name": "XDG_CONFIG_HOME",
+            "value": "/home/node/.factory-theia"
+          }
+        ],
+        "securityContext": {
+          "runAsUser": 165536,
+          "runAsGroup": 165536,
+          "readOnlyRootFilesystem": true,
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          }
+        },
+        "resources": {
+          "requests": {
+            "cpu": "100m",
+            "memory": "128Mi"
+          },
+          "limits": {
+            "cpu": "1",
+            "memory": "768Mi"
+          }
+        },
+        "volumeMounts": [
+          {
+            "name": "evidence",
+            "mountPath": "/experiment"
+          },
+          {
+            "name": "evidence",
+            "mountPath": "/home/node",
+            "subPath": "theia/home"
+          },
+          {
+            "name": "evidence",
+            "mountPath": "/tmp",
+            "subPath": "theia/tmp"
+          }
+        ]
+      }
+    ],
+    "enableServiceLinks": false,
+    "hostIPC": false,
+    "hostNetwork": false,
+    "hostPID": false,
+    "restartPolicy": "Never",
+    "terminationGracePeriodSeconds": 10,
+    "volumes": [
+      {
+        "emptyDir": {
+          "sizeLimit": "10Gi"
+        },
+        "name": "evidence"
+      },
+      {
+        "name": "rootfs-template",
+        "hostPath": {
+          "path": "/var/lib/docker/volumes/runtime-fork-rootfs-profile-1b7c3832015e48a29ffad1d26578e599/_data",
+          "type": "Directory"
+        }
+      }
+    ],
+    "initContainers": [
+      {
+        "name": "ide-directories",
+        "image": "runtime-fork-criu-probe@sha256:927c79689e924af92cb5d146cf12253301ca41e0ca721817e6f5542641a5f178",
+        "imagePullPolicy": "Never",
+        "command": [
+          "sh",
+          "-ec",
+          "cp /opt/theia-client.cjs /experiment/theia-client.cjs; chmod 0444 /experiment/theia-client.cjs; mkdir -p /experiment/theia/home /experiment/theia/tmp; chown -R 165536:165536 /experiment/theia; chmod 1777 /experiment/theia/tmp"
+        ],
+        "securityContext": {
+          "runAsUser": 0,
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ],
+            "add": [
+              "CHOWN",
+              "FOWNER",
+              "DAC_OVERRIDE"
+            ]
+          }
+        },
+        "resources": {
+          "requests": {
+            "cpu": "10m",
+            "memory": "16Mi"
+          },
+          "limits": {
+            "cpu": "100m",
+            "memory": "32Mi"
+          }
+        },
+        "volumeMounts": [
+          {
+            "name": "evidence",
+            "mountPath": "/experiment"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "busybox-arm64": {
+    "archive": "sysbox-test-busybox-arm64-8141f5b047a1fbeefd842388244c045825a61c90.tar.gz",
+    "sha256": "499bcf3c8ead8ef2570f7ee8e4ab5a4489647d67dd1c1b425fdbd4a74f4b4386",
+    "url": "https://raw.githubusercontent.com/docker-library/busybox/8141f5b047a1fbeefd842388244c045825a61c90/latest/glibc/arm64v8/rootfs.tar.gz",
+    "source": "Pinned sysbox-runc tests/integration/multi-arch.bash arm64 rootfs"
+  }
+}

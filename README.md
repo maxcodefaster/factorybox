@@ -20,10 +20,12 @@ describe development workloads; they do not define the snapshot engine.
 | `cmd/factorybox` | Small diagnostic entry point during extraction |
 | `internal/platform` | Explicit reference-platform admission |
 | `internal/pageview` | Extracted logical snapshot reader and its native regressions |
+| `internal/snapshot` | Extracted CRIU pagemap codec and complete logical memory comparison |
 | `upstream/lock.json` | Exact Sysbox/CRIU source commits, archive hashes and patch order |
 | `upstream/patches`, `upstream/overlays` | Source inputs applied to the pinned upstream trees |
 | `upstream/ports.json` | Provenance of extracted runtime code |
 | `tests/reference` | Unchanged source reference, tests and import provenance |
+| `tests/reference/fixture` | Sealed full developer lifecycle fixture and required assertion counts |
 | `examples/minimal/.devcontainer` | Ordinary minimal Dev Container consumer |
 | `tools` | Source preparation and bounded verification commands |
 | `artifacts` | Ignored test evidence, including failed runs |
@@ -78,6 +80,18 @@ temporary container. It records whether the resulting binary matches the histori
 Reconstructing that builder from public inputs is still a release requirement; the local builder
 image is not a published Factorybox build dependency.
 
+Build the selected Sysbox runc, fs and mgr components from prepared sources:
+
+```sh
+mise exec -- python3 tools/build_sysbox.py
+```
+
+The recipe pins the Go and Envbox image digests, disables automatic Go toolchain replacement and
+records native compiler/package versions and every context input. The manager includes upstream's
+`idmapped_mnt` build tag. A successful build includes the selected inherited fork, registration and
+seccomp regressions. It does not establish complete upstream compatibility. APT dependencies are
+recorded but still need a pinned clean-machine reconstruction.
+
 ## Retained reference
 
 ```sh
@@ -111,9 +125,45 @@ and a uniquely owned volume. This selected suite is not the complete upstream Sy
 The extracted core tests use 1 CPU/128 MiB without a privileged container. Each stores stdout,
 stderr, input identities, outcome and cleanup observations under `artifacts/`. Removal requires
 the exact resource name and owner label. A Docker failure is not proof that a resource is absent.
-The larger developer lifecycle retains its original 3 CPU/3 GiB probe, separate 1 CPU/768 MiB
-Theia, 420-second deadline and maximum two live sandboxes; its independent runner is still being
-extracted.
+The extracted native core suite has passed all 12 platform, pagemap, inherited-memory and page-reader
+tests with zero skips and successful owned cleanup. The reference ownership/graph suite has passed
+50 top-level tests. Neither is a full lifecycle or upstream qualification.
+
+The developer lifecycle runner retains the original 3 CPU/3 GiB probe, separate 1 CPU/768 MiB
+Theia, 420-second deadline and maximum two live sandboxes. Supply successful named build artifacts:
+
+```sh
+mise exec -- python3 tools/reference_lifecycle.py \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID
+```
+
+The runner builds an owned image with the new binaries and uses a unique Kubernetes namespace.
+It reserves 2.5 probe CPUs on the shared worker while retaining the original 3-CPU limit. This
+allows admission beside the retained Factory workloads; observations from this shared scheduling
+profile are qualification runs, not a clean performance baseline.
+It retains all 461 assertion records from the sealed successful reference, including complete
+independent RAM/files, forks from forked/resumed sources, pause RAM release, private Docker,
+Compose, Dev Containers, browser/OpenCode responses and native Theia read/edit. A zero process exit
+without those assertions fails. Namespace deletion includes the exact saved UID as an API
+precondition. Failed runs retain streamed logs and available native metadata.
+
+This is a reference fixture. It still depends on the existing local Theia image and a read-only
+Btrfs rootfs cache at its recorded worker path. It does not provide the public lifecycle API or
+a portable installation. Theia browser editing and active model inference are not asserted.
+
+Run the full upstream Go unit suites in an owned container with its own Docker daemon:
+
+```sh
+mise exec -- python3 tools/upstream_unit.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID
+```
+
+The runner checks runc, fs, mgr, ipc and each nested libs module, retaining failures and skips per
+test. It also rejects failed test events hidden by an upstream `TestMain` that exits zero.
+The test rootfs follows upstream's immutable Busybox ARM64 commit and has a recorded SHA-256.
+Do not run the Sysbox umbrella Makefile on the Mac or retained worker. Its integration scripts need
+a separately prepared, isolated test environment and include host-oriented cleanup commands.
 
 ## Release requirements
 

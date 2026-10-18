@@ -22,7 +22,8 @@ class NativeCommandTests(unittest.TestCase):
                     pathlib.Path(command[command.index("-o") + 1]).write_bytes(b"test-binary")
                     return subprocess.CompletedProcess(command, 0)
                 return subprocess.CompletedProcess(
-                    command, 0, stdout="--- PASS: example\n" * 5, stderr="")
+                    command, 0, stdout="--- PASS: example\n" * native_core.EXPECTED_NATIVE_TESTS,
+                    stderr="")
 
             with patch.object(native_core, "ROOT", root), \
                  patch.object(native_core.subprocess, "run", side_effect=run), \

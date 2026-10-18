@@ -1,22 +1,63 @@
 {
   "internal/pageview/pipe_file_linux.go": {
     "changes": [],
-    "source": "tests/reference/pageview/pipe_file_linux.go",
-    "source_sha256": "285efbdfbc67650732f8891cfb9a8ce53a7d59013a331d24390d8994a7564f5e"
+    "sources": {
+      "tests/reference/pageview/pipe_file_linux.go": "285efbdfbc67650732f8891cfb9a8ce53a7d59013a331d24390d8994a7564f5e"
+    }
   },
   "internal/pageview/retire_linux.go": {
     "changes": [],
-    "source": "tests/reference/pageview/retire_linux.go",
-    "source_sha256": "ae4bfac4f479798b7e3c614c80eeeae1487781107e0f9399f0b8404ca840e9b8"
+    "sources": {
+      "tests/reference/pageview/retire_linux.go": "ae4bfac4f479798b7e3c614c80eeeae1487781107e0f9399f0b8404ca840e9b8"
+    }
   },
   "internal/pageview/scratch_linux_test.go": {
     "changes": [],
-    "source": "tests/reference/pageview/scratch_linux_test.go",
-    "source_sha256": "d63ed4d98829760798d8668d6997d4b5f74c1c24af3d9514a56d5a42a6b787d7"
+    "sources": {
+      "tests/reference/pageview/scratch_linux_test.go": "d63ed4d98829760798d8668d6997d4b5f74c1c24af3d9514a56d5a42a6b787d7"
+    }
   },
   "internal/pageview/view_linux.go": {
     "changes": [],
-    "source": "tests/reference/pageview/view_linux.go",
-    "source_sha256": "20cacdabf6789c55c9345fdd3c26aaa755942d08d699f360d3474f555b6124c1"
+    "sources": {
+      "tests/reference/pageview/view_linux.go": "20cacdabf6789c55c9345fdd3c26aaa755942d08d699f360d3474f555b6124c1"
+    }
+  },
+  "internal/snapshot/graph_linux.go": {
+    "changes": [
+      "Extracted only pagemap codec or complete logical byte comparison; no prefetch or harness policy.",
+      "Package and private identifiers renamed; original comparison and rejection assertions retained."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/descendant_memory_linux.go": "03b4d87a198c3b2a72620e1e6e964cc467ae79791bb2f2d521a0f20cb064951c"
+    }
+  },
+  "internal/snapshot/graph_linux_test.go": {
+    "changes": [
+      "Extracted only pagemap codec or complete logical byte comparison; no prefetch or harness policy.",
+      "Package and private identifiers renamed; original comparison and rejection assertions retained."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/descendant_memory_linux_test.go": "f04fd4ce14d1457176ee56e1a1baccedcd0058a780608a416b3a359bcf235fae"
+    }
+  },
+  "internal/snapshot/pagemap.go": {
+    "changes": [
+      "Extracted only pagemap codec or complete logical byte comparison; no prefetch or harness policy.",
+      "Package and private identifiers renamed; original comparison and rejection assertions retained."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/criu_sysbox_hotset.go": "2e63194e4006fb1f73200e4e06beb7579d98eb1439811c8e02919882c1a0917d",
+      "tests/reference/driver/cmd/lab/criu_sysbox_prefetch.go": "a44f746faff453d790e821762ca31dd85ef2b5e8e1bb00695af415744459fc7c"
+    }
+  },
+  "internal/snapshot/pagemap_test.go": {
+    "changes": [
+      "Extracted only pagemap codec or complete logical byte comparison; no prefetch or harness policy.",
+      "Package and private identifiers renamed; original comparison and rejection assertions retained."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/criu_sysbox_prefetch_test.go": "744b9adbf08a47133ce9ea862a903722b9a08131ddee79afc1bdaedef961cfbf"
+    }
   }
 }

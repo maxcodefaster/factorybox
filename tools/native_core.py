@@ -10,6 +10,7 @@ import uuid
 import reference
 
 ROOT = reference.ROOT
+EXPECTED_NATIVE_TESTS = 12
 
 
 def main():
@@ -50,7 +51,8 @@ def execute(container_name, owner, evidence, result):
     output.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, GOOS="linux", GOARCH="arm64", CGO_ENABLED="0")
     for package, binary_name in [("./internal/platform", "platform.test"),
-                                 ("./internal/pageview", "pageview.test")]:
+                                 ("./internal/pageview", "pageview.test"),
+                                 ("./internal/snapshot", "snapshot.test")]:
         subprocess.run(["go", "test", "-c", "-o", str(output / binary_name), package],
                        cwd=ROOT, env=env, check=True, timeout=120)
     subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-o",
@@ -68,13 +70,15 @@ def execute(container_name, owner, evidence, result):
         "--read-only", "--cap-drop=ALL", "--cap-add=SYS_RESOURCE",
         "--security-opt=no-new-privileges",
         "--tmpfs", "/tmp:rw,nosuid,nodev,size=16m",
+        "--tmpfs", "/experiment:rw,nosuid,nodev,size=16m",
         "--env", "FACTORYBOX_NATIVE=1", "--env", "DESCENDANT_READER_NATIVE=1",
         "--env", "GOMAXPROCS=1", "--env", "GOMEMLIMIT=96MiB",
     ]
-    for file in ["platform.test", "pageview.test", "factorybox"]:
+    for file in ["platform.test", "pageview.test", "snapshot.test", "factorybox"]:
         command += ["--mount", f"type=bind,source={output / file},target=/{file},readonly"]
     command += ["--entrypoint", "/bin/sh", reference.BASE_ID, "-ec",
                 "/factorybox doctor\n/platform.test -test.v -test.timeout=15s\n"
+                "/snapshot.test -test.v -test.timeout=15s\n"
                 "/pageview.test -test.v -test.timeout=15s"]
     result["command"] = command
     result["phase"] = "native"
@@ -90,7 +94,8 @@ def execute(container_name, owner, evidence, result):
                                       for line in completed.stdout.splitlines())
         state = json.loads(reference.docker(["container", "inspect", container_name]))[0]["State"]
         result["container_state"] = state
-        result["passed"] = (completed.returncode == 0 and result["tests_passed"] == 5
+        result["passed"] = (completed.returncode == 0 and
+                            result["tests_passed"] == EXPECTED_NATIVE_TESTS
                             and result["tests_skipped"] == 0 and not state["OOMKilled"])
         if not result["passed"]:
             raise ValueError("extracted native core regression failed")

@@ -1,0 +1,20 @@
+{
+  "archive": "sysbox-lazy-inherit-epoch-retirement-full-1-9aff8b93-55b6ee4798654813b8c12563da8bb22c",
+  "archive_manifest_sha256": "c5830584717620e877536c9b495a2288e2c01a3fcfe490d1317162a48ee81ab3",
+  "files_sha256": {
+    "expected-records.json": "75ffc646d4c72e3649c3fbeda272cb195de8d765ab4836ceee9984580fcd8474",
+    "pod.json": "cb9c564a3b32b16503afdf66ab44b47a85c826cff08c5b8259a9220c0cbb2157",
+    "theia-client-build.json": "fc5237a2fae6929d17955516e2f84c209acd9f4191cb81fe94497247096dbe11",
+    "theia-client.cjs": "7d3112327762764c615cf76d457aae6b8b026cd92a5a7da239dfb86f9db915cd",
+    "theia-client.mjs": "c3ce3bf4906f09d7f965c5c5911b59581c9f3b81fd359173b327113566e3c20e"
+  },
+  "scope": "Immutable test fixture, not the public lifecycle API. Pod identities and rebuilt component images change in the owned runner.",
+  "source_files_sha256": {
+    "artifacts/criu-pod.json": "cb9c564a3b32b16503afdf66ab44b47a85c826cff08c5b8259a9220c0cbb2157",
+    "artifacts/descendant-fork-prototype/theia-client-build.json": "fc5237a2fae6929d17955516e2f84c209acd9f4191cb81fe94497247096dbe11",
+    "artifacts/descendant-fork-prototype/theia-client.cjs": "7d3112327762764c615cf76d457aae6b8b026cd92a5a7da239dfb86f9db915cd",
+    "artifacts/descendant-fork-prototype/theia-client.mjs": "c3ce3bf4906f09d7f965c5c5911b59581c9f3b81fd359173b327113566e3c20e",
+    "artifacts/sysbox-criu-run-intent.json": "8d864ecb848b22fddf9b7a29b99a00f9c21799d1af453e4f6ed94f335e12ef0b",
+    "sysbox-criu-results.jsonl": "270b3696b0560136ac09199c84a12cdb54f1b587169ca4ced66eb2490740e659"
+  }
+}

@@ -35,3 +35,12 @@ run = "python3 tools/native_core.py"
 
 [tasks."criu:build"]
 run = "python3 tools/build_criu.py"
+
+[tasks."sysbox:build"]
+run = "python3 tools/build_sysbox.py"
+
+[tasks."reference:lifecycle"]
+run = "python3 tools/reference_lifecycle.py"
+
+[tasks."upstream:unit"]
+run = "python3 tools/upstream_unit.py"
