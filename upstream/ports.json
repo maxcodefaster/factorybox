@@ -1,11 +1,34 @@
 {
+  "upstream/patches/sysbox-runc-factorybox-restore.patch": {
+    "changes": [
+      "Extract independent Sysbox registration, private-volume copy, prepared-child restore and seccomp listener handoff from the retained reference.",
+      "Use saved FUSE bytes rather than a live source registration, and validate persisted Factorybox target identity through sealed requests.",
+      "Carry the target's original cgroup descriptor into its private mount namespace; preserve the operation lock without duplicate Go file owners.",
+      "Keep original experiment paths and assertions unchanged; add the new behavior through an ordered source patch."
+    ],
+    "sources": {
+      "upstream/overlays/sysbox-runc/experiment_copy.go": "812aab6fc70538481cb7e1ce3c04a5eb293170f003e531eba5c77ae75244ada6",
+      "upstream/overlays/sysbox-runc/libcontainer/experiment_rootfs_linux.go": "af4be0d340f0a6bf10b46032856065dd65611ad475724c68de0906e2ddcb17e8",
+      "upstream/overlays/sysbox-runc/libcontainer/experiment_seccomp_linux.go": "9c4d6ab47384633cd17f8d6a9565c0ae9cf75d54ca6aa55f5a676dd7d5643661"
+    }
+  },
+  "internal/lifecycle/restore_linux.go": {
+    "changes": [
+      "Pass opaque saved Sysbox/FUSE bytes and persisted target identities through a sealed request to the pinned runtime.",
+      "Keep the exact runtime executable, operation lock, original cgroup identity and pinned CRIU checks around native restore."
+    ],
+    "sources": {
+      "upstream/overlays/sysbox-runc/experiment_copy.go": "812aab6fc70538481cb7e1ce3c04a5eb293170f003e531eba5c77ae75244ada6"
+    }
+  },
   "internal/sysboxcapture/filesystem_linux.go": {
     "changes": [
       "Port the proved GNU cp archive/reflink path for physical overlay backing directories and private Sysbox-managed volumes.",
       "Require the actual single-lower overlay layout, explicit manager root and saved ID-mapped Sysbox mount identities; reject unowned external binds.",
       "Capture both lower and upper independently rather than assuming the administrator-provided lower is already an immutable template.",
       "Add complete content, mode, UID/GID, mtime, link, device and xattr digests, foreign-mount rejection and independent-inode checks.",
-      "Hash hardlinked payloads once per inode inside each frozen-tree scan while retaining every path and link relationship."
+      "Hash hardlinked payloads once per inode inside each frozen-tree scan while retaining every path and link relationship.",
+      "Materialize a new complete filesystem from verified saved trees, with fresh writable inodes, no live source dependency and no replacement of existing destinations."
     ],
     "sources": {
       "tests/reference/driver/cmd/lab/criu_sysbox_copy.go": "7b7c0bcc68d90aad3899bacbb325f96b1d724f03fc6c829d51f0cd2c58b54d01",

@@ -76,6 +76,10 @@ func (b *boundedOutput) Write(data []byte) (int, error) {
 }
 
 func (e *Engine) command(ctx context.Context, lock *os.File, args ...string) ([]byte, error) {
+	return e.commandFiles(ctx, lock, nil, args...)
+}
+
+func (e *Engine) commandFiles(ctx context.Context, lock *os.File, files []*os.File, args ...string) ([]byte, error) {
 	if err := e.validateRoot(); err != nil {
 		return nil, err
 	}
@@ -90,7 +94,7 @@ func (e *Engine) command(ctx context.Context, lock *os.File, args ...string) ([]
 		append([]string{"--root", e.config.Root + "/runtime"}, args...)...)
 	// Execute the verified descriptor. Keep the operation lock in the Sysbox
 	// launcher if this controller exits before the launcher has completed.
-	command.ExtraFiles = []*os.File{binary, lock}
+	command.ExtraFiles = append([]*os.File{binary, lock}, files...)
 	command.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"HOME=/root", "LANG=C", "GOMAXPROCS=2"}
 	var stdout, stderr boundedOutput

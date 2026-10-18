@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
 
@@ -438,7 +439,86 @@ func TestRetainedCaptureNative(t *testing.T) {
 			t.Fatalf("source deletion removed captured filesystem state: %s: %v", path, err)
 		}
 	}
-	t.Logf("actual capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved RAM, virtual state, overlay files and a managed Docker-volume file after source mutation; worker kernel value unchanged; restore remains a separate gate",
+	t.Run("independent-filesystem-materialization", func(t *testing.T) {
+		leftPath := filepath.Dir(generation) + "/" + strings.Repeat("a", 32)
+		rightPath := filepath.Dir(generation) + "/" + strings.Repeat("b", 32)
+		left, err := sysboxcapture.MaterializeFilesystemSnapshot(ctx, generation, leftPath, recovered.Filesystem)
+		if err != nil {
+			t.Fatal("materialize first filesystem after original runtime deletion", err)
+		}
+		right, err := sysboxcapture.MaterializeFilesystemSnapshot(ctx, generation, rightPath, recovered.Filesystem)
+		if err != nil {
+			t.Fatal("materialize second independent filesystem", err)
+		}
+		if err := sysboxcapture.VerifyFilesystemSnapshot(ctx, rightPath, right); err != nil {
+			t.Fatal(err)
+		}
+		for _, tree := range left.Roots {
+			if tree.Saved != leftPath+"/filesystem/"+tree.Name {
+				t.Fatal("materialized filesystem names a shared saved root", tree.Saved)
+			}
+		}
+		marker := "/filesystem/upper/state/marker"
+		leftMarker, err := os.Stat(leftPath + marker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rightMarker, err := os.Stat(rightPath + marker)
+		if err != nil || os.SameFile(leftMarker, rightMarker) {
+			t.Fatal("materialized siblings share a writable inode", err)
+		}
+		leftLink, err := os.Stat(leftPath + marker + "-hardlink")
+		if err != nil || !os.SameFile(leftMarker, leftLink) {
+			t.Fatal("materialization broke an internal hardlink", err)
+		}
+		for path, value := range map[string]string{
+			marker: "left-private-file\n",
+			"/filesystem/volumes/docker/capture-marker": "left-private-volume\n",
+		} {
+			if err := os.WriteFile(leftPath+path, []byte(value), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := sysboxcapture.VerifyFilesystemSnapshot(ctx, leftPath, left); err == nil {
+			t.Fatal("materialized target mutation escaped its saved digest")
+		}
+		if err := sysboxcapture.VerifyFilesystemSnapshot(ctx, generation, recovered.Filesystem); err != nil {
+			t.Fatal("target mutation changed its parent checkpoint", err)
+		}
+		if err := sysboxcapture.VerifyFilesystemSnapshot(ctx, rightPath, right); err != nil {
+			t.Fatal("target mutation changed its sibling", err)
+		}
+		if _, err := sysboxcapture.MaterializeFilesystemSnapshot(ctx, generation, leftPath, recovered.Filesystem); err == nil {
+			t.Fatal("materialization replaced an existing target")
+		}
+		if _, err := sysboxcapture.MaterializeFilesystemSnapshot(ctx, generation, generation+"/nested", recovered.Filesystem); err == nil {
+			t.Fatal("materialization wrote inside its source checkpoint")
+		}
+		canceled, cancel := context.WithCancel(ctx)
+		cancel()
+		canceledPath := filepath.Dir(generation) + "/" + strings.Repeat("c", 32)
+		if _, err := sysboxcapture.MaterializeFilesystemSnapshot(canceled, generation, canceledPath, recovered.Filesystem); err == nil {
+			t.Fatal("materialization ignored cancellation")
+		}
+		if _, err := os.Lstat(canceledPath); !os.IsNotExist(err) {
+			t.Fatal("canceled materialization created a partial target", err)
+		}
+		t.Log("two complete filesystem siblings survive original-runtime deletion; target writes change neither checkpoint nor sibling; internal hardlinks and separate inodes verified")
+		t.Run("restore-without-original-and-fork-again", func(t *testing.T) {
+			restored := restoreMaterializedNative(t, engine, view.Record, generation, rightPath, "restored")
+			assertRestoredNative(t, engine, restored, before)
+			forkFromRestoredNative(t, engine, restored, before)
+			if err := sysboxcapture.VerifyFilesystemSnapshot(ctx, generation, recovered.Filesystem); err != nil {
+				t.Fatal("restored descendant changed the original checkpoint", err)
+			}
+			t.Log("restored private RAM, virtual state and Docker-volume file after original runtime deletion; recaptured restored source and independently restored/mutated its descendant")
+		})
+	})
+	afterHostPanic, err = os.ReadFile("/proc/sys/kernel/panic")
+	if err != nil || !bytes.Equal(afterHostPanic, hostPanic) {
+		t.Fatal("restored descendant's virtual-setting write changed the worker kernel", err)
+	}
+	t.Logf("actual capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved RAM, virtual state, overlay files and a managed Docker-volume file after source mutation; worker kernel value unchanged; independent restore and descendant checks passed; public fork/pause/resume remain separate gates",
 		view.Record.RuntimeID, view.Runtime.PID, len(files))
 	t.Logf("individual CLI observation: checkpoint=%s integrity-verified replay=%s; not a fork/resume or p95 benchmark", captureElapsed, replayElapsed)
 }

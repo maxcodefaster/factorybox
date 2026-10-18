@@ -152,8 +152,9 @@ complete filesystem copy/rejection cases, and the public checkpoint command. The
 an 8192-byte random RAM payload from a Go process inside
 Sysbox under a Factorybox identity. The same process advances its RAM state after thaw, while the
 captured page-file hashes stay unchanged. The combined capture now also includes the physical
-overlay backing layers and private managed volumes. It includes no independent fork, restore or
-pause qualification.
+overlay backing layers and private managed volumes. The extended native test also restores an
+independent process and recaptures/restores its descendant. The public fork/pause/resume API and
+the full developer workload remain unqualified.
 
 Filesystem capture admits the saved ID-mapped, uncloned Sysbox overlay with no executable hooks.
 It verifies the controller's overlay mount names the bundle's exact `lower`, `upper` and `work`
@@ -226,6 +227,35 @@ oversized/symlinked record rejection, incomplete-capture refusal, unresolved-gua
 publication recovery and independence after source deletion. One small-fixture observation measured
 0.732 s for the complete CLI checkpoint and 0.062 s for integrity-verified replay. These include
 integrity work and are individual observations, not fork/resume measurements or p95.
+
+The filesystem adapter also materializes complete independent copies from a saved generation.
+It verifies the parent, requires a new destination and compares every copied tree against its
+saved digest. The native test creates two siblings after deleting the original runtime, preserves
+internal hardlinks, verifies separate writable inodes and changes one sibling's overlay file and
+Docker-volume file. The parent and other sibling retain their complete digests. Existing targets,
+nested destinations and canceled requests are rejected.
+
+The internal restore adapter now uses a sealed request and persisted target creation intent.
+It creates fresh manager/FUSE registrations from saved virtual-state bytes, copies private
+manager volumes and restores through a separate mount namespace. It has no dependency on the
+original runtime or its live registration. The target gets its own immutable runtime ID,
+ownership annotation, cgroup and kernel namespace identities. Vendor config types stay inside
+the pinned Sysbox executable.
+
+The target's original cgroup descriptor crosses the mount-namespace boundary. The child verifies
+its saved original mount identity and checks that the new path still identifies that same inode.
+The inherited operation lock is checked without creating duplicate Go file owners. A regression
+test forces garbage collection between checks; the original duplicate-wrapper implementation
+closed the caller's descriptor and failed this test.
+
+The native test deletes the original runtime, restores its exact 8192-byte private RAM payload and
+counter, virtual panic value, overlay marker and Docker-volume file. It then checkpoints that
+restored process, restores an independent descendant and mutates its RAM, files, private volume
+and virtual panic value. Its source's RAM/files/virtual values, the worker kernel value and the
+complete saved filesystem digests remain unchanged. Exact deletion and overlay
+cleanup pass with at most two live sandboxes. This is an internal native restore proof; a public
+idempotent fork operation, interrupted-restore recovery, pause/resume and full-workload performance
+distributions remain required.
 
 ## Pinned sources
 
@@ -429,7 +459,8 @@ separators, missing required fields and incomplete reads. Original parser tests 
 regressions pass. After adding virtual-state snapshots, all 18 Go module suites passed together
 in one native run: 393 top-level tests and 315 subtests. This includes the frozen FUSE export,
 independent import after source-registration removal, exact wire encoding and path-scope tests.
-The Runc module passed 274 tests and 227 subtests with 14 explicit upstream skips. The manager's
+After the new restore adapter, the complete Runc module passed 277 top-level tests and 227 subtests
+with 14 explicit upstream skips. The unchanged modules retain their preceding combined pass. The manager's
 four shiftfs tests explicitly skip on this worker, which has no shiftfs module. The
 umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unqualified.
 
@@ -437,7 +468,7 @@ umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unquali
 
 Factorybox has no production-qualified release yet. Required gates include:
 
-- Extract checkpoint, complete independent fork, RAM-releasing pause and resume into the public
+- Extract complete independent fork, RAM-releasing pause and resume into the public
   lifecycle API, with their source-preservation and recovery behavior.
 - Pinned upstream Sysbox unit/core/integration suites and CRIU core checkpoint/restore suites.
   Failed or unrun required suites block qualification. Preserve upstream assertions.

@@ -26,7 +26,9 @@ RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
     go test -mod=readonly ./libsysbox/syscont \
       -run '^(TestCfgSeccomp|TestExperimentSeccompBlacklist)' -count=1 \
     && go test -mod=readonly -tags 'seccomp apparmor idmapped_mnt netgo osusergo' . \
-      -run '^(TestExperiment(CopyPipeline|Lineage)|TestFactoryboxFsSnapshotScope)' -count=1
+      -run '^(TestExperiment(CopyPipeline|Lineage)|TestFactorybox(FsSnapshotScope|Restore))' -count=1 \
+    && go test -mod=readonly -tags 'seccomp apparmor idmapped_mnt netgo osusergo' ./libcontainer \
+      -run '^TestFactoryboxRestoreCgroup$' -count=1
 RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
     go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \

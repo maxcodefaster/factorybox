@@ -182,6 +182,12 @@ func openDirectory(path string) (*os.File, error) {
 }
 
 func captureFilesystem(roots []filesystemRoot, destination string) (*FilesystemSnapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	return copyFilesystem(ctx, roots, destination)
+}
+
+func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination string) (*FilesystemSnapshot, error) {
 	if err := os.Mkdir(destination, 0700); err != nil {
 		return nil, err
 	}
@@ -189,8 +195,6 @@ func captureFilesystem(roots []filesystemRoot, destination string) (*FilesystemS
 		return nil, err
 	}
 	result := &FilesystemSnapshot{Version: 1}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 	for _, root := range roots {
 		start := time.Now()
 		source, err := openDirectory(root.Source)
@@ -218,6 +222,58 @@ func captureFilesystem(roots []filesystemRoot, destination string) (*FilesystemS
 	return result, nil
 }
 
+// MaterializeFilesystemSnapshot makes another complete, inode-independent copy
+// of a saved generation. The destination must be new; failed copies remain for
+// reconciliation and are never silently replaced.
+func MaterializeFilesystemSnapshot(ctx context.Context, generation, destination string, snapshot *FilesystemSnapshot) (*FilesystemSnapshot, error) {
+	if !cleanAbsolute(generation) || !cleanAbsolute(destination) ||
+		destination == generation || strings.HasPrefix(destination, generation+"/") ||
+		strings.HasPrefix(generation, destination+"/") {
+		return nil, fmt.Errorf("filesystem materialization requires separate canonical generation and destination paths")
+	}
+	if err := VerifyFilesystemSnapshot(ctx, generation, snapshot); err != nil {
+		return nil, err
+	}
+	parentFD, err := unix.Openat2(unix.AT_FDCWD, filepath.Dir(destination), &unix.OpenHow{
+		Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC | unix.O_NOATIME,
+		Resolve: unix.RESOLVE_NO_SYMLINKS})
+	if err != nil {
+		return nil, err
+	}
+	parent := os.NewFile(uintptr(parentFD), "filesystem materialization parent")
+	defer parent.Close()
+	if err := unix.Mkdirat(parentFD, filepath.Base(destination), 0700); err != nil {
+		return nil, err
+	}
+	if err := parent.Sync(); err != nil {
+		return nil, err
+	}
+	roots := make([]filesystemRoot, 0, len(snapshot.Roots))
+	for _, tree := range snapshot.Roots {
+		roots = append(roots, filesystemRoot{Name: tree.Name, Source: tree.Saved})
+	}
+	result, err := copyFilesystem(ctx, roots, destination+"/filesystem")
+	if err != nil {
+		return nil, err
+	}
+	for index, tree := range result.Roots {
+		expected := snapshot.Roots[index]
+		if !sameFilesystemTree(tree, expected) {
+			return nil, fmt.Errorf("materialized filesystem differs from its saved checkpoint: %s", tree.Name)
+		}
+	}
+	directory, err := openDirectory(destination)
+	if err != nil {
+		return nil, err
+	}
+	return result, errors.Join(directory.Sync(), directory.Close())
+}
+
+func sameFilesystemTree(actual, expected FilesystemTree) bool {
+	return actual.SHA256 == expected.SHA256 && actual.Entries == expected.Entries &&
+		actual.FileBytes == expected.FileBytes && actual.HashedBytes == expected.HashedBytes
+}
+
 // VerifyFilesystemSnapshot reads every saved tree again and checks the exact
 // content/metadata digest. Saved paths must belong to this generation.
 func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *FilesystemSnapshot) error {
@@ -243,8 +299,7 @@ func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *
 		if err := errors.Join(readErr, closeErr); err != nil {
 			return err
 		}
-		if actual.SHA256 != tree.SHA256 || actual.Entries != tree.Entries ||
-			actual.FileBytes != tree.FileBytes || actual.HashedBytes != tree.HashedBytes {
+		if !sameFilesystemTree(actual, tree) {
 			return fmt.Errorf("saved filesystem tree changed: %s", tree.Name)
 		}
 	}
@@ -279,8 +334,7 @@ func cloneFilesystemTree(ctx context.Context, source *os.File, destination strin
 	if err != nil {
 		return expected, err
 	}
-	if actual.SHA256 != expected.SHA256 || actual.Entries != expected.Entries ||
-		actual.FileBytes != expected.FileBytes || actual.HashedBytes != expected.HashedBytes {
+	if !sameFilesystemTree(actual, expected) {
 		return expected, fmt.Errorf("complete filesystem copy differs from its frozen source")
 	}
 	current, err := os.Lstat(destination)

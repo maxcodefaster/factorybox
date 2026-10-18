@@ -86,7 +86,9 @@ def main():
                   "Actual retained-source CRIU capture, virtual FUSE state and independent overlay/"
                   "managed-volume backing with complete content/metadata comparison. "
                   "Public checkpoint, immutable replay and completed-capture publication recovery. "
-                  "No fork, restore or incomplete-CRIU recovery qualification."
+                  "Internal restore after original deletion, restored-source capture and independent "
+                  "descendant restore/mutation. Public fork/pause/resume and incomplete-CRIU "
+                  "recovery remain unqualified."
                   if options.suite == "capture" else
                   "Application-independent start/state/delete, saved-outcome recovery, rejection "
                   "before destructive actions and the actual CLI source guard on Sysbox. "

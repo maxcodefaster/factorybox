@@ -1,0 +1,709 @@
+--- /dev/null
++++ b/factorybox_restore.go
+@@ -0,0 +1,473 @@
++//go:build linux
++
++package main
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"regexp"
++	"strings"
++	"syscall"
++
++	criu "github.com/checkpoint-restore/go-criu/v4/rpc"
++	"github.com/nestybox/sysbox-ipc/sysboxFsGrpc"
++	ipc "github.com/nestybox/sysbox-ipc/sysboxMgrLib"
++	sh "github.com/nestybox/sysbox-libs/idShiftUtils"
++	"github.com/nestybox/sysbox-runc/libcontainer/factoryboxrestore"
++	"github.com/opencontainers/runc/libcontainer"
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/utils"
++	"github.com/opencontainers/runc/libsysbox/sysbox"
++	specs "github.com/opencontainers/runtime-spec/specs-go"
++	"github.com/urfave/cli"
++	"golang.org/x/sys/unix"
++)
++
++type factoryboxRestoreRequest struct {
++	Version      int    `json:"version"`
++	SandboxID    string `json:"sandbox_id"`
++	Owner        string `json:"owner"`
++	SourceID     string `json:"source_id"`
++	SourceRootfs string `json:"source_rootfs"`
++	Root         string `json:"root"`
++	Filesystem   string `json:"filesystem"`
++	Images       string `json:"images"`
++	ManagerRoot  string `json:"manager_root"`
++	ConfigSHA256 string `json:"config_sha256"`
++	State        []byte `json:"state"`
++	FsState      []byte `json:"fs_state"`
++}
++
++const factoryboxRestoreSeals = unix.F_SEAL_WRITE | unix.F_SEAL_GROW | unix.F_SEAL_SHRINK | unix.F_SEAL_SEAL
++
++func factoryboxRestoreRead(fd int, value any) error {
++	file := os.NewFile(uintptr(fd), "sealed Factorybox restore request")
++	defer file.Close()
++	seals, err := unix.FcntlInt(file.Fd(), unix.F_GET_SEALS, 0)
++	if err != nil || seals&factoryboxRestoreSeals != factoryboxRestoreSeals {
++		return fmt.Errorf("restore request is not sealed: %v", err)
++	}
++	data, err := io.ReadAll(io.LimitReader(file, (2<<20)+1))
++	if err != nil {
++		return err
++	}
++	if len(data) > 2<<20 {
++		return fmt.Errorf("restore request exceeds bound")
++	}
++	decoder := json.NewDecoder(bytes.NewReader(data))
++	decoder.DisallowUnknownFields()
++	if err := decoder.Decode(value); err != nil {
++		return err
++	}
++	if err := decoder.Decode(new(any)); err != io.EOF {
++		return fmt.Errorf("restore request has trailing data")
++	}
++	return nil
++}
++
++func factoryboxRestorePath(path string) bool {
++	return filepath.IsAbs(path) && filepath.Clean(path) == path && !strings.ContainsAny(path, "\n,:\\")
++}
++
++func factoryboxRestoreIdentity(request factoryboxRestoreRequest, runtimeRoot, target string, originalGroup *os.File) error {
++	nonce := regexp.MustCompile(`^[0-9a-f]{32}$`)
++	if os.Geteuid() != 0 || request.Version != 1 || !nonce.MatchString(request.Owner) ||
++		target != "fbx-"+request.Owner || !regexp.MustCompile(`^fbx-[0-9a-f]{32}$`).MatchString(request.SourceID) ||
++		target == request.SourceID || !regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`).MatchString(request.SandboxID) ||
++		!factoryboxRestorePath(request.Root) || runtimeRoot != request.Root+"/runtime" ||
++		!factoryboxRestorePath(request.Filesystem) || !factoryboxRestorePath(request.SourceRootfs) ||
++		!factoryboxRestorePath(request.ManagerRoot) || !factoryboxRestorePath(request.Images) ||
++		filepath.Dir(request.Filesystem) != filepath.Dir(request.Images) || filepath.Base(request.Filesystem) != "filesystem" ||
++		filepath.Base(request.Images) != "images" || len(request.State) == 0 || len(request.FsState) == 0 || len(request.FsState) > 1<<20 {
++		return fmt.Errorf("restore request identity or layout differs")
++	}
++	bundle := request.Root + "/objects/" + request.SandboxID
++	root, err := os.Open(request.Root)
++	if err != nil {
++		return err
++	}
++	defer root.Close()
++	fd, err := unix.Openat2(int(root.Fd()), "objects/"+request.SandboxID+"/record.json", &unix.OpenHow{
++		Flags: unix.O_RDONLY | unix.O_CLOEXEC, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS})
++	if err != nil {
++		return err
++	}
++	file := os.NewFile(uintptr(fd), "original restore record")
++	data, readErr := io.ReadAll(io.LimitReader(file, (1<<20)+1))
++	closeErr := file.Close()
++	if err := errors.Join(readErr, closeErr); err != nil {
++		return err
++	}
++	if len(data) > 1<<20 {
++		return fmt.Errorf("restore record exceeds bound")
++	}
++	var record struct {
++		Version      int    `json:"version"`
++		ID           string `json:"id"`
++		Owner        string `json:"owner"`
++		RuntimeID    string `json:"runtime_id"`
++		ConfigSHA256 string `json:"config_sha256"`
++		Rootfs       string `json:"rootfs"`
++		InputBundle  string `json:"input_bundle"`
++		Phase        string `json:"phase"`
++		BootID       string `json:"boot_id"`
++		Cgroup       *struct {
++			Device  uint64 `json:"device"`
++			Inode   uint64 `json:"inode"`
++			MountID uint64 `json:"mount_id"`
++		} `json:"cgroup"`
++		Start struct {
++			Attempted bool `json:"attempted"`
++		} `json:"start"`
++	}
++	if err := json.Unmarshal(data, &record); err != nil {
++		return err
++	}
++	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
++	if err != nil {
++		return err
++	}
++	if record.Version != 1 || record.ID != request.SandboxID || record.Owner != request.Owner || record.RuntimeID != target ||
++		record.Phase != "starting" || !record.Start.Attempted || record.Rootfs != request.Filesystem+"/rootfs" ||
++		record.InputBundle != request.Filesystem || record.ConfigSHA256 != request.ConfigSHA256 ||
++		strings.TrimSpace(string(boot)) != record.BootID || record.Cgroup == nil {
++		return fmt.Errorf("restore differs from its persisted creation intent")
++	}
++	config, err := os.ReadFile(bundle + "/config.json")
++	if err != nil {
++		return err
++	}
++	hash := sha256.Sum256(config)
++	if hex.EncodeToString(hash[:]) != request.ConfigSHA256 {
++		return fmt.Errorf("restore OCI configuration changed")
++	}
++	group, err := unix.Open("/sys/fs/cgroup/"+target, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
++	if err != nil {
++		return err
++	}
++	defer unix.Close(group)
++	identityFD := group
++	if originalGroup != nil {
++		identityFD = int(originalGroup.Fd())
++	}
++	var stat unix.Stat_t
++	var extended unix.Statx_t
++	var filesystem unix.Statfs_t
++	if err := unix.Fstat(identityFD, &stat); err != nil {
++		return err
++	}
++	if err := unix.Fstatfs(identityFD, &filesystem); err != nil {
++		return err
++	}
++	if err := unix.Statx(identityFD, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &extended); err != nil {
++		return err
++	}
++	if filesystem.Type != unix.CGROUP2_SUPER_MAGIC || extended.Mask&unix.STATX_MNT_ID == 0 ||
++		uint64(stat.Dev) != record.Cgroup.Device || stat.Ino != record.Cgroup.Inode || extended.Mnt_id != record.Cgroup.MountID {
++		return fmt.Errorf("restore cgroup identity changed: actual=%d/%d/mount%d saved=%d/%d/mount%d",
++			uint64(stat.Dev), stat.Ino, extended.Mnt_id, record.Cgroup.Device, record.Cgroup.Inode, record.Cgroup.MountID)
++	}
++	// CLONE_NEWNS assigns new mount IDs. Keep the original cgroup descriptor
++	// across that boundary and also require the new path to name its inode.
++	var currentGroup unix.Stat_t
++	if err := unix.Fstat(group, &currentGroup); err != nil {
++		return err
++	}
++	if currentGroup.Dev != stat.Dev || currentGroup.Ino != stat.Ino {
++		return fmt.Errorf("restore namespace path no longer identifies its original cgroup")
++	}
++	return factoryboxRestoreLock(request.Root, 4)
++}
++
++func factoryboxRestoreLock(root string, fd int) error {
++	var saved, current unix.Stat_t
++	if err := unix.Fstat(fd, &saved); err != nil {
++		return err
++	}
++	if err := unix.Lstat(root+"/.lock", &current); err != nil {
++		return err
++	}
++	if saved.Dev != current.Dev || saved.Ino != current.Ino || saved.Mode&unix.S_IFMT != unix.S_IFREG ||
++		saved.Mode&0777 != 0600 || saved.Uid != 0 || saved.Nlink != 1 {
++		return fmt.Errorf("restore operation lock differs")
++	}
++	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
++		return err
++	}
++	return nil
++}
++
++func factoryboxRestoreConfig(request factoryboxRestoreRequest, target string) (configs.Config, error) {
++	var state struct {
++		Config configs.Config `json:"config"`
++		Sysbox *sysbox.Sysbox `json:"sysbox"`
++	}
++	if err := json.Unmarshal(request.State, &state); err != nil {
++		return configs.Config{}, err
++	}
++	config := state.Config
++	_, annotations := utils.Annotations(config.Labels)
++	sourceOwner := strings.TrimPrefix(request.SourceID, "fbx-")
++	hooks := 0
++	for _, entries := range config.Hooks {
++		hooks += len(entries)
++	}
++	if state.Sysbox == nil || state.Sysbox.Id != request.SourceID || state.Sysbox.Fs == nil ||
++		state.Sysbox.Fs.Id != request.SourceID || !state.Sysbox.Fs.Enabled() || !state.Sysbox.Fs.Reg ||
++		config.Rootfs != request.SourceRootfs || config.Cgroups == nil || config.Cgroups.Resources == nil || config.Cgroups.Path != "/"+request.SourceID ||
++		config.RootfsUidShiftType != sh.IDMappedMount || config.RootfsCloned || hooks != 0 || len(config.ShiftfsMounts) != 0 ||
++		annotations["io.factorybox.owner"] != sourceOwner || len(config.UidMappings) != 1 || len(config.GidMappings) != 1 ||
++		config.UidMappings[0].ContainerID != 0 || config.GidMappings[0].ContainerID != 0 ||
++		config.UidMappings[0].HostID <= 0 || config.GidMappings[0].HostID <= 0 || config.Cgroups.Unified["cgroup.freeze"] != "" {
++		return config, fmt.Errorf("unsupported saved restore configuration")
++	}
++	for _, namespace := range config.Namespaces {
++		if namespace.Path != "" {
++			return config, fmt.Errorf("restore cannot join an external namespace")
++		}
++	}
++	filtered := make([]string, 0, len(config.Labels)+3)
++	for _, label := range config.Labels {
++		if strings.HasPrefix(label, "bundle=") || strings.HasPrefix(label, "io.factorybox.owner=") ||
++			strings.HasPrefix(label, "org.criu.config=") {
++			continue
++		}
++		filtered = append(filtered, label)
++	}
++	config.Labels = append(filtered, "bundle="+request.Root+"/objects/"+request.SandboxID, "io.factorybox.owner="+request.Owner,
++		"org.criu.config="+filepath.Dir(request.Images)+"/criu.conf")
++	config.Rootfs = request.Filesystem + "/rootfs"
++	config.Cgroups.Path = "/" + target
++	config.Cgroups.Freezer = configs.Thawed
++	return config, nil
++}
++
++var factoryboxRestoreCommand = cli.Command{
++	Name:  "factorybox-restore",
++	Usage: "restore one persisted Factorybox creation from a sealed checkpoint request",
++	Action: func(context *cli.Context) (resultErr error) {
++		if err := checkArgs(context, 1, exactArgs); err != nil {
++			return err
++		}
++		var request factoryboxRestoreRequest
++		if err := factoryboxRestoreRead(5, &request); err != nil {
++			return err
++		}
++		target := context.Args().First()
++		lock := os.NewFile(4, "inherited Factorybox operation lock")
++		defer lock.Close()
++		if err := factoryboxRestoreIdentity(request, context.GlobalString("root"), target, nil); err != nil {
++			return err
++		}
++		if _, err := os.Lstat(context.GlobalString("root") + "/" + target); !os.IsNotExist(err) {
++			return fmt.Errorf("restore runtime already exists or is inaccessible: %v", err)
++		}
++		config, err := factoryboxRestoreConfig(request, target)
++		if err != nil {
++			return err
++		}
++		sbox := sysbox.NewSysbox(target, true, true)
++		sbox.RootfsUidShiftType, sbox.BindMntUidShiftType = config.RootfsUidShiftType, config.BindMntUidShiftType
++		sbox.OrigRootfs = config.Rootfs
++		uid, gid := config.UidMappings[0], config.GidMappings[0]
++		spec := &specs.Spec{Root: &specs.Root{Path: config.Rootfs}, Linux: &specs.Linux{
++			UIDMappings: []specs.LinuxIDMapping{{ContainerID: 0, HostID: uint32(uid.HostID), Size: uint32(uid.Size)}},
++			GIDMappings: []specs.LinuxIDMapping{{ContainerID: 0, HostID: uint32(gid.HostID), Size: uint32(gid.Size)}},
++		}}
++		if err := sbox.Mgr.Register(spec); err != nil {
++			return err
++		}
++		complete := false
++		defer func() {
++			if !complete {
++				resultErr = errors.Join(resultErr, sbox.Fs.Unregister(), sbox.Mgr.Unregister())
++			}
++		}()
++		if err := sbox.Fs.GetConfig(); err != nil {
++			return err
++		}
++		if err := sysboxFsGrpc.SendContainerPreRegistration(&sysboxFsGrpc.ContainerData{Id: target, ForkState: request.FsState}); err != nil {
++			return err
++		}
++		sbox.Fs.PreReg = true
++		if err := factoryboxRestoreMounts(request, &config, sbox); err != nil {
++			return err
++		}
++		groupFD, err := unix.Open("/sys/fs/cgroup/"+target, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
++		if err != nil {
++			return err
++		}
++		group := os.NewFile(uintptr(groupFD), "original restore cgroup")
++		defer group.Close()
++		if err := factoryboxRestoreIdentity(request, context.GlobalString("root"), target, group); err != nil {
++			return err
++		}
++		prepared := factoryboxPreparedRestore{Request: request, Config: config, Sysbox: sbox}
++		fd, err := unix.MemfdCreate("factorybox-prepared-restore", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
++		if err != nil {
++			return err
++		}
++		file := os.NewFile(uintptr(fd), "factorybox prepared restore")
++		defer file.Close()
++		if err := json.NewEncoder(file).Encode(prepared); err != nil {
++			return err
++		}
++		if _, err := file.Seek(0, 0); err != nil {
++			return err
++		}
++		if _, err := unix.FcntlInt(file.Fd(), unix.F_ADD_SEALS, factoryboxRestoreSeals); err != nil {
++			return err
++		}
++		command := exec.Command("/proc/self/exe", "--root", context.GlobalString("root"), "--criu", context.GlobalString("criu"), "factorybox-restore-prepared", target)
++		command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNS}
++		command.ExtraFiles = []*os.File{file, lock, group}
++		command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
++		if err := command.Run(); err != nil {
++			return err
++		}
++		complete = true
++		return nil
++	},
++}
++
++type factoryboxPreparedRestore struct {
++	Request factoryboxRestoreRequest
++	Config  configs.Config
++	Sysbox  *sysbox.Sysbox
++}
++
++var factoryboxPreparedRestoreCommand = cli.Command{
++	Name:   "factorybox-restore-prepared",
++	Hidden: true,
++	Action: func(context *cli.Context) (resultErr error) {
++		if err := checkArgs(context, 1, exactArgs); err != nil {
++			return err
++		}
++		var prepared factoryboxPreparedRestore
++		if err := factoryboxRestoreRead(3, &prepared); err != nil {
++			return err
++		}
++		request, config, sbox := prepared.Request, prepared.Config, prepared.Sysbox
++		target := context.Args().First()
++		group := os.NewFile(5, "original restore cgroup")
++		defer group.Close()
++		if err := factoryboxRestoreIdentity(request, context.GlobalString("root"), target, group); err != nil {
++			return err
++		}
++		if sbox == nil || sbox.Id != target || sbox.Mgr == nil || sbox.Mgr.Id != target || !sbox.Mgr.Enabled() ||
++			sbox.Fs == nil || sbox.Fs.Id != target || !sbox.Fs.Enabled() || !sbox.Fs.PreReg || sbox.Fs.Reg ||
++			config.Rootfs != request.Filesystem+"/rootfs" || config.Cgroups == nil || config.Cgroups.Path != "/"+target {
++			return fmt.Errorf("prepared restore identity differs")
++		}
++		if err := unix.Mount("", "/", "", unix.MS_PRIVATE|unix.MS_REC, ""); err != nil {
++			return err
++		}
++		if err := factoryboxrestore.FactoryboxRoot(config, request.Filesystem, request.ManagerRoot, request.Images); err != nil {
++			return err
++		}
++		factory, err := loadFactory(context, sbox)
++		if err != nil {
++			return err
++		}
++		container, err := factory.Create(target, &config)
++		if err != nil {
++			return err
++		}
++		complete := false
++		defer func() {
++			if !complete {
++				resultErr = errors.Join(resultErr, container.Destroy())
++			}
++		}()
++		options := &libcontainer.CriuOpts{SysboxSeccompRestore: true, ImagesDirectory: request.Images, WorkDirectory: request.Images,
++			ShellJob: true, FileLocks: true, EmptyNs: 0, TcpEstablished: true, ManageCgroupsMode: criu.CriuCgMode_FULL}
++		process := &libcontainer.Process{Init: true, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}
++		if err := container.Restore(process, options); err != nil {
++			return err
++		}
++		state, err := container.State()
++		if err != nil {
++			return err
++		}
++		if err := json.NewEncoder(os.Stdout).Encode(state); err != nil {
++			return err
++		}
++		complete = true
++		return nil
++	},
++}
++
++var factoryboxRestoreVolumes = map[string]struct {
++	Kind ipc.MntKind
++	Name string
++}{
++	"/var/lib/docker":       {ipc.MntVarLibDocker, "docker"},
++	"/var/lib/kubelet":      {ipc.MntVarLibKubelet, "kubelet"},
++	"/var/lib/k0s":          {ipc.MntVarLibK0s, "k0s"},
++	"/var/lib/rancher/k3s":  {ipc.MntVarLibRancherK3s, "rancher-k3s"},
++	"/var/lib/rancher/rke2": {ipc.MntVarLibRancherRke2, "rancher-rke2"},
++	"/var/lib/buildkit":     {ipc.MntVarLibBuildkit, "buildkit"},
++	"/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs": {ipc.MntVarLibContainerdOvfs, "containerd"},
++}
++
++func factoryboxRestoreMounts(request factoryboxRestoreRequest, config *configs.Config, sbox *sysbox.Sysbox) error {
++	var reqs []ipc.MountReqInfo
++	seen := map[string]bool{}
++	for _, mount := range config.Mounts {
++		if mount.Device != "bind" {
++			continue
++		}
++		kind, ok := factoryboxRestoreVolumes[mount.Destination]
++		if !ok {
++			continue
++		}
++		if !mount.IDMappedMount || mount.Source != request.ManagerRoot+"/"+kind.Name+"/"+request.SourceID || seen[kind.Name] {
++			return fmt.Errorf("restore manager mount is outside its captured source")
++		}
++		seen[kind.Name] = true
++		reqs = append(reqs, ipc.MountReqInfo{Kind: kind.Kind, Dest: mount.Destination})
++	}
++	volumes, err := sbox.Mgr.ReqMounts(config.RootfsUidShiftType, reqs)
++	if err != nil {
++		return err
++	}
++	byDestination := map[string]string{}
++	for _, volume := range volumes {
++		byDestination[volume.Destination] = volume.Source
++	}
++	for _, mount := range config.Mounts {
++		if mount.Device != "bind" {
++			continue
++		}
++		if kind, ok := factoryboxRestoreVolumes[mount.Destination]; ok {
++			target := request.ManagerRoot + "/" + kind.Name + "/" + sbox.Id
++			if byDestination[mount.Destination] != target {
++				return fmt.Errorf("manager restore volume differs")
++			}
++			source := request.Filesystem + "/volumes/" + kind.Name
++			// Both paths belong to this new target. The checkpoint was copied
++			// independently before creation intent reached this backend.
++			output, err := exec.Command("cp", "-a", "--reflink=auto", "--", source+"/.", target).CombinedOutput()
++			if err != nil {
++				return fmt.Errorf("copy restored private volume: %w: %.4096s", err, output)
++			}
++			mount.Source = target
++			continue
++		}
++		prefix := sbox.Fs.Mountpoint + "/" + request.SourceID + "/"
++		if strings.HasPrefix(mount.Source, prefix) {
++			mount.Source = sbox.Fs.Mountpoint + "/" + sbox.Id + "/" + strings.TrimPrefix(mount.Source, prefix)
++		} else if mount.Source != "/dev/null" {
++			return fmt.Errorf("restore has an uncaptured external bind")
++		}
++	}
++	return nil
++}
+--- /dev/null
++++ b/factorybox_restore_test.go
+@@ -0,0 +1,81 @@
++//go:build linux
++
++package main
++
++import (
++	"encoding/json"
++	"os"
++	"runtime"
++	"strings"
++	"testing"
++
++	sh "github.com/nestybox/sysbox-libs/idShiftUtils"
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/utils"
++	"github.com/opencontainers/runc/libsysbox/sysbox"
++)
++
++func TestFactoryboxRestoreLockPreservesDescriptor(t *testing.T) {
++	root := t.TempDir()
++	file, err := os.OpenFile(root+"/.lock", os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer file.Close()
++	for iteration := 0; iteration < 4; iteration++ {
++		if err := factoryboxRestoreLock(root, int(file.Fd())); err != nil {
++			t.Fatal(err)
++		}
++		runtime.GC()
++	}
++	if _, err := file.Stat(); err != nil {
++		t.Fatal("lock validation closed its caller's descriptor", err)
++	}
++}
++
++func TestFactoryboxRestoreConfig(t *testing.T) {
++	source := "fbx-" + strings.Repeat("a", 32)
++	owner := strings.Repeat("b", 32)
++	request := factoryboxRestoreRequest{SourceID: source, SourceRootfs: "/original/rootfs",
++		Owner: owner, Root: "/owned/controller", SandboxID: "forked", Filesystem: "/owned/fork/filesystem", Images: "/owned/fork/images"}
++	sbox := sysbox.NewSysbox(source, true, true)
++	sbox.Fs.Reg = true
++	config := configs.Config{Rootfs: request.SourceRootfs, RootfsUidShiftType: sh.IDMappedMount,
++		Cgroups:     &configs.Cgroup{Path: "/" + source, Resources: &configs.Resources{Freezer: configs.Frozen}},
++		UidMappings: []configs.IDMap{{ContainerID: 0, HostID: 100000, Size: 65536}},
++		GidMappings: []configs.IDMap{{ContainerID: 0, HostID: 100000, Size: 65536}},
++		Labels: []string{"bundle=/original/bundle", "io.factorybox.owner=" + strings.Repeat("a", 32),
++			"other=preserved", "org.criu.config=/original/criu.conf"},
++	}
++	encode := func(config configs.Config) {
++		t.Helper()
++		data, err := json.Marshal(map[string]any{"config": config, "sysbox": sbox})
++		if err != nil {
++			t.Fatal(err)
++		}
++		request.State = data
++	}
++	encode(config)
++	result, err := factoryboxRestoreConfig(request, "fbx-"+owner)
++	if err != nil {
++		t.Fatal(err)
++	}
++	bundle, annotations := utils.Annotations(result.Labels)
++	if result.Rootfs != request.Filesystem+"/rootfs" || result.Cgroups.Path != "/fbx-"+owner ||
++		result.Cgroups.Freezer != configs.Thawed || bundle != request.Root+"/objects/forked" ||
++		annotations["io.factorybox.owner"] != owner || annotations["other"] != "preserved" ||
++		annotations["org.criu.config"] != "/owned/fork/criu.conf" {
++		t.Fatal("restore did not replace target identities while preserving other labels")
++	}
++	config.Rootfs = "/unrelated/rootfs"
++	encode(config)
++	if _, err := factoryboxRestoreConfig(request, "fbx-"+owner); err == nil {
++		t.Fatal("foreign source root accepted")
++	}
++	config.Rootfs = request.SourceRootfs
++	config.Namespaces = append(config.Namespaces, configs.Namespace{Type: configs.NEWNET, Path: "/external/netns"})
++	encode(config)
++	if _, err := factoryboxRestoreConfig(request, "fbx-"+owner); err == nil {
++		t.Fatal("external namespace accepted")
++	}
++}
+--- /dev/null
++++ b/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go
+@@ -0,0 +1,75 @@
++//go:build linux
++
++package factoryboxrestore
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++	"regexp"
++	"strings"
++
++	sh "github.com/nestybox/sysbox-libs/idShiftUtils"
++	"github.com/nestybox/sysbox-runc/libcontainer/internal/userns"
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"github.com/opencontainers/runc/libcontainer/utils"
++	"golang.org/x/sys/unix"
++)
++
++func factoryboxRestoreCgroup(id string, labels []string, root string) bool {
++	_, annotations := utils.Annotations(labels)
++	owner := annotations["io.factorybox.owner"]
++	return regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(owner) && id == "fbx-"+owner && root == "/"+id
++}
++
++// FactoryboxRoot maps the private copy of an admitted saved overlay.
++// The caller creates a new mount namespace after FUSE pre-registration.
++func FactoryboxRoot(config configs.Config, bundle, manager, images string) error {
++	if config.Cgroups == nil || !factoryboxRestoreCgroup(strings.TrimPrefix(config.Cgroups.Path, "/"), config.Labels, config.Cgroups.Path) ||
++		config.Rootfs != bundle+"/rootfs" || config.RootfsUidShiftType != sh.IDMappedMount ||
++		filepath.Clean(bundle) != bundle || !filepath.IsAbs(bundle) ||
++		filepath.Dir(images) != filepath.Dir(bundle) || filepath.Base(images) != "images" ||
++		len(config.UidMappings) != 1 || len(config.GidMappings) != 1 {
++		return fmt.Errorf("restore overlay is outside its persisted Factorybox request")
++	}
++	current, err := os.Readlink("/proc/self/ns/mnt")
++	if err != nil {
++		return err
++	}
++	outer, err := os.Readlink("/proc/1/ns/mnt")
++	if err != nil || current == outer {
++		return fmt.Errorf("restore requires a private mount namespace: %v", err)
++	}
++	handles := &userns.Handles{}
++	defer handles.Release()
++	mapping, err := handles.Get(userns.Mapping{UIDMappings: config.UidMappings, GIDMappings: config.GidMappings})
++	if err != nil {
++		return err
++	}
++	defer mapping.Close()
++	if err := experimentIDMap(mapping, bundle, "lower"); err != nil {
++		return fmt.Errorf("map restored lower layer: %w", err)
++	}
++	for _, mount := range config.Mounts {
++		if !mount.IDMappedMount {
++			continue
++		}
++		relative, err := filepath.Rel(manager, mount.Source)
++		parts := strings.Split(relative, string(filepath.Separator))
++		if err != nil || len(parts) != 2 || parts[1] != strings.TrimPrefix(config.Cgroups.Path, "/") ||
++			filepath.Clean(mount.Source) != mount.Source {
++			return fmt.Errorf("restored ID-mapped bind is outside its private manager volumes")
++		}
++		if err := experimentIDMap(mapping, manager, relative); err != nil {
++			return fmt.Errorf("map restored manager volume: %w", err)
++		}
++	}
++	if err := unix.Unmount(config.Rootfs, 0); err != nil {
++		return err
++	}
++	work := bundle + "/restore-work"
++	if err := os.Mkdir(work, 0700); err != nil {
++		return err
++	}
++	return unix.Mount("overlay", config.Rootfs, "overlay", 0, "lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+work)
++}
+--- /dev/null
++++ b/libcontainer/factorybox_restore_cgroup_linux.go
+@@ -0,0 +1,15 @@
++//go:build linux
++
++package libcontainer
++
++import (
++	"regexp"
++
++	"github.com/opencontainers/runc/libcontainer/utils"
++)
++
++func factoryboxRestoreCgroup(id string, labels []string, root string) bool {
++	_, annotations := utils.Annotations(labels)
++	owner := annotations["io.factorybox.owner"]
++	return regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(owner) && id == "fbx-"+owner && root == "/"+id
++}
+--- /dev/null
++++ b/libcontainer/factorybox_restore_root_linux_test.go
+@@ -0,0 +1,27 @@
++//go:build linux
++
++package libcontainer
++
++import (
++	"strings"
++	"testing"
++)
++
++func TestFactoryboxRestoreCgroup(t *testing.T) {
++	owner := strings.Repeat("a", 32)
++	id := "fbx-" + owner
++	if !factoryboxRestoreCgroup(id, []string{"io.factorybox.owner=" + owner}, "/"+id) {
++		t.Fatal("canonical owned target rejected")
++	}
++	for _, test := range []struct{ id, owner, root string }{
++		{id, owner, "/" + id + "/child"},
++		{id, owner, "/foreign"},
++		{id, strings.Repeat("b", 32), "/" + id},
++		{"fbx-" + strings.Repeat("A", 32), strings.Repeat("A", 32), "/fbx-" + strings.Repeat("A", 32)},
++		{"fbx-", owner, "/fbx-"},
++	} {
++		if factoryboxRestoreCgroup(test.id, []string{"io.factorybox.owner=" + test.owner}, test.root) {
++			t.Fatalf("foreign target accepted: %+v", test)
++		}
++	}
++}
+--- a/main.go
++++ b/main.go
+@@ -125,6 +125,8 @@
+ 		experimentCopyCommand,
+ 		experimentPreparedCopyCommand,
+ 		factoryboxFsSnapshotCommand,
++		factoryboxRestoreCommand,
++		factoryboxPreparedRestoreCommand,
+ 		resumeCommand,
+ 		runCommand,
+ 		specCommand,
+--- a/libcontainer/experiment_seccomp_linux.go
++++ b/libcontainer/experiment_seccomp_linux.go
+@@ -31,7 +31,8 @@
+ func (c *linuxContainer) experimentCgroupRoot(req *criurpc.CriuReq) error {
+ 	root := strings.TrimPrefix(c.cgroupManager.GetPaths()[""], "/sys/fs/cgroup")
+ 	if root != "/criu-probe-sysbox" && root != "/criu-probe-sysbox-copy" &&
+-		!regexp.MustCompile(`^/criu-probe-branch-[0-9a-f]{32}$`).MatchString(root) {
++		!regexp.MustCompile(`^/criu-probe-branch-[0-9a-f]{32}$`).MatchString(root) &&
++		!factoryboxRestoreCgroup(c.id, c.config.Labels, root) {
+ 		return fmt.Errorf("restore cgroup root is outside the owned fixture: %q", root)
+ 	}
+ 	// Sysbox puts CRIU in init.scope. Its cgroup namespace belongs to the
