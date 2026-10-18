@@ -1,0 +1,32 @@
+--- a/libcontainer/setns_init_linux.go
++++ b/libcontainer/setns_init_linux.go
+@@ -5,6 +5,7 @@
+ 
+ import (
+ 	"os"
++	"os/exec"
+ 	"runtime"
+ 
+ 	"github.com/opencontainers/runc/libcontainer/apparmor"
+@@ -116,6 +117,14 @@
+ 		}
+ 	}
+ 
++	// Resolve the executable while the parent can still receive initialization
++	// errors. Closing the synchronization pipe first would report success for
++	// a missing executable and lose the error returned by LookPath.
++	name, err := exec.LookPath(l.config.Args[0])
++	if err != nil {
++		return err
++	}
++
+ 	// Close all file descriptors we are not passing to the container. This is
+ 	// necessary because the execve target could use internal sysbox-runc fds as the
+ 	// execve path, potentially giving access to binary files from the host
+@@ -130,5 +139,5 @@
+ 		return err
+ 	}
+ 
+-	return system.Execv(l.config.Args[0], l.config.Args[0:], os.Environ())
++	return unix.Exec(name, l.config.Args[0:], os.Environ())
+ }

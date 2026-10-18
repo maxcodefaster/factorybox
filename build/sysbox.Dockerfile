@@ -30,7 +30,9 @@ RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
 RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
     go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
-      -o /out/libcontainer.test ./libcontainer
+      -o /out/libcontainer.test ./libcontainer \
+    && go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
+      -o /out/integration.test ./libcontainer/integration
 RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
     CGO_ENABLED=1 go build -mod=readonly -buildvcs=false -trimpath \

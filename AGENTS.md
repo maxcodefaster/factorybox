@@ -8,7 +8,7 @@
 - Preserve `tests/reference` byte for byte against its import manifest. Extract behavior with its
   regression tests into the runtime; do not rename the proof harness into a production service.
 - Imported overlays named by the reference manifest are also immutable. Apply later fixes as ordered
-  patches. Declare any necessary test-fixture format change with exact before/after hashes; preserve
+  patches. Declare any necessary test-fixture compatibility change with exact before/after hashes; preserve
   every assertion and keep vet enabled.
 - Preserve upstream test assertions. Failed or unrun required suites block production qualification.
   Cross-compilation is not native platform qualification.

@@ -1,0 +1,84 @@
+--- /dev/null
++++ b/mount/factorybox_mountinfo_linux_test.go
+@@ -0,0 +1,49 @@
++package mount
++
++import (
++	"errors"
++	"io"
++	"strings"
++	"testing"
++	"testing/iotest"
++)
++
++func TestFactoryboxMountInfoKeepsEmptyCgroupSource(t *testing.T) {
++	line := "8345 8334 0:32 / /sys/fs/cgroup ro,nosuid,nodev,noexec,relatime - cgroup2  rw,nsdelegate\n"
++	mounts, err := parseInfoFile(strings.NewReader(line))
++	if err != nil || len(mounts) != 1 {
++		t.Fatalf("kernel cgroup mount rejected: %v", err)
++	}
++	m := mounts[0]
++	if m.ID != 8345 || m.Parent != 8334 || m.Mountpoint != "/sys/fs/cgroup" ||
++		m.Fstype != "cgroup2" || m.Source != "" || m.VfsOpts != "rw,nsdelegate" {
++		t.Fatalf("kernel mount fields changed: %+v", m)
++	}
++}
++
++func TestFactoryboxMountInfoRejectsMissingFields(t *testing.T) {
++	for _, suffix := range []string{
++		" cgroup2 none rw",
++		" - cgroup2 rw",
++		" -  none rw",
++		" - cgroup2 none ",
++	} {
++		t.Run(suffix, func(t *testing.T) {
++			input := "8345 8334 0:32 / /sys/fs/cgroup ro,nosuid,nodev,noexec,relatime" + suffix + "\n"
++			if mounts, err := parseInfoFile(strings.NewReader(input)); err == nil || mounts != nil {
++				t.Fatalf("malformed mount was accepted: mounts=%+v error=%v", mounts, err)
++			}
++		})
++	}
++}
++
++func TestFactoryboxMountInfoRejectsTruncatedRead(t *testing.T) {
++	cause := errors.New("fixture mount table read failed")
++	input := io.MultiReader(
++		strings.NewReader("8345 8334 0:32 / /sys/fs/cgroup ro - cgroup2 none rw\n"),
++		iotest.ErrReader(cause),
++	)
++	if mounts, err := parseInfoFile(input); !errors.Is(err, cause) || mounts != nil {
++		t.Fatalf("partial mount table was published: mounts=%+v error=%v", mounts, err)
++	}
++}
+--- a/mount/mount_linux.go
++++ b/mount/mount_linux.go
+@@ -89,8 +89,14 @@
+ 		}
+ 		// Safe as mountinfo encodes mountpoints with spaces as \040.
+ 		index := strings.Index(text, " - ")
+-		postSeparatorFields := strings.Fields(text[index+3:])
+-		if len(postSeparatorFields) < 3 {
++		if index < 0 {
++			return nil, fmt.Errorf("Missing mountinfo separator in %q", text)
++		}
++		// Keep an empty mount source, which the kernel can report for cgroup2.
++		// Fields would collapse that slot and mistake super options for source.
++		postSeparatorFields := strings.SplitN(text[index+3:], " ", 3)
++		if len(postSeparatorFields) != 3 || postSeparatorFields[0] == "" ||
++			strings.TrimSpace(postSeparatorFields[2]) == "" {
+ 			return nil, fmt.Errorf("Error found less than 3 fields post '-' in %q", text)
+ 		}
+ 
+@@ -100,8 +106,11 @@
+ 
+ 		p.Fstype = postSeparatorFields[0]
+ 		p.Source = postSeparatorFields[1]
+-		p.VfsOpts = strings.Join(postSeparatorFields[2:], " ")
++		p.VfsOpts = strings.TrimSpace(postSeparatorFields[2])
+ 		out = append(out, p)
++	}
++	if err := s.Err(); err != nil {
++		return nil, err
+ 	}
+ 	return out, nil
+ }

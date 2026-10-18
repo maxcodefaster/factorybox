@@ -1,0 +1,319 @@
+--- a/go.mod
++++ b/go.mod
+@@ -1,6 +1,6 @@
+ module github.com/nestybox/sysbox-ipc
+ 
+-go 1.21
++go 1.24.0
+ 
+ require (
+ 	github.com/golang/protobuf v1.5.4
+@@ -9,27 +9,27 @@
+ 	github.com/nestybox/sysbox-libs/shiftfs v0.0.0-00010101000000-000000000000
+ 	github.com/opencontainers/runc v1.1.4
+ 	github.com/opencontainers/runtime-spec v1.1.1-0.20230823135140-4fec88fd00a4
+-	github.com/sirupsen/logrus v1.9.3
+-	golang.org/x/sys v0.20.0
+-	google.golang.org/grpc v1.63.0
+-	google.golang.org/protobuf v1.34.1
++	github.com/sirupsen/logrus v1.9.4
++	golang.org/x/sys v0.38.0
++	google.golang.org/grpc v1.75.1
++	google.golang.org/protobuf v1.36.10
+ )
+ 
+ require (
+ 	github.com/coreos/go-systemd/v22 v22.1.0 // indirect
+-	github.com/deckarep/golang-set v1.7.1 // indirect
+-	github.com/docker/docker v26.0.0+incompatible // indirect
++	github.com/deckarep/golang-set v1.8.0 // indirect
+ 	github.com/godbus/dbus/v5 v5.0.3 // indirect
+ 	github.com/joshlf/go-acl v0.0.0-20200411065538-eae00ae38531 // indirect
+ 	github.com/karrick/godirwalk v1.16.1 // indirect
++	github.com/moby/moby/client v0.5.0 // indirect
+ 	github.com/nestybox/sysbox-libs/linuxUtils v0.0.0-00010101000000-000000000000 // indirect
+-	github.com/nestybox/sysbox-libs/mount v0.0.0-00010101000000-000000000000 // indirect
++	github.com/nestybox/sysbox-libs/mount v0.0.0-20240602025437-33cbdf5a9e98 // indirect
+ 	github.com/nestybox/sysbox-libs/utils v0.0.0-00010101000000-000000000000 // indirect
+ 	github.com/pkg/errors v0.9.1 // indirect
+ 	github.com/spf13/afero v1.4.1 // indirect
+-	golang.org/x/net v0.23.0 // indirect
+-	golang.org/x/text v0.14.0 // indirect
+-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de // indirect
++	golang.org/x/net v0.43.0 // indirect
++	golang.org/x/text v0.28.0 // indirect
++	google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 // indirect
+ 	gopkg.in/hlandau/service.v1 v1.0.7 // indirect
+ )
+ 
+--- a/go.sum
++++ b/go.sum
+@@ -3,16 +3,20 @@
+ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
+ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+-github.com/deckarep/golang-set v1.7.1 h1:SCQV0S6gTtp6itiFrTqI+pfmJ4LN85S1YzhDf9rTHJQ=
+-github.com/deckarep/golang-set v1.7.1/go.mod h1:93vsz/8Wt4joVM7c2AVqh+YRMiUSc14yDtF28KmMOgQ=
+-github.com/docker/docker v26.0.0+incompatible h1:Ng2qi+gdKADUa/VM+6b6YaY2nlZhk/lVJiKR/2bMudU=
+-github.com/docker/docker v26.0.0+incompatible/go.mod h1:eEKB0N0r5NX/I1kEveEz05bcu8tLC/8azJZsviup8Sk=
++github.com/deckarep/golang-set v1.8.0 h1:sk9/l/KqpunDwP7pSjUg0keiOOLEnOBHzykLrsPppp4=
++github.com/deckarep/golang-set v1.8.0/go.mod h1:5nI87KwE7wgsBU1F4GKAw2Qod7p5kyS383rP6+o6qqo=
++github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
++github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
++github.com/go-logr/stdr v1.2.2 h1:hSWxHoqTgW2S2qGc0LTAI563KZ5YKYRhT3MFKZMbjag=
++github.com/go-logr/stdr v1.2.2/go.mod h1:mMo/vtBO5dYbehREoey6XUKy/eSumjCCveDpRre4VKE=
+ github.com/godbus/dbus/v5 v5.0.3 h1:ZqHaoEF7TBzh4jzPmqVhE/5A1z9of6orkAe5uHoAeME=
+ github.com/godbus/dbus/v5 v5.0.3/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=
+ github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+ github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
+-github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
+-github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
++github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
++github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
++github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
++github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+ github.com/joshlf/go-acl v0.0.0-20200411065538-eae00ae38531 h1:hgVxRoDDPtQE68PT4LFvNlPz2nBKd3OMlGKIQ69OmR4=
+ github.com/joshlf/go-acl v0.0.0-20200411065538-eae00ae38531/go.mod h1:fqTUQpVYBvhCNIsMXGl2GE9q6z94DIP6NtFKXCSTVbg=
+ github.com/joshlf/testutil v0.0.0-20170608050642-b5d8aa79d93d h1:J8tJzRyiddAFF65YVgxli+TyWBi0f79Sld6rJP6CBcY=
+@@ -20,6 +24,8 @@
+ github.com/karrick/godirwalk v1.16.1 h1:DynhcF+bztK8gooS0+NDJFrdNZjJ3gzVzC545UNA9iw=
+ github.com/karrick/godirwalk v1.16.1/go.mod h1:j4mkqPuvaLI8mp1DroR3P6ad7cyYd4c1qeJ3RV7ULlk=
+ github.com/kr/fs v0.1.0/go.mod h1:FFnZGqtBN9Gxj7eW1uZ42v5BccTP0vu6NEaFoC2HwRg=
++github.com/moby/moby/client v0.5.0 h1:5XhyPk2fuOWf6RlSFa3MkIIgDZkF25xToXW8Q/BH7cc=
++github.com/moby/moby/client v0.5.0/go.mod h1:rcVpF8ncl9vo5gaIBdol6CnbEtSj1uxMvEV/UrykF/s=
+ github.com/opencontainers/runtime-spec v1.1.1-0.20230823135140-4fec88fd00a4 h1:EctkgBjZ1y4q+sibyuuIgiKpa0QSd2elFtSSdNvBVow=
+ github.com/opencontainers/runtime-spec v1.1.1-0.20230823135140-4fec88fd00a4/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
+ github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+@@ -28,38 +34,51 @@
+ github.com/pkg/sftp v1.10.1/go.mod h1:lYOWFsE0bwd1+KfKJaKeuokY15vzFx25BLbzYYoAxZI=
+ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
+ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+-github.com/sirupsen/logrus v1.9.3 h1:dueUQJ1C2q9oE3F7wvmSGAaVtTmUizReu6fjN8uqzbQ=
+-github.com/sirupsen/logrus v1.9.3/go.mod h1:naHLuLoDiP4jHNo9R0sCBMtWGeIprob74mVsIT4qYEQ=
++github.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=
++github.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=
+ github.com/spf13/afero v1.4.1 h1:asw9sl74539yqavKaglDM5hFpdJVK0Y5Dr/JOgQ89nQ=
+ github.com/spf13/afero v1.4.1/go.mod h1:Ai8FlHk4v/PARR026UzYexafAt9roJ7LcLMAmO6Z93I=
+ github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
+ github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
+-github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=
+-github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
++github.com/stretchr/testify v1.10.0 h1:Xv5erBjTwe/5IxqUQTdXv5kgmIvbHo3QQyRwhJsOfJA=
++github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
++go.opentelemetry.io/auto/sdk v1.1.0 h1:cH53jehLUN6UFLY71z+NDOiNJqDdPRaXzTel0sJySYA=
++go.opentelemetry.io/auto/sdk v1.1.0/go.mod h1:3wSPjt5PWp2RhlCcmmOial7AvC4DQqZb7a7wCow3W8A=
++go.opentelemetry.io/otel v1.38.0 h1:RkfdswUDRimDg0m2Az18RKOsnI8UDzppJAtj01/Ymk8=
++go.opentelemetry.io/otel v1.38.0/go.mod h1:zcmtmQ1+YmQM9wrNsTGV/q/uyusom3P8RxwExxkZhjM=
++go.opentelemetry.io/otel/metric v1.38.0 h1:Kl6lzIYGAh5M159u9NgiRkmoMKjvbsKtYRwgfrA6WpA=
++go.opentelemetry.io/otel/metric v1.38.0/go.mod h1:kB5n/QoRM8YwmUahxvI3bO34eVtQf2i4utNVLr9gEmI=
++go.opentelemetry.io/otel/sdk v1.37.0 h1:ItB0QUqnjesGRvNcmAcU0LyvkVyGJ2xftD29bWdDvKI=
++go.opentelemetry.io/otel/sdk v1.37.0/go.mod h1:VredYzxUvuo2q3WRcDnKDjbdvmO0sCzOvVAiY+yUkAg=
++go.opentelemetry.io/otel/sdk/metric v1.38.0 h1:aSH66iL0aZqo//xXzQLYozmWrXxyFkBJ6qT5wthqPoM=
++go.opentelemetry.io/otel/sdk/metric v1.38.0/go.mod h1:dg9PBnW9XdQ1Hd6ZnRz689CbtrUp0wMMs9iPcgT9EZA=
++go.opentelemetry.io/otel/trace v1.38.0 h1:Fxk5bKrDZJUH+AMyyIXGcFAPah0oRcT+LuNtJrmcNLE=
++go.opentelemetry.io/otel/trace v1.38.0/go.mod h1:j1P9ivuFsTceSWe1oY+EeW3sc+Pp42sO++GHkg4wwhs=
+ golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
+ golang.org/x/crypto v0.0.0-20190820162420-60c769a6c586/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
+ golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=
+-golang.org/x/net v0.23.0 h1:7EYJ93RZ9vYSZAIb2x3lnuvqO5zneoD6IvWjuhfxjTs=
+-golang.org/x/net v0.23.0/go.mod h1:JKghWKKOSdJwpW2GEx0Ja7fmaKnMsbu+MWVZTokSYmg=
++golang.org/x/net v0.43.0 h1:lat02VYK2j4aLzMzecihNvTlJNQUq316m2Mr9rnM6YE=
++golang.org/x/net v0.43.0/go.mod h1:vhO1fvI4dGsIjh73sWfUVjj3N7CA9WkKJNQm2svM6Jg=
+ golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+ golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+-golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.20.0 h1:Od9JTbYCk261bKm4M/mw7AklTlFYIa0bIp9BgSm1S8Y=
+-golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
++golang.org/x/sys v0.38.0 h1:3yZWxaJjBmCWXqhN1qh02AkOnCQ1poK6oF+a7xWL6Gc=
++golang.org/x/sys v0.38.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+ golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
+ golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+-golang.org/x/text v0.14.0 h1:ScX5w1eTa3QqT8oi6+ziP7dTV1S2+ALU0bI+0zXKWiQ=
+-golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
++golang.org/x/text v0.28.0 h1:rhazDwis8INMIwQ4tpjLDzUhx6RlXqZNPEM0huQojng=
++golang.org/x/text v0.28.0/go.mod h1:U8nCwOR8jO/marOQ0QbDiOngZVEBB7MAiitBuMjXiNU=
+ golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+-google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de h1:cZGRis4/ot9uVm639a+rHCUaG0JJHEsdyzSQTMX+suY=
+-google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de/go.mod h1:H4O17MA/PE9BsGx3w+a+W2VOLLD1Qf7oJneAoU6WktY=
+-google.golang.org/grpc v1.63.0 h1:WjKe+dnvABXyPJMD7KDNLxtoGk5tgk+YFWN6cBWjZE8=
+-google.golang.org/grpc v1.63.0/go.mod h1:WAX/8DgncnokcFUldAxq7GeB5DXHDbMF+lLvDomNkRA=
+-google.golang.org/protobuf v1.34.1 h1:9ddQBjfCyZPOHPUiPxpYESBLc+T8P3E+Vo4IbKZgFWg=
+-google.golang.org/protobuf v1.34.1/go.mod h1:c6P6GXX6sHbq/GpV6MGZEdwhWPcYBgnhAHhKbcUYpos=
++gonum.org/v1/gonum v0.16.0 h1:5+ul4Swaf3ESvrOnidPp4GZbzf0mxVQpDCYUQE7OJfk=
++gonum.org/v1/gonum v0.16.0/go.mod h1:fef3am4MQ93R2HHpKnLk4/Tbh/s0+wqD5nfa6Pnwy4E=
++google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5 h1:eaY8u2EuxbRv7c3NiGK0/NedzVsCcV6hDuU5qPX5EGE=
++google.golang.org/genproto/googleapis/rpc v0.0.0-20250825161204-c5933d9347a5/go.mod h1:M4/wBTSeyLxupu3W3tJtOgB14jILAS/XWPSSa3TAlJc=
++google.golang.org/grpc v1.75.1 h1:/ODCNEuf9VghjgO3rqLcfg8fiOP0nSluljWFlDxELLI=
++google.golang.org/grpc v1.75.1/go.mod h1:JtPAzKiq4v1xcAB2hydNlWI2RnF85XXcV0mhKXr2ecQ=
++google.golang.org/protobuf v1.36.10 h1:AYd7cD/uASjIL6Q9LiTjz8JLcrh/88q5UObnmY3aOOE=
++google.golang.org/protobuf v1.36.10/go.mod h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=
+ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+ gopkg.in/hlandau/service.v1 v1.0.7 h1:16G5AJ1Cp8Vr65QItJXpyAIzf/FWAWCZBsTgsc6eyA8=
+ gopkg.in/hlandau/service.v1 v1.0.7/go.mod h1:sZw6ksxcoafC04GoZtw32UeqqEuPSABX35lVBaJP/bE=
+ gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
+-gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c h1:dUUwHk2QECo/6vqA44rthZ8ie2QXMNeKRTHCNY2nXvo=
+-gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
++gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
++gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+--- /dev/null
++++ b/sysboxFsGrpc/factorybox_rpc_errors_linux_test.go
+@@ -0,0 +1,126 @@
++//go:build linux
++
++package sysboxFsGrpc
++
++import (
++	"bytes"
++	"context"
++	"net"
++	"os"
++	"path/filepath"
++	"strings"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	pb "github.com/nestybox/sysbox-ipc/sysboxFsGrpc/sysboxFsProtobuf"
++	"github.com/sirupsen/logrus"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/status"
++)
++
++type factoryboxRejectingServer struct {
++	Server
++	calls atomic.Int32
++}
++
++func (s *factoryboxRejectingServer) reject() (*pb.Response, error) {
++	s.calls.Add(1)
++	return nil, status.Error(codes.FailedPrecondition, "fixture rejection")
++}
++
++func (s *factoryboxRejectingServer) ContainerPreRegistration(context.Context, *pb.ContainerData) (*pb.Response, error) {
++	return s.reject()
++}
++
++func (s *factoryboxRejectingServer) ContainerRegistration(context.Context, *pb.ContainerData) (*pb.Response, error) {
++	return s.reject()
++}
++
++func (s *factoryboxRejectingServer) ContainerUpdate(context.Context, *pb.ContainerData) (*pb.Response, error) {
++	return s.reject()
++}
++
++func TestFactoryboxRPCFailuresKeepCauseAndFormattedWarning(t *testing.T) {
++	if os.Getenv("FACTORYBOX_UPSTREAM_CONTAINER") != "1" {
++		t.Skip("requires the owned Linux test container and its private /run")
++	}
++	if _, err := os.Lstat(sysFsGrpcSockAddr); !os.IsNotExist(err) {
++		t.Fatalf("test socket must be absent before binding: %v", err)
++	}
++	if err := os.MkdirAll(filepath.Dir(sysFsGrpcSockAddr), 0700); err != nil {
++		t.Fatal(err)
++	}
++	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: sysFsGrpcSockAddr, Net: "unix"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	listener.SetUnlinkOnClose(false)
++	socketInfo, err := os.Lstat(sysFsGrpcSockAddr)
++	if err != nil {
++		listener.Close()
++		t.Fatal(err)
++	}
++	service := &factoryboxRejectingServer{}
++	server := grpc.NewServer()
++	pb.RegisterSysboxStateChannelServer(server, service)
++	exited := make(chan error, 1)
++	go func() { exited <- server.Serve(listener) }()
++	t.Cleanup(func() {
++		server.Stop()
++		select {
++		case err := <-exited:
++			if err != nil && err != grpc.ErrServerStopped {
++				t.Error(err)
++			}
++		case <-time.After(time.Second):
++			t.Error("test RPC server did not stop")
++		}
++		current, err := os.Lstat(sysFsGrpcSockAddr)
++		if err == nil && os.SameFile(current, socketInfo) {
++			if err := os.Remove(sysFsGrpcSockAddr); err != nil {
++				t.Error(err)
++			}
++		} else {
++			t.Errorf("test socket identity changed before cleanup: %v", err)
++		}
++	})
++	logger := logrus.StandardLogger()
++	oldOutput, oldFormatter, oldLevel := logger.Out, logger.Formatter, logger.Level
++	var warnings bytes.Buffer
++	logger.SetOutput(&warnings)
++	logger.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true, DisableColors: true})
++	logger.SetLevel(logrus.WarnLevel)
++	t.Cleanup(func() {
++		logger.SetOutput(oldOutput)
++		logger.SetFormatter(oldFormatter)
++		logger.SetLevel(oldLevel)
++	})
++	data := &ContainerData{Id: "0123456789abcdef", Ctime: time.Unix(123, 0)}
++	for _, operation := range []struct {
++		name string
++		call func(*ContainerData) error
++	}{
++		{"pre-registration", SendContainerPreRegistration},
++		{"registration", SendContainerRegistration},
++		{"update", SendContainerUpdate},
++	} {
++		t.Run(operation.name, func(t *testing.T) {
++			warnings.Reset()
++			err := operation.call(data)
++			if err == nil || !strings.Contains(err.Error(), "fixture rejection") ||
++				strings.Contains(err.Error(), "%!") {
++				t.Fatalf("RPC failure lost or corrupted the server cause: %v", err)
++			}
++			text := warnings.String()
++			if !strings.Contains(text, "fixture rejection") || strings.Contains(text, "%s") ||
++				strings.Contains(text, "%!") {
++				t.Fatalf("RPC warning was not formatted with the received failure: %q", text)
++			}
++		})
++	}
++	if service.calls.Load() != 3 {
++		t.Fatalf("failure checks did not traverse all three real RPCs: %d", service.calls.Load())
++	}
++}
+--- a/sysboxFsGrpc/grpcClient.go
++++ b/sysboxFsGrpc/grpcClient.go
+@@ -138,7 +138,7 @@
+ 
+ 	_, err = cntrChanIntf.ContainerPreRegistration(ctx, pbData)
+ 	if err != nil {
+-		logrus.Warning("Container %s pre-registration error: %s",
++		logrus.Warningf("Container %s pre-registration error: %s",
+ 			formatter.ContainerID{data.Id}, err)
+ 		return fmt.Errorf("failed to pre-register container with sysbox-fs: %v", err)
+ 	}
+@@ -169,7 +169,7 @@
+ 
+ 	_, err = cntrChanIntf.ContainerRegistration(ctx, pbData)
+ 	if err != nil {
+-		logrus.Warning("Container %s registration error: %s",
++		logrus.Warningf("Container %s registration error: %s",
+ 			formatter.ContainerID{data.Id}, err)
+ 		return fmt.Errorf("failed to register container with sysbox-fs: %v", err)
+ 	}
+@@ -232,10 +232,9 @@
+ 
+ 	_, err = cntrChanIntf.ContainerUpdate(ctx, pbData)
+ 	if err != nil {
+-		logrus.Warning("Container %s update error: %s",
++		logrus.Warningf("Container %s update error: %s",
+ 			formatter.ContainerID{data.Id}, err)
+-		return fmt.Errorf("failed to send container-update message to ",
+-			"sysbox-fs: %v", err)
++		return fmt.Errorf("failed to send container-update message to sysbox-fs: %v", err)
+ 	}
+ 
+ 	return nil

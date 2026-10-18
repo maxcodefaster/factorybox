@@ -92,7 +92,7 @@ def test_counts(component, total):
     changes = len(component.get("test_file_changes", {}))
     return {"upstream_test_files_verified": total,
             "unchanged_upstream_test_files": total - changes,
-            "declared_test_format_changes": changes}
+            "declared_upstream_test_changes": changes}
 
 
 def prepare(name, component, offline, refresh=False):

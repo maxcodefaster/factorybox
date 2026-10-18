@@ -810,7 +810,8 @@
         "upstream/patches/sysbox-fs-fork-registration.patch": "8847ea37c0f9d66fcfcc304de022eaf6beff773e08143ea64c7c022f4c20ab87",
         "upstream/patches/sysbox-fs-netns-lifetime.patch": "db14af3a0d881824e41b22c81ab0e054cc278fa43cdded1f6d6ed0d8d6b3d998",
         "upstream/patches/sysbox-fs-readonly-remount.patch": "8036873adf8787b076e8934ac4f5b1f7f0d107ae0903aa91bfbf6ea673d52870",
-        "upstream/patches/sysbox-fs-retained-registration.patch": "d6d6f2ac0d153fcf538c12f037951031c9d6a8d01020e9d97e6f386c796ad235"
+        "upstream/patches/sysbox-fs-retained-registration.patch": "d6d6f2ac0d153fcf538c12f037951031c9d6a8d01020e9d97e6f386c796ad235",
+        "upstream/patches/sysbox-fs-test-fixtures.patch": "bafd49036046ed5e3679062c585f16dcfe077761dedf123dec92ac8285646321"
       },
       "overlays": {
         "state/experiment_fork_test.go": "upstream/overlays/sysbox-fs/state/experiment_fork_test.go",
@@ -821,11 +822,24 @@
         "upstream/patches/sysbox-fs-retained-registration.patch",
         "upstream/patches/sysbox-fs-readonly-remount.patch",
         "upstream/patches/sysbox-fs-fork-registration.patch",
-        "upstream/patches/sysbox-fs-netns-lifetime.patch"
+        "upstream/patches/sysbox-fs-netns-lifetime.patch",
+        "upstream/patches/sysbox-fs-test-fixtures.patch"
       ],
       "prefix": "sysbox-fs-c3d2ebc65102e32e74e383675f03b45556326888",
       "repository": "nestybox/sysbox-fs",
       "sha256": "7395b8714cc2c035e4bc1f0e4187fc02ffe614881bef9de888de60444441f580",
+      "test_file_changes": {
+        "handler/implementations/passThrough_test.go": {
+          "original_sha256": "48242558498694008382ddb6d85851f8563f950ae31b4ca2356b803b8ae873e7",
+          "prepared_sha256": "a427816fb71787dd3ac8017809bbb13b3e6b0d2cfdc2083c34c6772433204fc5",
+          "reason": "Match the current namespace-event UID/GID interface and check distinct forwarded credentials. Preserve all existing cases and assertions."
+        },
+        "state/containerDB_test.go": {
+          "original_sha256": "ccab3b1d455dd9f23c7a4606feef243d177a46ea0b3f5bfbb46ad97d4ba7c2bf",
+          "prepared_sha256": "6f2c7fe82135dbf8b4b7b32ba384356bbb225e420bdb5d5e73d19229eb3a8f8a",
+          "reason": "Use the test process and actual network-namespace inode in the positive registration fixture. Preserve all success/error expectations and verify the retained kernel FD."
+        }
+      },
       "url": "https://codeload.github.com/nestybox/sysbox-fs/tar.gz/c3d2ebc65102e32e74e383675f03b45556326888"
     },
     "sysbox-fuse": {
@@ -844,13 +858,15 @@
       "commit": "f05151f4b4c1df63d7fd241577ca032905c1bd0e",
       "local_inputs_sha256": {
         "upstream/overlays/sysbox-ipc/sysboxFsGrpc/experiment_fork_test.go": "8f38b645f2adf2572af6cf67575ba4142e1d973fd6f8b151404ddadcb7d17618",
-        "upstream/patches/sysbox-ipc-fork-source.patch": "7909fc3b2df0d2f9fe905c51aaf30c2d3b29b04051756d42031242b3a4f56870"
+        "upstream/patches/sysbox-ipc-fork-source.patch": "7909fc3b2df0d2f9fe905c51aaf30c2d3b29b04051756d42031242b3a4f56870",
+        "upstream/patches/sysbox-ipc-build-and-errors.patch": "19c52f3d7b41294f8363e3eaf79cab82324667272e24123f13e617d8b3a6cf03"
       },
       "overlays": {
         "sysboxFsGrpc/experiment_fork_test.go": "upstream/overlays/sysbox-ipc/sysboxFsGrpc/experiment_fork_test.go"
       },
       "patches": [
-        "upstream/patches/sysbox-ipc-fork-source.patch"
+        "upstream/patches/sysbox-ipc-fork-source.patch",
+        "upstream/patches/sysbox-ipc-build-and-errors.patch"
       ],
       "prefix": "sysbox-ipc-f05151f4b4c1df63d7fd241577ca032905c1bd0e",
       "repository": "nestybox/sysbox-ipc",
@@ -860,23 +876,52 @@
     "sysbox-libs": {
       "archive": "sysbox-libs-cacac193.tar.gz",
       "commit": "cacac19395528afa42b467a980b05d8d1c6d646c",
-      "local_inputs_sha256": {},
+      "local_inputs_sha256": {
+        "upstream/patches/sysbox-libs-idmap-module.patch": "9561f6f1d8d2fd433effe3803ee9b27b86869c82e4cc337fab86b235fdab2679",
+        "upstream/patches/sysbox-libs-idmap-test-api.patch": "1ec3b561358d46d45b84c1a66f916b1a1cc7e2f4c109e33d70eb0a53cc317499",
+        "upstream/patches/sysbox-libs-mountinfo-source.patch": "260984372e0cbfdcbdd0c376e18a24df2ae6984361eb6da2a43ad3460a1f1d82"
+      },
       "overlays": {},
-      "patches": [],
+      "patches": [
+        "upstream/patches/sysbox-libs-idmap-module.patch",
+        "upstream/patches/sysbox-libs-idmap-test-api.patch",
+        "upstream/patches/sysbox-libs-mountinfo-source.patch"
+      ],
       "prefix": "sysbox-libs-cacac19395528afa42b467a980b05d8d1c6d646c",
       "repository": "nestybox/sysbox-libs",
       "sha256": "5555e8989539d4bf04ad7ba276001ad85a4aad3a71f06c1fea75b3ff374924e3",
+      "test_file_changes": {
+        "idMap/idMapMount_test.go": {
+          "original_sha256": "df881aacd608a5911e5cfee7124fb8cfad54071dbf9f7022dcc6576887170035",
+          "prepared_sha256": "69ae3f631d55a5accf2d31a98b061ee5cbf83a1b2cff83a38878f18d6f70d47f",
+          "reason": "Use the current overlay-on-ID-mapped-lower capability function already used by sysbox-mgr; preserve the kernel-version gate and all existing assertions."
+        }
+      },
       "url": "https://codeload.github.com/nestybox/sysbox-libs/tar.gz/cacac19395528afa42b467a980b05d8d1c6d646c"
     },
     "sysbox-mgr": {
       "archive": "sysbox-mgr-2d45af01.tar.gz",
       "commit": "2d45af01bcfd8641e6641f76104c6003bf501cd7",
-      "local_inputs_sha256": {},
+      "local_inputs_sha256": {
+        "upstream/patches/sysbox-mgr-test-diagnostics.patch": "1c11808cc65c17123e2e1502ec061bf5f427b5e2eed6e04ea8d99d4ddc0f1987"
+      },
       "overlays": {},
-      "patches": [],
+      "patches": ["upstream/patches/sysbox-mgr-test-diagnostics.patch"],
       "prefix": "sysbox-mgr-2d45af01bcfd8641e6641f76104c6003bf501cd7",
       "repository": "nestybox/sysbox-mgr",
       "sha256": "8c39b638d0051b61eea0a17972787259ce0597b1ce4cfc1fca75d3ee4826ecf9",
+      "test_file_changes": {
+        "utils_test.go": {
+          "original_sha256": "fe0e94d9a09f88aea4ad1f6b8387bc8fee52f8f523265d7c30434502afa550bc",
+          "prepared_sha256": "ac498804c86f67c9e79420ef9eda66e491148ee448a5c30acbd46fcbc7b02c3d",
+          "reason": "Correct failure-message formatting for Go vet; retain every existing case, condition and failure assertion."
+        },
+        "volMgr/volMgr_test.go": {
+          "original_sha256": "05235db45c8f791b4abe33aa2ec6ba1fd2878e0cd73e630a6d027c37401cfbbc",
+          "prepared_sha256": "9f15a1d0e8708ef622391ffe39acc5c16ea190ceb8bd6241d0f75eb3f7799b1e",
+          "reason": "Correct failure-message formatting for Go vet; retain every existing case, condition and failure assertion."
+        }
+      },
       "url": "https://codeload.github.com/nestybox/sysbox-mgr/tar.gz/2d45af01bcfd8641e6641f76104c6003bf501cd7"
     },
     "sysbox-runc": {
@@ -901,7 +946,9 @@
         "upstream/patches/sysbox-restore-mountpoints.patch": "c1eb7b8dcb6036c50f33a08b9bd810112d6b9551d2549581314f4e0d5cf61b8b",
         "upstream/patches/sysbox-restore-package.patch": "24c263a94007ade5243e4b5deb17cbd4066ce18059bccc12003e1de9abcb4008",
         "upstream/patches/sysbox-restore-seccomp-listeners.patch": "5de442e2153c7ac403dd6c16a0f3b033ebfa965792782fd3ad186504395ca16c",
-        "upstream/patches/sysbox-seccomp-blacklist.patch": "29d92cf5626b9fe94a52ba9bbb2f294a30d6e927ee40ae16ae1ae1480b2794cf"
+        "upstream/patches/sysbox-seccomp-blacklist.patch": "29d92cf5626b9fe94a52ba9bbb2f294a30d6e927ee40ae16ae1ae1480b2794cf",
+        "upstream/patches/sysbox-runc-test-diagnostics.patch": "da69e0426c2c3189d067e50a0df31c46292395023f697f926cc3473f239ee3e8",
+        "upstream/patches/sysbox-runc-exec-error.patch": "fcbcdd1333edd78eb57427cd70bee2f597f13f3e74c036284b25a1e352e46d03"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -924,12 +971,24 @@
         "upstream/patches/sysbox-restore-log-level.patch",
         "upstream/patches/sysbox-seccomp-blacklist.patch",
         "upstream/patches/sysbox-restore-package.patch",
-        "upstream/patches/sysbox-go-format.patch"
+        "upstream/patches/sysbox-go-format.patch",
+        "upstream/patches/sysbox-runc-test-diagnostics.patch",
+        "upstream/patches/sysbox-runc-exec-error.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
       "sha256": "1440ee7276dc20f2397f485a6ae987c0fd62270a209e335bd3c1e68db676b704",
       "test_file_changes": {
+        "libcontainer/cgroups/fs/blkio_test.go": {
+          "original_sha256": "6873606995be7e4c90141fd617b350dfafc4d84ac79db84eb9bfdba908afe2da",
+          "prepared_sha256": "abf9060eb5aedea2833a2fc81a97ee9370bed016052e0a43a29dc245c3f157a6",
+          "reason": "Correct failure-message formatting for Go vet; retain every existing case, condition and failure assertion."
+        },
+        "libcontainer/configs/config_test.go": {
+          "original_sha256": "435aa5f14f83b42a28a476132990348cc3a8b4ad003c086c2f7f84da5f602e92",
+          "prepared_sha256": "49006d4c41c80fedf9920acccb98df928974590c817d146ec3bf8aa2319093d4",
+          "reason": "Correct failure-message formatting for Go vet; retain every existing case, condition and failure assertion."
+        },
         "libcontainer/generic_error_test.go": {
           "original_sha256": "cb95ba2b9660747306bf0b98b25c047be4762e883203954b0be2c7141a730108",
           "prepared_sha256": "b222e8fba661f20647d925074c92fc56670521d83be2e97160081b56427a5f97",

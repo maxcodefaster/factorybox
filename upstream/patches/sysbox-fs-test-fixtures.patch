@@ -1,0 +1,541 @@
+--- a/handler/implementations/passThrough_test.go
++++ b/handler/implementations/passThrough_test.go
+@@ -74,6 +74,194 @@
+ }
+ 
+ func TestPassThrough_Lookup(t *testing.T) {
++	type fields struct {
++		Name    string
++		Path    string
++		Service domain.HandlerServiceIface
++	}
++
++	var f1 = fields{
++		Name:    "PassThrough",
++		Path:    "PassThrough",
++		Service: hds,
++	}
++
++	type args struct {
++		n   domain.IOnodeIface
++		req *domain.HandlerRequest
++	}
++
++	// Valid method arguments.
++	var a1 = args{
++		n: ios.NewIOnode("net", "/proc/sys/net", 0),
++		req: &domain.HandlerRequest{
++			Pid: 1001,
++			Uid: 1002,
++			Gid: 1003,
++			Container: css.ContainerCreate(
++				"c1",
++				uint32(1001),
++				time.Time{},
++				231072,
++				65535,
++				231072,
++				65535,
++				nil,
++				nil,
++				nil),
++		},
++	}
++
++	tests := []struct {
++		name       string
++		fields     fields
++		args       args
++		want       os.FileInfo
++		wantErr    bool
++		wantErrVal error
++		prepare    func()
++	}{
++		{
++			//
++			// Test-case 1: Regular Lookup operation. No errors expected.
++			//
++			name:       "1",
++			fields:     f1,
++			args:       a1,
++			want:       domain.FileInfo{Fname: a1.n.Path(), Fsize: 32768},
++			wantErr:    false,
++			wantErrVal: nil,
++			prepare: func() {
++
++				// Expected nsenter request.
++				nsenterEventReq := &nsenter.NSenterEvent{
++					Pid:       a1.req.Pid,
++					Uid:       a1.req.Uid,
++					Gid:       a1.req.Gid,
++					Namespace: &domain.AllNSs,
++					ReqMsg: &domain.NSenterMessage{
++						Type:    domain.LookupRequest,
++						Payload: &domain.LookupPayload{a1.n.Path(), false, true},
++					},
++				}
++
++				// Expected nsenter response.
++				nsenterEventResp := &nsenter.NSenterEvent{
++					ResMsg: &domain.NSenterMessage{
++						Type: domain.LookupResponse,
++						Payload: domain.FileInfo{
++							Fname: a1.n.Path()},
++					},
++				}
++
++				nss.On(
++					"NewEvent",
++					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
++					&domain.AllNSs,
++					uint32(unix.CLONE_NEWNS),
++					nsenterEventReq.ReqMsg,
++					(*domain.NSenterMessage)(nil),
++					false).Return(nsenterEventReq)
++
++				nss.On("SendRequestEvent", nsenterEventReq).Return(nil)
++				nss.On("ReceiveResponseEvent", nsenterEventReq).Return(nsenterEventResp.ResMsg)
++			},
++		},
++		{
++			//
++			// Test-case 2: Verify proper behavior during nsenter error conditions
++			// (EACCESS).
++			//
++			name:       "2",
++			fields:     f1,
++			args:       a1,
++			want:       nil,
++			wantErr:    true,
++			wantErrVal: syscall.EACCES,
++			prepare: func() {
++
++				// Expected nsenter request.
++				nsenterEventReq := &nsenter.NSenterEvent{
++					Pid:       a1.req.Pid,
++					Uid:       a1.req.Uid,
++					Gid:       a1.req.Gid,
++					Namespace: &domain.AllNSs,
++					ReqMsg: &domain.NSenterMessage{
++						Type:    domain.LookupRequest,
++						Payload: &domain.LookupPayload{a1.n.Path(), false, true},
++					},
++				}
++
++				// Expected nsenter response.
++				nsenterEventResp := &nsenter.NSenterEvent{
++					ResMsg: &domain.NSenterMessage{
++						Type:    domain.ErrorResponse,
++						Payload: syscall.Errno(syscall.EACCES),
++					},
++				}
++
++				nss.On(
++					"NewEvent",
++					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
++					&domain.AllNSs,
++					uint32(unix.CLONE_NEWNS),
++					nsenterEventReq.ReqMsg,
++					(*domain.NSenterMessage)(nil),
++					false).Return(nsenterEventReq)
++
++				nss.On("SendRequestEvent", nsenterEventReq).Return(nil)
++				nss.On("ReceiveResponseEvent", nsenterEventReq).Return(nsenterEventResp.ResMsg)
++			},
++		},
++	}
++
++	//
++	// Testcase executions.
++	//
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			h := &implementations.PassThrough{
++				domain.HandlerBase{
++					Name:    tt.fields.Name,
++					Path:    tt.fields.Path,
++					Service: tt.fields.Service,
++				},
++			}
++
++			// Prepare the mocks.
++			if tt.prepare != nil {
++				tt.prepare()
++			}
++
++			got, err := h.Lookup(tt.args.n, tt.args.req)
++			if (err != nil) != tt.wantErr {
++				t.Errorf("PassThrough.Lookup() error = %v, wantErr %v",
++					err, tt.wantErr)
++				return
++			}
++			if err != nil && tt.wantErrVal != nil && err.Error() != tt.wantErrVal.Error() {
++				t.Errorf("PassThrough.Lookup() error = %v, wantErr %v, wantErrVal %v",
++					err, tt.wantErr, tt.wantErrVal)
++				return
++			}
++
++			if !reflect.DeepEqual(got, tt.want) {
++				t.Errorf("PassThrough.Lookup() = %v, want %v", got, tt.want)
++			}
++
++			// Ensure that mocks were properly invoked and reset expectedCalls
++			// object.
++			nss.AssertExpectations(t)
++			nss.ExpectedCalls = nil
++		})
++	}
++}
++
++func TestPassThrough_Open(t *testing.T) {
+ 	type fields struct {
+ 		Name    string
+ 		Path    string
+@@ -114,184 +302,6 @@
+ 		name       string
+ 		fields     fields
+ 		args       args
+-		want       os.FileInfo
+-		wantErr    bool
+-		wantErrVal error
+-		prepare    func()
+-	}{
+-		{
+-			//
+-			// Test-case 1: Regular Lookup operation. No errors expected.
+-			//
+-			name:       "1",
+-			fields:     f1,
+-			args:       a1,
+-			want:       domain.FileInfo{Fname: a1.n.Path(), Fsize: 32768},
+-			wantErr:    false,
+-			wantErrVal: nil,
+-			prepare: func() {
+-
+-				// Expected nsenter request.
+-				nsenterEventReq := &nsenter.NSenterEvent{
+-					Pid:       a1.req.Pid,
+-					Namespace: &domain.AllNSs,
+-					ReqMsg: &domain.NSenterMessage{
+-						Type:    domain.LookupRequest,
+-						Payload: &domain.LookupPayload{a1.n.Path(), false, true},
+-					},
+-				}
+-
+-				// Expected nsenter response.
+-				nsenterEventResp := &nsenter.NSenterEvent{
+-					ResMsg: &domain.NSenterMessage{
+-						Type: domain.LookupResponse,
+-						Payload: domain.FileInfo{
+-							Fname: a1.n.Path()},
+-					},
+-				}
+-
+-				nss.On(
+-					"NewEvent",
+-					a1.req.Pid,
+-					&domain.AllNSs,
+-					uint32(unix.CLONE_NEWNS),
+-					nsenterEventReq.ReqMsg,
+-					(*domain.NSenterMessage)(nil),
+-					false).Return(nsenterEventReq)
+-
+-				nss.On("SendRequestEvent", nsenterEventReq).Return(nil)
+-				nss.On("ReceiveResponseEvent", nsenterEventReq).Return(nsenterEventResp.ResMsg)
+-			},
+-		},
+-		{
+-			//
+-			// Test-case 2: Verify proper behavior during nsenter error conditions
+-			// (EACCESS).
+-			//
+-			name:       "2",
+-			fields:     f1,
+-			args:       a1,
+-			want:       nil,
+-			wantErr:    true,
+-			wantErrVal: syscall.EACCES,
+-			prepare: func() {
+-
+-				// Expected nsenter request.
+-				nsenterEventReq := &nsenter.NSenterEvent{
+-					Pid:       a1.req.Pid,
+-					Namespace: &domain.AllNSs,
+-					ReqMsg: &domain.NSenterMessage{
+-						Type:    domain.LookupRequest,
+-						Payload: &domain.LookupPayload{a1.n.Path(), false, true},
+-					},
+-				}
+-
+-				// Expected nsenter response.
+-				nsenterEventResp := &nsenter.NSenterEvent{
+-					ResMsg: &domain.NSenterMessage{
+-						Type:    domain.ErrorResponse,
+-						Payload: syscall.Errno(syscall.EACCES),
+-					},
+-				}
+-
+-				nss.On(
+-					"NewEvent",
+-					a1.req.Pid,
+-					&domain.AllNSs,
+-					uint32(unix.CLONE_NEWNS),
+-					nsenterEventReq.ReqMsg,
+-					(*domain.NSenterMessage)(nil),
+-					false).Return(nsenterEventReq)
+-
+-				nss.On("SendRequestEvent", nsenterEventReq).Return(nil)
+-				nss.On("ReceiveResponseEvent", nsenterEventReq).Return(nsenterEventResp.ResMsg)
+-			},
+-		},
+-	}
+-
+-	//
+-	// Testcase executions.
+-	//
+-	for _, tt := range tests {
+-		t.Run(tt.name, func(t *testing.T) {
+-			h := &implementations.PassThrough{
+-				domain.HandlerBase{
+-					Name:    tt.fields.Name,
+-					Path:    tt.fields.Path,
+-					Service: tt.fields.Service,
+-				},
+-			}
+-
+-			// Prepare the mocks.
+-			if tt.prepare != nil {
+-				tt.prepare()
+-			}
+-
+-			got, err := h.Lookup(tt.args.n, tt.args.req)
+-			if (err != nil) != tt.wantErr {
+-				t.Errorf("PassThrough.Lookup() error = %v, wantErr %v",
+-					err, tt.wantErr)
+-				return
+-			}
+-			if err != nil && tt.wantErrVal != nil && err.Error() != tt.wantErrVal.Error() {
+-				t.Errorf("PassThrough.Lookup() error = %v, wantErr %v, wantErrVal %v",
+-					err, tt.wantErr, tt.wantErrVal)
+-				return
+-			}
+-
+-			if !reflect.DeepEqual(got, tt.want) {
+-				t.Errorf("PassThrough.Lookup() = %v, want %v", got, tt.want)
+-			}
+-
+-			// Ensure that mocks were properly invoked and reset expectedCalls
+-			// object.
+-			nss.AssertExpectations(t)
+-			nss.ExpectedCalls = nil
+-		})
+-	}
+-}
+-
+-func TestPassThrough_Open(t *testing.T) {
+-	type fields struct {
+-		Name    string
+-		Path    string
+-		Service domain.HandlerServiceIface
+-	}
+-
+-	var f1 = fields{
+-		Name:    "PassThrough",
+-		Path:    "PassThrough",
+-		Service: hds,
+-	}
+-
+-	type args struct {
+-		n   domain.IOnodeIface
+-		req *domain.HandlerRequest
+-	}
+-
+-	// Valid method arguments.
+-	var a1 = args{
+-		n: ios.NewIOnode("net", "/proc/sys/net", 0),
+-		req: &domain.HandlerRequest{
+-			Pid: 1001,
+-			Container: css.ContainerCreate(
+-				"c1",
+-				uint32(1001),
+-				time.Time{},
+-				231072,
+-				65535,
+-				231072,
+-				65535,
+-				nil,
+-				nil,
+-				nil),
+-		},
+-	}
+-
+-	tests := []struct {
+-		name       string
+-		fields     fields
+-		args       args
+ 		wantErr    bool
+ 		wantErrVal error
+ 		prepare    func()
+@@ -334,6 +344,8 @@
+ 				nss.On(
+ 					"NewEvent",
+ 					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
+ 					&domain.AllNSs,
+ 					uint32(unix.CLONE_NEWNS),
+ 					nsenterEventReq.ReqMsg,
+@@ -383,6 +395,8 @@
+ 				nss.On(
+ 					"NewEvent",
+ 					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
+ 					&domain.AllNSs,
+ 					uint32(unix.CLONE_NEWNS),
+ 					nsenterEventReq.ReqMsg,
+@@ -522,6 +536,8 @@
+ 				nss.On(
+ 					"NewEvent",
+ 					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
+ 					&domain.AllNSs,
+ 					uint32(unix.CLONE_NEWNS),
+ 					nsenterEventReq.ReqMsg,
+@@ -660,6 +676,8 @@
+ 				nss.On(
+ 					"NewEvent",
+ 					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
+ 					&domain.AllNSs,
+ 					uint32(unix.CLONE_NEWNS),
+ 					nsenterEventReq.ReqMsg,
+@@ -715,6 +733,8 @@
+ 				nss.On(
+ 					"NewEvent",
+ 					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
+ 					&domain.AllNSs,
+ 					uint32(unix.CLONE_NEWNS),
+ 					nsenterEventReq.ReqMsg,
+@@ -867,6 +887,8 @@
+ 				nss.On(
+ 					"NewEvent",
+ 					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
+ 					&domain.AllNSs,
+ 					uint32(unix.CLONE_NEWNS),
+ 					nsenterEventReq.ReqMsg,
+@@ -920,6 +942,8 @@
+ 				nss.On(
+ 					"NewEvent",
+ 					a1.req.Pid,
++					a1.req.Uid,
++					a1.req.Gid,
+ 					&domain.AllNSs,
+ 					uint32(unix.CLONE_NEWNS),
+ 					nsenterEventReq.ReqMsg,
+--- a/mocks/NSenterServiceIface.go
++++ b/mocks/NSenterServiceIface.go
+@@ -26,13 +26,13 @@
+ 	return r0
+ }
+ 
+-// NewEvent provides a mock function with given fields: pid, ns, cloneFlags, req, res, async
+-func (_m *NSenterServiceIface) NewEvent(pid uint32, ns *[]string, cloneFlags uint32, req *domain.NSenterMessage, res *domain.NSenterMessage, async bool) domain.NSenterEventIface {
+-	ret := _m.Called(pid, ns, cloneFlags, req, res, async)
++// NewEvent provides a mock function with given fields: pid, uid, gid, ns, cloneFlags, req, res, async
++func (_m *NSenterServiceIface) NewEvent(pid uint32, uid uint32, gid uint32, ns *[]domain.NStype, cloneFlags uint32, req *domain.NSenterMessage, res *domain.NSenterMessage, async bool) domain.NSenterEventIface {
++	ret := _m.Called(pid, uid, gid, ns, cloneFlags, req, res, async)
+ 
+ 	var r0 domain.NSenterEventIface
+-	if rf, ok := ret.Get(0).(func(uint32, *[]string, uint32, *domain.NSenterMessage, *domain.NSenterMessage, bool) domain.NSenterEventIface); ok {
+-		r0 = rf(pid, ns, cloneFlags, req, res, async)
++	if rf, ok := ret.Get(0).(func(uint32, uint32, uint32, *[]domain.NStype, uint32, *domain.NSenterMessage, *domain.NSenterMessage, bool) domain.NSenterEventIface); ok {
++		r0 = rf(pid, uid, gid, ns, cloneFlags, req, res, async)
+ 	} else {
+ 		if ret.Get(0) != nil {
+ 			r0 = ret.Get(0).(domain.NSenterEventIface)
+--- a/state/containerDB_test.go
++++ b/state/containerDB_test.go
+@@ -18,6 +18,7 @@
+ 
+ import (
+ 	"io/ioutil"
++	"os"
+ 	"reflect"
+ 	"sync"
+ 	"testing"
+@@ -28,6 +29,7 @@
+ 	"github.com/nestybox/sysbox-fs/process"
+ 	"github.com/nestybox/sysbox-fs/sysio"
+ 	"github.com/sirupsen/logrus"
++	"golang.org/x/sys/unix"
+ )
+ 
+ // Sysbox-fs global services for all state's pkg unit-tests.
+@@ -324,6 +326,11 @@
+ }
+ 
+ func Test_containerStateService_ContainerRegister(t *testing.T) {
++	var netns unix.Stat_t
++	if err := unix.Stat("/proc/self/ns/net", &netns); err != nil {
++		t.Fatal(err)
++	}
++	initPID := uint32(os.Getpid())
+ 
+ 	type fields struct {
+ 		RWMutex    sync.RWMutex
+@@ -346,9 +353,16 @@
+ 
+ 	var c1 = &container{
+ 		id:       "c1",
+-		initPid:  1001,
+-		initProc: f1.prs.ProcessCreate(1001, 0, 0),
+-	}
++		initPid:  initPID,
++		initProc: f1.prs.ProcessCreate(initPID, 0, 0),
++	}
++	t.Cleanup(func() {
++		if c1.netnsPin != nil {
++			if err := c1.netnsPin.Close(); err != nil {
++				t.Error(err)
++			}
++		}
++	})
+ 
+ 	var c2 = &container{
+ 		id: "c2",
+@@ -384,7 +398,7 @@
+ 
+ 				c1.service = css
+ 
+-				c1.InitProc().CreateNsInodes(123456)
++				c1.InitProc().CreateNsInodes(netns.Ino)
+ 
+ 				f1.idTable[c1.id] = c1
+ 
+@@ -457,6 +471,15 @@
+ 				t.Errorf("containerStateService.ContainerRegister() error = %v, wantErr %v",
+ 					err, tt.wantErr)
+ 			}
++			if !tt.wantErr {
++				if c1.netnsPin == nil {
++					t.Fatal("registration did not retain the live network namespace")
++				}
++				var pinned unix.Stat_t
++				if err := unix.Fstat(int(c1.netnsPin.Fd()), &pinned); err != nil || pinned.Ino != netns.Ino {
++					t.Fatalf("registration pinned a different network namespace: %v", err)
++				}
++			}
+ 		})
+ 	}
+ }

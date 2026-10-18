@@ -1,0 +1,50 @@
+--- a/libcontainer/cgroups/fs/blkio_test.go
++++ b/libcontainer/cgroups/fs/blkio_test.go
+@@ -3,7 +3,6 @@
+ package fs
+ 
+ import (
+-	"fmt"
+ 	"strconv"
+ 	"testing"
+ 
+@@ -461,7 +460,7 @@
+ 		err := cpuset.GetStats(helper.CgroupPath, &actualStats)
+ 
+ 		if err != nil {
+-			t.Errorf(fmt.Sprintf("test case '%s' failed unexpectedly: %s", testCase.desc, err))
++			t.Errorf("test case '%s' failed unexpectedly: %s", testCase.desc, err)
+ 		}
+ 	}
+ }
+@@ -578,7 +577,7 @@
+ 		err := cpuset.GetStats(helper.CgroupPath, &actualStats)
+ 
+ 		if err != nil {
+-			t.Errorf(fmt.Sprintf("test case '%s' failed unexpectedly: %s", testCase.desc, err))
++			t.Errorf("test case '%s' failed unexpectedly: %s", testCase.desc, err)
+ 		}
+ 	}
+ }
+--- /dev/null
++++ b/libcontainer/cgroups/fs/factorybox_hugetlb_fixture_linux_test.go
+@@ -0,0 +1,8 @@
++package fs
++
++func init() {
++	// This package tests temporary, synthetic controller files. Always cover
++	// both fixture sizes, including missing/corrupt files, on workers without
++	// configured HugeTLB pages. Runtime builds do not include this test file.
++	HugePageSizes = []string{"2MB", "1GB"}
++}
+--- a/libcontainer/configs/config_test.go
++++ b/libcontainer/configs/config_test.go
+@@ -211,7 +211,7 @@
+ 	})
+ 
+ 	if err := cmdHook.Run(state); err != nil {
+-		t.Errorf(fmt.Sprintf("Expected error to not occur but it was %+v", err))
++		t.Errorf("Expected error to not occur but it was %+v", err)
+ 	}
+ }
+ 
