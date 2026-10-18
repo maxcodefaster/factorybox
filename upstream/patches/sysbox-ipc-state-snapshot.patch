@@ -1,0 +1,213 @@
+--- /dev/null
++++ b/sysboxFsGrpc/factorybox_snapshot_test.go
+@@ -0,0 +1,42 @@
++package sysboxFsGrpc
++
++import (
++	"bytes"
++	"testing"
++	"time"
++
++	"github.com/golang/protobuf/proto"
++	pb "github.com/nestybox/sysbox-ipc/sysboxFsGrpc/sysboxFsProtobuf"
++)
++
++func TestFactoryboxSnapshotSurvivesWireEncoding(t *testing.T) {
++	input := &ContainerData{Id: "fbx-target", Ctime: time.Unix(123, 0),
++		ForkState: []byte(`{"version":1,"data":{"/proc/sys/kernel/panic":"MTc="}}`)}
++	wire, err := containerDataToPbData(input)
++	if err != nil {
++		t.Fatal(err)
++	}
++	encoded, err := proto.Marshal(wire)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var decoded pb.ContainerData
++	if err := proto.Unmarshal(encoded, &decoded); err != nil {
++		t.Fatal(err)
++	}
++	output, err := pbDatatoContainerData(&decoded)
++	if err != nil || output.Id != input.Id || !bytes.Equal(output.ForkState, input.ForkState) {
++		t.Fatal("snapshot bytes or target identity changed on the wire", err)
++	}
++	server := &Server{Callbacks: CallbacksMap{ContainerSnapshotMessage: func(_ interface{}, data *ContainerData) error {
++		data.ForkState = append([]byte(nil), input.ForkState...)
++		return nil
++	}}}
++	response, err := server.ContainerSnapshot(nil, wire)
++	if err != nil || !response.Success || !bytes.Equal(response.State, input.ForkState) {
++		t.Fatal("snapshot callback did not return its exact bytes", err)
++	}
++	if _, err := server.ContainerSnapshot(nil, nil); err == nil {
++		t.Fatal("nil snapshot request accepted")
++	}
++}
+--- a/sysboxFsGrpc/grpcClient.go
++++ b/sysboxFsGrpc/grpcClient.go
+@@ -36,6 +36,7 @@
+ type ContainerData struct {
+ 	Id            string
+ 	ForkSourceId  string
++	ForkState     []byte
+ 	Netns         string
+ 	InitPid       int32
+ 	Hostname      string
+@@ -54,9 +55,7 @@
+ 	return conn, err
+ }
+ 
+-//
+ // Establishes grpc connection to sysbox-fs' remote-end.
+-//
+ func connect() (*grpc.ClientConn, error) {
+ 	// Set up a connection to the server.
+ 	// TODO: Secure me through TLS.
+@@ -80,6 +79,7 @@
+ 	return &pb.ContainerData{
+ 		Id:            data.Id,
+ 		ForkSourceId:  data.ForkSourceId,
++		ForkState:     data.ForkState,
+ 		Netns:         data.Netns,
+ 		InitPid:       data.InitPid,
+ 		Ctime:         pbTime,
+@@ -101,6 +101,7 @@
+ 	return &ContainerData{
+ 		Id:            pbdata.Id,
+ 		ForkSourceId:  pbdata.ForkSourceId,
++		ForkState:     pbdata.ForkState,
+ 		Netns:         pbdata.Netns,
+ 		InitPid:       pbdata.InitPid,
+ 		Ctime:         cTime,
+@@ -113,11 +114,9 @@
+ 	}, nil
+ }
+ 
+-//
+ // Pre-registers container creation in sysbox-fs. Notice that this
+ // is a blocking call that can potentially have a minor impact
+ // on container's boot-up speed.
+-//
+ func SendContainerPreRegistration(data *ContainerData) (err error) {
+ 	// Set up sysbox-fs pipeline.
+ 	conn, err := connect()
+@@ -146,9 +145,31 @@
+ 	return nil
+ }
+ 
+-//
++// SendContainerSnapshot exports only the frozen registered source's FUSE
++// state. The ordinary root-only Unix socket and deadline apply.
++func SendContainerSnapshot(data *ContainerData) ([]byte, error) {
++	conn, err := connect()
++	if err != nil {
++		return nil, fmt.Errorf("connect snapshot channel: %w", err)
++	}
++	defer conn.Close()
++	request, err := containerDataToPbData(data)
++	if err != nil {
++		return nil, err
++	}
++	ctx, cancel := context.WithTimeout(context.Background(), grpcTimeout)
++	defer cancel()
++	response, err := pb.NewSysboxStateChannelClient(conn).ContainerSnapshot(ctx, request)
++	if err != nil {
++		return nil, fmt.Errorf("export container snapshot: %w", err)
++	}
++	if response == nil || !response.Success || len(response.State) == 0 || len(response.State) > 1<<20 {
++		return nil, fmt.Errorf("snapshot response is absent or exceeds bound")
++	}
++	return response.State, nil
++}
++
+ // Registers container creation in sysbox-fs.
+-//
+ func SendContainerRegistration(data *ContainerData) (err error) {
+ 	// Set up sysbox-fs pipeline.
+ 	conn, err := connect()
+@@ -177,9 +198,7 @@
+ 	return nil
+ }
+ 
+-//
+ // Unregisters container from sysbox-fs.
+-//
+ func SendContainerUnregistration(data *ContainerData) (err error) {
+ 	// Set up sysbox-fs pipeline.
+ 	conn, err := connect()
+@@ -206,12 +225,10 @@
+ 	return nil
+ }
+ 
+-//
+ // Sends a container-update message to sysbox-fs end. At this point, we are
+ // only utilizing this message for a particular case, update the container
+ // creation-time attribute, but this function can serve more general purposes
+ // in the future.
+-//
+ func SendContainerUpdate(data *ContainerData) (err error) {
+ 	// Set up sysbox-fs pipeline.
+ 	conn, err := connect()
+--- a/sysboxFsGrpc/grpcServer.go
++++ b/sysboxFsGrpc/grpcServer.go
+@@ -46,6 +46,7 @@
+ 	ContainerUnregisterMessage
+ 	ContainerUpdateMessage
+ 	GetMountpointMessage
++	ContainerSnapshotMessage
+ 	MaxSupportedMessage
+ )
+ 
+@@ -156,6 +157,11 @@
+ 	ctx context.Context, data *pb.ContainerData) (*pb.Response, error) {
+ 
+ 	return s.executeCallback(ContainerUpdateMessage, data)
++}
++
++func (s *Server) ContainerSnapshot(
++	ctx context.Context, data *pb.ContainerData) (*pb.Response, error) {
++	return s.executeCallback(ContainerSnapshotMessage, data)
+ }
+ 
+ func (s *Server) GetMountpoint(
+@@ -194,5 +200,5 @@
+ 		return &pb.Response{Success: false}, err
+ 	}
+ 
+-	return &pb.Response{Success: true}, nil
+-}
++	return &pb.Response{Success: true, State: cont.ForkState}, nil
++}
+--- a/sysboxFsGrpc/sysboxFsProtobuf/sysboxFsProtobuf.proto
++++ b/sysboxFsGrpc/sysboxFsProtobuf/sysboxFsProtobuf.proto
+@@ -27,6 +27,9 @@
+ 
+     // Generates a container-update message
+     rpc ContainerUpdate (ContainerData) returns (Response) {}
++
++    // Exports frozen, private Factorybox FUSE state for a durable checkpoint.
++    rpc ContainerSnapshot (ContainerData) returns (Response) {}
+ }
+ 
+ //
+@@ -46,11 +49,13 @@
+   repeated string ProcMaskPaths   = 10;
+   string Netns                    = 11;
+   string ForkSourceId             = 12;
++  bytes ForkState                 = 13;
+ }
+ 
+ // Response message sent from sysbox-fs to runC process.
+ message Response {
+   bool Success = 1;
++  bytes State = 2;
+ }
+ 
+ message MountpointReq {
+@@ -58,4 +63,4 @@
+ 
+ message MountpointResp {
+   string Mountpoint = 1;
+-}
+\ No newline at end of file
++}

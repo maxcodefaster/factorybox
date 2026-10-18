@@ -1,0 +1,410 @@
+--- a/ipc/apis.go
++++ b/ipc/apis.go
+@@ -56,6 +56,7 @@
+ 			grpc.ContainerRegisterMessage:    ContainerRegister,
+ 			grpc.ContainerUnregisterMessage:  ContainerUnregister,
+ 			grpc.ContainerUpdateMessage:      ContainerUpdate,
++			grpc.ContainerSnapshotMessage:    ContainerSnapshot,
+ 		},
+ 		fuseMp,
+ 	)
+@@ -71,6 +72,18 @@
+ 
+ 	ipcService := ctx.(*ipcService)
+ 
++	if len(data.ForkState) != 0 {
++		if data.Netns != "" || data.ForkSourceId != "" {
++			return fmt.Errorf("snapshot pre-registration cannot also reference a live source or shared namespace")
++		}
++		snapshots, ok := ipcService.css.(interface {
++			ContainerSnapshotPreRegister(string, []byte) error
++		})
++		if !ok {
++			return fmt.Errorf("snapshot pre-registration is unavailable")
++		}
++		return snapshots.ContainerSnapshotPreRegister(data.Id, data.ForkState)
++	}
+ 	if data.ForkSourceId != "" {
+ 		if data.Netns != "" {
+ 			return fmt.Errorf("fork pre-registration cannot share a network namespace")
+@@ -83,6 +96,23 @@
+ 	}
+ 
+ 	return nil
++}
++
++func ContainerSnapshot(ctx interface{}, data *grpc.ContainerData) error {
++	if data.InitPid <= 1 || data.ForkSourceId != "" || data.Netns != "" || len(data.ForkState) != 0 {
++		return fmt.Errorf("invalid snapshot source request")
++	}
++	service, ok := ctx.(*ipcService).css.(interface {
++		ContainerSnapshot(string, uint32) ([]byte, error)
++	})
++	if !ok {
++		return fmt.Errorf("snapshot export is unavailable")
++	}
++	state, err := service.ContainerSnapshot(data.Id, uint32(data.InitPid))
++	if err == nil {
++		data.ForkState = state
++	}
++	return err
+ }
+ 
+ func ContainerRegister(ctx interface{}, data *grpc.ContainerData) error {
+--- a/state/containerDB.go
++++ b/state/containerDB.go
+@@ -106,17 +106,17 @@
+ }
+ 
+ func (css *containerStateService) ContainerPreRegister(id, netns string) error {
+-	return css.preRegister(id, netns, "")
++	return css.preRegister(id, netns, "", nil)
+ }
+ 
+ func (css *containerStateService) ContainerForkPreRegister(id, source string) error {
+ 	if id == "" || source == "" || id == source {
+ 		return fmt.Errorf("fork requires distinct nonempty source and target identities")
+ 	}
+-	return css.preRegister(id, "", source)
+-}
+-
+-func (css *containerStateService) preRegister(id, netns, source string) error {
++	return css.preRegister(id, "", source, nil)
++}
++
++func (css *containerStateService) preRegister(id, netns, source string, snapshot *factoryboxStateSnapshot) error {
+ 	var stateCntr *container
+ 
+ 	logrus.Debugf("Container pre-registration started: id = %s",
+@@ -141,7 +141,18 @@
+ 		service: css,
+ 	}
+ 
+-	if source != "" {
++	if snapshot != nil {
++		cntr.ctime = snapshot.Ctime
++		cntr.uidFirst, cntr.uidSize = snapshot.UIDFirst, snapshot.UIDSize
++		cntr.gidFirst, cntr.gidSize = snapshot.GIDFirst, snapshot.GIDSize
++		cntr.procRoPaths = append([]string(nil), snapshot.ProcRoPaths...)
++		cntr.procMaskPaths = append([]string(nil), snapshot.ProcMaskPaths...)
++		cntr.dataStore = make(map[string][]byte, len(snapshot.Data))
++		for path, data := range snapshot.Data {
++			cntr.dataStore[path] = append([]byte(nil), data...)
++		}
++		cntr.forkSource, source = snapshot.Source, snapshot.Source
++	} else if source != "" {
+ 		original, ok := css.idTable[source]
+ 		if !ok || !original.regCompleted || original.initPidFd <= 0 {
+ 			css.Unlock()
+--- /dev/null
++++ b/state/factorybox_snapshot.go
+@@ -0,0 +1,148 @@
++package state
++
++import (
++	"bytes"
++	"encoding/json"
++	"fmt"
++	"io"
++	"os"
++	"path"
++	"regexp"
++	"strings"
++	"time"
++
++	"golang.org/x/sys/unix"
++)
++
++const factoryboxSnapshotLimit = 1 << 20
++
++var factoryboxSnapshotID = regexp.MustCompile(`^fbx-[0-9a-f]{32}$`)
++
++// Process, namespace and FUSE-server handles are deliberately absent. A
++// restored target must create its own identities through normal registration.
++type factoryboxStateSnapshot struct {
++	Version       int               `json:"version"`
++	Source        string            `json:"source"`
++	Ctime         time.Time         `json:"ctime"`
++	UIDFirst      uint32            `json:"uid_first"`
++	UIDSize       uint32            `json:"uid_size"`
++	GIDFirst      uint32            `json:"gid_first"`
++	GIDSize       uint32            `json:"gid_size"`
++	ProcRoPaths   []string          `json:"proc_ro_paths"`
++	ProcMaskPaths []string          `json:"proc_mask_paths"`
++	Data          map[string][]byte `json:"data"`
++}
++
++func decodeFactoryboxSnapshot(data []byte) (*factoryboxStateSnapshot, error) {
++	if len(data) == 0 || len(data) > factoryboxSnapshotLimit {
++		return nil, fmt.Errorf("FUSE snapshot is absent or exceeds bound")
++	}
++	var snapshot factoryboxStateSnapshot
++	decoder := json.NewDecoder(bytes.NewReader(data))
++	decoder.DisallowUnknownFields()
++	if err := decoder.Decode(&snapshot); err != nil {
++		return nil, err
++	}
++	if err := decoder.Decode(new(any)); err != io.EOF {
++		return nil, fmt.Errorf("FUSE snapshot contains trailing data")
++	}
++	if snapshot.Version != 1 || !factoryboxSnapshotID.MatchString(snapshot.Source) ||
++		snapshot.Ctime.IsZero() || snapshot.UIDFirst == 0 || snapshot.GIDFirst == 0 ||
++		snapshot.UIDSize == 0 || snapshot.GIDSize == 0 ||
++		uint64(snapshot.UIDFirst)+uint64(snapshot.UIDSize) > 1<<32 ||
++		uint64(snapshot.GIDFirst)+uint64(snapshot.GIDSize) > 1<<32 ||
++		len(snapshot.Data) > 4096 || len(snapshot.ProcRoPaths)+len(snapshot.ProcMaskPaths) > 4096 {
++		return nil, fmt.Errorf("invalid FUSE snapshot identity, mapping or size")
++	}
++	for _, paths := range [][]string{snapshot.ProcRoPaths, snapshot.ProcMaskPaths} {
++		for _, name := range paths {
++			if !path.IsAbs(name) || path.Clean(name) != name || len(name) > 4096 {
++				return nil, fmt.Errorf("invalid saved proc protection path")
++			}
++		}
++	}
++	for name := range snapshot.Data {
++		if !path.IsAbs(name) || path.Clean(name) != name || len(name) > 4096 {
++			return nil, fmt.Errorf("invalid saved virtual file path")
++		}
++	}
++	return &snapshot, nil
++}
++
++func factoryboxFrozenSnapshotSource(original *container, pid uint32) error {
++	if !factoryboxSnapshotID.MatchString(original.id) || !original.regCompleted ||
++		original.initPidFd <= 0 || pid <= 1 || original.initPid != pid {
++		return fmt.Errorf("FUSE snapshot source is not its original completed registration")
++	}
++	fds := []unix.PollFd{{Fd: int32(original.initPidFd), Events: unix.POLLIN}}
++	if n, err := unix.Poll(fds, 0); err != nil || n != 0 {
++		return fmt.Errorf("FUSE snapshot source pidfd has exited or is invalid: %v", err)
++	}
++	group := "/sys/fs/cgroup/" + original.id
++	membership, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
++	if err != nil || strings.TrimSpace(string(membership)) != "0::/"+original.id+"/init.scope" {
++		return fmt.Errorf("FUSE snapshot original PID changed its cgroup: %v", err)
++	}
++	freeze, err := os.ReadFile(group + "/cgroup.freeze")
++	if err != nil || strings.TrimSpace(string(freeze)) != "1" {
++		return fmt.Errorf("FUSE snapshot source freeze is not requested: %v", err)
++	}
++	events, err := os.ReadFile(group + "/cgroup.events")
++	if err != nil {
++		return err
++	}
++	seen := map[string]string{}
++	for _, line := range strings.Split(strings.TrimSpace(string(events)), "\n") {
++		fields := strings.Fields(line)
++		if len(fields) != 2 || seen[fields[0]] != "" {
++			return fmt.Errorf("invalid FUSE snapshot source cgroup events")
++		}
++		seen[fields[0]] = fields[1]
++	}
++	if seen["frozen"] != "1" || seen["populated"] != "1" {
++		return fmt.Errorf("FUSE snapshot source is not completely frozen and populated")
++	}
++	return nil
++}
++
++func (css *containerStateService) ContainerSnapshot(id string, pid uint32) ([]byte, error) {
++	css.Lock()
++	defer css.Unlock()
++	original := css.idTable[id]
++	if original == nil {
++		return nil, fmt.Errorf("FUSE snapshot source does not exist")
++	}
++	if err := factoryboxFrozenSnapshotSource(original, pid); err != nil {
++		return nil, err
++	}
++	peers := css.netnsTable[original.netnsInode]
++	if len(peers) != 1 || peers[0] != original {
++		return nil, fmt.Errorf("FUSE snapshot cannot share its network namespace state")
++	}
++	original.intLock.RLock()
++	defer original.intLock.RUnlock()
++	snapshot := factoryboxStateSnapshot{Version: 1, Source: id, Ctime: original.ctime,
++		UIDFirst: original.uidFirst, UIDSize: original.uidSize,
++		GIDFirst: original.gidFirst, GIDSize: original.gidSize,
++		ProcRoPaths: original.procRoPaths, ProcMaskPaths: original.procMaskPaths,
++		Data: original.dataStore}
++	data, err := json.Marshal(snapshot)
++	if err != nil {
++		return nil, err
++	}
++	if _, err := decodeFactoryboxSnapshot(data); err != nil {
++		return nil, err
++	}
++	return data, nil
++}
++
++func (css *containerStateService) ContainerSnapshotPreRegister(id string, data []byte) error {
++	snapshot, err := decodeFactoryboxSnapshot(data)
++	if err != nil {
++		return err
++	}
++	if !factoryboxSnapshotID.MatchString(id) || id == snapshot.Source {
++		return fmt.Errorf("FUSE snapshot target must have an independent Factorybox identity")
++	}
++	return css.preRegister(id, "", "", snapshot)
++}
+--- /dev/null
++++ b/state/factorybox_snapshot_test.go
+@@ -0,0 +1,158 @@
++package state
++
++import (
++	"bytes"
++	"crypto/rand"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"os"
++	"os/exec"
++	"strconv"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/nestybox/sysbox-fs/domain"
++	"github.com/nestybox/sysbox-fs/mocks"
++	libpidfd "github.com/nestybox/sysbox-libs/pidfd"
++	"github.com/stretchr/testify/mock"
++	"golang.org/x/sys/unix"
++)
++
++func TestFactoryboxSnapshotFrozenExportAndIndependentImport(t *testing.T) {
++	if os.Getenv("FACTORYBOX_UPSTREAM_CONTAINER") != "1" {
++		t.Skip("requires the owned private-cgroup native fixture")
++	}
++	var nonce [16]byte
++	if _, err := rand.Read(nonce[:]); err != nil {
++		t.Fatal(err)
++	}
++	id := "fbx-" + hex.EncodeToString(nonce[:])
++	group := "/sys/fs/cgroup/" + id
++	if err := os.Mkdir(group, 0700); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Mkdir(group+"/init.scope", 0700); err != nil {
++		t.Fatal(err)
++	}
++	process := exec.Command("/bin/sleep", "60")
++	if err := process.Start(); err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		os.WriteFile(group+"/cgroup.freeze", []byte("0"), 0600)
++		process.Process.Kill()
++		process.Wait()
++		os.Remove(group + "/init.scope")
++		os.Remove(group)
++	}()
++	if err := os.WriteFile(group+"/init.scope/cgroup.procs", []byte(strconv.Itoa(process.Process.Pid)), 0600); err != nil {
++		t.Fatal(err)
++	}
++	fd, err := libpidfd.Open(process.Process.Pid, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer unix.Close(int(fd))
++	original := &container{id: id, initPid: uint32(process.Process.Pid), initPidFd: fd,
++		regCompleted: true, netnsInode: 55, ctime: time.Unix(123, 0),
++		uidFirst: 100000, uidSize: 65536, gidFirst: 100000, gidSize: 65536,
++		procRoPaths: []string{"/proc/bus"}, procMaskPaths: []string{"/proc/keys"},
++		dataStore: map[string][]byte{"/proc/sys/kernel/panic": []byte("17\n")}}
++	fuse := &mocks.FuseServerServiceIface{}
++	css := &containerStateService{idTable: map[string]*container{id: original},
++		netnsTable: map[domain.Inode][]*container{55: {original}}, fss: fuse}
++	if _, err := css.ContainerSnapshot(id, original.initPid); err == nil {
++		t.Fatal("live unfrozen source exported")
++	}
++	if err := os.WriteFile(group+"/cgroup.freeze", []byte("1"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	deadline := time.Now().Add(time.Second)
++	for {
++		events, err := os.ReadFile(group + "/cgroup.events")
++		if err == nil && strings.Contains(string(events), "frozen 1\n") {
++			break
++		}
++		if time.Now().After(deadline) {
++			t.Fatal("native source freeze was not observed", err)
++		}
++		time.Sleep(time.Millisecond)
++	}
++	if _, err := css.ContainerSnapshot(id, original.initPid+1); err == nil {
++		t.Fatal("wrong original PID accepted")
++	}
++	css.netnsTable[55] = append(css.netnsTable[55], &container{id: "peer"})
++	if _, err := css.ContainerSnapshot(id, original.initPid); err == nil {
++		t.Fatal("shared namespace exported")
++	}
++	css.netnsTable[55] = []*container{original}
++	exported, err := css.ContainerSnapshot(id, original.initPid)
++	if err != nil {
++		t.Fatal(err)
++	}
++	immutable := append([]byte(nil), exported...)
++	original.dataStore["/proc/sys/kernel/panic"][0] = '9'
++	original.procRoPaths[0] = "/changed"
++	delete(css.idTable, id)
++	target := "fbx-" + strings.Repeat("c", 32)
++	var restored *container
++	fuse.On("CreateFuseServer", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
++		restored = args.Get(0).(*container)
++		if args.Get(0) != args.Get(1) {
++			t.Fatal("snapshot target shares another container's state")
++		}
++	}).Return(nil).Once()
++	if err := css.ContainerSnapshotPreRegister(target, exported); err != nil {
++		t.Fatal(err)
++	}
++	if restored == nil || !restored.ctime.Equal(time.Unix(123, 0)) || restored.forkSource != id ||
++		restored.uidFirst != 100000 || restored.gidSize != 65536 ||
++		restored.initPid != 0 || restored.initPidFd != 0 || restored.regCompleted ||
++		string(restored.dataStore["/proc/sys/kernel/panic"]) != "17\n" ||
++		restored.procRoPaths[0] != "/proc/bus" || restored.procMaskPaths[0] != "/proc/keys" {
++		t.Fatal("snapshot target lost captured values, protections or independent process identity")
++	}
++	restored.dataStore["/proc/sys/kernel/panic"][0] = 'X'
++	if !bytes.Equal(exported, immutable) {
++		t.Fatal("target mutation changed the saved snapshot")
++	}
++	if err := css.ContainerSnapshotPreRegister(target, exported); err == nil {
++		t.Fatal("duplicate target replaced existing state")
++	}
++	registration := &container{id: target, uidFirst: 200000, uidSize: restored.uidSize,
++		gidFirst: restored.gidFirst, gidSize: restored.gidSize,
++		procRoPaths: restored.procRoPaths, procMaskPaths: restored.procMaskPaths}
++	if err := css.ContainerRegister(registration); err == nil ||
++		!strings.Contains(err.Error(), "saved ID mappings or proc protections") {
++		t.Fatal("snapshot registration changed its saved mapping/protections", err)
++	}
++	failed := "fbx-" + strings.Repeat("d", 32)
++	fuse.On("CreateFuseServer", mock.Anything, mock.Anything).Return(errors.New("fixture failure")).Once()
++	if err := css.ContainerSnapshotPreRegister(failed, exported); err == nil || css.idTable[failed] != nil {
++		t.Fatal("failed snapshot FUSE creation retained target state")
++	}
++	fuse.AssertExpectations(t)
++}
++
++func TestFactoryboxSnapshotRejectsMalformedState(t *testing.T) {
++	valid := factoryboxStateSnapshot{Version: 1, Source: "fbx-" + strings.Repeat("a", 32),
++		Ctime: time.Unix(123, 0), UIDFirst: 100000, UIDSize: 65536, GIDFirst: 100000, GIDSize: 65536,
++		Data: map[string][]byte{"/proc/sys/kernel/panic": []byte("17")}}
++	encoded, _ := json.Marshal(valid)
++	css := &containerStateService{}
++	if err := css.ContainerSnapshotPreRegister(valid.Source, encoded); err == nil {
++		t.Fatal("source identity reused for target")
++	}
++	for _, bad := range [][]byte{nil, []byte("{}"), append(append([]byte(nil), encoded...), []byte("{}")...),
++		[]byte(strings.Replace(string(encoded), `"version":1`, `"version":2`, 1)),
++		[]byte(strings.Replace(string(encoded), `"uid_first":100000`, `"uid_first":0`, 1)),
++		[]byte(strings.Replace(string(encoded), `"/proc/sys/kernel/panic"`, `"../foreign"`, 1)),
++		[]byte(strings.Replace(string(encoded), `"version":1`, `"unknown":1,"version":1`, 1)),
++		bytes.Repeat([]byte("x"), factoryboxSnapshotLimit+1)} {
++		if _, err := decodeFactoryboxSnapshot(bad); err == nil {
++			t.Fatal("malformed, unknown, unsafe or oversized snapshot accepted")
++		}
++	}
++}

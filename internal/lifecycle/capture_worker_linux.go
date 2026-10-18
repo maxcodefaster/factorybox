@@ -124,6 +124,13 @@ func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File
 	if err := criu.Close(); err != nil {
 		return err
 	}
+	// Capture the FUSE values at the same frozen point as RAM. Forking from
+	// this generation must not consult the source's later mutable datastore.
+	if _, err := e.command(ctx, lock, "factorybox-fs-snapshot",
+		"--file", filepath.Dir(guard.config.Evidence)+"/sysbox-state.json",
+		"--owner", guard.config.Source.Owner, guard.config.Source.RuntimeID); err != nil {
+		return fmt.Errorf("capture frozen FUSE state: %w", err)
+	}
 	data, err := json.Marshal(captureRequest{Guard: guard.config, Criu: e.config.Criu,
 		CriuSHA256: e.config.CriuSHA256})
 	if err != nil {

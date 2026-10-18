@@ -1,0 +1,150 @@
+--- /dev/null
++++ b/factorybox_fs_snapshot.go
+@@ -0,0 +1,105 @@
++//go:build linux
++
++package main
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"regexp"
++	"strings"
++
++	"github.com/nestybox/sysbox-ipc/sysboxFsGrpc"
++	"github.com/opencontainers/runc/libcontainer"
++	"github.com/opencontainers/runc/libcontainer/utils"
++	"github.com/urfave/cli"
++	"golang.org/x/sys/unix"
++)
++
++func factoryboxFsSnapshotPath(id, owner, bundle, output string) (string, error) {
++	nonce := regexp.MustCompile(`^[0-9a-f]{32}$`)
++	if !nonce.MatchString(owner) || id != "fbx-"+owner ||
++		!filepath.IsAbs(bundle) || filepath.Clean(bundle) != bundle ||
++		!filepath.IsAbs(output) || filepath.Clean(output) != output {
++		return "", fmt.Errorf("snapshot export identity or path is not canonical")
++	}
++	relative, err := filepath.Rel(bundle, output)
++	parts := strings.Split(relative, string(filepath.Separator))
++	if err != nil || len(parts) != 3 || parts[0] != "captures" ||
++		!nonce.MatchString(parts[1]) || parts[2] != "sysbox-state.json" {
++		return "", fmt.Errorf("snapshot export is outside its owned generation")
++	}
++	return relative, nil
++}
++
++var factoryboxFsSnapshotCommand = cli.Command{
++	Name:  "factorybox-fs-snapshot",
++	Usage: "export the frozen Factorybox source's FUSE state",
++	Flags: []cli.Flag{cli.StringFlag{Name: "file"}, cli.StringFlag{Name: "owner"}},
++	Action: func(context *cli.Context) error {
++		if err := checkArgs(context, 1, exactArgs); err != nil {
++			return err
++		}
++		container, err := getContainer(context)
++		if err != nil {
++			return err
++		}
++		status, err := container.Status()
++		if err != nil || status != libcontainer.Paused {
++			return fmt.Errorf("FUSE snapshot requires its frozen source: %v %v", status, err)
++		}
++		config := container.Config()
++		bundle, annotations := utils.Annotations(config.Labels)
++		owner := context.String("owner")
++		if annotations["io.factorybox.owner"] != owner {
++			return fmt.Errorf("FUSE snapshot ownership annotation differs")
++		}
++		relative, err := factoryboxFsSnapshotPath(context.Args().First(), owner, bundle, context.String("file"))
++		if err != nil {
++			return err
++		}
++		state, err := container.State()
++		if err != nil {
++			return err
++		}
++		data, err := sysboxFsGrpc.SendContainerSnapshot(&sysboxFsGrpc.ContainerData{
++			Id: context.Args().First(), InitPid: int32(state.InitProcessPid), Ctime: state.Created,
++		})
++		if err != nil {
++			return err
++		}
++		root, err := os.Open(bundle)
++		if err != nil {
++			return err
++		}
++		defer root.Close()
++		fd, err := unix.Openat2(int(root.Fd()), relative, &unix.OpenHow{
++			Flags: unix.O_WRONLY | unix.O_CREAT | unix.O_EXCL | unix.O_CLOEXEC,
++			Mode:  0600, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS,
++		})
++		if err != nil {
++			return err
++		}
++		file := os.NewFile(uintptr(fd), "private FUSE snapshot")
++		_, writeErr := file.Write(data)
++		if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
++			return err
++		}
++		parent, err := os.Open(filepath.Dir(context.String("file")))
++		if err != nil {
++			return err
++		}
++		if err := errors.Join(parent.Sync(), parent.Close()); err != nil {
++			return err
++		}
++		hash := sha256.Sum256(data)
++		return json.NewEncoder(os.Stdout).Encode(map[string]any{
++			"source": context.Args().First(), "bytes": len(data),
++			"sha256": hex.EncodeToString(hash[:]),
++		})
++	},
++}
+--- /dev/null
++++ b/factorybox_fs_snapshot_test.go
+@@ -0,0 +1,29 @@
++//go:build linux
++
++package main
++
++import (
++	"strings"
++	"testing"
++)
++
++func TestFactoryboxFsSnapshotScope(t *testing.T) {
++	owner := strings.Repeat("a", 32)
++	bundle := "/owned/objects/source"
++	output := bundle + "/captures/" + strings.Repeat("b", 32) + "/sysbox-state.json"
++	if _, err := factoryboxFsSnapshotPath("fbx-"+owner, owner, bundle, output); err != nil {
++		t.Fatal(err)
++	}
++	for _, test := range []struct{ id, owner, bundle, output string }{
++		{"other", owner, bundle, output},
++		{"fbx-" + owner, strings.Repeat("c", 32), bundle, output},
++		{"fbx-" + owner, owner, bundle, "/foreign/sysbox-state.json"},
++		{"fbx-" + owner, owner, bundle, bundle + "/captures/../sysbox-state.json"},
++		{"fbx-" + owner, owner, bundle, bundle + "/captures/not-a-generation/sysbox-state.json"},
++		{"fbx-" + owner, owner, bundle, strings.TrimSuffix(output, ".json") + ".other"},
++	} {
++		if _, err := factoryboxFsSnapshotPath(test.id, test.owner, test.bundle, test.output); err == nil {
++			t.Fatalf("foreign snapshot path or identity accepted: %+v", test)
++		}
++	}
++}
+--- a/main.go
++++ b/main.go
+@@ -124,6 +124,7 @@
+ 		experimentRestoreCommand,
+ 		experimentCopyCommand,
+ 		experimentPreparedCopyCommand,
++		factoryboxFsSnapshotCommand,
+ 		resumeCommand,
+ 		runCommand,
+ 		specCommand,

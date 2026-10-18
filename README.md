@@ -153,6 +153,20 @@ Sysbox under a Factorybox identity. The same process advances its RAM state afte
 captured page-file hashes stay unchanged. This test includes no filesystem snapshot, independent
 fork, restore or pause. It is not a latency benchmark.
 
+The guarded capture also exports Sysbox's virtual proc/sys state at that same frozen point.
+A root-only Unix RPC returns a bounded, versioned snapshot of its cached virtual values,
+creation time, UID/GID mappings and proc protections. It includes no PID, namespace or FUSE-server
+handles. Import creates independent pending state and uses ordinary registration to obtain fresh
+kernel identities. Import does not look up the original container; saved mappings and proc
+protections remain mandatory at final registration.
+
+The native capture test saves virtual `/proc/sys/kernel/panic` value `17`, lets the same source
+continue and change it to `29`, and confirms the saved snapshot stays unchanged. The worker kernel's
+value is unchanged throughout. Unfrozen export is rejected. The state-level native test also checks
+import after removal of the original registration, independent target mutation, duplicate rejection
+and rollback on FUSE-server creation failure. Kernel-backed proc/sys resources still require CRIU;
+this snapshot captures Sysbox's own virtual datastore, not an arbitrary host kernel.
+
 The capture fixture uses 3 CPUs/3 GiB and the existing retained Linux image for CRIU's dependencies.
 After its writers stop, a separate bounded helper archives only its owned capture and source-layer
 directories from a read-only volume. Archive failure retains the owned source volume and fails the
@@ -351,19 +365,19 @@ before enabling controllers within the private root; node-wide cgroups and sysct
 Do not run the Sysbox umbrella Makefile on the Mac or retained worker. Its integration scripts need
 a separately prepared, isolated test environment and include host-oriented cleanup commands.
 
-The complete fs module has passed 65 tests and 73 subtests with zero skips. Its positive registration
+The complete fs module has passed 67 tests and 73 subtests with zero skips. Its positive registration
 fixture checks the retained namespace FD, and namespace-event tests check distinct UID/GID values.
-The complete ipc module has passed two tests and three subtests with zero skips, including a real
+The complete ipc module has passed three tests and three subtests with zero skips, including a real
 local RPC server rejecting pre-registration, registration and update. Module bookkeeping and malformed
 client warnings are corrected with vet enabled.
 
 The mount-table parser accepts the observed empty cgroup2 source field while rejecting missing
 separators, missing required fields and incomplete reads. Original parser tests and the added
-regressions pass. The 17 other module suites passed in the preceding complete run, including both
-native ID-mapping capability tests. After the exec fix, the complete Runc module passed 273 tests
-and 227 subtests, with 14 explicit upstream skips. The manager's four shiftfs tests explicitly skip
-on this worker, which has no shiftfs module. These results come from the complete earlier run plus
-the affected complete Runc-module rerun, not from a second all-module invocation. The
+regressions pass. After adding virtual-state snapshots, all 18 Go module suites passed together
+in one native run: 393 top-level tests and 315 subtests. This includes the frozen FUSE export,
+independent import after source-registration removal, exact wire encoding and path-scope tests.
+The Runc module passed 274 tests and 227 subtests with 14 explicit upstream skips. The manager's
+four shiftfs tests explicitly skip on this worker, which has no shiftfs module. The
 umbrella/Bats/systemd and CRIU ordinary checkpoint/restore suites remain unqualified.
 
 ## Release requirements

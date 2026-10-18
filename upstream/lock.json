@@ -813,7 +813,8 @@
         "upstream/patches/sysbox-fs-netns-lifetime.patch": "db14af3a0d881824e41b22c81ab0e054cc278fa43cdded1f6d6ed0d8d6b3d998",
         "upstream/patches/sysbox-fs-readonly-remount.patch": "8036873adf8787b076e8934ac4f5b1f7f0d107ae0903aa91bfbf6ea673d52870",
         "upstream/patches/sysbox-fs-retained-registration.patch": "d6d6f2ac0d153fcf538c12f037951031c9d6a8d01020e9d97e6f386c796ad235",
-        "upstream/patches/sysbox-fs-test-fixtures.patch": "bafd49036046ed5e3679062c585f16dcfe077761dedf123dec92ac8285646321"
+        "upstream/patches/sysbox-fs-test-fixtures.patch": "bafd49036046ed5e3679062c585f16dcfe077761dedf123dec92ac8285646321",
+        "upstream/patches/sysbox-fs-state-snapshot.patch": "8498ef4cceb4f6a7b13d0b3d319b0051a374452bd567e633340033a285d34734"
       },
       "overlays": {
         "state/experiment_fork_test.go": "upstream/overlays/sysbox-fs/state/experiment_fork_test.go",
@@ -825,7 +826,8 @@
         "upstream/patches/sysbox-fs-readonly-remount.patch",
         "upstream/patches/sysbox-fs-fork-registration.patch",
         "upstream/patches/sysbox-fs-netns-lifetime.patch",
-        "upstream/patches/sysbox-fs-test-fixtures.patch"
+        "upstream/patches/sysbox-fs-test-fixtures.patch",
+        "upstream/patches/sysbox-fs-state-snapshot.patch"
       ],
       "prefix": "sysbox-fs-c3d2ebc65102e32e74e383675f03b45556326888",
       "repository": "nestybox/sysbox-fs",
@@ -861,14 +863,16 @@
       "local_inputs_sha256": {
         "upstream/overlays/sysbox-ipc/sysboxFsGrpc/experiment_fork_test.go": "8f38b645f2adf2572af6cf67575ba4142e1d973fd6f8b151404ddadcb7d17618",
         "upstream/patches/sysbox-ipc-fork-source.patch": "7909fc3b2df0d2f9fe905c51aaf30c2d3b29b04051756d42031242b3a4f56870",
-        "upstream/patches/sysbox-ipc-build-and-errors.patch": "19c52f3d7b41294f8363e3eaf79cab82324667272e24123f13e617d8b3a6cf03"
+        "upstream/patches/sysbox-ipc-build-and-errors.patch": "19c52f3d7b41294f8363e3eaf79cab82324667272e24123f13e617d8b3a6cf03",
+        "upstream/patches/sysbox-ipc-state-snapshot.patch": "ecda6a257670af570cf886fd2083a832a25c7adb772ffdf2e0a072af7b8affd3"
       },
       "overlays": {
         "sysboxFsGrpc/experiment_fork_test.go": "upstream/overlays/sysbox-ipc/sysboxFsGrpc/experiment_fork_test.go"
       },
       "patches": [
         "upstream/patches/sysbox-ipc-fork-source.patch",
-        "upstream/patches/sysbox-ipc-build-and-errors.patch"
+        "upstream/patches/sysbox-ipc-build-and-errors.patch",
+        "upstream/patches/sysbox-ipc-state-snapshot.patch"
       ],
       "prefix": "sysbox-ipc-f05151f4b4c1df63d7fd241577ca032905c1bd0e",
       "repository": "nestybox/sysbox-ipc",
@@ -950,7 +954,8 @@
         "upstream/patches/sysbox-restore-seccomp-listeners.patch": "5de442e2153c7ac403dd6c16a0f3b033ebfa965792782fd3ad186504395ca16c",
         "upstream/patches/sysbox-seccomp-blacklist.patch": "29d92cf5626b9fe94a52ba9bbb2f294a30d6e927ee40ae16ae1ae1480b2794cf",
         "upstream/patches/sysbox-runc-test-diagnostics.patch": "da69e0426c2c3189d067e50a0df31c46292395023f697f926cc3473f239ee3e8",
-        "upstream/patches/sysbox-runc-exec-error.patch": "fcbcdd1333edd78eb57427cd70bee2f597f13f3e74c036284b25a1e352e46d03"
+        "upstream/patches/sysbox-runc-exec-error.patch": "fcbcdd1333edd78eb57427cd70bee2f597f13f3e74c036284b25a1e352e46d03",
+        "upstream/patches/sysbox-runc-state-snapshot.patch": "f7199706eea1a8cab1ea163e9fa8d41a6591a0262a75fbb2c8c473b31f531599"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -975,7 +980,8 @@
         "upstream/patches/sysbox-restore-package.patch",
         "upstream/patches/sysbox-go-format.patch",
         "upstream/patches/sysbox-runc-test-diagnostics.patch",
-        "upstream/patches/sysbox-runc-exec-error.patch"
+        "upstream/patches/sysbox-runc-exec-error.patch",
+        "upstream/patches/sysbox-runc-state-snapshot.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",

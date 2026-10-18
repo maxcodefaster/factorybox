@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -117,6 +118,23 @@ func TestRetainedCaptureNative(t *testing.T) {
 			t.Errorf("delete owned capture source: %v", err)
 		}
 	})
+	hostPanic, err := os.ReadFile("/proc/sys/kernel/panic")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeVirtual := func(value string) {
+		t.Helper()
+		control, err := engine.lock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer control.Close()
+		if _, err := engine.command(ctx, control, "exec", view.Record.RuntimeID,
+			"/bin/sh", "-c", "printf '"+value+"\\n' > /proc/sys/kernel/panic"); err != nil {
+			t.Fatal("write private Sysbox virtual setting", err)
+		}
+	}
+	writeVirtual("17")
 	deadline := time.Now().Add(5 * time.Second)
 	var before captureActorState
 	for {
@@ -155,8 +173,23 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if err := guard.capturePhase(true); err != nil {
 		t.Fatal(err)
 	}
+	fsStatePath := filepath.Dir(guard.config.Evidence) + "/sysbox-state.json"
 	if err := engine.capture(ctx, guard, lock, "/factorybox"); err != nil {
 		t.Fatal(err)
+	}
+	fsState, err := os.ReadFile(fsStatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var virtual struct {
+		Version int               `json:"version"`
+		Source  string            `json:"source"`
+		Data    map[string][]byte `json:"data"`
+	}
+	if err := json.Unmarshal(fsState, &virtual); err != nil || virtual.Version != 1 ||
+		virtual.Source != view.Record.RuntimeID ||
+		strings.TrimSpace(string(virtual.Data["/proc/sys/kernel/panic"])) != "17" {
+		t.Fatalf("FUSE snapshot did not capture its source's virtual value: %v", err)
 	}
 	images := filepath.Dir(guard.config.Evidence) + "/images"
 	files, err := filepath.Glob(images + "/pages-*.img")
@@ -190,6 +223,25 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if err := lock.Close(); err != nil {
 		t.Fatal(err)
 	}
+	writeVirtual("29")
+	preserved, err := os.ReadFile(fsStatePath)
+	if err != nil || !bytes.Equal(preserved, fsState) {
+		t.Fatal("source virtual-setting mutation changed the saved checkpoint", err)
+	}
+	control, err := engine.lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, liveExportErr := engine.command(ctx, control, "factorybox-fs-snapshot",
+		"--file", fsStatePath, "--owner", view.Record.Owner, view.Record.RuntimeID)
+	control.Close()
+	if liveExportErr == nil {
+		t.Fatal("unfrozen live source exported as an atomic snapshot")
+	}
+	afterHostPanic, err := os.ReadFile("/proc/sys/kernel/panic")
+	if err != nil || !bytes.Equal(afterHostPanic, hostPanic) {
+		t.Fatal("private virtual setting changed the worker kernel value", err)
+	}
 	after, err := readCaptureActor(view.Runtime.PID, "advance")
 	expected := append([]byte(nil), before.Payload...)
 	expected[0] ^= 0xff
@@ -206,6 +258,6 @@ func TestRetainedCaptureNative(t *testing.T) {
 	if err != nil || observed.Runtime == nil || observed.Runtime.PID != view.Runtime.PID {
 		t.Fatalf("capture replaced or lost its source: %+v: %v", observed, err)
 	}
-	t.Logf("actual CRIU capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved backing after source mutation; filesystem snapshot and restore remain separate gates",
+	t.Logf("actual CRIU capture under %s retained PID %d, included the 8192-byte private RAM payload in %d page files and preserved RAM backing plus virtual value 17 after source mutation to 29; worker kernel value unchanged; filesystem snapshot and restore remain separate gates",
 		view.Record.RuntimeID, view.Runtime.PID, len(files))
 }
