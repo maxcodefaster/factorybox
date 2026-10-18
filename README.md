@@ -20,6 +20,7 @@ describe development workloads; they do not define the snapshot engine.
 | --- | --- |
 | `cmd/factorybox` | Diagnostics and local administrative lifecycle commands |
 | `internal/lifecycle` | Persisted start/delete intent, exact runtime/cgroup ownership and reconciliation |
+| `internal/sysboxcapture` | Pinned modern libcontainer checkpoint adapter extracted from ramctl |
 | `internal/platform` | Explicit reference-platform admission |
 | `internal/pageview` | Extracted logical snapshot reader and its native regressions |
 | `internal/snapshot` | Extracted CRIU pagemap codec and complete logical memory comparison |
@@ -130,6 +131,34 @@ record and worker boot. Thread traversal has depth/count bounds and rejects fore
 Sysbox's ordinary manager pause changes ownership and volume state, so guarded capture uses the
 original kernel cgroup freezer directly. The public snapshot commands, actual CRIU command
 reconciliation, snapshot backing and network-lock recovery still need extraction and qualification.
+
+The ordinary retained-source RAM capture now has its own native gate:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID --suite capture
+```
+
+This uses the reference's pinned runc 1.3.4 library and CRIU Go RPC 6.3.0 behind the
+`internal/sysboxcapture` adapter. It preserves opaque Sysbox state in a private raw copy and adds
+only a per-capture CRIU configuration annotation to that copy. The original runtime state remains
+unchanged. The worker verifies a sealed request, original kernel handles and the exact CRIU
+executable before capture. It retains the operation lock and writes its own intent before CRIU
+starts. The source guard remains in its capture transaction until the caller acknowledges completion.
+
+Both native checks passed without skips: the configuration-view test preserves all Sysbox-only
+fields, and the actual CRIU test captures an 8192-byte random RAM payload from a Go process inside
+Sysbox under a Factorybox identity. The same process advances its RAM state after thaw, while the
+captured page-file hashes stay unchanged. This test includes no filesystem snapshot, independent
+fork, restore or pause. It is not a latency benchmark.
+
+The capture fixture uses 3 CPUs/3 GiB and the existing retained Linux image for CRIU's dependencies.
+After its writers stop, a separate bounded helper archives only its owned capture and source-layer
+directories from a read-only volume. Archive failure retains the owned source volume and fails the
+gate. The passing run archived its source and images and confirmed complete container/volume cleanup.
+Clean-machine reconstruction of this base is still required. The public snapshot API remains
+incomplete; this internal capture path is not a production-qualified checkpoint interface.
 
 ## Pinned sources
 

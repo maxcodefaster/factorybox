@@ -23,6 +23,13 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if handled, err := CaptureWorkerCommand(os.Args[1:]); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	if handled, err := CaptureGuardCommand(os.Args[1:]); handled {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)

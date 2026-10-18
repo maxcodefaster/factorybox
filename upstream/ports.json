@@ -1,4 +1,28 @@
 {
+  "internal/sysboxcapture/capture_linux.go": {
+    "changes": [
+      "Extract the ordinary complete retained-source checkpoint options, mapped image ownership and final regular-file ownership checks.",
+      "Use the same pinned modern runc library as ramctl, without its experiment switches, fixed paths, pre-dump or lazy-inheritance modes.",
+      "Supply a per-capture CRIU configuration through a private raw state copy; preserve the original opaque Sysbox state and verify it is unchanged after dump.",
+      "Keep vendor configuration types inside this adapter. The caller supplies original kernel handles through the guarded worker."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/ramctl/main_linux.go": "35339fe64df46456b6ee94fb9b556da38dc3f811d264b3d55a32e50058c7e9b2",
+      "tests/reference/driver/go.mod": "57d763c2edfcda749497d177c57ceb3a172a2d689fec3cb1e202be1fc442f635",
+      "tests/reference/driver/go.sum": "4604615117514712c7f704894056c5a38e25d3c342238e2c28d0e7f2ce9559fa"
+    }
+  },
+  "internal/lifecycle/capture_worker_linux.go": {
+    "changes": [
+      "Adapt the sealed-memfd request pattern to an application-independent retained-source capture worker.",
+      "Bind requests to the unchanged sandbox record, original PID/cgroup/directory handles and the exact CRIU executable.",
+      "Retain the operation lock in the worker, persist intent before CRIU starts and leave failed or unacknowledged capture under the source guard."
+    ],
+    "sources": {
+      "upstream/overlays/sysbox-runc/experiment_copy.go": "812aab6fc70538481cb7e1ce3c04a5eb293170f003e531eba5c77ae75244ada6",
+      "tests/reference/driver/cmd/ramctl/main_linux.go": "35339fe64df46456b6ee94fb9b556da38dc3f811d264b3d55a32e50058c7e9b2"
+    }
+  },
   "internal/lifecycle/capture_guard_linux.go": {
     "changes": [
       "Extract the source guard protocol, PID-fd checks, safe thaw, unsafe hold and controller fallback.",

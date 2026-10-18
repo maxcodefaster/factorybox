@@ -19,6 +19,9 @@ func runLifecycle(args []string) error {
 	if handled, err := lifecycle.CaptureGuardCommand(args); handled {
 		return err
 	}
+	if handled, err := lifecycle.CaptureWorkerCommand(args); handled {
+		return err
+	}
 	flags := flag.NewFlagSet("factorybox", flag.ContinueOnError)
 	var config lifecycle.Config
 	flags.StringVar(&config.Root, "root", "", "private worker state directory")

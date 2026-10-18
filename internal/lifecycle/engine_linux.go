@@ -34,6 +34,8 @@ type Config struct {
 	Root          string
 	Runtime       string
 	RuntimeSHA256 string
+	Criu          string
+	CriuSHA256    string
 }
 
 type Operation struct {

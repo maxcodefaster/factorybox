@@ -5,6 +5,13 @@ test "${FACTORYBOX_NATIVE_LIFECYCLE:-}" = 1
 test -d /output
 test -d /var/lib/sysbox
 test -n "${FACTORYBOX_RUNTIME_SHA256:-}"
+if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
+  mkdir -p /out
+  for component in sysbox-runc sysbox-fs sysbox-mgr criu; do
+    cp -- "/component-input/$component" "/out/$component"
+    chmod 0755 "/out/$component"
+  done
+fi
 test_pattern='^TestNative'
 if test "${FACTORYBOX_NATIVE_CAPTURE_GUARD:-}" = 1; then
   test_pattern='^TestCaptureGuardNative$'
@@ -30,6 +37,10 @@ fi
 if test -n "${FACTORYBOX_NATIVE_TEST:-}"; then
   [[ "$FACTORYBOX_NATIVE_TEST" =~ ^TestNative[A-Za-z0-9_]+$ ]]
   test_pattern="^${FACTORYBOX_NATIVE_TEST}$"
+fi
+if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
+  /sysboxcapture.test -test.v -test.timeout=10s
+  test_pattern='^TestRetainedCaptureNative$'
 fi
 set +e
 /lifecycle.test -test.v -test.timeout=90s -test.run "$test_pattern"
