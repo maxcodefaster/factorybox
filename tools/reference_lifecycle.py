@@ -66,6 +66,12 @@ def make_pod(template, namespace, owner, image):
     # so the fixture can be admitted without changing unrelated workloads.
     # Its original 3-CPU execution limit and complete workload stay intact.
     pod["spec"]["containers"][0]["resources"]["requests"]["cpu"] = "2500m"
+    probe = pod["spec"]["containers"][0]
+    terminal = "printf '%s\\n' \"$status\" > /experiment/exit-code\n"
+    if probe["args"][0].count(terminal) != 1:
+        raise ValueError("reference terminal status writer changed")
+    probe["args"][0] = probe["args"][0].replace(
+        terminal, terminal + "printf 'FACTORYBOX_EXIT=%s\\n' \"$status\"\n")
     return pod
 
 
@@ -86,13 +92,36 @@ def verify_records(text, expected):
     return records
 
 
+def terminal_status(text):
+    values = [line.rstrip("\n").removeprefix("FACTORYBOX_EXIT=")
+              for line in text.splitlines(keepends=True)
+              if line.startswith("FACTORYBOX_EXIT=") and line.endswith("\n")]
+    if not values:
+        return None
+    if len(values) != 1 or not values[0].isdigit() or not 0 <= int(values[0]) <= 255:
+        raise ValueError("native terminal status is malformed or duplicated")
+    return int(values[0])
+
+
 def component_build(relative, expected_prefix):
     path = ROOT / "artifacts" / relative
     if pathlib.PurePath(relative).name != relative or not relative.startswith(expected_prefix):
         raise ValueError("expected a named Factorybox build artifact")
     result = json.loads((path / "result.json").read_text())
-    if not result["passed"] or result["source_lock_sha256"] != reference.sha(ROOT / "upstream/lock.json"):
-        raise ValueError("build failed or belongs to another source lock")
+    if not result["passed"]:
+        raise ValueError("component build failed")
+    current_lock = ROOT / "upstream/lock.json"
+    if result["source_lock_sha256"] != reference.sha(current_lock):
+        retained = path / "source-lock.json"
+        if not retained.exists() or reference.sha(retained) != result["source_lock_sha256"]:
+            raise ValueError("build source lock is unavailable or changed")
+        before = json.loads(retained.read_text())["components"]
+        current = json.loads(current_lock.read_text())["components"]
+        relevant = (["criu"] if expected_prefix == "factorybox-build-criu-" else
+                    ["sysbox-runc", "sysbox-fs", "sysbox-mgr", "sysbox-ipc",
+                     "sysbox-libs", "sysbox-fuse"])
+        if any(before[name] != current[name] for name in relevant):
+            raise ValueError("build belongs to different component sources")
     return path, result
 
 
@@ -189,7 +218,8 @@ def harvest(namespace, archive):
 -print0 | tar --null -T - -cf -"""
     with (archive / "native-evidence.tar").open("xb") as output, \
             (archive / "harvest-stderr.txt").open("xb") as errors:
-        subprocess.run(KUBECTL + ["exec", "-n", namespace, "lifecycle", "-c", "probe", "--",
+        subprocess.run(KUBECTL[:-1] + ["--request-timeout=35s",
+                                 "exec", "-n", namespace, "lifecycle", "-c", "probe", "--",
                                  "sh", "-ec", script], stdout=output, stderr=errors,
                        check=True, timeout=40)
     with tarfile.open(archive / "native-evidence.tar") as bundle:
@@ -255,7 +285,12 @@ def execute(options):
         print(json.dumps({"running": str(archive), "namespace": namespace}), flush=True)
         finished = False
         while time.monotonic() < deadline:
-            observed = current_pod(namespace, owner, namespace_uid, pod_uid, pod)
+            try:
+                observed = current_pod(namespace, owner, namespace_uid, pod_uid, pod)
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
+                result.setdefault("observation_errors", []).append(str(error))
+                time.sleep(1)
+                continue
             write_json(archive / "observed-pod.json", observed)
             for condition in observed.get("status", {}).get("conditions", []):
                 if condition.get("reason") == "Unschedulable":
@@ -266,27 +301,27 @@ def execute(options):
             if running and log_process is None:
                 log_stream = (archive / "records.jsonl").open("x")
                 log_errors = (archive / "log-stderr.txt").open("x")
-                log_process = subprocess.Popen(KUBECTL + [
+                log_process = subprocess.Popen(KUBECTL[:-1] + ["--request-timeout=0",
                     "logs", "--follow", "-n", namespace, "lifecycle", "-c", "probe"],
                     stdout=log_stream, stderr=log_errors)
             if running:
-                status = subprocess.run(KUBECTL + [
-                    "exec", "-n", namespace, "lifecycle", "-c", "probe", "--",
-                    "cat", "/experiment/exit-code"], capture_output=True, text=True, timeout=12)
-                if status.returncode == 0:
-                    result["native_exit_code"] = int(status.stdout.strip())
+                status = terminal_status((archive / "records.jsonl").read_text())
+                if status is not None:
+                    result["native_exit_code"] = status
                     finished = True
                     break
+            if "terminated" in states.get("probe", {}).get("state", {}):
+                raise ValueError("native probe terminated before its terminal result")
             if observed.get("status", {}).get("phase") in ["Failed", "Succeeded"]:
                 raise ValueError("native pod terminated before evidence was harvested")
             time.sleep(1)
         if not finished:
             raise ValueError("native lifecycle exceeded its 420-second deadline")
         current_pod(namespace, owner, namespace_uid, pod_uid, pod)
-        logs = kube(["logs", "-n", namespace, "lifecycle", "-c", "probe"])
+        logs = (archive / "records.jsonl").read_text()
         (archive / "complete-records.jsonl").write_text(logs)
         (archive / "theia.log").write_text(kube([
-            "logs", "-n", namespace, "lifecycle", "-c", "ide"]))
+            "--request-timeout=25s", "logs", "-n", namespace, "lifecycle", "-c", "ide"], timeout=30))
         if result["native_exit_code"] != 0:
             raise ValueError("native lifecycle returned nonzero; preserve failed assertions")
         expected = json.loads((FIXTURE / "expected-records.json").read_text())

@@ -4,6 +4,16 @@ set -euo pipefail
 test "${FACTORYBOX_UPSTREAM_CONTAINER:-}" = 1
 test -d /input/sysbox-runc
 test -d /output
+if test "${FACTORYBOX_UPSTREAM_SUITE:-all}" = libcontainer; then
+  set +e
+  go tool test2json -t -p github.com/nestybox/sysbox-runc/libcontainer \
+    /out/libcontainer.test -test.v -test.timeout=30s \
+    > /output/libcontainer.jsonl 2> /output/libcontainer.stderr
+  status=$?
+  set -e
+  printf '%s\n' "$status" > /output/libcontainer.exit-code
+  exit "$status"
+fi
 mkdir -p /run/factorybox-tests /mnt/scratch /busybox
 tar -xzf /busybox-rootfs.tar.gz -C /busybox
 

@@ -22,6 +22,7 @@ def main():
     context.mkdir(parents=True)
     output.mkdir()
     lock_path = ROOT / "upstream/lock.json"
+    shutil.copyfile(lock_path, archive / "source-lock.json")
     lock = json.loads(lock_path.read_text())["components"]
     result = {
         "schema": 1, "owner": owner, "started_at": datetime.datetime.now(
@@ -29,7 +30,8 @@ def main():
         "source_lock_sha256": reference.sha(lock_path),
         "dockerfile_sha256": reference.sha(ROOT / "build/sysbox.Dockerfile"),
         "passed": False, "production_qualified": False,
-        "scope": "Native component compilation and selected inherited regression tests. "
+        "scope": "Native component compilation, a natural-module libcontainer test compile gate "
+                 "and selected inherited regression tests. "
                  "Not the complete upstream unit/integration suites or full lifecycle qualification. "
                  "APT build dependencies are recorded but not yet locked for clean-machine reproduction.",
     }

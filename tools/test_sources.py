@@ -11,6 +11,75 @@ import sources
 
 
 class SourceIntegrityTests(unittest.TestCase):
+    def small_archive(self, root):
+        archive = root / ".cache/downloads/small.tar"
+        archive.parent.mkdir(parents=True)
+        with tarfile.open(archive, "w") as tf:
+            for name, payload in [("runtime.go", b"original implementation\n"),
+                                  ("runtime_test.go", b"original assertion\n")]:
+                info = tarfile.TarInfo("upstream/" + name)
+                info.size = len(payload)
+                tf.addfile(info, io.BytesIO(payload))
+        return {"archive": archive.name, "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+                "prefix": "upstream", "local_inputs_sha256": {}, "overlays": {}, "patches": []}
+
+    def test_changed_implementation_is_rejected_even_when_tests_are_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            component = self.small_archive(root)
+            with patch.object(sources, "ROOT", root):
+                sources.prepare("small", component, True)
+                (root / ".cache/sources/small/runtime.go").write_text("changed implementation\n")
+                with self.assertRaisesRegex(ValueError, "cached source"):
+                    sources.prepare("small", component, True)
+
+    def test_recipe_change_requires_explicit_refresh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            component = self.small_archive(root)
+            with patch.object(sources, "ROOT", root):
+                sources.prepare("small", component, True)
+                component["role"] = "changed canonical recipe"
+                with self.assertRaisesRegex(ValueError, "cached source recipe changed"):
+                    sources.prepare("small", component, True)
+
+    def test_deleted_source_file_is_removed_instead_of_left_empty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            component = self.small_archive(root)
+            change = root / "delete.patch"
+            change.write_text("--- a/runtime.go\n+++ /dev/null\n@@ -1 +0,0 @@\n"
+                              "-original implementation\n")
+            component["patches"] = ["delete.patch"]
+            component["local_inputs_sha256"] = {"delete.patch": sources.sha(change)}
+            with patch.object(sources, "ROOT", root):
+                sources.prepare("small", component, True)
+            self.assertFalse((root / ".cache/sources/small/runtime.go").exists(),
+                             "deleted Go source must not remain as an empty uncompilable file")
+
+    def test_declared_format_change_is_exact_and_cannot_waive_other_edits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            component = self.small_archive(root)
+            tree = root / "prepared"
+            tree.mkdir()
+            original, changed = b"original assertion\n", b"explicit-format assertion\n"
+            test = tree / "runtime_test.go"
+            test.write_bytes(changed)
+            component["test_file_changes"] = {"runtime_test.go": {
+                "original_sha256": hashlib.sha256(original).hexdigest(),
+                "prepared_sha256": hashlib.sha256(changed).hexdigest(),
+            }}
+            archive = root / ".cache/downloads/small.tar"
+            self.assertEqual(sources.check_source(tree, archive, component), 1)
+            test.write_bytes(b"assertion removed\n")
+            with self.assertRaisesRegex(ValueError, "upstream test changed"):
+                sources.check_source(tree, archive, component)
+            test.write_bytes(changed)
+            component["test_file_changes"]["runtime_test.go"]["original_sha256"] = "0" * 64
+            with self.assertRaisesRegex(ValueError, "test base differs"):
+                sources.check_source(tree, archive, component)
+
     def test_changed_upstream_assertion_fails_verification(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

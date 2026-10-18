@@ -3,6 +3,7 @@
 import datetime
 import json
 import pathlib
+import shutil
 import subprocess
 import uuid
 
@@ -20,6 +21,7 @@ def main():
     output = ROOT / "artifacts" / name
     output.mkdir(parents=True)
     lock = ROOT / "upstream/lock.json"
+    shutil.copyfile(lock, output / "source-lock.json")
     component = json.loads(lock.read_text())["components"]["criu"]
     result = {
         "schema": 1, "owner": owner, "container_name": name, "builder": BUILDER,

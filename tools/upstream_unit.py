@@ -49,6 +49,7 @@ def observations(output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
+    parser.add_argument("--suite", choices=["all", "libcontainer"], default="all")
     options = parser.parse_args()
     build, build_result = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
@@ -60,8 +61,11 @@ def main():
     result = {"schema": 1, "owner": owner, "container_name": name,
               "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "passed": False, "cleanup": False, "production_qualified": False,
-              "scope": "Complete pinned runc/fs/mgr/ipc/libs Go unit suites. "
-                       "Sysbox umbrella/Bats/systemd and CRIU integration gates are separate."}
+              "suite": options.suite,
+              "scope": ("Pinned libcontainer unit package only; executes the independently compiled binary."
+                        if options.suite == "libcontainer" else
+                        "Complete pinned runc/fs/mgr/ipc/libs Go unit suites. "
+                        "Sysbox umbrella/Bats/systemd and CRIU integration gates are separate.")}
     attempted = False
     failure = None
     try:
@@ -82,17 +86,22 @@ def main():
             raise ValueError("upstream Busybox test rootfs differs")
         result["busybox_rootfs_sha256"] = busybox["sha256"]
         command = [*reference.DOCKER, "build", "--provenance=false", "--progress=plain",
-                   "--platform=linux/arm64", "--target", "build", "--load",
+                   "--platform=linux/arm64", "--target", "build",
+                   "--output", "type=image,compression=uncompressed",
                    "--tag", name, "--iidfile", str(archive / "builder-id.txt"),
+                   "--metadata-file", str(archive / "builder-metadata.json"),
                    "-f", str(dockerfile), str(build / "context")]
         with (archive / "builder.log").open("x") as log:
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
-        image = (archive / "builder-id.txt").read_text().strip()
-        result["builder_image_config"] = image
+        result["builder_image_config"] = (archive / "builder-id.txt").read_text().strip()
+        metadata = json.loads((archive / "builder-metadata.json").read_text())
+        image = name + "@" + metadata["containerimage.digest"]
+        result["builder_image_manifest"] = image
         command = [*reference.DOCKER, "run", "--pull=never", "--name", name,
                    "--label", "com.factorybox.run=" + owner, "--privileged",
                    "--cgroupns=private", "--cpus=2", "--memory=2g", "--pids-limit=512",
                    "--env", "FACTORYBOX_UPSTREAM_CONTAINER=1",
+                   "--env", "FACTORYBOX_UPSTREAM_SUITE=" + options.suite,
                    "--env", "GOMAXPROCS=2", "--env", "GOFLAGS=-p=2",
                    "--mount", f"type=bind,source={build / 'context'},target=/input,readonly",
                    "--mount", f"type=bind,source={output},target=/output",
@@ -107,8 +116,13 @@ def main():
             done = subprocess.run(command, stdout=log, stderr=errors, timeout=900)
         result["exit_code"] = done.returncode
         result["suites"] = observations(output)
-        required = {"runc", "fs", "mgr", "ipc"} | {
-            "libs-" + p.parent.name for p in (build / "context/sysbox-libs").glob("*/go.mod")}
+        if done.returncode == 125:
+            raise ValueError("upstream test container did not start: " +
+                             (archive / "stderr.txt").read_text()[-4096:])
+        required = ({"libcontainer"} if options.suite == "libcontainer" else
+                    {"runc", "fs", "mgr", "ipc"} | {
+                        "libs-" + p.parent.name
+                        for p in (build / "context/sysbox-libs").glob("*/go.mod")})
         state = json.loads(reference.docker(["container", "inspect", name]))[0]["State"]
         result["container_state"] = state
         result["passed"] = (done.returncode == 0 and not state["OOMKilled"] and

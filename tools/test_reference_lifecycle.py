@@ -30,6 +30,8 @@ class LifecycleOwnershipTests(unittest.TestCase):
         self.assertEqual(pod["spec"]["containers"][0]["resources"]["limits"],
                          original["spec"]["containers"][0]["resources"]["limits"])
         self.assertEqual(pod["spec"]["containers"][0]["resources"]["requests"]["cpu"], "2500m")
+        self.assertEqual(pod["spec"]["containers"][0]["args"][0].count("FACTORYBOX_EXIT="), 1)
+        self.assertIn("/lab criu-probe\nstatus=$?\n", pod["spec"]["containers"][0]["args"][0])
         template["spec"]["containers"][0]["resources"]["limits"]["memory"] = "1Gi"
         with self.assertRaises(ValueError):
             runner.make_pod(template, "owned-ns", "owner", "rebuilt")
@@ -49,6 +51,16 @@ class LifecycleOwnershipTests(unittest.TestCase):
         text = json.dumps({"name": "sysbox-branch-" + "a" * 32 + "-resumed", "status": "passed"})
         rows = runner.verify_records(text, {"sysbox-branch-IDENTITY-resumed": 1})
         self.assertEqual(len(rows), 1)
+
+    def test_only_one_complete_terminal_result_is_accepted(self):
+        self.assertIsNone(runner.terminal_status('{"name":"native-started"}\n'))
+        self.assertIsNone(runner.terminal_status("FACTORYBOX_EXIT="))
+        self.assertEqual(runner.terminal_status("native log\nFACTORYBOX_EXIT=0\n"), 0)
+        self.assertEqual(runner.terminal_status("FACTORYBOX_EXIT=37\n"), 37)
+        for invalid in ["FACTORYBOX_EXIT=256", "FACTORYBOX_EXIT=-1", "FACTORYBOX_EXIT=x",
+                        "FACTORYBOX_EXIT=0\nFACTORYBOX_EXIT=0"]:
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                runner.terminal_status(invalid + "\n")
 
 
 if __name__ == "__main__":

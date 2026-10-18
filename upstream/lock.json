@@ -894,10 +894,12 @@
         "upstream/overlays/sysbox-runc/libcontainer/experiment_seccomp_linux.go": "9c4d6ab47384633cd17f8d6a9565c0ae9cf75d54ca6aa55f5a676dd7d5643661",
         "upstream/overlays/sysbox-runc/libsysbox/syscont/experiment_blacklist_test.go": "ba45e6433b0ae6f59574c9df2323fa27c247825261fc18fc53c66240c44b73a8",
         "upstream/patches/sysbox-experiment-restore-command.patch": "c22d8a07c52915a73751ba40c63204c304bfdd6541b21c93a49a4297b40455d7",
+        "upstream/patches/sysbox-go-format.patch": "7b1eda83cbfa648f49f3a944c6d6dab8322c8037a1ba547a48a65cbd08e7a835",
         "upstream/patches/sysbox-restore-cgroup-root.patch": "63afaa9d11c97992dd358ab4909809c644781d0843bad24420bedabe740170a7",
         "upstream/patches/sysbox-restore-log-level.patch": "6021539bedb32cc0bb0dbf3281b9dafcfd516f471704d3371e163cdda769794f",
         "upstream/patches/sysbox-restore-mount-metadata.patch": "b9680febf3f406fc72f57d35b82c5fed5b8f054f731c4b65b027b6d315c3b3e3",
         "upstream/patches/sysbox-restore-mountpoints.patch": "c1eb7b8dcb6036c50f33a08b9bd810112d6b9551d2549581314f4e0d5cf61b8b",
+        "upstream/patches/sysbox-restore-package.patch": "24c263a94007ade5243e4b5deb17cbd4066ce18059bccc12003e1de9abcb4008",
         "upstream/patches/sysbox-restore-seccomp-listeners.patch": "5de442e2153c7ac403dd6c16a0f3b033ebfa965792782fd3ad186504395ca16c",
         "upstream/patches/sysbox-seccomp-blacklist.patch": "29d92cf5626b9fe94a52ba9bbb2f294a30d6e927ee40ae16ae1ae1480b2794cf"
       },
@@ -920,11 +922,20 @@
         "upstream/patches/sysbox-restore-mount-metadata.patch",
         "upstream/patches/sysbox-restore-cgroup-root.patch",
         "upstream/patches/sysbox-restore-log-level.patch",
-        "upstream/patches/sysbox-seccomp-blacklist.patch"
+        "upstream/patches/sysbox-seccomp-blacklist.patch",
+        "upstream/patches/sysbox-restore-package.patch",
+        "upstream/patches/sysbox-go-format.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
       "sha256": "1440ee7276dc20f2397f485a6ae987c0fd62270a209e335bd3c1e68db676b704",
+      "test_file_changes": {
+        "libcontainer/generic_error_test.go": {
+          "original_sha256": "cb95ba2b9660747306bf0b98b25c047be4762e883203954b0be2c7141a730108",
+          "prepared_sha256": "b222e8fba661f20647d925074c92fc56670521d83be2e97160081b56427a5f97",
+          "reason": "Add an explicit %s format to the existing error fixture for Go vet. All test cases and assertions remain unchanged."
+        }
+      },
       "url": "https://codeload.github.com/nestybox/sysbox-runc/tar.gz/081856cc5d17e7095f066b08d0eca6bb0b515c47"
     },
     "sysbox-tests": {

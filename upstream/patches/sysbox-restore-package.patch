@@ -1,0 +1,270 @@
+--- a/experiment_copy.go
++++ b/experiment_copy.go
+@@ -16,6 +16,7 @@
+ 	"github.com/nestybox/sysbox-ipc/sysboxFsGrpc"
+ 	ipc "github.com/nestybox/sysbox-ipc/sysboxMgrLib"
+ 	sh "github.com/nestybox/sysbox-libs/idShiftUtils"
++	"github.com/nestybox/sysbox-runc/libcontainer/factoryboxrestore"
+ 	"github.com/opencontainers/runc/libcontainer"
+ 	"github.com/opencontainers/runc/libcontainer/configs"
+ 	"github.com/opencontainers/runc/libsysbox/sysbox"
+@@ -230,7 +231,7 @@
+ 		}
+ 		timing.mark("reload-and-validate-frozen-source")
+ 		images := plan.Images
+-		if err := libcontainer.ExperimentRestoreRoot(config, images); err != nil {
++		if err := factoryboxrestore.Root(config, images); err != nil {
+ 			return err
+ 		}
+ 		timing.mark("rebuild-idmapped-rootfs")
+--- a/experiment_restore.go
++++ b/experiment_restore.go
+@@ -10,6 +10,7 @@
+ 	"strings"
+ 
+ 	criu "github.com/checkpoint-restore/go-criu/v4/rpc"
++	"github.com/nestybox/sysbox-runc/libcontainer/factoryboxrestore"
+ 	"github.com/opencontainers/runc/libcontainer"
+ 	"github.com/urfave/cli"
+ )
+@@ -38,7 +39,7 @@
+ 		if err != nil || status != libcontainer.Stopped {
+ 			return fmt.Errorf("owned source must be stopped before restore: %v %v", status, err)
+ 		}
+-		if err := libcontainer.ExperimentRestoreRoot(container.Config(), images); err != nil {
++		if err := factoryboxrestore.Root(container.Config(), images); err != nil {
+ 			return err
+ 		}
+ 		options := &libcontainer.CriuOpts{
+--- a/libcontainer/experiment_rootfs_linux.go
++++ /dev/null
+@@ -1,113 +0,0 @@
+-//go:build linux
+-
+-package libcontainer
+-
+-import (
+-	"fmt"
+-	"os"
+-	"path/filepath"
+-	"regexp"
+-	"strings"
+-
+-	sh "github.com/nestybox/sysbox-libs/idShiftUtils"
+-	"github.com/opencontainers/runc/libcontainer/configs"
+-	"github.com/opencontainers/runc/libcontainer/internal/userns"
+-	"golang.org/x/sys/unix"
+-)
+-
+-// ExperimentRestoreRoot rebuilds only the owned fixture's Sysbox overlay.
+-// Run after terminating checkpoint, in an isolated private mount namespace.
+-// The saved mappings create a fresh mapping namespace; no old workload remains.
+-func ExperimentRestoreRoot(config configs.Config, images string) error {
+-	base := filepath.Dir(images)
+-	branch := regexp.MustCompile(`^branch-[0-9a-f]{32}$`)
+-	ownedBase := base == "/experiment/sysbox" || base == "/experiment/sysbox-copy" ||
+-		(filepath.Dir(base) == "/experiment/branches" && branch.MatchString(filepath.Base(base)))
+-	imageName := filepath.Base(images)
+-	ownedImage := imageName == "images" || regexp.MustCompile(`^images-[0-9a-f]{32}$`).MatchString(imageName) ||
+-		(base == "/experiment/sysbox" && imageName == "images-again")
+-	if filepath.Clean(images) != images || !ownedBase || !ownedImage {
+-		return fmt.Errorf("restore images are outside the owned fixture")
+-	}
+-	if config.Rootfs != base+"/rootfs" || config.RootfsUidShiftType != sh.IDMappedMount {
+-		return fmt.Errorf("unsupported experiment rootfs or UID shift type")
+-	}
+-	current, err := os.Readlink("/proc/self/ns/mnt")
+-	if err != nil {
+-		return err
+-	}
+-	outer, err := os.Readlink("/proc/1/ns/mnt")
+-	if err != nil || current == outer {
+-		return fmt.Errorf("restore requires a separate private mount namespace: %v", err)
+-	}
+-	if len(config.UidMappings) == 0 || len(config.GidMappings) == 0 {
+-		return fmt.Errorf("missing saved Sysbox ID mappings")
+-	}
+-	handles := &userns.Handles{}
+-	defer handles.Release()
+-	mapping, err := handles.Get(userns.Mapping{UIDMappings: config.UidMappings, GIDMappings: config.GidMappings})
+-	if err != nil {
+-		return err
+-	}
+-	defer mapping.Close()
+-	// Host-overlay dentries are stale after the separately mounted Sysbox
+-	// overlay writes its upper layer. Recreate its ID-mapped lower view and
+-	// keep the already shifted upper layer's ownership unchanged.
+-	if err := experimentIDMap(mapping, base, "lower"); err != nil {
+-		return fmt.Errorf("ID-map restore lower: %w", err)
+-	}
+-	for _, mount := range config.Mounts {
+-		if !mount.IDMappedMount {
+-			continue
+-		}
+-		const manager = "/experiment/sysbox-mgr"
+-		rel, err := filepath.Rel(manager, mount.Source)
+-		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || filepath.Clean(mount.Source) != mount.Source {
+-			return fmt.Errorf("external ID-mapped source is outside the owned manager directory")
+-		}
+-		if err := experimentIDMap(mapping, manager, rel); err != nil {
+-			return fmt.Errorf("ID-map restore source %s: %w", mount.Source, err)
+-		}
+-	}
+-	if err := unix.Unmount(config.Rootfs, 0); err != nil {
+-		return fmt.Errorf("release controller overlay in private namespace: %w", err)
+-	}
+-	work := base + "/restore-work-" + filepath.Base(images)
+-	if err := os.Mkdir(work, 0700); err != nil {
+-		return err
+-	}
+-	opts := "lowerdir=" + base + "/lower,upperdir=" + base + "/upper,workdir=" + work
+-	if err := unix.Mount("overlay", config.Rootfs, "overlay", 0, opts); err != nil {
+-		return fmt.Errorf("rebuild Sysbox restore overlay: %w", err)
+-	}
+-	return nil
+-}
+-
+-// Resolve within a trusted directory without symlinks, then clone and map
+-// using pinned descriptors. No guest-controlled pathname is reopened.
+-func experimentIDMap(mapping *os.File, base, relative string) error {
+-	baseFD, err := unix.Open(base, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+-	if err != nil {
+-		return err
+-	}
+-	defer unix.Close(baseFD)
+-	pathFD, err := unix.Openat2(baseFD, relative, &unix.OpenHow{
+-		Flags:   unix.O_PATH | unix.O_DIRECTORY | unix.O_CLOEXEC,
+-		Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS,
+-	})
+-	if err != nil {
+-		return err
+-	}
+-	defer unix.Close(pathFD)
+-	tree, err := unix.OpenTree(pathFD, "", unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC|unix.AT_EMPTY_PATH|unix.AT_RECURSIVE)
+-	if err != nil {
+-		return err
+-	}
+-	defer unix.Close(tree)
+-	if err := unix.MountSetattr(tree, "", unix.AT_EMPTY_PATH|unix.AT_RECURSIVE, &unix.MountAttr{
+-		Attr_set: unix.MOUNT_ATTR_IDMAP, Userns_fd: uint64(mapping.Fd()),
+-	}); err != nil {
+-		return err
+-	}
+-	return unix.MoveMount(tree, "", pathFD, "", unix.MOVE_MOUNT_F_EMPTY_PATH|unix.MOVE_MOUNT_T_EMPTY_PATH)
+-}
+--- /dev/null
++++ b/libcontainer/factoryboxrestore/rootfs_linux.go
+@@ -0,0 +1,113 @@
++//go:build linux
++
++package factoryboxrestore
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++	"regexp"
++	"strings"
++
++	sh "github.com/nestybox/sysbox-libs/idShiftUtils"
++	"github.com/nestybox/sysbox-runc/libcontainer/internal/userns"
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"golang.org/x/sys/unix"
++)
++
++// Root rebuilds only the owned fixture's Sysbox overlay.
++// Run after terminating checkpoint, in an isolated private mount namespace.
++// The saved mappings create a fresh mapping namespace; no old workload remains.
++func Root(config configs.Config, images string) error {
++	base := filepath.Dir(images)
++	branch := regexp.MustCompile(`^branch-[0-9a-f]{32}$`)
++	ownedBase := base == "/experiment/sysbox" || base == "/experiment/sysbox-copy" ||
++		(filepath.Dir(base) == "/experiment/branches" && branch.MatchString(filepath.Base(base)))
++	imageName := filepath.Base(images)
++	ownedImage := imageName == "images" || regexp.MustCompile(`^images-[0-9a-f]{32}$`).MatchString(imageName) ||
++		(base == "/experiment/sysbox" && imageName == "images-again")
++	if filepath.Clean(images) != images || !ownedBase || !ownedImage {
++		return fmt.Errorf("restore images are outside the owned fixture")
++	}
++	if config.Rootfs != base+"/rootfs" || config.RootfsUidShiftType != sh.IDMappedMount {
++		return fmt.Errorf("unsupported experiment rootfs or UID shift type")
++	}
++	current, err := os.Readlink("/proc/self/ns/mnt")
++	if err != nil {
++		return err
++	}
++	outer, err := os.Readlink("/proc/1/ns/mnt")
++	if err != nil || current == outer {
++		return fmt.Errorf("restore requires a separate private mount namespace: %v", err)
++	}
++	if len(config.UidMappings) == 0 || len(config.GidMappings) == 0 {
++		return fmt.Errorf("missing saved Sysbox ID mappings")
++	}
++	handles := &userns.Handles{}
++	defer handles.Release()
++	mapping, err := handles.Get(userns.Mapping{UIDMappings: config.UidMappings, GIDMappings: config.GidMappings})
++	if err != nil {
++		return err
++	}
++	defer mapping.Close()
++	// Host-overlay dentries are stale after the separately mounted Sysbox
++	// overlay writes its upper layer. Recreate its ID-mapped lower view and
++	// keep the already shifted upper layer's ownership unchanged.
++	if err := experimentIDMap(mapping, base, "lower"); err != nil {
++		return fmt.Errorf("ID-map restore lower: %w", err)
++	}
++	for _, mount := range config.Mounts {
++		if !mount.IDMappedMount {
++			continue
++		}
++		const manager = "/experiment/sysbox-mgr"
++		rel, err := filepath.Rel(manager, mount.Source)
++		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") || filepath.Clean(mount.Source) != mount.Source {
++			return fmt.Errorf("external ID-mapped source is outside the owned manager directory")
++		}
++		if err := experimentIDMap(mapping, manager, rel); err != nil {
++			return fmt.Errorf("ID-map restore source %s: %w", mount.Source, err)
++		}
++	}
++	if err := unix.Unmount(config.Rootfs, 0); err != nil {
++		return fmt.Errorf("release controller overlay in private namespace: %w", err)
++	}
++	work := base + "/restore-work-" + filepath.Base(images)
++	if err := os.Mkdir(work, 0700); err != nil {
++		return err
++	}
++	opts := "lowerdir=" + base + "/lower,upperdir=" + base + "/upper,workdir=" + work
++	if err := unix.Mount("overlay", config.Rootfs, "overlay", 0, opts); err != nil {
++		return fmt.Errorf("rebuild Sysbox restore overlay: %w", err)
++	}
++	return nil
++}
++
++// Resolve within a trusted directory without symlinks, then clone and map
++// using pinned descriptors. No guest-controlled pathname is reopened.
++func experimentIDMap(mapping *os.File, base, relative string) error {
++	baseFD, err := unix.Open(base, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
++	if err != nil {
++		return err
++	}
++	defer unix.Close(baseFD)
++	pathFD, err := unix.Openat2(baseFD, relative, &unix.OpenHow{
++		Flags:   unix.O_PATH | unix.O_DIRECTORY | unix.O_CLOEXEC,
++		Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS,
++	})
++	if err != nil {
++		return err
++	}
++	defer unix.Close(pathFD)
++	tree, err := unix.OpenTree(pathFD, "", unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC|unix.AT_EMPTY_PATH|unix.AT_RECURSIVE)
++	if err != nil {
++		return err
++	}
++	defer unix.Close(tree)
++	if err := unix.MountSetattr(tree, "", unix.AT_EMPTY_PATH|unix.AT_RECURSIVE, &unix.MountAttr{
++		Attr_set: unix.MOUNT_ATTR_IDMAP, Userns_fd: uint64(mapping.Fd()),
++	}); err != nil {
++		return err
++	}
++	return unix.MoveMount(tree, "", pathFD, "", unix.MOVE_MOUNT_F_EMPTY_PATH|unix.MOVE_MOUNT_T_EMPTY_PATH)
++}

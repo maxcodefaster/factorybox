@@ -59,8 +59,10 @@ mise exec -- python3 tools/sources.py verify
 ```
 
 Preparation downloads immutable source archives, checks SHA-256, applies patches with zero fuzz
-and verifies the compiled CRIU sources against the experiment's recorded build. Original upstream
-test files must remain unchanged. A fresh checkout can fetch these sources without the old
+and verifies the compiled CRIU sources against the experiment's recorded build. Upstream assertions
+are preserved. One error-construction fixture has an explicit format correction for Go vet; the
+original and prepared file hashes are both pinned in the lock. Every other original upstream test
+file must remain byte-for-byte unchanged. A fresh checkout can fetch these sources without the old
 experiment directory. `--offline` uses previously verified cached archives.
 
 Source preparation does not install a runtime, change the worker kernel or run the upstream suites.
@@ -68,6 +70,14 @@ The selected CRIU source starts from the recorded CAST AI nested-namespace commi
 unmodified upstream CRIU release. Sysbox components also carry explicit experimental changes.
 The unmodified Sysbox umbrella integration suite is pinned separately at v0.7.1; individual runtime
 component commits remain explicit in the lock.
+
+Cached trees also record the complete source tree and its preparation recipe. A changed
+implementation file, patch or recipe is rejected even when its tests are untouched. When a reviewed
+recipe changes, prepare one exact component again; the previous tree is retained under `.cache/retired`:
+
+```sh
+mise exec -- python3 tools/sources.py prepare --component sysbox-runc --refresh
+```
 
 The existing worker's retained Linux build image can compile the prepared CRIU source:
 
@@ -91,6 +101,9 @@ records native compiler/package versions and every context input. The manager in
 `idmapped_mnt` build tag. A successful build includes the selected inherited fork, registration and
 seccomp regressions. It does not establish complete upstream compatibility. APT dependencies are
 recorded but still need a pinned clean-machine reconstruction.
+The restore helper is in a separate package so the core library can compile under its natural
+Sysbox module name. The component build compiles that test package as a guard; execution is a
+separate native gate, and the full upstream Go gate keeps vet enabled.
 
 ## Retained reference
 
@@ -118,6 +131,7 @@ They never pull a replacement implicitly.
 ```sh
 mise exec -- python3 tools/reference.py native
 mise exec -- python3 tools/native_core.py
+mise exec -- python3 tools/native_failure.py
 ```
 
 The selected reference ownership/graph regression uses one uniquely owned 1 CPU/256 MiB container
@@ -128,6 +142,9 @@ the exact resource name and owner label. A Docker failure is not proof that a re
 The extracted native core suite has passed all 12 platform, pagemap, inherited-memory and page-reader
 tests with zero skips and successful owned cleanup. The reference ownership/graph suite has passed
 50 top-level tests. Neither is a full lifecycle or upstream qualification.
+The separate source-preservation suite has passed all three native tests and 16 subtests with zero
+skips and owned cleanup. It covers controller/helper death, live-tracer rejection, preservation of
+foreign PIDs, and rejection of replaced or foreign-mounted cgroups before deletion.
 
 The developer lifecycle runner retains the original 3 CPU/3 GiB probe, separate 1 CPU/768 MiB
 Theia, 420-second deadline and maximum two live sandboxes. Supply successful named build artifacts:
@@ -148,6 +165,23 @@ Compose, Dev Containers, browser/OpenCode responses and native Theia read/edit. 
 without those assertions fails. Namespace deletion includes the exact saved UID as an API
 precondition. Failed runs retain streamed logs and available native metadata.
 
+The full lifecycle is not yet independently qualified in this repository. The first attempts found
+runner transport/admission issues. A later attempt reached private Docker, Compose and Dev Container
+assertions, then OrbStack's internal Docker agent stopped unexpectedly on October 18, 2026 at
+14:56:50 UTC. Both test containers subsequently terminated with exit code 255. The worker kernel did
+not reboot. The cause of the agent termination is unresolved, and this run provides no complete
+fork/resume latency result. Its exact namespace cleanup was later confirmed separately.
+
+If owned namespace deletion outlasts the runner, preserve its artifact and reconcile only that run:
+
+```sh
+mise exec -- python3 tools/reconcile_lifecycle.py factorybox-lifecycle-EXACT_RUN_ID
+```
+
+This command verifies saved UIDs and ownership, can remove a confirmed terminal Pod with its UID
+precondition, and records a new observation without rewriting the original result. It leaves
+namespace finalizers and unrelated cluster services intact. Exit 75 means cleanup remains pending.
+
 This is a reference fixture. It still depends on the existing local Theia image and a read-only
 Btrfs rootfs cache at its recorded worker path. It does not provide the public lifecycle API or
 a portable installation. Theia browser editing and active model inference are not asserted.
@@ -159,11 +193,26 @@ mise exec -- python3 tools/upstream_unit.py \
   --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID
 ```
 
+The complete native `libcontainer` unit package has passed 27 tests and 30 subtests with zero
+skips after correcting the restore helper's package boundary. Run that package from its independently
+compiled test binary with:
+
+```sh
+mise exec -- python3 tools/upstream_unit.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID --suite libcontainer
+```
+
 The runner checks runc, fs, mgr, ipc and each nested libs module, retaining failures and skips per
 test. It also rejects failed test events hidden by an upstream `TestMain` that exits zero.
 The test rootfs follows upstream's immutable Busybox ARM64 commit and has a recorded SHA-256.
 Do not run the Sysbox umbrella Makefile on the Mac or retained worker. Its integration scripts need
 a separately prepared, isolated test environment and include host-oriented cleanup commands.
+
+The first complete Go-suite run remains a failed release gate. Other failures include outdated
+mock signatures, Go vet format diagnostics, IPC module bookkeeping, real namespace-file requirements
+in an older synthetic fixture, and cgroup integration assumptions that fail on this worker.
+The successful core package run does not waive these failures. The umbrella/Bats/systemd and CRIU
+ordinary checkpoint/restore suites remain unqualified.
 
 ## Release requirements
 

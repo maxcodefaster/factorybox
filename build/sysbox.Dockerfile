@@ -29,6 +29,10 @@ RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
       -run '^TestExperiment(CopyPipeline|Lineage)' -count=1
 RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
+    go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
+      -o /out/libcontainer.test ./libcontainer
+RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
+    --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
     CGO_ENABLED=1 go build -mod=readonly -buildvcs=false -trimpath \
       -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
       -ldflags '-extldflags -static -X main.version=0.7.1-experiment -X main.commitId=081856cc5d17e7095f066b08d0eca6bb0b515c47-experiment' \
