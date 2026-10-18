@@ -1,0 +1,22 @@
+{
+  "internal/pageview/pipe_file_linux.go": {
+    "changes": [],
+    "source": "tests/reference/pageview/pipe_file_linux.go",
+    "source_sha256": "285efbdfbc67650732f8891cfb9a8ce53a7d59013a331d24390d8994a7564f5e"
+  },
+  "internal/pageview/retire_linux.go": {
+    "changes": [],
+    "source": "tests/reference/pageview/retire_linux.go",
+    "source_sha256": "ae4bfac4f479798b7e3c614c80eeeae1487781107e0f9399f0b8404ca840e9b8"
+  },
+  "internal/pageview/scratch_linux_test.go": {
+    "changes": [],
+    "source": "tests/reference/pageview/scratch_linux_test.go",
+    "source_sha256": "d63ed4d98829760798d8668d6997d4b5f74c1c24af3d9514a56d5a42a6b787d7"
+  },
+  "internal/pageview/view_linux.go": {
+    "changes": [],
+    "source": "tests/reference/pageview/view_linux.go",
+    "source_sha256": "20cacdabf6789c55c9345fdd3c26aaa755942d08d699f360d3474f555b6124c1"
+  }
+}

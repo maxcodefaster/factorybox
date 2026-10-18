@@ -1,0 +1,8 @@
+{
+  "name": "Factorybox minimal Linux workspace",
+  "image": "docker.io/library/alpine:3.24.2@sha256:260479a1cfaf304c4c20da7f8405d3ce313513dcd534bb743257bdd2fe0f3e2d",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "remoteUser": "root",
+  "overrideCommand": true
+}

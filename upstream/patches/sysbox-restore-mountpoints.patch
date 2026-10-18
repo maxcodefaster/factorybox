@@ -1,0 +1,43 @@
+--- a/libcontainer/rootfs_linux.go
++++ b/libcontainer/rootfs_linux.go
+@@ -390,12 +390,18 @@
+ 	if err != nil {
+ 		return fmt.Errorf("failed to open current dir.")
+ 	}
++	defer syscall.Close(fd)
+ 
+ 	if err := syscall.Fchdir(fd); err != nil {
+ 		return fmt.Errorf("fchdir %s failed: %v", path, err)
+ 	}
+ 
+ 	if err := os.MkdirAll(path, mode); err != nil {
++		// Restore runs in the controller without an init/parent IPC pipe.
++		// Preserve the filesystem error instead of trying to send to nil.
++		if pipe == nil {
++			return fmt.Errorf("mkdirall %s without init IPC: %w", path, err)
++		}
+ 
+ 		// In some cases the container's init process process won't have
+ 		// permission to perform the mkdir (e.g., if the parent directory in the
+@@ -414,10 +420,6 @@
+ 		if err := syncParentDoOp([]opReq{req}, pipe); err != nil {
+ 			return fmt.Errorf("mkdirall %s with mode %o failed: %v", path, mode, err)
+ 		}
+-	}
+-
+-	if err := syscall.Close(fd); err != nil {
+-		return fmt.Errorf("failed to close fd %d", fd)
+ 	}
+ 
+ 	return nil
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1409,7 +1409,7 @@
+ 		// mount destination; if we need to check the mount source we need to create a
+ 		// function that explicitly does this.
+ 		if err := prepareBindDest(m, true, c.config, nil); err != nil {
+-			return err
++			return fmt.Errorf("restore bind mountpoint destination=%s source=%s isDir=%t: %w", m.Destination, m.Source, m.BindSrcInfo.IsDir, err)
+ 		}
+ 	default:
+ 		// for all other filesystems just create the mountpoints

@@ -1,0 +1,24 @@
+--- a/main.go
++++ b/main.go
+@@ -65,6 +65,11 @@
+ 	app.Flags = []cli.Flag{
++		cli.StringFlag{
++			Name:  "criu",
++			Value: "criu",
++			Usage: "path to CRIU for the owned restore experiment",
++		},
+ 		cli.BoolFlag{
+ 			Name:  "debug",
+ 			Usage: "enable debug output for logging",
+ 		},
+ 		cli.StringFlag{
+@@ -125,6 +125,9 @@
+ 		listCommand,
+ 		pauseCommand,
+ 		psCommand,
++		experimentRestoreCommand,
++		experimentCopyCommand,
++		experimentPreparedCopyCommand,
+ 		resumeCommand,
+ 		runCommand,
+ 		specCommand,

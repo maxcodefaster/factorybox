@@ -1,0 +1,3 @@
+# Preserve byte-pinned patch context and upstream notices without whitespace edits.
+upstream/patches/*.patch -whitespace
+upstream/licenses/** -whitespace

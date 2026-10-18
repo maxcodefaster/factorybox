@@ -1,0 +1,15 @@
+--- a/seccomp/mount.go
++++ b/seccomp/mount.go
+@@ -594,10 +594,8 @@
+ 		return true, nil
+ 	}
+ 
+-	// Skip instructions targeting file-systems explicitly handled by sysbox-fs.
+-	if m.FsType == "proc" || m.FsType == "sysfs" {
+-		return true, nil
+-	}
++	// MS_REMOUNT ignores the caller's filesystem type. Check the actual
++	// target's protection even when the caller supplies "proc" or "sysfs".
+ 
+ 	// Allow operation if it attempts to remount target as read-only.
+ 	if mh.IsReadOnlyMount(m.Flags) {

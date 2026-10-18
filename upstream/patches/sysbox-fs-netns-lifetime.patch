@@ -1,0 +1,123 @@
+--- a/state/container.go
++++ b/state/container.go
+@@ -19,6 +19,7 @@
+ import (
+ 	"fmt"
+ 	"io"
++	"os"
+ 	"sync"
+ 	"time"
+ 
+@@ -52,6 +53,7 @@
+ 	extLock         sync.Mutex                  // external lock (exposed via Lock() and Unlock() methods)
+ 	usernsInode     domain.Inode                // inode associated with the container's user namespace
+ 	netnsInode      domain.Inode                // inode associated with the container's network namespace
++	netnsPin        *os.File                    // retain the namespace identity while workload processes are stopped
+ }
+ 
+ func newContainer(
+--- a/state/containerDB.go
++++ b/state/containerDB.go
+@@ -18,6 +18,7 @@
+ 
+ import (
+ 	"fmt"
++	"os"
+ 	"slices"
+ 	"sync"
+ 	"time"
+@@ -301,6 +302,19 @@
+ 			formatter.ContainerID{cntr.id}, err)
+ 		return grpcStatus.Errorf(grpcCodes.NotFound, err.Error(), cntr.id)
+ 	}
++	// A namespace inode is unique only while the namespace exists. Keep a
++	// kernel reference so a later fork cannot recycle a stopped source's key.
++	netnsPin, err := pinContainerNetns(currCntr.initPid, currCntr.netnsInode)
++	if err != nil {
++		css.Unlock()
++		return err
++	}
++	registered := false
++	defer func() {
++		if !registered {
++			netnsPin.Close()
++		}
++	}()
+ 
+ 	// Let the associated fuse-server know about the sys-container's registration
+ 	// being completed.
+@@ -311,6 +325,8 @@
+ 		return grpcStatus.Errorf(grpcCodes.NotFound, err.Error(), cntr.id)
+ 	}
+ 
++	currCntr.netnsPin = netnsPin
++	registered = true
+ 	currCntr.SetRegistrationCompleted()
+ 
+ 	css.Unlock()
+@@ -370,6 +386,15 @@
+ 	if err != nil {
+ 		return err
+ 	}
++	netnsPin, err := pinContainerNetns(next.initPid, netns)
++	if err != nil {
++		return err
++	}
++	defer func() {
++		if !committed {
++			netnsPin.Close()
++		}
++	}()
+ 	if peers := css.netnsTable[netns]; len(peers) > 0 && (len(peers) != 1 || peers[0] != curr) {
+ 		return fmt.Errorf("restored network namespace is owned by another registration")
+ 	}
+@@ -387,16 +412,38 @@
+ 	}
+ 	curr.intLock.Lock()
+ 	oldFD := curr.initPidFd
++	oldNetnsPin := curr.netnsPin
+ 	delete(css.netnsTable, curr.netnsInode)
+ 	curr.initPid, curr.initPidFd, curr.initProc = next.initPid, newFD, proc
+ 	curr.rootInode, curr.usernsInode, curr.netnsInode = root, userns, netns
+ 	curr.mountInfoParser = mip
++	curr.netnsPin = netnsPin
+ 	css.netnsTable[netns] = []*container{curr}
+ 	committed = true
+ 	curr.intLock.Unlock()
+ 	unix.Close(int(oldFD))
++	if oldNetnsPin != nil {
++		oldNetnsPin.Close()
++	}
+ 	logrus.Infof("Retained container registration rebound: %s initPid=%d", curr.id, next.initPid)
+ 	return nil
++}
++
++func pinContainerNetns(pid uint32, expected domain.Inode) (*os.File, error) {
++	file, err := os.Open(fmt.Sprintf("/proc/%d/ns/net", pid))
++	if err != nil {
++		return nil, err
++	}
++	var stat unix.Stat_t
++	if err := unix.Fstat(int(file.Fd()), &stat); err != nil {
++		file.Close()
++		return nil, err
++	}
++	if expected == 0 || stat.Ino != expected {
++		file.Close()
++		return nil, fmt.Errorf("network namespace identity changed for pid %d: expected=%d actual=%d", pid, expected, stat.Ino)
++	}
++	return file, nil
+ }
+ 
+ func (css *containerStateService) ContainerUpdate(c domain.ContainerIface) error {
+@@ -457,6 +504,10 @@
+ 	// Close the container's initPidFd.
+ 	if cntr.initPidFd != 0 {
+ 		unix.Close(int(cntr.InitPidFd()))
++	}
++	if cntr.netnsPin != nil {
++		cntr.netnsPin.Close()
++		cntr.netnsPin = nil
+ 	}
+ 
+ 	// Remove the net-ns tracking info for the unregistered container.

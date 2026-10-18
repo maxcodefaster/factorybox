@@ -1,0 +1,12 @@
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1647,6 +1647,9 @@
+ 	}
+ 
+ 	if cgroups.IsCgroup2UnifiedMode() {
++		if c.experimentBridge != nil {
++			return c.experimentCgroupRoot(req)
++		}
+ 		return nil
+ 	}
+ 

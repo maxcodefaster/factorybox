@@ -1,0 +1,164 @@
+--- a/seccomp/tracer.go
++++ b/seccomp/tracer.go
+@@ -372,6 +372,7 @@
+ // Tracer's connection-handler method. Executed within a dedicated goroutine (one
+ // per connection).
+ func (t *syscallTracer) connHandler(c *net.UnixConn) {
++	defer c.Close()
+ 
+ 	// Obtain seccomp-notification's file-descriptor and associated context.
+ 	pid, cntrID, fd, err := unixIpc.RecvSeccompInitMsg(c)
+@@ -379,17 +380,21 @@
+ 		return
+ 	}
+ 
+-	// Send Ack message back to sysbox-runc.
+-	if err = unixIpc.SendSeccompInitAckMsg(c); err != nil {
+-		return
+-	}
+-
+ 	// If needed, obtain pidfd associated to this seccomp-bfd session.
+ 	pidfd := t.seccompSessionPidfd(pid, cntrID, fd)
++	if !t.seccompUnusedNotif && pidfd <= 0 {
++		unix.Close(int(fd))
++		return
++	}
+ 
+ 	// Register the new seccomp-fd session.
+ 	session := seccompSession{uint32(pid), fd, int32(pidfd), cntrID}
+ 	t.seccompSessionAdd(session)
++	defer t.seccompSessionDelete(session)
++	// Acknowledge only after the listener and its lifetime tracking are ready.
++	if err = unixIpc.SendSeccompInitAckMsg(c); err != nil {
++		return
++	}
+ 
+ 	for {
+ 		var fds []unix.PollFd
+@@ -451,9 +456,6 @@
+ 		go t.process(req, fd, cntrID)
+ 	}
+ 
+-	t.seccompSessionDelete(session)
+-
+-	c.Close()
+ }
+ 
+ func (t *syscallTracer) process(
+--- a/state/containerDB.go
++++ b/state/containerDB.go
+@@ -18,6 +18,7 @@
+ 
+ import (
+ 	"fmt"
++	"slices"
+ 	"sync"
+ 	"time"
+ 
+@@ -28,6 +29,7 @@
+ 
+ 	"github.com/nestybox/sysbox-fs/domain"
+ 	"github.com/nestybox/sysbox-libs/formatter"
++	libpidfd "github.com/nestybox/sysbox-libs/pidfd"
+ )
+ 
+ type containerStateService struct {
+@@ -216,6 +218,11 @@
+ 	}
+ 
+ 	// Update existing container with received attributes.
++	if currCntr.regCompleted {
++		err := css.rebindStoppedContainer(currCntr, cntr)
++		css.Unlock()
++		return err
++	}
+ 	if err := currCntr.update(cntr); err != nil {
+ 		css.Unlock()
+ 		logrus.Errorf("Container registration error: container %s not updated",
+@@ -251,6 +258,86 @@
+ 	css.Unlock()
+ 
+ 	logrus.Infof("Container registration completed: %v", cntr.string())
++	return nil
++}
++
++// Rebind only an exited, retained registration. FUSE servers and their cached
++// file contents keep the same container object; process and mount views change.
++// css is locked by ContainerRegister throughout preparation and commit.
++func (css *containerStateService) rebindStoppedContainer(curr, next *container) error {
++	if curr.uidFirst != next.uidFirst || curr.uidSize != next.uidSize ||
++		curr.gidFirst != next.gidFirst || curr.gidSize != next.gidSize ||
++		!slices.Equal(curr.procRoPaths, next.procRoPaths) ||
++		!slices.Equal(curr.procMaskPaths, next.procMaskPaths) {
++		return fmt.Errorf("retained registration cannot change ID mappings or proc protections")
++	}
++	if curr.initPidFd <= 0 {
++		return fmt.Errorf("retained registration has no original process descriptor")
++	}
++	fds := []unix.PollFd{{Fd: int32(curr.initPidFd), Events: unix.POLLIN}}
++	if _, err := unix.Poll(fds, 0); err != nil {
++		return err
++	}
++	if fds[0].Revents&unix.POLLIN == 0 || fds[0].Revents&unix.POLLNVAL != 0 {
++		return fmt.Errorf("retained registration still has a live original process")
++	}
++	oldPeers := css.netnsTable[curr.netnsInode]
++	if len(oldPeers) != 1 || oldPeers[0] != curr {
++		return fmt.Errorf("retained shared network namespace rebind is not supported")
++	}
++	newFD, err := libpidfd.Open(int(next.initPid), 0)
++	if err != nil {
++		return err
++	}
++	committed := false
++	defer func() {
++		if !committed {
++			unix.Close(int(newFD))
++		}
++	}()
++	proc := css.prs.ProcessCreate(next.initPid, next.uidFirst, next.gidFirst)
++	uidMap, err := proc.UidMap()
++	if err != nil {
++		return err
++	}
++	gidMap, err := proc.GidMap()
++	if err != nil {
++		return err
++	}
++	if len(uidMap) != 1 || uidMap[0].ID != 0 || uidMap[0].ParentID != int64(next.uidFirst) || uidMap[0].Count != int64(next.uidSize) ||
++		len(gidMap) != 1 || gidMap[0].ID != 0 || gidMap[0].ParentID != int64(next.gidFirst) || gidMap[0].Count != int64(next.gidSize) {
++		return fmt.Errorf("restored process does not have the saved ID mappings")
++	}
++	netns, err := proc.NetNsInode()
++	if err != nil {
++		return err
++	}
++	if peers := css.netnsTable[netns]; len(peers) > 0 && (len(peers) != 1 || peers[0] != curr) {
++		return fmt.Errorf("restored network namespace is owned by another registration")
++	}
++	userns, err := proc.UserNsInode()
++	if err != nil {
++		return err
++	}
++	root := proc.RootInode()
++	if root == 0 {
++		return fmt.Errorf("restored process root is unavailable")
++	}
++	mip, err := css.mts.NewMountInfoParser(curr, proc, true, true, true)
++	if err != nil {
++		return err
++	}
++	curr.intLock.Lock()
++	oldFD := curr.initPidFd
++	delete(css.netnsTable, curr.netnsInode)
++	curr.initPid, curr.initPidFd, curr.initProc = next.initPid, newFD, proc
++	curr.rootInode, curr.usernsInode, curr.netnsInode = root, userns, netns
++	curr.mountInfoParser = mip
++	css.netnsTable[netns] = []*container{curr}
++	committed = true
++	curr.intLock.Unlock()
++	unix.Close(int(oldFD))
++	logrus.Infof("Retained container registration rebound: %s initPid=%d", curr.id, next.initPid)
+ 	return nil
+ }
+ 

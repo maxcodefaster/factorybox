@@ -1,0 +1,12 @@
+diff --git a/libsysbox/syscont/spec.go b/libsysbox/syscont/spec.go
+--- a/libsysbox/syscont/spec.go
++++ b/libsysbox/syscont/spec.go
+@@ -1161,7 +1161,7 @@ func cfgSeccomp(seccomp *specs.LinuxSeccomp) error {
+ 		rmSet = disallowSet.Intersect(syscontAllowSet)
+ 	} else {
+ 		// Note: no addSet here since we don't have a sysbox syscall blacklist
+-		rmSet = disallowSet.Difference(syscontAllowSet)
++		rmSet = disallowSet.Intersect(syscontAllowSet)
+ 	}
+ 
+ 	// Remove syscalls from the container's error/kill lists

@@ -1,0 +1,47 @@
+{
+  "upstream/licenses/criu/COPYING": {
+    "commit": "086df34a2da27125fa05e66ba4d6b63cbb220b2e",
+    "repository": "castai/criu",
+    "sha256": "568a1fa9d90e18a1a1a61ea58ec2eece16b56a5042cc72c1b4f8d4455ae6fcb7"
+  },
+  "upstream/licenses/sysbox-fs/LICENSE": {
+    "commit": "c3d2ebc65102e32e74e383675f03b45556326888",
+    "repository": "nestybox/sysbox-fs",
+    "sha256": "d654e7d0229420c56e7cc790b251d0bb90248f509113aca960c182b70311d9ac"
+  },
+  "upstream/licenses/sysbox-fuse/LICENSE": {
+    "commit": "5ce319439091b08f33b149cb2482039f1b0a24fe",
+    "repository": "nestybox/fuse",
+    "sha256": "b0310b2546ffbf6433751c452c66e5548460e49d1a4fc8260ba3ba93c81b18d7"
+  },
+  "upstream/licenses/sysbox-ipc/LICENSE": {
+    "commit": "f05151f4b4c1df63d7fd241577ca032905c1bd0e",
+    "repository": "nestybox/sysbox-ipc",
+    "sha256": "d654e7d0229420c56e7cc790b251d0bb90248f509113aca960c182b70311d9ac"
+  },
+  "upstream/licenses/sysbox-libs/LICENSE": {
+    "commit": "cacac19395528afa42b467a980b05d8d1c6d646c",
+    "repository": "nestybox/sysbox-libs",
+    "sha256": "d654e7d0229420c56e7cc790b251d0bb90248f509113aca960c182b70311d9ac"
+  },
+  "upstream/licenses/sysbox-mgr/LICENSE": {
+    "commit": "2d45af01bcfd8641e6641f76104c6003bf501cd7",
+    "repository": "nestybox/sysbox-mgr",
+    "sha256": "d654e7d0229420c56e7cc790b251d0bb90248f509113aca960c182b70311d9ac"
+  },
+  "upstream/licenses/sysbox-runc/LICENSE": {
+    "commit": "081856cc5d17e7095f066b08d0eca6bb0b515c47",
+    "repository": "nestybox/sysbox-runc",
+    "sha256": "b6ebde6849218d10473832460729fc47104a5ef1d77c194974983c131aa8a777"
+  },
+  "upstream/licenses/sysbox-runc/NOTICE": {
+    "commit": "081856cc5d17e7095f066b08d0eca6bb0b515c47",
+    "repository": "nestybox/sysbox-runc",
+    "sha256": "7373acc8c2833ffd46e8d937210689e11efebd74578e532b51fbe08dc1ea6e21"
+  },
+  "upstream/licenses/sysbox-tests/LICENSE": {
+    "commit": "82881aaaf2ce22ad0ff81487f458162908cb933f",
+    "repository": "nestybox/sysbox",
+    "sha256": "d654e7d0229420c56e7cc790b251d0bb90248f509113aca960c182b70311d9ac"
+  }
+}

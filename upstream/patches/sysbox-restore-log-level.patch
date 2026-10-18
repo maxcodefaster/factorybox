@@ -1,0 +1,12 @@
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1531,7 +1531,7 @@ func (c *linuxContainer) Restore(process *Process, criuOpts *CriuOpts) error {
+ 			ImagesDirFd:     proto.Int32(int32(imageDir.Fd())),
+ 			WorkDirFd:       proto.Int32(int32(workDir.Fd())),
+ 			EvasiveDevices:  proto.Bool(true),
+-			LogLevel:        proto.Int32(4),
++			LogLevel:        proto.Int32(2),
+ 			LogFile:         proto.String("restore.log"),
+ 			RstSibling:      proto.Bool(true),
+ 			Root:            proto.String(root),

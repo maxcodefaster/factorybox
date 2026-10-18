@@ -1,0 +1,36 @@
+--- a/sysboxFsGrpc/sysboxFsProtobuf/sysboxFsProtobuf.proto
++++ b/sysboxFsGrpc/sysboxFsProtobuf/sysboxFsProtobuf.proto
+@@ -45,6 +45,7 @@
+   repeated string ProcRoPaths     = 9;
+   repeated string ProcMaskPaths   = 10;
+   string Netns                    = 11;
++  string ForkSourceId             = 12;
+ }
+ 
+ // Response message sent from sysbox-fs to runC process.
+--- a/sysboxFsGrpc/grpcClient.go
++++ b/sysboxFsGrpc/grpcClient.go
+@@ -35,6 +35,7 @@
+ // Container info passed by the client to the server across the grpc channel
+ type ContainerData struct {
+ 	Id            string
++	ForkSourceId  string
+ 	Netns         string
+ 	InitPid       int32
+ 	Hostname      string
+@@ -78,6 +79,7 @@
+ 
+ 	return &pb.ContainerData{
+ 		Id:            data.Id,
++		ForkSourceId:  data.ForkSourceId,
+ 		Netns:         data.Netns,
+ 		InitPid:       data.InitPid,
+ 		Ctime:         pbTime,
+@@ -98,6 +100,7 @@
+ 
+ 	return &ContainerData{
+ 		Id:            pbdata.Id,
++		ForkSourceId:  pbdata.ForkSourceId,
+ 		Netns:         pbdata.Netns,
+ 		InitPid:       pbdata.InitPid,
+ 		Ctime:         cTime,

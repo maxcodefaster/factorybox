@@ -1,0 +1,37 @@
+[tools]
+go = "1.27.1"
+python = "3.13.7"
+
+[env]
+GOTOOLCHAIN = "local"
+GOMAXPROCS = "2"
+
+[tasks.check]
+run = ["go test ./...", "python3 -m unittest discover -s tools -p 'test_*.py'"]
+
+[tasks.build]
+run = "go build -trimpath -buildvcs=false -o dist/factorybox ./cmd/factorybox"
+
+[tasks."sources:prepare"]
+run = "python3 tools/sources.py prepare"
+
+[tasks."sources:verify"]
+run = "python3 tools/sources.py verify"
+
+[tasks."reference:verify"]
+run = "python3 tools/reference.py verify"
+
+[tasks."reference:check"]
+run = "python3 tools/reference.py check"
+
+[tasks."reference:build"]
+run = "python3 tools/reference.py build"
+
+[tasks."reference:native"]
+run = "python3 tools/reference.py native"
+
+[tasks."core:native"]
+run = "python3 tools/native_core.py"
+
+[tasks."criu:build"]
+run = "python3 tools/build_criu.py"

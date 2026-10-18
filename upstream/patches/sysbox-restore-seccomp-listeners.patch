@@ -1,0 +1,77 @@
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -54,6 +54,7 @@
+ const stdioFdCount = 3
+ 
+ type linuxContainer struct {
++	experimentBridge     *experimentSeccompBridge
+ 	id                   string
+ 	root                 string
+ 	config               *configs.Config
+@@ -1711,9 +1712,23 @@
+ 	if extraFiles != nil {
+ 		cmd.ExtraFiles = append(cmd.ExtraFiles, extraFiles...)
+ 	}
++	if opts != nil && opts.SysboxSeccompRestore && req.GetType() == criurpc.CriuReqType_RESTORE {
++		bridge, err := c.newExperimentSeccompBridge()
++		if err != nil {
++			return err
++		}
++		c.experimentBridge = bridge
++		defer func() { bridge.conn.Close(); bridge.child.Close(); c.experimentBridge = nil }()
++		cmd.Env = append(os.Environ(), fmt.Sprintf("SYSBOX_SECCOMP_BRIDGE_FD=%d", 3+len(cmd.ExtraFiles)))
++		cmd.ExtraFiles = append(cmd.ExtraFiles, bridge.child)
++	}
+ 
+ 	if err := cmd.Start(); err != nil {
+ 		return err
++	}
++	if c.experimentBridge != nil {
++		c.experimentBridge.criuPID.Store(int32(cmd.Process.Pid))
++		c.experimentBridge.child.Close()
+ 	}
+ 	// we close criuServer so that even if CRIU crashes or unexpectedly exits, runc will not hang.
+ 	criuServer.Close()
+@@ -1949,10 +1964,22 @@
+ 		if _, err := c.updateState(r); err != nil {
+ 			return err
+ 		}
++		if c.experimentBridge != nil {
++			if err := c.experimentRebindFs(int(pid)); err != nil {
++				return err
++			}
++			if _, err := c.updateState(r); err != nil {
++				return err
++			}
++		}
+ 		if err := os.Remove(filepath.Join(c.root, "checkpoint")); err != nil {
+ 			if !os.IsNotExist(err) {
+ 				logrus.Error(err)
+ 			}
++		}
++	case "pre-resume":
++		if c.experimentBridge != nil {
++			return c.experimentBridge.wait()
+ 		}
+ 	case "orphan-pts-master":
+ 		scm, err := unix.ParseSocketControlMessage(oob)
+--- a/libcontainer/criu_opts_linux.go
++++ b/libcontainer/criu_opts_linux.go
+@@ -13,6 +13,7 @@
+ }
+ 
+ type CriuOpts struct {
++	SysboxSeccompRestore    bool               // owned experiment; listener handoff before resume
+ 	ImagesDirectory         string             // directory for storing image files
+ 	WorkDirectory           string             // directory to cd and write logs/pidfiles/stats to
+ 	ParentImage             string             // directory for storing parent image files in pre-dump and dump
+--- a/libsysbox/sysbox/fs.go
++++ b/libsysbox/sysbox/fs.go
+@@ -155,6 +155,7 @@
+ 	if err != nil {
+ 		return fmt.Errorf("Unable to establish connection with seccomp-tracer: %v\n", err)
+ 	}
++	defer conn.Close()
+ 
+ 	if err = unixIpc.SendSeccompInitMsg(conn, int32(pid), id, seccompFd); err != nil {
+ 		return fmt.Errorf("Unable to send message to seccomp-tracer: %v\n", err)
