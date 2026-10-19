@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 
 // This nonce and counter live only in RAM. File reads independently exercise
@@ -26,6 +26,12 @@ createServer(async (request, response) => {
       }
       const input = JSON.parse(body);
       if (input.increment !== 1) throw new Error('expected one counter increment');
+      if (input.marker !== undefined) {
+        if (typeof input.marker !== 'string' || !/^[a-z][a-z-]{0,31}$/.test(input.marker)) {
+          throw new Error('invalid workspace marker');
+        }
+        await writeFile('/workspace/marker.txt', input.marker + '\n');
+      }
       counter++;
     }
     const dependency = await fetch('http://dependency:8081/health', {

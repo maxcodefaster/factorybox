@@ -4,13 +4,12 @@ import argparse
 import datetime
 import json
 import os
-import pathlib
-import re
 import shutil
 import subprocess
 import uuid
 
 import devx_inputs
+import devx_project_images
 import native_base
 import reference
 import reference_lifecycle
@@ -28,14 +27,7 @@ def main():
     options = parser.parse_args()
     _, consumers = devx_inputs.load(options.consumer_inputs)
     archive_image, _ = native_base.load(options.native_base_build)
-    if not re.fullmatch(r"factorybox-devx-project-images-[0-9a-f]{32}", options.project_images):
-        raise ValueError("requires one exact project-image archive")
-    project_archive = ROOT / "artifacts" / options.project_images
-    projects = json.loads((project_archive / "result.json").read_text())
-    if (not projects.get("passed") or
-            projects["compose_sha256"] != reference.sha(ROOT / "examples/factory/.devcontainer/compose.yaml") or
-            devx_inputs.file_sha(project_archive / "images.tar") != projects["archive_sha256"]):
-        raise ValueError("project image archive or selected recipe changed")
+    project_archive, projects = devx_project_images.load(options.project_images)
     owner = uuid.uuid4().hex
     name = "factorybox-devx-compose-" + owner
     archive = ROOT / "artifacts" / name

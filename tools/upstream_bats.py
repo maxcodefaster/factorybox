@@ -84,7 +84,7 @@ def observations(text, expected):
             "skipped": [r["name"] for r in rows if r["skipped"]]}
 
 
-def archive_failure(archive, name, owner, volumes, image, result):
+def archive_failure(archive, name, owner, volumes, image, result, *, timeout=60):
     state = json.loads(reference.docker(["container", "inspect", name]))[0]
     if state["Config"].get("Labels", {}).get("com.factorybox.run") != owner:
         raise ValueError("failed Bats fixture ownership changed")
@@ -93,28 +93,45 @@ def archive_failure(archive, name, owner, volumes, image, result):
         state = json.loads(reference.docker(["container", "inspect", name]))[0]
     if state["State"]["Running"] or state["State"]["Pid"] != 0:
         raise ValueError("failed fixture writers have not stopped")
+    archive_stopped_volumes(archive, name, owner, volumes, image, result,
+                           timeout=timeout)
+
+
+def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, timeout=60):
     result["failed_volume_archives"] = {}
     for index, volume in enumerate(volumes):
         saved = json.loads(reference.docker(["volume", "inspect", volume]))[0]
         if saved.get("Labels", {}).get("com.factorybox.run") != owner:
             raise ValueError("failed fixture volume ownership changed")
+        attached = reference.docker(["container", "ls", "--all", "--quiet", "--filter", "volume=" + volume])
+        for container in attached.splitlines():
+            current = json.loads(reference.docker(["container", "inspect", container]))[0]
+            if (current["Name"] != "/" + name or
+                    current["Config"].get("Labels", {}).get("com.factorybox.run") != owner or
+                    current["State"]["Running"] or current["State"]["Pid"] != 0):
+                raise ValueError("volume has a live writer or foreign attachment before archive")
         helper = name + "-archive-" + str(index)
         filename = "failed-volume-%d.tar" % index
         command = [
             *reference.DOCKER, "run", "--pull=never", "--name", helper,
             "--label", "com.factorybox.run=" + owner, "--network=none",
             "--cpus=1", "--memory=256m", "--pids-limit=16", "--read-only",
+            "--log-driver=none",
             "--cap-drop=ALL", "--cap-add=DAC_READ_SEARCH", "--security-opt=no-new-privileges",
             "--mount", f"type=volume,source={volume},target=/input,readonly",
-            "--mount", f"type=bind,source={archive},target=/output",
             "--entrypoint", "/bin/tar", image, "--numeric-owner", "--sparse",
-            "-C", "/input", "-cpf", "/output/" + filename, ".",
         ]
+        command += ["-C", "/input", "-cpf", "-", "."]
         try:
-            with (archive / (filename + ".log")).open("x") as log:
-                subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60)
+            # Keep the binary stream off the Mac bind share and Docker logs.
+            # Raw attach streaming completed the multi-gigabyte fixture after
+            # the bind-share and compressed attempts timed out.
+            with (archive / (filename + ".log")).open("x") as log, \
+                    (archive / filename).open("xb") as payload:
+                subprocess.run(command, stdout=payload, stderr=log, check=True, timeout=timeout)
             result["failed_volume_archives"][volume] = {
-                "file": filename, "sha256": file_sha(archive / filename)}
+                "file": filename, "sha256": file_sha(archive / filename),
+                "bytes": (archive / filename).stat().st_size}
         finally:
             reference.owned_delete("container", helper, owner)
 

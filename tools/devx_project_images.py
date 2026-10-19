@@ -2,7 +2,6 @@
 """Freeze the example's exact public project images for offline native use."""
 import datetime
 import json
-import pathlib
 import re
 import subprocess
 import uuid
@@ -12,6 +11,22 @@ import reference
 import reference_lifecycle
 
 ROOT = reference.ROOT
+
+
+def load(name):
+    if not re.fullmatch(r"factorybox-devx-project-images-[0-9a-f]{32}", name):
+        raise ValueError("requires one exact project-image archive")
+    archive = ROOT / "artifacts" / name
+    result = json.loads((archive / "result.json").read_text())
+    compose = ROOT / "examples/factory/.devcontainer/compose.yaml"
+    images = list(dict.fromkeys(re.findall(r"^\s+image:\s+(\S+)\s*$", compose.read_text(), re.MULTILINE)))
+    if (not result.get("passed") or result["compose_sha256"] != reference.sha(compose) or
+            [row["image"] for row in result["images"]] != images or
+            any(row["canonical_image"] != devx_inputs.canonical_digest(row["image"])
+                for row in result["images"]) or
+            devx_inputs.file_sha(archive / "images.tar") != result["archive_sha256"]):
+        raise ValueError("project image archive or selected recipe changed")
+    return archive, result
 
 
 def main():

@@ -8,6 +8,68 @@ import upstream_bats
 
 
 class BatsEvidenceTests(unittest.TestCase):
+    def test_archive_refuses_live_or_foreign_attachments_before_starting_a_helper(self):
+        owner, name, volume = "a" * 32, "exact-fixture", "exact-volume"
+        for container in [
+            {"Name": "/" + name, "Config": {"Labels": {"com.factorybox.run": owner}},
+             "State": {"Running": True, "Pid": 123}},
+            {"Name": "/foreign", "Config": {"Labels": {"com.factorybox.run": owner}},
+             "State": {"Running": False, "Pid": 0}},
+            {"Name": "/" + name, "Config": {"Labels": {"com.factorybox.run": "foreign"}},
+             "State": {"Running": False, "Pid": 0}},
+            {"Name": "/" + name, "Config": {"Labels": {"com.factorybox.run": owner}},
+             "State": {"Running": False, "Pid": 123}},
+        ]:
+            def docker(args):
+                if args[:2] == ["volume", "inspect"]:
+                    return json.dumps([{"Labels": {"com.factorybox.run": owner}}])
+                if args[:2] == ["container", "ls"]:
+                    return "attached"
+                if args[:2] == ["container", "inspect"]:
+                    return json.dumps([container])
+                raise AssertionError("unexpected Docker call")
+            with self.subTest(container=container), tempfile.TemporaryDirectory() as directory:
+                with mock.patch.object(upstream_bats.reference, "docker", side_effect=docker), \
+                        mock.patch.object(upstream_bats.subprocess, "run") as run:
+                    with self.assertRaises(ValueError):
+                        upstream_bats.archive_stopped_volumes(
+                            pathlib.Path(directory), name, owner, [volume], "image", {})
+                    run.assert_not_called()
+
+    def test_streamed_archive_is_hashed_before_exact_cleanup_can_follow(self):
+        owner, name, volume = "a" * 32, "exact-fixture", "exact-volume"
+        container = {
+            "Name": "/" + name, "Config": {"Labels": {"com.factorybox.run": owner}},
+            "State": {"Running": False, "Pid": 0},
+        }
+        def docker(args):
+            if args[:2] == ["volume", "inspect"]:
+                return json.dumps([{"Labels": {"com.factorybox.run": owner}}])
+            if args[:2] == ["container", "ls"]:
+                return "attached"
+            if args[:2] == ["container", "inspect"]:
+                return json.dumps([container])
+            raise AssertionError("unexpected Docker call")
+        with tempfile.TemporaryDirectory() as directory:
+            archive = pathlib.Path(directory)
+            def save(command, **kwargs):
+                self.assertIn("--log-driver=none", command)
+                self.assertEqual(command[-2:], ["-", "."])
+                self.assertEqual(kwargs["stdout"].name, str(archive / "failed-volume-0.tar"))
+                self.assertEqual(kwargs["timeout"], 240)
+                (archive / "failed-volume-0.tar").write_bytes(b"complete retained payload")
+            result = {}
+            with mock.patch.object(upstream_bats.reference, "docker", side_effect=docker), \
+                    mock.patch.object(upstream_bats.reference, "owned_delete") as remove, \
+                    mock.patch.object(upstream_bats.subprocess, "run", side_effect=save):
+                upstream_bats.archive_stopped_volumes(
+                    archive, name, owner, [volume], "image", result, timeout=240)
+            self.assertEqual(result["failed_volume_archives"][volume], {
+                "file": "failed-volume-0.tar",
+                "sha256": upstream_bats.file_sha(archive / "failed-volume-0.tar"),
+                "bytes": len(b"complete retained payload")})
+            remove.assert_called_once_with("container", name + "-archive-0", owner)
+
     def test_zero_exit_cannot_hide_a_missing_or_failed_assertion(self):
         expected = ["first", "second"]
         observed = upstream_bats.observations("1..2\nok 1 first\nnot ok 2 second\n", expected)

@@ -11,6 +11,7 @@ cleanup() {
     docker ps -a --no-trunc > /output/containers.txt 2>&1 || true
     for id in $(docker ps -aq); do
       docker logs --tail=100 "$id" > "/output/container-$id.log" 2>&1 || true
+      docker inspect "$id" > "/output/container-$id.json" 2>&1 || true
     done
   fi
   if test -n "${daemon:-}"; then kill "$daemon" 2>/dev/null || true; wait "$daemon" 2>/dev/null || true; fi
@@ -74,7 +75,7 @@ devcontainer up --workspace-folder /work/project \
   --id-label factory.dev/runtime-attempt=factorybox-example \
   --id-label factory.dev/runtime-generation=1 \
   --log-format json > /output/up.json 2> /output/up.log
-container=$(node -e 'const r=JSON.parse(require("node:fs").readFileSync("/output/up.json")); if(r.outcome!=="success"||!r.containerId)throw new Error("missing Dev Container identity");process.stdout.write(r.containerId)')
+container=$(node -e 'const r=JSON.parse(require("node:fs").readFileSync("/output/up.json")); if(r.outcome!=="success"||!r.containerId||r.composeProjectName!=="factorybox-example")throw new Error("missing or unexpected Dev Container identity");process.stdout.write(r.containerId)')
 docker inspect "$container" > /output/primary-container.json
 docker exec -d --user node "$container" node /workspace/server.mjs
 devcontainer exec --workspace-folder /work/project --container-id "$container" \

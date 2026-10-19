@@ -792,6 +792,8 @@ and drops global module/raw-I/O/boot/time/syslog capabilities before starting th
 The native script checks those capabilities after exec and compares fixed global kernel
 sentinels before and after. It verifies frozen inputs and archives failed volumes before exact
 owned cleanup.
+The final example, including its explicit Compose identity and `wget` healthcheck, passed again
+in `factorybox-devx-compose-dd27b3f3f6ab461a8e4ec22b3c9c3f23`.
 
 An initial offline load exposed that Docker's saved OCI archive did not restore `RepoDigests`.
 The passing fixture instead pulls through a loopback-only, read-only test mirror that verifies
@@ -805,3 +807,66 @@ assignment's endpoint and example identities require explicit test or installati
 Separate Theia and optional OpenCode composition remain in progress. IDEs and agent harnesses
 remain outside the core lifecycle. Production Factory integration and public publication are
 separate steps after qualification.
+
+Run the developer stack through the public Factorybox CLI with the exact prepared inputs:
+
+```sh
+mise exec -- python3 tools/devx_lifecycle.py \
+  --consumer-inputs factorybox-devx-inputs-EXACT_RUN_ID \
+  --project-images factorybox-devx-project-images-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID
+```
+
+This separate gate freezes its Go source context, scripts, ordinary example, component binaries
+and image archives. Its outer fixture has private namespaces, a 3-CPU/3-GiB limit, no external
+network and a 420-second deadline. At most two live Sysbox containers are permitted by its
+sequential lifecycle. The real Factory Connector authenticates its parent and injected child
+against a test authority inside the captured network. Requests then traverse the child HTTP
+protocol to the real app and its Compose dependency. The authority, app nonce and counter
+live in RAM. The gate requires complete captured state, independent app mutations and files,
+forks of forks, pause RAM release, resume and a fork of a resumed sandbox.
+
+The first complete prepared-start response passed with the real Connector, Docker vfs,
+Compose DNS, Dev Container hook and app RAM in
+`factorybox-devx-lifecycle-91f7518db5c34efcbd4cf0d801044514`.
+Rootfs preparation took 41.528 seconds; the subsequent public start through first app response
+took 91.620 seconds on the shared worker. These are individual preparation/start observations.
+They are not fork/resume timings or a latency distribution. The ordinary Compose example fixes
+its name to the assignment's `factorybox-example`; an earlier attempt correctly failed the
+Connector's project-identity check. A repeat's one-second Node healthchecks became unhealthy
+under worker load in a 0.25-CPU service. The passing prepared-start uses the existing `wget`
+applet instead of launching another Node process for each check.
+
+The same developer run failed its first checkpoint: the selected CRIU reports
+`Can't dump nested time namespace` for a Docker child. It therefore provides no complete
+developer fork, pause or resume qualification. The selected CRIU nested-namespace adapter admits
+user, UTS, network, PID, IPC and cgroup namespaces; time namespaces remain unsupported.
+The unchanged upstream `timens_nested` case also declares an expected checkpoint failure.
+This needs a focused reproducer and an explicit compatibility decision before modifying CRIU.
+The full gate remains failed. An initial diagnostic attempted exec after the failed capture;
+that is unsuitable for an unresolved frozen source and has been removed from the fixture.
+Logs are observed through the real CLI's stderr and the guest's merged filesystem instead.
+
+The captured test authority proves the actual local protocol path. It does not prove real
+external Factory handoff, fresh credentials for a fork, external TCP recovery, Theia, browser
+editing or model inference. Those remain separate requirements. The closed test authority
+and test stderr wrapper are never runtime or application dependencies.
+
+Failed volumes are fully archived before removal. Archives now stream through Docker's attach
+connection into a host file, with Docker logging disabled for that binary stream. The helper
+refuses foreign or live volume attachments and checks ownership again before removal.
+Raw streaming completed the retained multi-gigabyte developer archive after both a bind-share
+write and two compressed attempts exceeded their deadlines. Compression is not retained on the
+selected path. If a failed developer run explicitly retains its volume, reconcile only that run:
+
+```sh
+mise exec -- python3 tools/reconcile_devx.py factorybox-devx-lifecycle-EXACT_RUN_ID
+```
+
+Reconciliation writes a separate receipt and leaves the original failed result unchanged.
+It allows up to 600 seconds for the stopped multi-gigabyte archive at the same 1-CPU/256-MiB
+helper limit. This does not extend the active lifecycle's 420-second deadline.
+Archive failure preserves the original volume. A successful cleanup receipt is not a
+successful lifecycle result.
