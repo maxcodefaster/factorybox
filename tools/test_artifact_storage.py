@@ -71,6 +71,21 @@ class ArtifactStorageTests(unittest.TestCase):
             self.assertEqual(json.loads((artifacts / "offline.tar.encoding.json").read_text()), record)
 
     @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
+    def test_distant_identical_ram_payloads_are_compacted_without_changing_contents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            artifacts = root / "artifacts"
+            artifacts.mkdir()
+            memory = os.urandom(2 << 20)
+            content = b"".join(memory + os.urandom(512 << 10) for _ in range(4))
+            payload = artifacts / "repeated-memory.tar"
+            payload.write_bytes(content)
+            record = artifact_storage.compact(payload, root)
+            self.assertLess(record["encoded"]["bytes"], len(content) * 0.6)
+            self.assertEqual(artifact_storage.verify_compacted(
+                payload, record["original"]), record["encoded"])
+
+    @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
     def test_corrupted_compression_preserves_the_only_original(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

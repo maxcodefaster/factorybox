@@ -17,6 +17,8 @@ import upstream_unit
 ROOT = reference.ROOT
 EXPECTED_TESTS = 6
 EXPECTED_CAPTURE_SUBTESTS = 17
+EXPECTED_ADAPTER_TESTS = 6
+EXPECTED_ADAPTER_SUBTESTS = 31
 
 
 def archive_capture(archive, name, owner, result, image):
@@ -276,16 +278,15 @@ def main():
                 for component, expected in result["component_sha256"].items())
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
-            result["passed_tests"] == (7 if options.suite == "namespaces" else 6 if capture_mode else
+            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (2 if options.suite == "namespaces" else 1) if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
-            (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + 6 + 12) and
-            (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 12 + 12) and
-            (options.suite != "interruption" or result["passed_subtests"] == 18) and
-            (options.suite != "namespaces" or result["passed_subtests"] == 7 + 12) and
-            (options.suite != "time" or result["passed_subtests"] == 6 + 12) and
-            (options.suite != "delegation" or result["passed_subtests"] == 18) and
-            (options.suite != "mountfd" or result["passed_subtests"] == 8 + 12) and
+            (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 6 + EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "interruption" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "namespaces" or result["passed_subtests"] == 1 + EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite not in ["time", "delegation"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "mountfd" or result["passed_subtests"] == 2 + EXPECTED_ADAPTER_SUBTESTS) and
             result.get("components_unchanged", True) and
             result["skipped_tests"] == 0)
         if not result["passed"]:

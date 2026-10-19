@@ -93,6 +93,12 @@ func captureWorkerServe() (resultErr error) {
 		resultErr = errors.Join(resultErr,
 			captureGuardWrite(anchors.evidence, "capture-worker-outcome.json", outcome))
 	}()
+	network, err := sysboxcapture.BeginCaptureNetwork(request.Guard.PID, request.Guard.Start,
+		filepath.Dir(request.Guard.Evidence))
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, network.Close()) }()
 	captured, err = sysboxcapture.Capture(sysboxcapture.Request{
 		RuntimeRoot: request.Guard.Root + "/runtime", RuntimeID: request.Guard.Source.RuntimeID,
 		Owner: request.Guard.Source.Owner, Rootfs: request.Guard.Source.Rootfs,
@@ -102,7 +108,27 @@ func captureWorkerServe() (resultErr error) {
 		Base: request.Guard.Source.Base,
 	})
 	if err != nil {
-		return err
+		// Capture() returns only after its CRIU subprocess has been waited.
+		// Repair only the known network delta while the guarded original
+		// remains frozen and untraced. A repaired network is not permission
+		// to declare complete process rollback or to thaw the source.
+		eventsBefore, _ := captureGuardEvents(anchors.group)
+		_, held := captureGuardHold(request.Guard, anchors)
+		validation := held
+		if validation == nil {
+			validation = captureGuardCaptureReturned(request.Guard, anchors)
+		}
+		var rollback error
+		if validation == nil {
+			rollback = network.Rollback()
+		}
+		receipt := captureGuardWrite(anchors.evidence, "capture-network-rollback.json", map[string]any{
+			"token": request.Guard.Token, "source_pid": request.Guard.PID,
+			"source_start": request.Guard.Start, "source_frozen": held == nil,
+			"events_before": eventsBefore,
+			"passed":        validation == nil && rollback == nil,
+		})
+		return errors.Join(err, validation, rollback, receipt)
 	}
 	if request.Guard.StopSource {
 		return captureStopSource(request.Guard, anchors, captured)

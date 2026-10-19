@@ -46,6 +46,11 @@ To compact an explicitly selected offline dump, run
 `mise exec -- python3 tools/artifact_storage.py compact /absolute/path/to/artifacts/run/payload.tar`.
 This verifies every decompressed byte before removing the raw file and saves a SHA-256 receipt
 with the reconstruction command. Frozen input archives and active runs must stay uncompressed.
+Compaction uses one compression thread and a long-distance window capped at 128 MiB. This
+retains repeated RAM payloads once within the compressed stream: the completed 793-MiB native
+archive `factorybox-runtime-69b4900c094948abbc9bdb314f1cd089/output/capture-source.tar`
+became 32.95 MiB, with its complete decompressed bytes verified before removing the raw copy.
+The storage budget remains unchanged.
 
 ## Develop on the Mac
 
@@ -551,6 +556,27 @@ network rules were still changed. That diagnostic is not production recovery and
 from the required gate. Absence of a tracer or a usable RAM probe does not establish complete
 rollback after CRIU dies. Automatic recovery of the interrupted current source remains
 unqualified; this failure blocks a production release.
+
+The network part is now repaired in `factorybox-runtime-1a71e73421b54db08ca0b13435718cf9`.
+The capture worker pins the original private network namespace and snapshots IPv4/IPv6 filter
+rules before CRIU runs. When CRIU returns an error, it first re-establishes the original source
+freezer, validates its identity and absence of tracers, then removes only the exact known CRIU
+delta. A pre-existing `CRIU` chain or any other rule change refuses cleanup. Both families are
+validated before either is changed; the narrow removal is verified against the original rules.
+The private generation retains the baseline and a source-bound network rollback receipt.
+
+Native kernel negatives prove preservation of pre-existing chains and foreign IPv4/IPv6
+changes, including refusal before changing an otherwise owned IPv4 delta when IPv6 differs.
+The complete interruption gate still fails because the source remains paused: repaired
+netfilter rules alone do not prove that every interrupted process/socket mutation has rolled
+back. The worker does not thaw the source or publish a successful checkpoint on that evidence.
+The normal prepared-base pause suite passed with the new network guard in
+`factorybox-runtime-69b4900c094948abbc9bdb314f1cd089`: seven tests, 37 subtests, zero skips and
+owned cleanup.
+The complete Docker/Compose/Dev Containers/Connector lifecycle also passed with the guard in
+`factorybox-devx-lifecycle-b34b5b15784f4a7492f467113f4e93f5`, in 306.778 seconds with unchanged
+inputs/global sentinels and complete owned cleanup. This does not qualify the still-held
+current source after an interrupted CRIU dump.
 
 ## Pinned sources
 

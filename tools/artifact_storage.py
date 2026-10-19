@@ -144,7 +144,7 @@ def compact(path, root):
         resource.setrlimit(resource.RLIMIT_FSIZE, (cap, cap))
     try:
         with partial.open("xb") as output:
-            subprocess.run(["zstd", "-q", "-T1", "-1", "--stdout", "--", str(path)],
+            subprocess.run(["zstd", "-q", "-T1", "-1", "--long=27", "--stdout", "--", str(path)],
                            stdout=output, check=True, timeout=600,
                            preexec_fn=limit_child)
             output.flush()
@@ -172,6 +172,7 @@ def compact(path, root):
         record = {
             "schema": 1, "original": {"file": path.name, "bytes": count,
                                      "sha256": digest.hexdigest()},
+            "codec_parameters": ["-T1", "-1", "--long=27"],
             "encoded": {"file": encoded.name, "bytes": partial.stat().st_size,
                         "sha256": encoded_sha},
             "whole_decompressed_payload_verified": True,
