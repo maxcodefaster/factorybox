@@ -3,16 +3,62 @@
 package sysboxcapture
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
+
+func BenchmarkFilesystemCloneNative(b *testing.B) {
+	if os.Getenv("FACTORYBOX_NATIVE_RETAINED_CAPTURE") != "1" {
+		b.Skip("requires an owned native filesystem fixture")
+	}
+	base, err := os.MkdirTemp("/var/lib/sysbox", "factorybox-filesystem-benchmark-")
+	if err != nil {
+		b.Fatal(err)
+	}
+	source := base + "/source"
+	if err := os.Mkdir(source, 0750); err != nil {
+		b.Fatal(err)
+	}
+	for directory := range 16 {
+		path := source + "/directory-" + strconv.Itoa(directory)
+		if err := os.Mkdir(path, 0750); err != nil {
+			b.Fatal(err)
+		}
+		for index := range 128 {
+			if err := os.WriteFile(path+"/file-"+strconv.Itoa(index), bytes.Repeat([]byte{byte(index)}, 512), 0640); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	root, err := openDirectory(source)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer root.Close()
+	b.ResetTimer()
+	for index := range b.N {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		tree, err := cloneFilesystemTree(ctx, root, base+"/saved-"+strconv.Itoa(index))
+		cancel()
+		if err != nil {
+			b.Fatal(err)
+		}
+		if tree.Entries != 2065 || tree.FileBytes != 1<<20 || tree.HashedBytes != 1<<20 {
+			b.Fatal("metadata benchmark did not capture its exact complete dataset", tree)
+		}
+		b.ReportMetric(float64(tree.Entries), "entries/op")
+		b.ReportMetric(float64(tree.HashedBytes), "hashed-bytes/op")
+	}
+}
 
 func TestFilesystemHookAdmission(t *testing.T) {
 	for _, test := range []struct {

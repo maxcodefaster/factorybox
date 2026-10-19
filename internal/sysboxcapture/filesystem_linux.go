@@ -495,12 +495,8 @@ func fingerprintTree(ctx context.Context, root, independentFrom *os.File, syncFi
 				file := os.NewFile(uintptr(fd), name)
 				payload := sha256.New()
 				_, copyErr := io.Copy(payload, contextFileReader{ctx, file})
-				var syncErr error
-				if syncFiles {
-					syncErr = file.Sync()
-				}
 				closeErr := file.Close()
-				if err := errors.Join(copyErr, syncErr, closeErr); err != nil {
+				if err := errors.Join(copyErr, closeErr); err != nil {
 					return err
 				}
 				node.Content = hex.EncodeToString(payload.Sum(nil))
@@ -526,13 +522,19 @@ func fingerprintTree(ctx context.Context, root, independentFrom *os.File, syncFi
 			}
 			result.Entries++
 		}
-		if syncFiles {
-			return directory.Sync()
-		}
 		return nil
 	}
 	if err := visit(root, ".", 0); err != nil {
 		return result, err
+	}
+	if syncFiles {
+		// Every visited entry was checked against this root's mount identity.
+		// Flush their data and metadata together after the complete digest,
+		// rather than forcing a journal barrier for each file and directory.
+		// A failed barrier leaves the generation unpublished.
+		if err := unix.Syncfs(int(root.Fd())); err != nil {
+			return result, fmt.Errorf("persist complete filesystem tree: %w", err)
+		}
 	}
 	result.SHA256 = hex.EncodeToString(hash.Sum(nil))
 	return result, nil
