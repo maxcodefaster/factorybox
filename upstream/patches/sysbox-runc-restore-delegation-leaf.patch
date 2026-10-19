@@ -1,0 +1,18 @@
+diff --git a/libcontainer/container_linux.go b/libcontainer/container_linux.go
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1642,6 +1642,14 @@ func (c *linuxContainer) criuApplyCgroups(pid int, req *criurpc.CriuReq) error {
+ 	if err := c.cgroupManager.Apply(pid); err != nil {
+ 		return err
+ 	}
++	// EnterPid silently skips missing paths. Prepare the Sysbox leaf before
++	// moving CRIU so it cannot populate a root with delegated controllers.
++	if c.experimentBridge != nil && cgroups.IsCgroup2UnifiedMode() {
++		if err := c.cgroupManager.CreateChildCgroup(c.config); err != nil {
++			return err
++		}
++	}
++
+ 	// sysbox-runc: place the pid in the sys container's cgroup root. The prior call to
+ 	// Apply(pid) is necessary because Apply() populates the cgroup manager's internal
+ 	// state.

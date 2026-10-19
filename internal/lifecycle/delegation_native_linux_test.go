@@ -121,10 +121,20 @@ done
 		t.Fatal("delegated restore lost private RAM", err)
 	}
 	for _, id := range []string{source.Record.RuntimeID, forked.Record.RuntimeID} {
-		path := cgroupRoot + "/" + id + "/docker/cgroup.subtree_control"
-		data, err := os.ReadFile(path)
-		if err != nil || strings.TrimSpace(string(data)) != "cpuset cpu io memory pids" {
-			t.Fatal("delegated controllers changed", id, string(data), err)
+		for _, suffix := range []string{"", "/docker"} {
+			path := cgroupRoot + "/" + id + suffix + "/cgroup.subtree_control"
+			data, err := os.ReadFile(path)
+			if err != nil || strings.TrimSpace(string(data)) != "cpuset cpu io memory pids" {
+				t.Fatal("delegated controllers changed", id, suffix, string(data), err)
+			}
+			data, err = os.ReadFile(cgroupRoot + "/" + id + suffix + "/cgroup.procs")
+			if err != nil || len(strings.Fields(string(data))) != 0 {
+				t.Fatal("delegated parent populated", id, suffix, string(data), err)
+			}
+		}
+		data, err := os.ReadFile(cgroupRoot + "/" + id + "/init.scope/cgroup.procs")
+		if err != nil || len(strings.Fields(string(data))) != 1 {
+			t.Fatal("init leaf membership changed", id, string(data), err)
 		}
 		for _, branch := range []string{"first", "second"} {
 			data, err := os.ReadFile(cgroupRoot + "/" + id + "/docker/" + branch + "/cgroup.procs")
@@ -132,6 +142,13 @@ done
 				t.Fatal("delegated child membership changed", id, branch, string(data), err)
 			}
 		}
+	}
+	if _, err := readCaptureActor(forked.Runtime.PID, "advance"); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := readCaptureActor(source.Runtime.PID, "get")
+	if err != nil || !reflect.DeepEqual(before, unchanged) {
+		t.Fatal("delegated fork changed original RAM", err)
 	}
 	t.Logf("delegated cgroup fork and first useful RAM=%s", time.Since(start))
 }

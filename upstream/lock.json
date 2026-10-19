@@ -964,7 +964,8 @@
         "upstream/patches/sysbox-runc-state-snapshot.patch": "f7199706eea1a8cab1ea163e9fa8d41a6591a0262a75fbb2c8c473b31f531599",
         "upstream/patches/sysbox-runc-factorybox-restore.patch": "77001ca91e2109509ecc995993fbdb73885cadb0c92b222922d70b42786a7758",
         "upstream/patches/sysbox-runc-restore-receipt.patch": "b997efb01f5850d0d08ba04f51f84545f862b7f2656d5ae1dd83b64a5147355f",
-        "upstream/patches/sysbox-runc-factorybox-resume.patch": "7da699508761d0c60b46fe4c777c34c50a6f3bf5713669bc5e98c3298c9f5459"
+        "upstream/patches/sysbox-runc-factorybox-resume.patch": "7da699508761d0c60b46fe4c777c34c50a6f3bf5713669bc5e98c3298c9f5459",
+        "upstream/patches/sysbox-runc-restore-delegation-leaf.patch": "c739e8a7ee05f73b5ea16c5b45f231ab079b50851871a8d042647829a6145aad"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -993,7 +994,8 @@
         "upstream/patches/sysbox-runc-state-snapshot.patch",
         "upstream/patches/sysbox-runc-factorybox-restore.patch",
         "upstream/patches/sysbox-runc-restore-receipt.patch",
-        "upstream/patches/sysbox-runc-factorybox-resume.patch"
+        "upstream/patches/sysbox-runc-factorybox-resume.patch",
+        "upstream/patches/sysbox-runc-restore-delegation-leaf.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
@@ -1028,7 +1030,7 @@
         "factorybox_restore_receipt_test.go": "9577b54e7da495b8d861f1a10c8ce0d05e229a2637832264c89fc1405c3fffcd",
         "factorybox_resume_test.go": "3a891cc4bd6e60bafc5d671129305bd73b7a3e089b1aa720fac63c60e4ca5030",
         "factorybox_resume.go": "49f75891dfbd1757f70330264e48b8e4ca504f46986ad67ac22a6ed92f563ccb",
-        "libcontainer/container_linux.go": "4c51a329fcbe32f04957798a8649dffab09ef0126065d14a9e5799966f826c26",
+        "libcontainer/container_linux.go": "cc8390165d117db1ad631bd1855c509714efc95888135c7b28f73af4793d3b34",
         "libcontainer/criu_opts_linux.go": "8238e48519cc801d579c5ae5284647e1ab403ee0527d7d560fbdb1c7ae528188"
       }
     },

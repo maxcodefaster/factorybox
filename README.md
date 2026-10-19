@@ -1089,14 +1089,49 @@ filesystem durability barrier took 0.163 seconds. The first fork completed its b
 preparation, then CRIU failed restoring `cgroup.subtree_control` with `EBUSY`.
 The unchanged 420-second lifecycle deadline interrupted that request before a useful fork
 response. Its first archive reached the 600-second archive deadline; the original volume
-remains retained until separate verified reconciliation succeeds.
+was retained for reconciliation. Reconciliation `ca39d90ebf5d4bf39f195ee452433a8a` subsequently
+verified the complete 9,067,036,672-byte archive with SHA-256
+`0cf9aded11a881518e06ebfa369892310d073d867ca39667da82bd1a4cea9148` and completed owned cleanup.
+That cleanup receipt does not change the failed lifecycle result.
 
 `factorybox-runtime-d2b79504c8ec4ac28127b333d05c28ed` reproduced the same restore failure in
 12.58 seconds with a parent actor and two populated delegated cgroups, without Docker,
 Compose, Connector or IDE. Its checkpoint succeeded, while the public fork's retained
 CRIU log reports the same `cgroup.subtree_control` error. That failed fixture completed
 archival and owned cleanup. This case remains a required failing regression, not support
-for arbitrary delegated cgroup restoration:
+for arbitrary delegated cgroup restoration.
+
+Two diagnostic-only CRIU builds reproduced the failure and identified CRIU itself as the
+process directly populating the target root. Sysbox restore called `ApplyChildCgroup` without
+creating `init.scope`; the inherited `EnterPid` helper silently skipped that missing directory.
+The ordered `sysbox-runc-restore-delegation-leaf.patch` now prepares the ordinary Sysbox leaf
+before moving CRIU into it. The original CRIU executable is unchanged, and the temporary
+diagnostics are absent from the selected sources.
+
+`factorybox-runtime-903784cb6d8a4123b74f12a51afe81c3` confirms that the first error is gone,
+but the delegated test still fails. CRIU next tries to enter the target root to create its
+cgroup namespace after controller delegation has already been activated. That migration also
+returns `EBUSY`. This is an unresolved restore-ordering failure; Docker fork/resume is still
+unqualified. The regression additionally requires empty delegated parents, exact root and
+Docker controller sets, preserved leaf membership and independent RAM mutation.
+
+The same Sysbox build passed the prepared-base capture/fork suite in
+`factorybox-runtime-1efcd5827a034a5c91911701d2612e1a`, with six tests, 35 subtests, zero skips
+and owned cleanup. Its individual tiny-actor observations were 0.235 seconds for checkpoint
+and 0.523/0.518 seconds through useful fork/descendant responses. These exclude base preparation
+and do not qualify developer-workload latency or p95.
+
+The same build also passed all six tests and 23 subtests of the prepared-base pause suite in
+`factorybox-runtime-d3b7ceb781a74cf998ee22f29c5c8b2c`, with zero skips and owned cleanup.
+The full 32-MiB pause took 0.427 seconds and released all original anonymous memory and
+snapshot payload residency. Resume through useful RAM, file, volume and virtual-state checks
+took 0.386 seconds. All sixteen restore/delete cycles passed, with useful fork responses
+between 0.567 and 1.020 seconds and a descriptive median of 0.626 seconds. The suite then
+forked a resumed source and paused/resumed modified state again. Earlier observations on this
+worker were substantially slower; this run does not establish a causal latency improvement
+from the leaf fix or a production latency distribution.
+
+Run the delegated-cgroup regression:
 
 ```sh
 mise exec -- python3 tools/lifecycle_native.py --suite delegation \
