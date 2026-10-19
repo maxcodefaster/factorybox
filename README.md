@@ -1017,12 +1017,38 @@ every retained blob checksum and serves the original manifest bytes from that ar
 outer network is disabled. The ordinary example and Connector retain their exact digest pins;
 no tag substitution or digest-check bypass is used.
 
-This passing component gate does not qualify Factorybox capture/fork/resume of the developer
-stack, an active Connector control connection, separate Theia or OpenCode inference. The
-assignment's endpoint and example identities require explicit test or installation wiring.
-Separate Theia and optional OpenCode composition remain in progress. IDEs and agent harnesses
-remain outside the core lifecycle. Production Factory integration and public publication are
-separate steps after qualification.
+This passing Compose component gate does not qualify capture/fork/resume or an active Connector
+control connection; the full lifecycle gate below covers those operations with its closed test
+authority. The assignment's endpoint and example identities require explicit test or installation
+wiring. IDEs and agent harnesses remain outside the core lifecycle. Production Factory integration
+and public publication are separate steps after qualification.
+
+The separate Theia component has its own native proof:
+
+```sh
+mise exec -- python3 tools/theia_native.py \
+  --image registry.localhost:51745/open-factory/developer-ide@sha256:426be096c78cd684c046c8da4735aba61946772ad1c280c4823f7cc138555cc3 \
+  --native-base-build factorybox-build-native-base-aade0777712c460cbd8bf22156888b6f
+```
+
+Supply an exact cached Linux ARM64 IDE repository digest. The runner verifies its actual image
+identity and uses the sealed reference RPC client without modifying it. The server runs as UID
+1000 with a read-only root, no capabilities, no external network or published ports, and a
+1-CPU/768-MiB limit. A separately owned volume holds two ordinary file fixtures and IDE settings.
+The setup helper uses only that volume and exits before the IDE starts.
+
+`factorybox-theia-8a57085d233547ca86ec01dc75d9948f` passed real Theia remote-filesystem RPC
+reads and writes, rejection of an unknown fixture, independent marker edits and direct file
+readback through one unchanged client connection. Owned container/volume cleanup completed.
+The final-code repeat `factorybox-theia-597e4a9132304d06b5c8d017f9c19bfe` also passed and verified
+the actual container's image identity, UID, CPU/memory/PID limits and security configuration.
+Its frozen runner copy matches the maintained script's SHA-256.
+The client is the retained Theia 1.76.0/socket.io 4.8.4 bundle; the server is identified by its exact
+image digest. HTTP frontend availability alone is not the pass condition.
+
+These directories are not live or restored Factorybox sandboxes. This component proof does
+not qualify workspace projection, IDE connection retention across fork/resume, browser editing
+or inference. Full separate-Theia composition and the optional OpenCode example remain open.
 
 Run the developer stack through the public Factorybox CLI with the exact prepared inputs:
 
