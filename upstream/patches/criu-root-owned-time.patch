@@ -1,0 +1,378 @@
+--- a/images/timens.proto
++++ b/images/timens.proto
+@@ -9,4 +9,8 @@
+ message timens_entry {
+ 	required timespec monotonic	= 1;
+ 	required timespec boottime	= 2;
++	optional sint64 relative_monotonic_sec = 3;
++	optional sint64 relative_monotonic_nsec = 4;
++	optional sint64 relative_boottime_sec = 5;
++	optional sint64 relative_boottime_nsec = 6;
+ }
+--- a/criu/namespaces.c
++++ b/criu/namespaces.c
+@@ -1844,6 +1844,9 @@
+ 	if (prepare_net_namespaces())
+ 		goto out;
+ 
++	if (prepare_root_owned_time_namespaces())
++		goto out;
++
+ 	/*
+ 	 * This one is special -- there can be several mount
+ 	 * namespaces and prepare_mnt_ns handles them itself.
+--- a/criu/nested-ns.c
++++ b/criu/nested-ns.c
+@@ -132,7 +132,7 @@
+ 	 */
+ 	return nested_ns_enabled() &&
+ 	       (nd == &user_ns_desc || nd == &uts_ns_desc || nd == &net_ns_desc || nd == &pid_ns_desc ||
+-		nd == &ipc_ns_desc || nd == &cgroup_ns_desc);
++		nd == &ipc_ns_desc || nd == &cgroup_ns_desc || nd == &time_ns_desc);
+ }
+ 
+ /*
+@@ -304,6 +304,33 @@
+ {
+ 	if (!nested_ns_enabled() || !item->parent)
+ 		return 0;
++
++	/* The initial time extension is deliberately scoped to clocks owned
++	 * and used by the root user namespace. Do not flatten other ownership. */
++	if (item->ids->has_time_ns_id && item->ids->time_ns_id != root_item->ids->time_ns_id) {
++		struct ns_id *root_user = lookup_ns_by_id(root_item->ids->user_ns_id, &user_ns_desc);
++		struct stat owner;
++		int fd, owner_fd;
++		if (!root_user || item->ids->user_ns_id != root_item->ids->user_ns_id) {
++			pr_err("Nested time namespace requires the root user namespace\n");
++			return -1;
++		}
++		fd = open_proc(item->pid->real, "ns/time");
++		if (fd < 0)
++			return -1;
++		owner_fd = ioctl(fd, NS_GET_USERNS);
++		close(fd);
++		if (owner_fd < 0) {
++			pr_perror("Can't get time namespace owner");
++			return -1;
++		}
++		if (fstat(owner_fd, &owner) || owner.st_ino != root_user->kid) {
++			close(owner_fd);
++			pr_err("Time namespace owner differs from the root user namespace\n");
++			return -1;
++		}
++		close(owner_fd);
++	}
+ 
+ 	if (nested_ns_task_nested(item)) {
+ 		if (check_nested_user_ns(item))
+@@ -477,7 +504,7 @@
+ 	 * restored when its parent task forks it.
+ 	 */
+ 	return !((cflags & ~(root_ns_mask & CLONE_SUBNS)) &
+-		 ~(CLONE_NEWUSER | CLONE_NEWUTS | CLONE_NEWNET | CLONE_NEWPID | CLONE_NEWIPC | CLONE_NEWCGROUP));
++		 ~(CLONE_NEWUSER | CLONE_NEWUTS | CLONE_NEWNET | CLONE_NEWPID | CLONE_NEWIPC | CLONE_NEWCGROUP | CLONE_NEWTIME));
+ }
+ 
+ /*
+--- a/criu/timens.c
++++ b/criu/timens.c
+@@ -1,14 +1,58 @@
+ #include <time.h>
+ #include <sched.h>
++#include <sys/wait.h>
+ 
+ #include "types.h"
+ #include "proc_parse.h"
+ #include "namespaces.h"
+ #include "timens.h"
+ #include "cr_options.h"
++#include "nested-ns.h"
++#include "pstree.h"
++#include "fdstore.h"
+ 
+ #include "protobuf.h"
+ #include "images/timens.pb-c.h"
++
++static void normalize_timespec(struct timespec *ts);
++
++static int read_offsets(pid_t pid, struct timespec *mono, struct timespec *boot)
++{
++	FILE *file;
++	int fd, i, seen = 0;
++	char clock[32];
++	long long sec;
++	long nsec;
++
++	fd = open_proc(pid, "timens_offsets");
++	if (fd < 0)
++		return -1;
++	file = fdopen(fd, "r");
++	if (!file) {
++		close(fd);
++		return -1;
++	}
++	for (i = 0; i < 2; i++) {
++		struct timespec *target;
++		if (fscanf(file, "%31s %lld %ld", clock, &sec, &nsec) != 3)
++			goto fail;
++		if (!strcmp(clock, "monotonic")) {
++			target = mono;
++			seen |= 1;
++		} else if (!strcmp(clock, "boottime")) {
++			target = boot;
++			seen |= 2;
++		} else
++			goto fail;
++		target->tv_sec = sec;
++		target->tv_nsec = nsec;
++	}
++	fclose(file);
++	return seen == 3 ? 0 : -1;
++fail:
++	fclose(file);
++	return -1;
++}
+ 
+ int dump_time_ns(int ns_id)
+ {
+@@ -16,6 +60,7 @@
+ 	TimensEntry te = TIMENS_ENTRY__INIT;
+ 	Timespec b = TIMESPEC__INIT, m = TIMESPEC__INIT;
+ 	struct timespec ts;
++	struct timespec mo, bo, root_mo, root_bo;
+ 	int ret;
+ 
+ 	img = open_image(CR_FD_TIMENS, O_DUMP, ns_id);
+@@ -31,6 +76,23 @@
+ 	te.boottime->tv_sec = ts.tv_sec;
+ 	te.boottime->tv_nsec = ts.tv_nsec;
+ 
++	if (read_offsets(PROC_SELF, &mo, &bo) ||
++	    read_offsets(root_item->pid->real, &root_mo, &root_bo)) {
++		close_image(img);
++		return -1;
++	}
++	mo.tv_sec -= root_mo.tv_sec;
++	mo.tv_nsec -= root_mo.tv_nsec;
++	bo.tv_sec -= root_bo.tv_sec;
++	bo.tv_nsec -= root_bo.tv_nsec;
++	normalize_timespec(&mo);
++	normalize_timespec(&bo);
++	te.has_relative_monotonic_sec = te.has_relative_monotonic_nsec = true;
++	te.has_relative_boottime_sec = te.has_relative_boottime_nsec = true;
++	te.relative_monotonic_sec = mo.tv_sec;
++	te.relative_monotonic_nsec = mo.tv_nsec;
++	te.relative_boottime_sec = bo.tv_sec;
++	te.relative_boottime_nsec = bo.tv_nsec;
+ 	ret = pb_write_one(img, &te, PB_TIMENS);
+ 	close_image(img);
+ 
+@@ -132,5 +194,131 @@
+ 	close_safe(&fd);
+ 	return exit_code;
+ }
++
++static int prepare_relative_time_namespace(int id)
++{
++	struct cr_img *img;
++	TimensEntry *entry = NULL;
++	struct timespec mono, boot;
++	int fd = -1, ret = -1;
++
++	img = open_image(CR_FD_TIMENS, O_RSTR, id);
++	if (!img)
++		return -1;
++	if (pb_read_one(img, &entry, PB_TIMENS) < 0) {
++		close_image(img);
++		return -1;
++	}
++	close_image(img);
++	if (!entry->has_relative_monotonic_sec || !entry->has_relative_monotonic_nsec ||
++	    !entry->has_relative_boottime_sec || !entry->has_relative_boottime_nsec ||
++	    read_offsets(PROC_SELF, &mono, &boot))
++		goto out;
++	mono.tv_sec += entry->relative_monotonic_sec;
++	mono.tv_nsec += entry->relative_monotonic_nsec;
++	boot.tv_sec += entry->relative_boottime_sec;
++	boot.tv_nsec += entry->relative_boottime_nsec;
++	normalize_timespec(&mono);
++	normalize_timespec(&boot);
++	if (unshare(CLONE_NEWTIME))
++		goto out;
++	fd = open_proc_rw(PROC_SELF, "timens_offsets");
++	if (fd < 0)
++		goto out;
++	if (dprintf(fd, "%d %lld %ld\n", CLOCK_MONOTONIC, (long long)mono.tv_sec, mono.tv_nsec) < 0 ||
++	    dprintf(fd, "%d %lld %ld\n", CLOCK_BOOTTIME, (long long)boot.tv_sec, boot.tv_nsec) < 0)
++		goto out;
++	close_safe(&fd);
++	fd = open_proc(PROC_SELF, "ns/time_for_children");
++	if (fd < 0 || switch_ns_by_fd(fd, &time_ns_desc, NULL))
++		goto out;
++	ret = 0;
++out:
++	close_safe(&fd);
++	timens_entry__free_unpacked(entry, NULL);
++	return ret;
++}
++
++int prepare_root_owned_time_namespaces(void)
++{
++	struct ns_id *ns;
++	struct pstree_item *item;
++	unsigned int root_id;
++	int fd, status;
++	pid_t child;
++
++	if (!nested_ns_enabled())
++		return 0;
++	root_id = root_item->ids->time_ns_id;
++	for_each_pstree_item(item) {
++		if (item->ids && item->ids->has_time_ns_id && item->ids->time_ns_id != root_id &&
++		    item->ids->user_ns_id != root_item->ids->user_ns_id) {
++			pr_err("Nested time image requires root user namespace membership\n");
++			return -1;
++		}
++	}
++	for (ns = ns_ids; ns; ns = ns->next) {
++		if (ns->nd != &time_ns_desc)
++			continue;
++		ns->time.nsfd_id = -1;
++		if (ns->id == root_id) {
++			fd = open_proc(PROC_SELF, "ns/time");
++			if (fd < 0)
++				return -1;
++			ns->time.nsfd_id = fdstore_add(fd);
++			close(fd);
++			if (ns->time.nsfd_id < 0)
++				return -1;
++			continue;
++		}
++		if (ns->type == NS_CRIU)
++			continue;
++		child = fork();
++		if (child < 0)
++			return -1;
++		if (!child) {
++			close_pid_proc();
++			if (prepare_relative_time_namespace(ns->id)) {
++				pr_perror("Can't prepare relative time namespace %u", ns->id);
++				_exit(1);
++			}
++			fd = open_proc(PROC_SELF, "ns/time");
++			if (fd < 0)
++				_exit(1);
++			ns->time.nsfd_id = fdstore_add(fd);
++			close(fd);
++			_exit(ns->time.nsfd_id < 0 ? 1 : 0);
++		}
++		if (waitpid(child, &status, 0) != child || !WIFEXITED(status) || WEXITSTATUS(status))
++			return -1;
++	}
++	return 0;
++}
++
++int join_root_owned_time_namespace(struct pstree_item *item)
++{
++	struct pstree_item *parent;
++	struct ns_id *ns;
++	int fd, ret;
++
++	if (!nested_ns_enabled() || !item->parent || !item->ids || !item->ids->has_time_ns_id)
++		return 0;
++	parent = item->parent;
++	while (parent && !parent->ids)
++		parent = parent->parent;
++	if (parent && parent->ids->time_ns_id == item->ids->time_ns_id)
++		return 0;
++	ns = lookup_ns_by_id(item->ids->time_ns_id, &time_ns_desc);
++	if (!ns || ns->time.nsfd_id < 0) {
++		pr_err("Missing restored time namespace %u for task %d\n", item->ids->time_ns_id, vpid(item));
++		return -1;
++	}
++	fd = fdstore_get(ns->time.nsfd_id);
++	if (fd < 0)
++		return -1;
++	ret = switch_ns_by_fd(fd, &time_ns_desc, NULL);
++	close(fd);
++	return ret;
++}
+ struct ns_desc time_ns_desc = NS_DESC_ENTRY(CLONE_NEWTIME, "time");
+ struct ns_desc time_for_children_ns_desc = NS_DESC_ENTRY(CLONE_NEWTIME, "time_for_children");
+--- a/criu/nested-pstree.c
++++ b/criu/nested-pstree.c
+@@ -9,6 +9,7 @@
+ #include "nested-ns.h"
+ #include "uts_ns.h"
+ #include "ipc_ns.h"
++#include "timens.h"
+ #include "net.h"
+ #include "util.h"
+ 
+@@ -283,6 +284,9 @@
+ 		close(self_fd);
+ 	}
+ 
++	if (join_root_owned_time_namespace(item))
++		return -1;
++
+ 	if ((rsti(item)->clone_flags & (CLONE_NEWUSER | CLONE_NEWNET)) == (CLONE_NEWUSER | CLONE_NEWNET)) {
+ 		/*
+ 		 * Create our own network namespace, which is owned by
+--- a/criu/crtools.c
++++ b/criu/crtools.c
+@@ -133,6 +133,12 @@
+ 	bool has_sub_command;
+ 	int state = PARSING_GLOBAL_CONF;
+ 	char *cmd;
++
++	/* Read-only ABI probe for the hash-pinned Factorybox caller. */
++	if (argc == 2 && !strcmp(argv[1], "factorybox-features")) {
++		puts("{\"schema\":1,\"root_owned_time_namespaces\":true}");
++		return 0;
++	}
+ 
+ 	BUILD_BUG_ON(CTL_32 != SYSCTL_TYPE__CTL_32);
+ 	BUILD_BUG_ON(__CTL_STR != SYSCTL_TYPE__CTL_STR);
+--- a/criu/pstree.c
++++ b/criu/pstree.c
+@@ -559,6 +559,10 @@
+ 	}
+ 	if (pi->ids->has_pid_ns_id) {
+ 		if (rst_add_ns_id(pi->ids->pid_ns_id, pi, &pid_ns_desc))
++			return -1;
++	}
++	if (pi->ids->has_time_ns_id) {
++		if (rst_add_ns_id(pi->ids->time_ns_id, pi, &time_ns_desc))
+ 			return -1;
+ 	}
+ 
+--- a/criu/include/timens.h
++++ b/criu/include/timens.h
+@@ -1,8 +1,12 @@
+ #ifndef __CR_TIME_NS_H__
+ #define __CR_TIME_NS_H__
+ 
++struct pstree_item;
++
+ extern int dump_time_ns(int ns_id);
+ extern int prepare_timens(int pid);
++extern int prepare_root_owned_time_namespaces(void);
++extern int join_root_owned_time_namespace(struct pstree_item *item);
+ 
+ extern struct ns_desc time_ns_desc;
+ extern struct ns_desc time_for_children_ns_desc;
+--- a/criu/include/namespaces.h
++++ b/criu/include/namespaces.h
+@@ -124,6 +124,10 @@
+ 	bool nested;
+ 
+ 	union {
++		struct {
++			int nsfd_id;
++		} time;
++
+ 		struct {
+ 			struct mount_info *mntinfo_list;
+ 			struct mount_info *mntinfo_tree;

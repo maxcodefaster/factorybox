@@ -118,6 +118,7 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 	if err != nil {
 		return Checkpoint{}, err
 	}
+	features := sysboxcapture.InspectFeatures(ctx, binary)
 	if err := binary.Close(); err != nil {
 		return Checkpoint{}, err
 	}
@@ -153,7 +154,7 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 	if err := guard.freeze(true); err != nil {
 		return Checkpoint{}, err
 	}
-	if err := guard.admitCheckpointNamespaces(); err != nil {
+	if err := guard.admitCheckpointNamespaces(features.RootOwnedTimeNamespaces); err != nil {
 		admission = &checkpointAdmissionError{cause: err, rejectedAt: now()}
 		evidenceErr := e.publishCheckpoint(relative, "admission-rejected.json", checkpointAdmissionRejection{
 			Version: 1, SourceID: record.ID, SnapshotID: snapshot,

@@ -47,6 +47,12 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
   if test "${FACTORYBOX_NATIVE_NAMESPACES:-}" = 1; then
     test_pattern='^TestCapture(Namespaces|ChildrenNamespace)Native$'
   fi
+  if test "${FACTORYBOX_NATIVE_TIME:-}" = 1; then
+    test_pattern='^TestTimeNamespaceForkNative$'
+  fi
+  if test "${FACTORYBOX_NATIVE_MOUNT_FD:-}" = 1; then
+    test_pattern='^TestDetachedMountForkNative$'
+  fi
 fi
 set +e
 test_timeout=90s

@@ -12,14 +12,25 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"factorybox/internal/sysboxcapture"
 )
 
 func TestCaptureNamespacesNative(t *testing.T) {
 	if os.Getenv("FACTORYBOX_NATIVE_NAMESPACES") != "1" {
 		t.Skip("requires the bounded native namespace-admission fixture")
 	}
+	mode, expectedMode := "1", "child"
+	probe, err := openRuntime("/out/criu", os.Getenv("FACTORYBOX_CRIU_SHA256"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sysboxcapture.InspectFeatures(context.Background(), probe).RootOwnedTimeNamespaces {
+		mode, expectedMode = "future-thread", "future-thread"
+	}
+	probe.Close()
 	engine, bundle := nativeEngine(t,
-		"/bin/env FACTORYBOX_CAPTURE_ACTOR=1 FACTORYBOX_CAPTURE_NESTED_TIME=1 "+
+		"/bin/env FACTORYBOX_CAPTURE_ACTOR=1 FACTORYBOX_CAPTURE_NESTED_TIME="+mode+" "+
 			"/bin/capture-actor -test.run=^TestCaptureActor$ -test.timeout=0")
 	binary, err := os.ReadFile(os.Args[0])
 	if err != nil {
@@ -66,7 +77,7 @@ func TestCaptureNamespacesNative(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if before.NestedPID <= 1 || before.TimeMode != "child" || len(before.Payload) != 8192 || before.Counter != 0 {
+	if before.NestedPID <= 1 || before.TimeMode != expectedMode || len(before.Payload) != 8192 || before.Counter != 0 {
 		t.Fatal("minimal namespace actor lacks its child or RAM payload")
 	}
 	command := func(operation, snapshot string) ([]byte, error) {

@@ -147,10 +147,10 @@ func openTimeNamespace(tid int, name string) (*os.File, timeNamespaceID, error) 
 	return file, timeNamespaceID{Device: uint64(stat.Dev), Inode: stat.Ino}, nil
 }
 
-// The selected CRIU adapter supports only one time namespace and requires
-// time_for_children to match it for every thread. Check while the exact owned
-// tree is frozen, before CRIU or its network/ptrace hooks can touch the source.
-func (guard *captureGuard) admitCheckpointNamespaces() error {
+// Every thread's time_for_children must match its current time namespace.
+// Additional root-user-owned clocks require the verified CRIU feature ABI.
+// Check the exact frozen tree before CRIU's network/ptrace hooks can run.
+func (guard *captureGuard) admitCheckpointNamespaces(rootOwnedTime bool) error {
 	if err := guard.check(); err != nil {
 		return err
 	}
@@ -171,6 +171,19 @@ func (guard *captureGuard) admitCheckpointNamespaces() error {
 	// Retain this handle throughout the scan so its namespace identity cannot
 	// be recycled if the original source is killed concurrently.
 	defer root.Close()
+	var rootUser timeNamespaceID
+	if rootOwnedTime {
+		fd, err := unix.Open(fmt.Sprintf("/proc/%d/ns/user", guard.config.PID), unix.O_RDONLY|unix.O_CLOEXEC, 0)
+		if err != nil {
+			return err
+		}
+		defer unix.Close(fd)
+		var stat unix.Stat_t
+		if err := unix.Fstat(fd, &stat); err != nil {
+			return err
+		}
+		rootUser = timeNamespaceID{Device: uint64(stat.Dev), Inode: stat.Ino}
+	}
 	threads, err := captureGuardThreads(guard.config, guard.anchor)
 	if err != nil || len(threads) == 0 {
 		return fmt.Errorf("namespace admission lacks the original task tree: %v", err)
@@ -181,17 +194,53 @@ func (guard *captureGuard) admitCheckpointNamespaces() error {
 	}
 	slices.Sort(tids)
 	for _, tid := range tids {
+		var current timeNamespaceID
 		for _, name := range []string{"time", "time_for_children"} {
 			file, observed, err := openTimeNamespace(tid, name)
 			if err != nil {
 				return err
 			}
-			if err := file.Close(); err != nil {
-				return err
+			if name == "time" {
+				current = observed
 			}
-			if observed != expected {
+			if (name == "time" && observed != expected && !rootOwnedTime) ||
+				(name == "time_for_children" && observed != current) {
+				file.Close()
 				return fmt.Errorf("nested time namespace is not supported by the selected CRIU: task %d %s=%+v root=%+v",
 					tid, name, observed, expected)
+			}
+			if name == "time" && observed != expected && rootOwnedTime {
+				ownerFD, err := unix.IoctlRetInt(int(file.Fd()), unix.NS_GET_USERNS)
+				if err != nil {
+					file.Close()
+					return err
+				}
+				var owner unix.Stat_t
+				statErr := unix.Fstat(ownerFD, &owner)
+				closeErr := unix.Close(ownerFD)
+				if statErr != nil || closeErr != nil ||
+					(timeNamespaceID{Device: uint64(owner.Dev), Inode: owner.Ino}) != rootUser {
+					file.Close()
+					return fmt.Errorf("nested time namespace is not owned by the source root user namespace: %v %v",
+						statErr, closeErr)
+				}
+				memberFD, err := unix.Open(fmt.Sprintf("/proc/%d/ns/user", tid), unix.O_RDONLY|unix.O_CLOEXEC, 0)
+				if err != nil {
+					file.Close()
+					return err
+				}
+				var member unix.Stat_t
+				statErr = unix.Fstat(memberFD, &member)
+				closeErr = unix.Close(memberFD)
+				if statErr != nil || closeErr != nil ||
+					(timeNamespaceID{Device: uint64(member.Dev), Inode: member.Ino}) != rootUser {
+					file.Close()
+					return fmt.Errorf("nested time namespace task is not in the source root user namespace: %v %v",
+						statErr, closeErr)
+				}
+			}
+			if err := file.Close(); err != nil {
+				return err
 			}
 		}
 		birth, err := processBirth(tid)

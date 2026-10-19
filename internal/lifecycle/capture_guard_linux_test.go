@@ -37,6 +37,12 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
+	if os.Getenv("FACTORYBOX_CAPTURE_NESTED_TIME") == "future-thread" {
+		// Keep Go's initial OS thread occupied by the test runner. The
+		// disposable future-children namespace must live on a retireable
+		// worker thread, rather than m0 which the runtime keeps alive.
+		runtime.LockOSThread()
+	}
 	os.Exit(m.Run())
 }
 

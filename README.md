@@ -183,6 +183,27 @@ observations of the small native fixture, repeated logical payload reads dropped
 contained nine roots and 472 entries, mostly an empty private runtime. These observations are
 not a full developer-workload fork/resume distribution or p95.
 
+Filesystem copies now use one `syncfs` durability barrier after the complete target digest,
+instead of syncing every file and directory separately. Every entry still undergoes mount,
+content, metadata and source-inode independence checks. A failed barrier prevents publication.
+The barrier also flushes other dirty data on the same filesystem, so its latency depends on
+other writes there.
+
+The metadata benchmark contains 2,048 regular files in sixteen directories and 1 MiB of content.
+Two individual Btrfs comparisons measured 13.519 to 0.661 seconds and 6.578 to 0.823 seconds.
+The repeat reused the exact earlier binaries; their frozen source contexts differ only in
+`internal/sysboxcapture/filesystem_linux.go`. Source-reading time in that repeat was 0.123 and
+0.126 seconds. The approximately eightfold repeat improvement is for this filesystem workload,
+not a complete developer checkpoint/fork or a latency distribution. Evidence is retained in
+`factorybox-filesystem-benchmark-17fad8c1d1904430945319d35df07128` and
+`factorybox-filesystem-benchmark-b96cb66755f94632a3904b0e2616a67d`.
+In an owned Linux fixture with the compiled adapter test binary and private `/var/lib/sysbox`:
+
+```sh
+FACTORYBOX_NATIVE_RETAINED_CAPTURE=1 /sysboxcapture.test \
+  -test.run='^$' -test.bench='^BenchmarkFilesystemCloneNative$' -test.benchtime=1x
+```
+
 The guarded capture also exports Sysbox's virtual proc/sys state at that same frozen point.
 A root-only Unix RPC returns a bounded, versioned snapshot of its cached virtual values,
 creation time, UID/GID mappings and proc protections. It includes no PID, namespace or FUSE-server
@@ -786,6 +807,10 @@ familiar `node@sha256:...` spelling for `docker.io/library/node:TAG@sha256:...`;
 must still match. The observed existing runtime contains Docker 29.9.0, Compose 5.6.0,
 Dev Containers CLI 0.89.0, Node 24.21.0, the real Factory Connector, OpenCode server 2.0.27
 and Bun 1.4.3.
+Once preparation has frozen `runtime-rootfs.tar`, the lifecycle consumer verifies that exact
+regular, nonsymlink archive's size and SHA-256, plus its pinned role and platform metadata.
+It does not require the unused source image to remain in Docker's image cache. Consumers that
+execute an image directly still verify its actual cached identity and repository digest.
 
 The component gate passed with both services, the real CLI's `read-configuration`, `up` and `exec`,
 the post-create hook, Compose DNS/HTTP and the app's initial RAM state. It uses a separate
@@ -842,22 +867,125 @@ Connector's project-identity check. A repeat's one-second Node healthchecks beca
 under worker load in a 0.25-CPU service. The passing prepared-start uses the existing `wget`
 applet instead of launching another Node process for each check.
 
-The same developer run failed its first checkpoint: the selected CRIU reports
-`Can't dump nested time namespace` for a Docker child. It therefore provides no complete
-developer fork, pause or resume qualification. The selected CRIU nested-namespace adapter admits
-user, UTS, network, PID, IPC and cgroup namespaces; time namespaces remain unsupported.
-The unchanged upstream `timens_nested` case also declares an expected checkpoint failure.
-A minimal Sysbox parent and one child in a new time namespace reproduce the same CRIU error
-in an individual 452-ms checkpoint request, without Docker, the Connector or an IDE.
-The full gate remains failed. An initial diagnostic attempted exec after the failed capture;
-that is unsuitable for an unresolved frozen source and has been removed from the fixture.
-Logs are observed through the real CLI's stderr and the guest's merged filesystem instead.
+That developer run failed its first checkpoint because CRIU reported
+`Can't dump nested time namespace` for a Docker child. A minimal Sysbox parent and one child
+in a new time namespace reproduced the error in a 452-ms checkpoint request, without Docker,
+the Connector or an IDE. The original failed runs remain retained. The unchanged upstream
+`timens_nested` case declares an expected checkpoint failure; it is not proof of the extension.
+Logs are observed through the CLI's stderr and the guest's merged filesystem. Exec after an
+unresolved failed capture is unsuitable because the source can still be frozen.
 
-The runtime now checks each owned thread's `time` and `time_for_children` handles while the
-exact cgroup tree is frozen, before entering CRIU's guarded capture phase. It verifies the
-namespace filesystem/type and compares them to a pinned handle for the original root time
-namespace. A distinct child or future-children time namespace is rejected before ptrace,
-network hooks or snapshot payload writes. The source guard then releases the original tree.
+The ordered `criu-root-owned-time.patch` adds capture and restore for time namespaces owned
+and used by the source root user namespace. It saves monotonic and boottime offsets relative
+to the source root, creates each saved namespace once and restores the original sharing
+relationships with independent kernel identities. It retains the exactly pinned upstream
+commit and all 1,030 original CRIU test files. Two fresh builds reproduced the same executable,
+SHA-256 `44ca6469f17b27bd294812b67119b4bc0107249b2deea957d7fc203e99e05988`.
+This extension has focused native proof; the complete developer lifecycle remains unqualified.
+The full developer retry, `factorybox-devx-lifecycle-fc9af7475bd2499a91964ca3ed78577d`,
+spent 237.193 seconds preparing the rootfs, then exceeded its 120-second readiness limit.
+The Connector had spent 39.544 seconds acquiring project images and Compose was still starting
+services. The outer 420-second deadline interrupted cleanup. No checkpoint ran, so this attempt
+provides no developer fork/resume timing or verdict on nested-time restoration. Failed input
+and runtime data remain separate from passing evidence.
+
+The later full run, `factorybox-devx-lifecycle-5679e94057894b978c9ba992b046fa04`,
+prepared its frozen rootfs in 36.498 seconds and reached an actual Connector app response
+99.669 seconds after prepared start. The CLI start call itself took 0.974 seconds; that is
+not application readiness. Its first checkpoint passed the earlier nested-time failure,
+then CRIU rejected an open root descriptor held by a `runc` process:
+`Can't lookup mount=8117 for fd=9 path=/`. No full developer fork or resume completed.
+The failed run retained a complete 3,004,170,240-byte archive before successful owned cleanup.
+The fixed global sysctl sentinels were unchanged and the fixture was not OOM-killed.
+
+The lifecycle gate samples `cpu.stat`, memory counters and `io.stat` around CLI operations
+and useful responses. These cover the whole bounded fixture, including controller and Sysbox
+services. Missing pressure files are recorded as unavailable; their absence does not identify
+a kernel configuration or explain a slow startup. These observations do not establish p95.
+
+A minimal Sysbox actor holding a detached proc-root `O_PATH` descriptor reproduced the same
+mount-lookup error without Docker, Connector or IDE. Two runs,
+`factorybox-runtime-1682de96256a4e959b6f716ca0e2b64d` and
+`factorybox-runtime-438d325c031c4d9ba3618bf2b937420d`, failed their checkpoint requests in
+0.605 and 0.501 seconds respectively. Both archived their failed data and completed owned cleanup.
+The descriptor's mount was absent from `mountinfo`, its proc-root inode was 1, and its
+`self` link identified the actor's own PID namespace. The ordered
+`criu-detached-proc-root.patch` is being tested against this reproducer; its presence does not
+qualify the developer lifecycle.
+The first basic restore regression passed both default and restricted proc mounts, including
+shared mount IDs, RAM and source independence, in
+`factorybox-runtime-4a1a7dcddbac453d9aa08bce5bcb899b`.
+A stronger check then cloned the restored handle in a private helper namespace to read its
+actual kernel options. That check failed with `EINVAL` in `open_tree`. An ordinary `openat`
+directory handle had outlived the `fsmount` descriptor used to create the anonymous mount.
+The candidate now retains the mount descriptor itself. Separate canonical `O_PATH` roots of
+one detached proc mount currently share its restored open file description; original distinct
+open descriptions are not preserved. Other descriptor flags, ancestor PID-namespace ownership
+and proc trees with descendant mounts remain unsupported. This is an experimental limitation,
+not general detached-mount or arbitrary-state qualification.
+The stricter gate passed both default and restricted mounts in
+`factorybox-runtime-83ebc197dc784ed8a9f967056f19352d`, with five top-level tests, eight subtests,
+zero skips and owned cleanup. It re-clones each restored handle to read the actual kernel
+`hidepid`/`subset` options, verifies mount flags and sharing, and checks independent RAM
+mutation. The tested CRIU build `factorybox-build-criu-8c8770c07fa744e5af567b55c100eb51`
+has SHA-256 `9228c3e8e5ea6d619d62efb91d5273a22739446bf616551dbc480204f9019019`.
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py --suite mountfd \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+```
+
+The full developer run `factorybox-devx-lifecycle-1d377aa0dc324f38abc537cd61122b1b`
+prepared in 67.105 seconds and reached the app in another 56.750 seconds. CRIU's retained log
+reports a complete process-tree dump in 3.293 seconds. The public checkpoint still failed:
+the capture worker reached its 60-second deadline after CRIU, with the 1.63-GB base-layer copy
+present but no upper-layer copy yet. No complete checkpoint, fork or resume was published.
+Its stopped-volume archive exceeded 600 seconds, so the original failed volume remains
+retained for reconciliation. The partial archive is not a completed cleanup receipt.
+Reconciliation `e204abb2881d4268a19ab61afbd264b7` later completed the
+4,626,317,312-byte archive and owned cleanup. Its SHA-256 is
+`29c8d26f0b56b41e68fea4812f8a1ebbc56a17b0e0ec506bdb990c1517313a9e`.
+The original failed result is unchanged. A byte-for-byte comparison proved that the earlier
+3,873,865,728-byte partial stream was a prefix of that completed archive; only that duplicate
+partial payload was reclaimed, with its hash and reconstruction length recorded.
+
+The retry with the filesystem barrier change,
+`factorybox-devx-lifecycle-d9a5aa5c060c4babb9654277cd923f30`, prepared in 19.074 seconds and
+reached the app in another 39.654 seconds. CRIU completed its dump in 1.226 seconds. The public
+checkpoint still reached the capture worker's 60-second deadline with no upper-layer snapshot
+present. Read-only inspection found 41,379 entries and 1.529 GB of unique file content in the
+base, plus 25,222 entries and 1.174 GB in the writable layer. There was no oversized sparse
+file explaining the delay. The metadata benchmark improvement has not yet qualified this full
+filesystem workload or produced a developer fork/resume result.
+
+Run the positive nested-time lifecycle gate:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py --suite time \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+```
+
+`factorybox-runtime-ca012188291449daa50e82d18e80659a` passed all five top-level tests and
+six subtests without skips and completed owned cleanup. The actual Sysbox tree has a root
+actor, two actors sharing one private time namespace and another in a separate namespace.
+The gate checks exact relative monotonic/boottime offsets and every actor's 8,192-byte RAM
+payload and counter across checkpoint, independent fork, source deletion and pause/resume.
+Mutating the fork leaves the original actor state unchanged. This gate contains no Docker
+daemon, IDE or Connector.
+
+Factorybox probes the already hash-verified CRIU executable through its open descriptor.
+Only its bounded, versioned feature response admits this extension. Unknown commands,
+schemas, fields, trailing data and oversized responses admit no additional resources.
+The runtime checks each owned thread's `time` and `time_for_children` handles while the
+exact cgroup tree is frozen, before entering CRIU's guarded capture phase. It verifies
+namespace type, ownership and membership. A differing `time_for_children`, or a private
+clock owned or used by a nested user namespace, remains unsupported. Older binaries also
+reject distinct child clocks. Rejection happens before ptrace, network hooks or snapshot
+payload writes, and the source guard then releases the original tree.
 The rejected checkpoint ID remains reserved with its original intent and rejection.
 An early rejected pause returns the same running source and retains `rejected_at` and `error`
 in pause history. Lost publication of that result can be recovered only from its exact
@@ -873,20 +1001,40 @@ mise exec -- python3 tools/lifecycle_native.py --suite namespaces \
   --native-base-build factorybox-build-native-base-EXACT_RUN_ID
 ```
 
-It checks rejection with byte-identical original RAM, useful work after the failure, retained
-failed pause intent, immutable failed IDs and controller-outcome recovery. A changed
-`time_for_children` on an individual Go thread is a separate case. Replacing the private-time
-child with an ordinary child in the shared root time namespace permits the real checkpoint
-again. This is failure-path hardening; nested time namespace capture/restore still needs
-implementation and full developer lifecycle proof.
-The complete focused gate passed with five top-level tests and its controller-recovery subtest
-in `factorybox-runtime-020ec27cddfa4017a2e2c6754c71e89f`, with zero skips and owned cleanup.
-The original minimal red case and the lost-publication red case are retained separately.
-After this change, the existing full selected capture gate passed again with four top-level
-tests and seventeen subtests in `factorybox-runtime-b1f828f4e84240aca1ef1802a7b39daf`.
-The selected 32-MiB pause/resume gate passed with four top-level tests and four subtests in
-`factorybox-runtime-4c737a53a1e0490a9643920f587b01b8`. Both used unchanged pinned Sysbox/CRIU
-binaries and completed exact owned cleanup. These runs preserve their narrow qualification scope.
+It checks rejection with byte-identical original RAM, useful work after failure, retained
+failed pause intent, immutable failed IDs and controller-outcome recovery. With the new CRIU,
+the rejection fixture uses a thread whose future-children time namespace differs from its
+current clock. After that thread retires, the same source can capture normally.
+`factorybox-runtime-b551c5440cdf40509a8357ffd377a0de` passed six top-level tests and seven
+subtests without skips and completed owned cleanup.
+
+The same new CRIU also passed the 18 original two-cycle C core cases in
+`factorybox-criu-core-ebe803d277c9474f84866e057ec516ee`. The existing capture/fork gate passed
+five top-level tests and 23 subtests in `factorybox-runtime-48ad8897891e4e7b933a1665b8161924`.
+The 32-MiB pause/resume gate passed five top-level tests and ten subtests in
+`factorybox-runtime-ada7e659804744499cdf5fd27ef9e696`. All completed exact owned cleanup.
+An earlier pause run, `factorybox-runtime-bcba9c9807d74ee38d6cee5982c3bdd5`, failed when
+removing an apparently empty restored cgroup with `EBUSY`. The unchanged repeat passed;
+the original failure remains unresolved and blocks a clean stability claim.
+The extended regression repeats actual restore/delete sixteen times, checking every restored
+RAM payload and the absence of each deleted cgroup before proceeding. It passed in
+`factorybox-runtime-b426517a09d4407ba60c91afb17bbc27`, with five top-level tests, eleven subtests,
+zero skips and exact cleanup. This increases coverage; it has not established the cause or
+a fix for the original intermittent failure.
+
+The combined mount-descriptor and filesystem-barrier changes passed the required focused
+regressions with the newer CRIU build:
+
+| Gate | Run | Observed result |
+| --- | --- | --- |
+| CRIU core | `factorybox-criu-core-36ff2840fbec4700b59a0ade2b641d96` | 18 unchanged C cases, two dump/restore cycles each |
+| Capture/fork | `factorybox-runtime-72d1ef25e49f4a75a56bddef413fec7e` | 5 top-level tests, 23 subtests |
+| Pause/resume | `factorybox-runtime-f6d328e7b7db4fe296ce64caf123ef70` | 5 top-level tests, 11 subtests, including sixteen restore/delete cycles |
+| Nested time | `factorybox-runtime-7a08a1a7b40a4703b43952574807288c` | 5 top-level tests, 6 subtests |
+| Namespace rejection | `factorybox-runtime-d19eb4621a5041c2a1dfa3bd80a3cf00` | 6 top-level tests, 7 subtests |
+
+All completed owned cleanup; the Go gates had no skips. These focused passes do not replace
+the failing full developer lifecycle or the unresolved upstream/platform requirements.
 
 The captured test authority proves the actual local protocol path. It does not prove real
 external Factory handoff, fresh credentials for a fork, external TCP recovery, Theia, browser
@@ -909,3 +1057,16 @@ It allows up to 600 seconds for the stopped multi-gigabyte archive at the same 1
 helper limit. This does not extend the active lifecycle's 420-second deadline.
 Archive failure preserves the original volume. A successful cleanup receipt is not a
 successful lifecycle result.
+The archive client also inherits a process-local output file-size limit calculated from the
+host's available disk space at launch, leaving a 4-GiB reserve and respecting any lower existing
+hard limit. A reached cap cannot publish an archive receipt, even if a client reports zero exit.
+The stopped volume remains retained. The parent's limits are unchanged; a real child-write
+regression checks that behavior.
+If Docker completes volume removal after its caller times out, a subsequent reconciliation
+requires an existing complete archive for that exact run and owner. It requires a regular
+file with the recorded byte count and SHA-256 before recording cleanup. A missing volume by
+itself, a changed archive or another inspection error cannot establish success.
+The actual timed-out deletion from `factorybox-devx-lifecycle-fc9af7475bd2499a91964ca3ed78577d`
+was recovered this way in reconciliation `a680c1717b94427585905e344254b5ff`, reusing the
+verified 3,088,056,320-byte archive. The original failed lifecycle and cleanup results are
+unchanged.

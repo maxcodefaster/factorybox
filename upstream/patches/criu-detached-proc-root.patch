@@ -1,0 +1,393 @@
+--- a/criu/files-reg.c
++++ b/criu/files-reg.c
+@@ -4,6 +4,7 @@
+ #include <fcntl.h>
+ #include <string.h>
+ #include <sys/mman.h>
++#include <sys/mount.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <sys/prctl.h>
+@@ -41,6 +42,10 @@
+ #include "imgset.h"
+ #include "file-ids.h"
+ #include "mount.h"
++#include "mount-v2.h"
++#include "filesystems.h"
++#include "fdstore.h"
++#include "nested-ns.h"
+ #include "files.h"
+ #include "common/list.h"
+ #include "rst-malloc.h"
+@@ -56,6 +61,7 @@
+ #include "protobuf.h"
+ #include "util.h"
+ #include "images/regfile.pb-c.h"
++#include "images/mnt.pb-c.h"
+ #include "images/remap-file-path.pb-c.h"
+ 
+ #include "files-reg.h"
+@@ -1783,6 +1789,121 @@
+ 	return true;
+ }
+ 
++struct detached_proc_probe {
++	int fd;
++	unsigned int flags;
++	char *options;
++};
++
++/*
++ * Inspect a clone in a disposable private mount namespace. Attaching the
++ * original would change the stopped workload. Reading its fd link gives
++ * only "/", so neither its flags nor hidepid/subset options can be inferred
++ * from that link or from the workload's mountinfo.
++ */
++static int probe_detached_proc(void *arg)
++{
++	struct detached_proc_probe *probe = arg;
++	struct mount_info *list = NULL, *mi;
++	char target[] = "/tmp/criu-detached-proc.XXXXXX";
++	int clone = -1, ret = -1;
++	bool attached = false;
++
++	if (unshare(CLONE_NEWNS) || mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL)) {
++		pr_perror("Can't isolate detached proc inspection");
++		return -1;
++	}
++	if (!mkdtemp(target))
++		return -1;
++	clone = sys_open_tree(probe->fd, "", OPEN_TREE_CLONE | OPEN_TREE_CLOEXEC | AT_EMPTY_PATH | AT_RECURSIVE);
++	if (clone < 0 || sys_move_mount(clone, "", AT_FDCWD, target, MOVE_MOUNT_F_EMPTY_PATH)) {
++		pr_perror("Can't inspect a clone of the detached proc root");
++		goto out;
++	}
++	attached = true;
++	list = parse_mountinfo(getpid(), NULL, false);
++	for (mi = list; mi; mi = mi->next) {
++		const char *point = mi->ns_mountpoint + 1;
++
++		if (!strncmp(point, target, strlen(target)) && point[strlen(target)] == '/') {
++			pr_err("Detached proc tree has unsupported descendant mounts\n");
++			goto out;
++		}
++	}
++	for (mi = list; mi; mi = mi->next) {
++		if (strcmp(mi->ns_mountpoint + 1, target))
++			continue;
++		if (mi->fstype->code != FSTYPE__PROC || strcmp(mi->root, "/") ||
++		    mi->shared_id || mi->master_id)
++			break;
++		probe->flags = mi->flags | mi->sb_flags;
++		probe->options = xstrdup(mi->options ? mi->options : "");
++		if (probe->options)
++			ret = 0;
++		break;
++	}
++out:
++	while (list) {
++		mi = list->next;
++		mnt_entry_free(list);
++		list = mi;
++	}
++	if (attached && umount2(target, MNT_DETACH))
++		ret = -1;
++	close_safe(&clone);
++	if (rmdir(target))
++		ret = -1;
++	return ret;
++}
++
++static int dump_detached_proc(int lfd, const struct fd_parms *p, const struct fd_link *link,
++			      DetachedProcMount *image)
++{
++	struct detached_proc_probe probe = { .fd = lfd };
++	struct ns_id *pidns, *userns;
++	struct stat proc_pidns, task_pidns, task_userns;
++	int proc_nsfd;
++	char path[64];
++
++	if (!nested_ns_enabled() || p->mnt_id <= 0 || p->fs_type != PROC_SUPER_MAGIC ||
++	    !S_ISDIR(p->stat.st_mode) || p->stat.st_ino != 1 ||
++	    p->flags != O_PATH || strcmp(link->name + 1, "/"))
++		return -1;
++	proc_nsfd = openat(lfd, "1/ns/pid", O_RDONLY | O_CLOEXEC);
++	if (proc_nsfd < 0)
++		return -1;
++	if (fstat(proc_nsfd, &proc_pidns)) {
++		close(proc_nsfd);
++		return -1;
++	}
++	close(proc_nsfd);
++	snprintf(path, sizeof(path), "/proc/%d/ns/pid", p->pid);
++	if (stat(path, &task_pidns))
++		return -1;
++	snprintf(path, sizeof(path), "/proc/%d/ns/user", p->pid);
++	if (stat(path, &task_userns))
++		return -1;
++	pidns = lookup_ns_by_kid(proc_pidns.st_ino, &pid_ns_desc);
++	userns = lookup_ns_by_kid(task_userns.st_ino, &user_ns_desc);
++	if (!pidns || !userns || proc_pidns.st_ino != task_pidns.st_ino ||
++	    userns->id != root_item->ids->user_ns_id) {
++		pr_err("Detached proc root has an unsupported PID/user namespace owner\n");
++		return -1;
++	}
++	if (call_in_child_process(probe_detached_proc, &probe)) {
++		xfree(probe.options);
++		return -1;
++	}
++	image->mount_id = p->mnt_id;
++	image->pid_ns_id = pidns->id;
++	image->user_ns_id = userns->id;
++	image->flags = probe.flags;
++	image->options = probe.options;
++	pr_info("Dumping detached proc root mount=%d pidns=%u flags=%#x options=%s\n",
++		p->mnt_id, pidns->id, image->flags, image->options);
++	return 0;
++}
++
+ int dump_one_reg_file(int lfd, u32 id, const struct fd_parms *p)
+ {
+ 	struct fd_link _link, *link;
+@@ -1792,6 +1913,7 @@
+ 	int ret;
+ 	FileEntry fe = FILE_ENTRY__INIT;
+ 	RegFileEntry rfe = REG_FILE_ENTRY__INIT;
++	DetachedProcMount detached = DETACHED_PROC_MOUNT__INIT;
+ 	bool skip_for_shell_job = false;
+ 
+ 	if (!p->link) {
+@@ -1812,6 +1934,11 @@
+ 
+ 	mi = lookup_mnt_id(p->mnt_id);
+ 	if (mi == NULL) {
++		if (!dump_detached_proc(lfd, p, link, &detached)) {
++			rfe.detached_proc = &detached;
++			rfe.name = &link->name[1];
++			goto ext;
++		}
+ 		if (opts.shell_job && is_tty(p->stat.st_rdev, p->stat.st_dev)) {
+ 			skip_for_shell_job = true;
+ 		} else {
+@@ -1864,6 +1991,7 @@
+ 
+ 	if (rfe.build_id)
+ 		xfree(rfe.build_id);
++	xfree(detached.options);
+ 
+ 	return ret;
+ }
+@@ -2578,12 +2706,114 @@
+ 	return 0;
+ }
+ 
++struct detached_proc_restore {
++	struct list_head list;
++	DetachedProcMount *image;
++	mutex_t lock;
++	int fdstore_id;
++};
++
++static LIST_HEAD(detached_proc_mounts);
++
++static int collect_detached_proc(struct reg_file_info *rfi)
++{
++	DetachedProcMount *image = rfi->rfe->detached_proc;
++	struct detached_proc_restore *mount;
++	struct ns_id *pidns;
++
++	if (!image)
++		return 0;
++	pidns = lookup_ns_by_id(image->pid_ns_id, &pid_ns_desc);
++	if (!nested_ns_enabled() || !pidns || !root_item->ids->has_user_ns_id ||
++	    image->user_ns_id != root_item->ids->user_ns_id || !image->mount_id ||
++	    strcmp(rfi->rfe->name, "/") || rfi->rfe->flags != O_PATH ||
++	    !rfi->rfe->has_mode || !S_ISDIR(rfi->rfe->mode) || rfi->rfe->has_mnt_id ||
++	    rfi->rfe->ext || strlen(image->options) > 1024) {
++		pr_err("Invalid detached proc root image\n");
++		return -1;
++	}
++	list_for_each_entry(mount, &detached_proc_mounts, list) {
++		DetachedProcMount *other = mount->image;
++
++		if (other->mount_id != image->mount_id)
++			continue;
++		if (other->pid_ns_id != image->pid_ns_id || other->user_ns_id != image->user_ns_id ||
++		    other->flags != image->flags || strcmp(other->options, image->options)) {
++			pr_err("Inconsistent detached proc mount images\n");
++			return -1;
++		}
++		rfi->detached_proc = mount;
++		return 0;
++	}
++	mount = shmalloc(sizeof(*mount));
++	if (!mount)
++		return -1;
++	memset(mount, 0, sizeof(*mount));
++	mount->image = image;
++	mount->fdstore_id = -1;
++	mutex_init(&mount->lock);
++	list_add_tail(&mount->list, &detached_proc_mounts);
++	rfi->detached_proc = mount;
++	return 0;
++}
++
++static int open_detached_proc(struct reg_file_info *rfi)
++{
++	struct detached_proc_restore *mount = rfi->detached_proc;
++	DetachedProcMount *image = mount->image;
++	int root = -1, fd = -1;
++
++	mutex_lock(&mount->lock);
++	if (mount->fdstore_id < 0) {
++		if (current->ids->pid_ns_id != image->pid_ns_id ||
++		    current->ids->user_ns_id != image->user_ns_id) {
++			pr_err("Detached proc descriptor master is in a different namespace\n");
++			goto out;
++		}
++		root = nested_ns_mount_detached_proc(image->flags, image->options);
++		if (root < 0)
++			goto out;
++		mount->fdstore_id = fdstore_add(root);
++		if (mount->fdstore_id < 0)
++			goto out;
++	} else {
++		root = fdstore_get(mount->fdstore_id);
++		if (root < 0)
++			goto out;
++	}
++	/*
++	 * Preserve the fsmount file itself. Reopening its path loses the
++	 * kernel's FMODE_NEED_UNMOUNT reference; fdstore teardown would
++	 * dissolve the anonymous mount while the restored directory still
++	 * appears readable. Canonical O_PATH roots of the same detached
++	 * mount currently share this open file description.
++	 */
++	fd = root;
++	root = -1;
++	if (fd >= 0 && restore_fown(fd, rfi->rfe->fown)) {
++		close(fd);
++		fd = -1;
++	}
++out:
++	close_safe(&root);
++	mutex_unlock(&mount->lock);
++	return fd;
++}
++
+ static int open_fe_fd(struct file_desc *fd, int *new_fd)
+ {
+ 	struct reg_file_info *rfi;
+ 	int tmp;
+ 
+ 	rfi = container_of(fd, struct reg_file_info, d);
++
++	if (rfi->detached_proc) {
++		tmp = open_detached_proc(rfi);
++		if (tmp < 0)
++			return -1;
++		*new_fd = tmp;
++		return 0;
++	}
+ 
+ 	if (rfi->deferred_thread_fd) {
+ 		/*
+@@ -2774,6 +3004,10 @@
+ 	rfi->size_mode_checked = false;
+ 	rfi->deferred_thread_fd = false;
+ 	rfi->orig_path = NULL;
++	rfi->detached_proc = NULL;
++
++	if (collect_detached_proc(rfi))
++		return -1;
+ 
+ 	if (fixup_thread_proc_path(rfi))
+ 		return -1;
+--- a/criu/include/files-reg.h
++++ b/criu/include/files-reg.h
+@@ -9,6 +9,7 @@
+ 
+ struct cr_imgset;
+ struct fd_parms;
++struct detached_proc_restore;
+ 
+ struct file_remap {
+ 	char *rpath;
+@@ -27,6 +28,7 @@
+ 	bool deferred_thread_fd; /* placeholder for live thread proc fd */
+ 	char *path;
+ 	char *orig_path; /* original proc path for deferred reopen */
++	struct detached_proc_restore *detached_proc;
+ };
+ 
+ extern int open_reg_by_id(u32 id);
+--- a/criu/include/nested-ns.h
++++ b/criu/include/nested-ns.h
+@@ -193,6 +193,7 @@
+ 
+ /* Replace an ordinary inner container's proc tree in its restored PID namespace. */
+ int nested_ns_child_proc(struct pstree_item *item);
++int nested_ns_mount_detached_proc(unsigned int flags, const char *options);
+ 
+ /* Mount an ordinary inner container's cgroup2 view in its own cgroup namespace. */
+ int nested_ns_child_cgroup(struct pstree_item *item);
+--- a/criu/nested-mnt.c
++++ b/criu/nested-mnt.c
+@@ -676,11 +676,10 @@
+ 	return false;
+ }
+ 
+-static int nested_proc_detached_mount(struct mount_info *proc)
++int nested_ns_mount_detached_proc(unsigned int flags, const char *mount_options)
+ {
+ 	int fsfd, fd = -1;
+ 	char *options, *option, *next, *value;
+-	unsigned int flags = proc->sb_flags | proc->flags;
+ 	unsigned int attrs = flags & (MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC);
+ 	unsigned int supported = MS_RDONLY | MS_NOSUID | MS_NODEV | MS_NOEXEC |
+ 		MS_RELATIME | MS_NOATIME | MS_NODIRATIME | MS_STRICTATIME | MS_PROPAGATE;
+@@ -695,7 +694,7 @@
+ 		attrs |= MOUNT_ATTR_NODIRATIME;
+ 	if (flags & MS_STRICTATIME)
+ 		attrs |= MOUNT_ATTR_STRICTATIME;
+-	options = xstrdup(proc->options ? proc->options : "");
++	options = xstrdup(mount_options ? mount_options : "");
+ 	if (!options)
+ 		return -1;
+ 	fsfd = cr_fsopen("proc", FSOPEN_CLOEXEC);
+@@ -802,7 +801,7 @@
+ 	 * Linux's userns proc visibility checks require that view. After detach,
+ 	 * attach by descriptors because /proc/self/fd temporarily disappears.
+ 	 */
+-	fresh_proc_fd = nested_proc_detached_mount(proc);
++	fresh_proc_fd = nested_ns_mount_detached_proc(proc->sb_flags | proc->flags, proc->options);
+ 	if (fresh_proc_fd < 0) {
+ 		pr_perror("Can't create detached proc for nested PID namespace");
+ 		goto out;
+--- a/images/regfile.proto
++++ b/images/regfile.proto
+@@ -4,6 +4,14 @@
+ 
+ import "opts.proto";
+ import "fown.proto";
++
++message detached_proc_mount {
++	required uint32 mount_id = 1;
++	required uint32 pid_ns_id = 2;
++	required uint32 user_ns_id = 3;
++	required uint32 flags = 4;
++	required string options = 5;
++}
+ 
+ message reg_file_entry {
+ 	required uint32		id			= 1;
+@@ -33,4 +41,7 @@
+ 	 * of the checksum, if it could be obtained.
+ 	 */
+ 	optional uint32 	checksum_parameter 	= 14;
+-}
+\ No newline at end of file
++
++	/* A proc root retained by fd without an attached mountpoint. */
++	optional detached_proc_mount detached_proc = 15;
++}

@@ -132,6 +132,43 @@ func TestPauseNative(t *testing.T) {
 	if _, err := engine.Delete(ctx, "paused-fork"); err != nil {
 		t.Fatal(err)
 	}
+	t.Run("retire-restored-cgroups", func(t *testing.T) {
+		// Repeat the observed restore/delete sequence against actual processes,
+		// always deleting one before creating the next.
+		for index := range 16 {
+			id := fmt.Sprintf("retire-fork-%02d", index)
+			forked, err := forkNativeCLI(engine, "pausable", snapshot, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if _, err := engine.Delete(ctx, id); err != nil {
+					t.Error("delete exact retirement regression target", err)
+				}
+			})
+			actor, err := readCaptureActor(forked.Runtime.PID, "get")
+			if err != nil || !reflect.DeepEqual(actor, before) {
+				t.Fatal("retirement fixture lost restored private RAM", err)
+			}
+			if _, err := engine.Delete(ctx, id); err != nil {
+				path := cgroupRoot + "/" + forked.Record.RuntimeID
+				events, eventsErr := os.ReadFile(path + "/cgroup.events")
+				stats, statsErr := os.ReadFile(path + "/cgroup.stat")
+				entries, entriesErr := os.ReadDir(path)
+				var children []string
+				for _, entry := range entries {
+					if entry.IsDir() {
+						children = append(children, entry.Name())
+					}
+				}
+				t.Fatalf("restore/delete cycle %d: %v; events=%q (%v); stats=%q (%v); children=%v (%v)",
+					index, err, events, eventsErr, stats, statsErr, children, entriesErr)
+			}
+			if _, err := os.Lstat(cgroupRoot + "/" + forked.Record.RuntimeID); !os.IsNotExist(err) {
+				t.Fatal("successful deletion retained the original cgroup", err)
+			}
+		}
+	})
 	t.Run("reject-populated-resume-before-intent", func(t *testing.T) {
 		leaf := cgroupRoot + "/" + paused.Record.RuntimeID + "/owned-negative-fixture"
 		if err := os.Mkdir(leaf, 0755); err != nil {

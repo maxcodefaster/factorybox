@@ -61,6 +61,8 @@ func TestCaptureActor(t *testing.T) {
 		t.Skip("native capture workload only")
 	}
 	state := captureActorState{Payload: make([]byte, 8192)}
+	var futureStop, futureDone chan struct{}
+	futureTID := 0
 	if _, err := rand.Read(state.Payload); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +123,38 @@ func TestCaptureActor(t *testing.T) {
 		}
 		state.TimeMode = "children-only"
 	}
+	if os.Getenv("FACTORYBOX_CAPTURE_NESTED_TIME") == "future-thread" {
+		type ready struct {
+			tid int
+			err error
+		}
+		started := make(chan ready)
+		futureStop, futureDone = make(chan struct{}), make(chan struct{})
+		go func() {
+			runtime.LockOSThread()
+			defer close(futureDone)
+			err := unix.Unshare(unix.CLONE_NEWTIME)
+			started <- ready{tid: unix.Gettid(), err: err}
+			if err == nil {
+				<-futureStop
+			}
+			// Returning with the thread locked retires this OS thread and
+			// its private future-children namespace, without setns().
+		}()
+		result := <-started
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		futureTID = result.tid
+		child := exec.Command("/bin/sleep", "300")
+		if err := child.Start(); err != nil {
+			t.Fatal(err)
+		}
+		state.NestedPID, state.TimeMode = child.Process.Pid, "future-thread"
+		if err := child.Process.Release(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	server, err := net.Listen("unix", "/state/control.sock")
 	if err != nil {
 		t.Fatal(err)
@@ -171,6 +205,23 @@ func TestCaptureActor(t *testing.T) {
 				if err != nil || pid != state.NestedPID || !status.Signaled() || status.Signal() != unix.SIGTERM {
 					t.Error("owned time namespace child did not terminate", pid, status, err)
 					return
+				}
+				if futureStop != nil {
+					close(futureStop)
+					<-futureDone
+					deadline := time.Now().Add(time.Second)
+					for {
+						_, err := os.Stat(fmt.Sprintf("/proc/self/task/%d", futureTID))
+						if os.IsNotExist(err) {
+							break
+						}
+						if err != nil || time.Now().After(deadline) {
+							t.Error("future-children thread did not retire", err)
+							return
+						}
+						time.Sleep(time.Millisecond)
+					}
+					futureStop = nil
 				}
 				state.NestedPID, state.TimeMode = 0, ""
 			case "advance":
