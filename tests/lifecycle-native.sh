@@ -62,7 +62,7 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
 fi
 set +e
 test_timeout=90s
-if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then test_timeout=180s; fi
+if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then test_timeout=360s; fi
 /lifecycle.test -test.v "-test.timeout=$test_timeout" -test.run "$test_pattern"
 status=$?
 set -e

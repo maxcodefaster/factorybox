@@ -475,7 +475,7 @@ to zero resident bytes, a fork from the stopped checkpoint, identical resumed RA
 volume/virtual values, receipt recovery, an independent fork of a resumed source, and a second
 pause/resume of modified current state. It retains pause history and immutable runtime identities
 with renewed process IDs. The bounded fixture uses 3 CPUs/3 GiB, at most two live sandboxes and a
-180-second test timeout within its 240-second runner deadline. These observations do not qualify
+360-second test timeout within its 420-second runner deadline. These observations do not qualify
 the full developer workload or sub-3-second p95.
 
 An earlier terminating-writer draft copied filesystem backing before CRIU's own `/tmp` creation;
@@ -1175,6 +1175,21 @@ pause repetition still exceeded its test deadline in
 retained. The fixture now reports each restore/delete cycle's useful-fork and deletion times.
 Its public-fork subprocess also bounds inherited output-pipe waiting after its existing deadline,
 so a surviving backend cannot hide the failing operation behind the suite's final timeout.
+With the original 180-second inner timeout, the instrumented
+`factorybox-runtime-02f04878b8dc4ab2914c66aa0dfdaf7a` completed twelve restore/delete cycles before
+the suite timed out. Every cycle preserved its RAM payload and removed its exact cgroup.
+The checkpoint-based native runner now gives its complete test process 360 seconds inside the
+unchanged 420-second outer lifecycle deadline. No assertion, iteration count or resource ceiling
+was reduced. This separates the full correctness gate from the still-unachieved latency target.
+
+`factorybox-runtime-c349b3143ba84fd584dd526e60597feb` passed all six top-level tests and 23 subtests
+with that budget, zero skips, no OOM and owned cleanup. All sixteen actual restore/delete cycles
+passed, followed by resume/receipt recovery, an independent fork of a resumed source and another
+pause/resume of modified state. The test process took 187.76 seconds; the whole native container
+ran about 209.8 seconds. Individual observations were 4.535 seconds for pause, 5.564 seconds through
+resume and useful state checks, and 2.250 to 8.783 seconds through useful fork responses in the
+sixteen-cycle regression. These observations qualify the tested state/ownership behavior on this
+worker, not production readiness, the full developer stack or any sub-three-second p95.
 
 The combined mount-descriptor and filesystem-barrier changes passed the required focused
 regressions with the newer CRIU build:

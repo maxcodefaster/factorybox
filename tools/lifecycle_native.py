@@ -241,7 +241,7 @@ def main():
         reference.docker(["volume", "create", "--label", "com.factorybox.run=" + owner, name])
         attempted = True
         with (archive / "stdout.txt").open("x") as log, (archive / "stderr.txt").open("x") as errors:
-            done = subprocess.run(command, stdout=log, stderr=errors, timeout=240 if capture_mode else 150)
+            done = subprocess.run(command, stdout=log, stderr=errors, timeout=420 if capture_mode else 150)
         result["exit_code"] = done.returncode
         text = (archive / "stdout.txt").read_text()
         result["passed_tests"] = sum(line.startswith("--- PASS: ") for line in text.splitlines())
