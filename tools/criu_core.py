@@ -69,7 +69,7 @@ def main():
     unchanged = sources.check_source(tree, ROOT / ".cache/downloads" / component["archive"], component)
     owner = uuid.uuid4().hex
     name = "factorybox-criu-core-" + owner
-    output = ROOT / "artifacts" / name
+    output = reference.new_artifact(name)
     output.mkdir()
     for source in ["criu-core.py", "criu-core-cases.json"]:
         shutil.copyfile(ROOT / "tests" / source, output / source)

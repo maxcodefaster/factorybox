@@ -17,6 +17,11 @@
 - Native tests own unique containers and volumes. Check exact ownership before cleanup and leave
   unrelated resources alone. Keep the 3 CPU/3 GiB sandbox and 1 CPU/768 MiB separate Theia ceilings,
   420-second lifecycle deadline and maximum two live sandboxes.
+- Use `reference.new_artifact` before generating a new build or native run. Generated artifacts
+  have a 64-GiB budget, with 8 GiB of headroom required before starting and 12 GiB of host free
+  space reserved. Keep frozen inputs and active runs. Compact closed-run dumps only after complete
+  decompression verification; preserve source, results, logs and reconstruction receipts.
+  Completed artifact inputs may share immutable files. Never rewrite archived inputs in place.
 - Keep only demonstrated optimizations on the selected path. Record preparation, first useful
   work, retained memory and failures. Do not infer p95 from a handful of observations.
 - The initial trust boundary is separate workers per customer or trust domain. Same-worker

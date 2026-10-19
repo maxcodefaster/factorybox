@@ -98,9 +98,12 @@ def archive_failure(archive, name, owner, volumes, image, result, *, timeout=60)
                            timeout=timeout)
 
 
-def archive_file_limit(path, reserve_bytes=4 << 30):
+def archive_file_limit(path, reserve_bytes=reference.artifact_storage.FREE_RESERVE):
     import resource
     budget = shutil.disk_usage(path).free - reserve_bytes
+    if pathlib.Path(path).resolve().is_relative_to((ROOT / "artifacts").resolve()):
+        budget = min(budget, reference.artifact_storage.ARTIFACT_LIMIT -
+                     reference.artifact_storage.allocated_bytes(ROOT / "artifacts"))
     hard = resource.getrlimit(resource.RLIMIT_FSIZE)[1]
     if hard != resource.RLIM_INFINITY:
         budget = min(budget, hard)
@@ -194,7 +197,7 @@ def main():
         titles = [options.test]
     owner = uuid.uuid4().hex
     name = "factorybox-bats-" + owner
-    archive = ROOT / "artifacts" / name
+    archive = reference.new_artifact(name)
     output = archive / "output"
     context = archive / "context"
     output.mkdir(parents=True)

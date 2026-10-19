@@ -44,7 +44,7 @@ def main():
             parser.error("--compare requires the same pinned CRIU build inputs")
     owner = uuid.uuid4().hex
     name = "factorybox-build-criu-" + owner
-    output = ROOT / "artifacts" / name
+    output = reference.new_artifact(name)
     output.mkdir(parents=True)
     lock = ROOT / "upstream/lock.json"
     shutil.copyfile(lock, output / "source-lock.json")

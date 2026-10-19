@@ -21,7 +21,7 @@ def main():
         raise ValueError("native failure regression binary changed")
     owner = uuid.uuid4().hex
     name = "factorybox-failure-" + owner
-    archive = ROOT / "artifacts" / name
+    archive = reference.new_artifact(name)
     archive.mkdir(parents=True)
     command = [
         *reference.DOCKER, "run", "--pull=never", "--name", name,

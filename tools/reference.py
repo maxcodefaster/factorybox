@@ -9,12 +9,24 @@ import pathlib
 import subprocess
 import uuid
 
+import artifact_storage
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REFERENCE = ROOT / "tests/reference"
 OUTPUT = ROOT / "dist/reference/linux-arm64"
 BASE = "runtime-fork-criu-probe:raw-eager-base"
 BASE_ID = "sha256:041140e968e8efdbc6b2f33651f84bc19c13593c6d3f527e90af648f967dd52f"
 DOCKER = ["docker", "--context", "orbstack"]
+
+
+def new_artifact(name):
+    if pathlib.PurePath(name).name != name or not name:
+        raise ValueError("expected one artifact directory name")
+    path = ROOT / "artifacts" / name
+    if path.exists() or path.is_symlink():
+        raise ValueError("artifact directory already exists")
+    artifact_storage.require_capacity(ROOT)
+    return path
 
 
 def sha(path):
@@ -100,7 +112,7 @@ def native():
             raise ValueError(f"native build differs: {name}")
     owner = uuid.uuid4().hex
     name = "factorybox-native-" + owner
-    evidence = ROOT / "artifacts" / name
+    evidence = new_artifact(name)
     evidence.mkdir(parents=True)
     command = [
         *DOCKER, "run", "--pull=never", "--name", name,

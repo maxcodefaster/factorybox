@@ -13,7 +13,7 @@ import reference
 def main():
     owner = uuid.uuid4().hex
     name = "factorybox-build-native-base-" + owner
-    archive = reference.ROOT / "artifacts" / name
+    archive = reference.new_artifact(name)
     context = archive / "context"
     context.mkdir(parents=True)
     recipe = reference.ROOT / "build/native-base.Dockerfile"

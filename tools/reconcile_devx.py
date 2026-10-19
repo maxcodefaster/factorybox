@@ -30,13 +30,21 @@ def verified_previous_archive(archive, run, owner):
                 type(row.get("bytes")) is not int or row["bytes"] <= 0):
             raise ValueError("previous archive receipt has invalid payload identity")
         payload = path.parent / row["file"]
-        if (payload.is_symlink() or not payload.is_file() or
-                payload.stat().st_size != row["bytes"] or
-                upstream_bats.file_sha(payload) != row["sha256"]):
+        encoded = None
+        try:
+            if not payload.exists() and not payload.is_symlink():
+                encoded = reference.artifact_storage.verify_compacted(payload, row)
+            elif (payload.is_symlink() or not payload.is_file() or
+                  payload.stat().st_size != row["bytes"] or
+                  upstream_bats.file_sha(payload) != row["sha256"]):
+                raise ValueError("changed original archive")
+        except (ValueError, OSError, KeyError) as error:
+            raise ValueError("previous archive payload no longer matches its receipt") from error
+        if payload.is_symlink():
             raise ValueError("previous archive payload no longer matches its receipt")
         return {
             "reconciliation": path.parent.name, "receipt_sha256": reference.sha(path),
-            **row,
+            **row, **({"encoding": encoded} if encoded else {}),
         }
     raise ValueError("missing volume has no verified completed archive")
 

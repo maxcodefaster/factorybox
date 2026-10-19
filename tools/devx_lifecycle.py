@@ -51,7 +51,7 @@ def main():
         options.criu_build, "factorybox-build-criu-")
     owner = uuid.uuid4().hex
     name = "factorybox-devx-lifecycle-" + owner
-    archive = ROOT / "artifacts" / name
+    archive = reference.new_artifact(name)
     output = archive / "output"
     output.mkdir(parents=True)
     scripts = ["devx-lifecycle.sh", "devx-lifecycle-body.sh", "devx-sandbox.sh", "devx-devcontainer.sh",

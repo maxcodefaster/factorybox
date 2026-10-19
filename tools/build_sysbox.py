@@ -33,7 +33,7 @@ def main():
             if reference.sha(previous / "output" / name) != expected:
                 raise ValueError("comparison binary changed: " + name)
     owner = uuid.uuid4().hex
-    archive = ROOT / "artifacts" / ("factorybox-build-sysbox-" + owner)
+    archive = reference.new_artifact("factorybox-build-sysbox-" + owner)
     context, output = archive / "context", archive / "output"
     context.mkdir(parents=True)
     output.mkdir()

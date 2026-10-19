@@ -98,7 +98,7 @@ def main():
         raise ValueError("selected consumer inputs require exact credential-free image digests")
     owner = uuid.uuid4().hex
     name = "factorybox-devx-inputs-" + owner
-    archive = ROOT / "artifacts" / name
+    archive = reference.new_artifact(name)
     archive.mkdir()
     shutil.copyfile(ROOT / "tests/devx-versions.sh", archive / "versions.sh")
     result = {

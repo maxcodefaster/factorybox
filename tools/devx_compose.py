@@ -30,7 +30,7 @@ def main():
     project_archive, projects = devx_project_images.load(options.project_images)
     owner = uuid.uuid4().hex
     name = "factorybox-devx-compose-" + owner
-    archive = ROOT / "artifacts" / name
+    archive = reference.new_artifact(name)
     output = archive / "output"
     output.mkdir(parents=True)
     for script in ["devx-compose-check.sh", "devx-observation.cjs"]:

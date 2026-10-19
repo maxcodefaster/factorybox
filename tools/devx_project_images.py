@@ -36,7 +36,7 @@ def main():
         raise ValueError("example must name exact image digests for both services")
     images = list(dict.fromkeys(images))
     owner = uuid.uuid4().hex
-    archive = ROOT / "artifacts" / ("factorybox-devx-project-images-" + owner)
+    archive = reference.new_artifact("factorybox-devx-project-images-" + owner)
     archive.mkdir()
     result = {
         "schema": 1, "owner": owner, "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 import pathlib
 import subprocess
 import sys
@@ -79,6 +80,19 @@ class ReconcileTests(unittest.TestCase):
         self.save()
         with self.assertRaisesRegex(ValueError, "no verified completed archive"):
             self.invoke()
+
+    @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
+    def test_verified_compaction_can_still_prove_cleanup_without_recreating_a_raw_dump(self):
+        self.saved["cleanup"] = True
+        self.save()
+        payload = self.previous / "failed-volume-0.tar"
+        reconcile_devx.reference.artifact_storage.compact(payload, self.root)
+        self.invoke()
+        receipts = list((self.archive / "reconciliations").glob("*/result.json"))
+        result = json.loads(next(path for path in receipts if path.parent != self.previous).read_text())
+        self.assertTrue(result["cleanup"])
+        self.assertEqual(result["archive_reused_from"]["encoding"]["file"], "failed-volume-0.tar.zst")
+        self.assertFalse(payload.exists())
 
     def test_changed_archive_fails(self):
         path = self.previous / "failed-volume-0.tar"

@@ -240,7 +240,7 @@ def harvest(namespace, archive):
 def execute(options):
     owner = uuid.uuid4().hex
     namespace = "factorybox-test-" + owner
-    archive = ROOT / "artifacts" / ("factorybox-lifecycle-" + owner)
+    archive = reference.new_artifact("factorybox-lifecycle-" + owner)
     archive.mkdir(parents=True)
     result = {"schema": 1, "owner": owner, "namespace": namespace,
               "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),

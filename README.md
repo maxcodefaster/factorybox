@@ -37,6 +37,16 @@ describe development workloads; they do not define the snapshot engine.
 The old experiment remains the historical evidence archive. This repository contains source and
 provenance rather than copies of its images, binaries, failed runs or large native archives.
 
+Build and native runners check storage before creating a new artifact directory. They require
+8 GiB of headroom within a 64-GiB artifact budget and leave 12 GiB of host disk space free.
+Failed-volume archive streams also stop at the remaining artifact budget. They retain the source
+volume if a complete archive cannot be saved. Cleanup and reconciliation remain available.
+Use `mise exec -- python3 tools/artifact_storage.py status` to inspect usage.
+To compact an explicitly selected offline dump, run
+`mise exec -- python3 tools/artifact_storage.py compact /absolute/path/to/artifacts/run/payload.tar`.
+This verifies every decompressed byte before removing the raw file and saves a SHA-256 receipt
+with the reconstruction command. Frozen input archives and active runs must stay uncompressed.
+
 ## Develop on the Mac
 
 Install mise, then use the pinned Go and Python tools:
@@ -1209,6 +1219,21 @@ with SHA-256 `4215aa492c4270de2a40fee22e0da85167a5a3dccc9e1bfa65c1db1eb96576f6` 
 owned cleanup. The original failed result is unchanged. A full comparison proved that the
 capped stream was an exact prefix of this archive; its hash and reconstruction length were
 recorded before reclaiming that duplicate payload.
+
+An isolated replay of that Docker tree contains exactly 25,100 entries and 1,174,254,495
+regular-file bytes. It exercises the production scanner and copy arguments with 3 CPU/3 GiB;
+tar metadata is preserved, while original xattrs and running-process behavior are unqualified.
+`factorybox-docker-copy-profile-b3191d228d7241988d3822a17d5d6a44` measured 20.304 seconds for
+the source digest, 2.312 for copy, 3.868 for the complete independent target digest and 2.225
+for durability. CPU profiling attributed most sampled work to reads, rather than SHA-256.
+
+A bounded two-reader prototype retained the same digest
+`ddd41b701e9309c12c917f3ac317205cf446667dd414de652306c44f1509cdce` and passed the existing
+filesystem copy/corruption cases. It did not establish an overall speed advantage:
+source verification measured 7.410 seconds against 7.709/7.899-second serial controls,
+while total phase times varied more broadly. The prototype remains only in generated
+diagnostic contexts and is not selected runtime code. The cold controls evicted clean
+pages only for their owned replay input; no global cache or sysctl setting changed.
 
 The same Sysbox build passed the prepared-base capture/fork suite in
 `factorybox-runtime-1efcd5827a034a5c91911701d2612e1a`, with six tests, 35 subtests, zero skips

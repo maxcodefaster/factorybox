@@ -22,7 +22,7 @@ def main():
     image, base = native_base.load(options.native_base_build)
     owner = uuid.uuid4().hex
     name = "factorybox-bats-images-" + owner
-    archive = ROOT / "artifacts" / name
+    archive = reference.new_artifact(name)
     output, context = archive / "output", archive / "context"
     output.mkdir(parents=True)
     context.mkdir()

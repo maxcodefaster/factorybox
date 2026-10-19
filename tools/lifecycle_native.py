@@ -77,7 +77,7 @@ def main():
         options.sysbox_build, "factorybox-build-sysbox-")
     owner = uuid.uuid4().hex
     name = "factorybox-runtime-" + owner
-    archive = ROOT / "artifacts" / name
+    archive = reference.new_artifact(name)
     output = archive / "output"
     output.mkdir(parents=True)
     result = {

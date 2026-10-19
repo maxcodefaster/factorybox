@@ -16,7 +16,7 @@ EXPECTED_NATIVE_TESTS = 12
 def main():
     owner = uuid.uuid4().hex
     name = "factorybox-core-" + owner
-    evidence = ROOT / "artifacts" / name
+    evidence = reference.new_artifact(name)
     evidence.mkdir(parents=True)
     result = {
         "schema": 1, "owner": owner, "container_name": name, "phase": "build",

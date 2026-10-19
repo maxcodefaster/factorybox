@@ -82,14 +82,14 @@ class BatsEvidenceTests(unittest.TestCase):
             with mock.patch.object(upstream_bats.shutil, "disk_usage") as usage, \
                     mock.patch.object(resource, "getrlimit",
                                       return_value=(resource.RLIM_INFINITY, resource.RLIM_INFINITY)):
-                usage.return_value.free = (4 << 30) + 8192
+                usage.return_value.free = (12 << 30) + 8192
                 self.assertEqual(upstream_bats.archive_file_limit(directory), 8192)
-                usage.return_value.free = 4 << 30
+                usage.return_value.free = 12 << 30
                 with self.assertRaisesRegex(ValueError, "reserved free disk"):
                     upstream_bats.archive_file_limit(directory)
             with mock.patch.object(upstream_bats.shutil, "disk_usage") as usage, \
                     mock.patch.object(resource, "getrlimit", return_value=(1024, 2048)):
-                usage.return_value.free = 8 << 30
+                usage.return_value.free = 16 << 30
                 self.assertEqual(upstream_bats.archive_file_limit(directory), 2048)
 
     def test_real_child_cannot_write_beyond_archive_cap_or_change_parent_limits(self):
@@ -106,6 +106,24 @@ class BatsEvidenceTests(unittest.TestCase):
             self.assertNotEqual(child.returncode, 0)
             self.assertEqual(payload.stat().st_size, 1024)
         self.assertEqual(resource.getrlimit(resource.RLIMIT_FSIZE), before)
+
+    def test_archive_stream_cannot_exceed_remaining_repository_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            archive = root / "artifacts" / "closed-run"
+            archive.mkdir(parents=True)
+            with mock.patch.object(upstream_bats, "ROOT", root), \
+                    mock.patch.object(upstream_bats.shutil, "disk_usage") as usage, \
+                    mock.patch.object(upstream_bats.reference.artifact_storage,
+                                      "allocated_bytes") as allocated, \
+                    mock.patch.object(resource, "getrlimit",
+                                      return_value=(resource.RLIM_INFINITY, resource.RLIM_INFINITY)):
+                usage.return_value.free = 100 << 30
+                allocated.return_value = upstream_bats.reference.artifact_storage.ARTIFACT_LIMIT - 8192
+                self.assertEqual(upstream_bats.archive_file_limit(archive), 8192)
+                allocated.return_value += 8192
+                with self.assertRaises(ValueError):
+                    upstream_bats.archive_file_limit(archive)
 
     def test_zero_exit_at_archive_cap_cannot_publish_a_cleanup_receipt(self):
         owner, name, volume = "a" * 32, "exact-fixture", "exact-volume"
