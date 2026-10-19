@@ -1155,6 +1155,15 @@ owned cleanup. Its SHA-256 is
 These are individual observations on the same shared worker, not an established latency
 distribution or a claim that the cgroup changes caused the filesystem timing difference.
 
+The strengthened `mountfd` gate reproduces that recapture failure without Docker or Connector
+in `factorybox-runtime-54d6261597b74b99812ef061e26aaaf9`. Both original canonical-root fork
+checks pass before the actor opens a readable `/self/task/1/fd` directory through the detached
+proc root. Recapture then fails at the same unknown-mount check for `/1/task/1/fd`, in both
+the default and restricted proc cases. The test retains every earlier assertion and adds
+required descendant restore, descriptor use and RAM checks after deleting the captured parent;
+those later assertions remain unexecuted until recapture is fixed. The failed gate completed
+archival and exact owned cleanup. Readable proc-directory support remains a release blocker.
+
 The same Sysbox build passed the prepared-base capture/fork suite in
 `factorybox-runtime-1efcd5827a034a5c91911701d2612e1a`, with six tests, 35 subtests, zero skips
 and owned cleanup. Its individual tiny-actor observations were 0.235 seconds for checkpoint

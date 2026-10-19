@@ -24,23 +24,27 @@ import (
 )
 
 type mountFDActorState struct {
-	Payload       []byte `json:"payload"`
-	Counter       int    `json:"counter"`
-	FD            int    `json:"fd"`
-	MountID       int    `json:"mount_id"`
-	Visible       bool   `json:"visible"`
-	FSType        int64  `json:"fs_type"`
-	Flags         int    `json:"flags"`
-	SelfPID       int    `json:"self_pid"`
-	RootInode     uint64 `json:"root_inode"`
-	MountFlags    int64  `json:"mount_flags"`
-	HasUptime     bool   `json:"has_uptime"`
-	SharedFD      int    `json:"shared_fd"`
-	SharedMountID int    `json:"shared_mount_id"`
-	OtherFD       int    `json:"other_fd"`
-	OtherMountID  int    `json:"other_mount_id"`
-	ProcOptions   string `json:"proc_options"`
-	Error         string `json:"error,omitempty"`
+	Payload          []byte `json:"payload"`
+	Counter          int    `json:"counter"`
+	FD               int    `json:"fd"`
+	MountID          int    `json:"mount_id"`
+	Visible          bool   `json:"visible"`
+	FSType           int64  `json:"fs_type"`
+	Flags            int    `json:"flags"`
+	SelfPID          int    `json:"self_pid"`
+	RootInode        uint64 `json:"root_inode"`
+	MountFlags       int64  `json:"mount_flags"`
+	HasUptime        bool   `json:"has_uptime"`
+	SharedFD         int    `json:"shared_fd"`
+	SharedMountID    int    `json:"shared_mount_id"`
+	OtherFD          int    `json:"other_fd"`
+	OtherMountID     int    `json:"other_mount_id"`
+	ProcOptions      string `json:"proc_options"`
+	DirectoryFD      int    `json:"directory_fd,omitempty"`
+	DirectoryMountID int    `json:"directory_mount_id,omitempty"`
+	DirectoryFlags   int    `json:"directory_flags,omitempty"`
+	DirectoryTarget  string `json:"directory_target,omitempty"`
+	Error            string `json:"error,omitempty"`
 }
 
 func TestMountFDInspector(t *testing.T) {
@@ -169,6 +173,12 @@ func TestMountFDActor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unix.Close(other)
+	directory := -1
+	defer func() {
+		if directory >= 0 {
+			unix.Close(directory)
+		}
+	}()
 	state := mountFDActorState{Payload: make([]byte, 8192), FD: fd, SharedFD: shared, OtherFD: other}
 	if _, err := rand.Read(state.Payload); err != nil {
 		t.Fatal(err)
@@ -196,6 +206,18 @@ func TestMountFDActor(t *testing.T) {
 			if command == "advance" {
 				state.Counter++
 				state.Payload[0] ^= 0xff
+			} else if command == "open-self-fds" {
+				if directory >= 0 {
+					t.Error("owned proc directory already open")
+					return
+				}
+				directory, err = unix.Openat(fd, "self/task/"+strconv.Itoa(os.Getpid())+"/fd",
+					unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+				if err != nil {
+					t.Error("open directory in detached proc", err)
+					return
+				}
+				state.DirectoryFD = directory
 			} else if command != "get" {
 				t.Error("invalid mount actor command")
 				return
@@ -211,6 +233,24 @@ func TestMountFDActor(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 				return
+			}
+			if directory >= 0 {
+				state.DirectoryMountID, err = mountIDForFD(directory)
+				if err == nil {
+					state.DirectoryFlags, err = unix.FcntlInt(uintptr(directory), unix.F_GETFL, 0)
+				}
+				if err == nil {
+					var target [64]byte
+					count, readErr := unix.Readlinkat(directory, strconv.Itoa(fd), target[:])
+					err = readErr
+					if err == nil {
+						state.DirectoryTarget = string(target[:count])
+					}
+				}
+				if err != nil {
+					t.Error("read retained proc directory", err)
+					return
+				}
 			}
 			state.Visible = false
 			for _, line := range strings.Split(string(mounts), "\n") {
@@ -411,5 +451,41 @@ func detachedMountForkNative(t *testing.T, mode string) {
 	retained, err := readMountFDActor(source.Runtime.PID, "get")
 	if err != nil || !reflect.DeepEqual(before, retained) {
 		t.Fatal("fork changed the retained source mount or RAM", err)
+	}
+	// runc retains a readable thread-self/fd directory inside its private
+	// proc mount. A fork must remain capturable after it opens this handle.
+	withDirectory, err := readMountFDActor(branch.Runtime.PID, "open-self-fds")
+	if err != nil || withDirectory.DirectoryFD <= 2 || withDirectory.DirectoryMountID != withDirectory.MountID ||
+		withDirectory.DirectoryFlags&unix.O_DIRECTORY == 0 || withDirectory.DirectoryFlags&unix.O_PATH != 0 ||
+		withDirectory.DirectoryTarget != "/" {
+		t.Fatal("fork lacks the real runc-style readable proc descriptor", err, withDirectory.DirectoryTarget)
+	}
+	descendantSnapshot := strings.Repeat("e", 32)
+	if _, err := engine.Checkpoint(ctx, "mount-fork", descendantSnapshot); err != nil {
+		t.Fatal("recapture fork with readable directory in detached proc", err)
+	}
+	// Keep the two-sandbox ceiling and prove restore without the captured parent.
+	if _, err := engine.Delete(ctx, "mount-fork"); err != nil {
+		t.Fatal(err)
+	}
+	descendant, err := forkNativeCLI(engine, "mount-fork", descendantSnapshot, "mount-descendant")
+	if err != nil {
+		t.Fatal("restore readable proc descriptor without original process", err)
+	}
+	t.Cleanup(func() {
+		if _, err := engine.Delete(ctx, "mount-descendant"); err != nil {
+			t.Error(err)
+		}
+	})
+	restoredDirectory, err := readMountFDActor(descendant.Runtime.PID, "get")
+	if err != nil || restoredDirectory.DirectoryFD != withDirectory.DirectoryFD ||
+		restoredDirectory.DirectoryFlags != withDirectory.DirectoryFlags ||
+		restoredDirectory.DirectoryTarget != "/" ||
+		restoredDirectory.DirectoryMountID != restoredDirectory.MountID ||
+		restoredDirectory.MountID == withDirectory.MountID ||
+		restoredDirectory.ProcOptions != withDirectory.ProcOptions ||
+		restoredDirectory.Counter != withDirectory.Counter ||
+		!reflect.DeepEqual(restoredDirectory.Payload, withDirectory.Payload) {
+		t.Fatal("descendant lost independent proc descriptor or RAM", err)
 	}
 }
