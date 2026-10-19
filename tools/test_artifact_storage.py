@@ -134,3 +134,59 @@ class ArtifactStorageTests(unittest.TestCase):
                         artifact_storage.compact(payload, root)
                     command.assert_not_called()
                 self.assertEqual(payload.read_bytes(), b"preserve")
+
+    @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
+    def test_closed_run_retention_preserves_complete_failed_evidence_and_its_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "artifacts/factorybox-runtime-closed"
+            output = run / "output"
+            output.mkdir(parents=True)
+            raw = output / "capture-source.tar"
+            raw.write_bytes(b"failed native evidence\n" * 450000)
+            original = {"file": raw.name, "bytes": raw.stat().st_size,
+                        "sha256": reference.sha(raw)}
+            result = run / "result.json"
+            result.write_text('{"cleanup": true, "passed": false}\n')
+            report = artifact_storage.compact_closed_run(run, root)
+            self.assertFalse(raw.exists())
+            self.assertEqual(result.read_text(), '{"cleanup": true, "passed": false}\n')
+            self.assertEqual(report["errors"], [])
+            self.assertEqual(artifact_storage.verify_compacted(raw, original),
+                             report["compacted"][0]["encoded"])
+            self.assertEqual(artifact_storage.compact_closed_run(run, root),
+                             {"compacted": [], "errors": []})
+
+    def test_automatic_retention_defers_live_runs_and_preserves_raw_data_on_storage_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / "artifacts/factorybox-runtime-active"
+            run.mkdir(parents=True)
+            raw = run / "failed-volume-0.tar"
+            raw.write_bytes(b"x" * (8 << 20))
+            result = run / "result.json"
+            result.write_text('{"cleanup": false}')
+            with mock.patch.object(artifact_storage, "compact",
+                                   side_effect=ValueError("storage exhausted")) as codec:
+                self.assertIsNone(artifact_storage.compact_closed_run(run, root))
+                codec.assert_not_called()
+                result.write_text('{"cleanup": true, "passed": false}')
+                report = artifact_storage.compact_closed_run(run, root)
+            self.assertEqual(report["errors"][0]["error"], "storage exhausted")
+            self.assertEqual(raw.read_bytes(), b"x" * (8 << 20))
+            self.assertFalse(raw.with_name(raw.name + ".zst").exists())
+
+    def test_compaction_refuses_to_allocate_past_the_artifact_budget(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            artifacts = root / "artifacts"
+            artifacts.mkdir()
+            raw = artifacts / "offline.tar"
+            raw.write_bytes(b"retained original")
+            with mock.patch.object(artifact_storage, "allocated_bytes",
+                                   return_value=artifact_storage.ARTIFACT_LIMIT), \
+                    mock.patch.object(artifact_storage.subprocess, "run") as codec:
+                with self.assertRaisesRegex(ValueError, "artifact budget"):
+                    artifact_storage.compact(raw, root)
+                codec.assert_not_called()
+            self.assertEqual(raw.read_bytes(), b"retained original")

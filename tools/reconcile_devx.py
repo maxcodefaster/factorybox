@@ -103,6 +103,7 @@ def main():
     finally:
         reference_lifecycle.write_json(output / "result.json", result)
         print(json.dumps({"evidence": str(output), **result}), flush=True)
+        reference.artifact_storage.compact_closed_run(output, reference.ROOT)
 
 
 if __name__ == "__main__":

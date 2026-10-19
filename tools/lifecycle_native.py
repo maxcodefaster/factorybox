@@ -317,6 +317,7 @@ def main():
             failure = failure or error
         reference_lifecycle.write_json(archive / "result.json", result)
         print(json.dumps({"evidence": str(archive), **result}), flush=True)
+        reference.artifact_storage.compact_closed_run(archive, ROOT)
     if failure:
         raise RuntimeError("native lifecycle gate failed: " + str(archive)) from failure
 

@@ -41,6 +41,10 @@ Build and native runners check storage before creating a new artifact directory.
 8 GiB of headroom within a 64-GiB artifact budget and leave 12 GiB of host disk space free.
 Failed-volume archive streams also stop at the remaining artifact budget. They retain the source
 volume if a complete archive cannot be saved. Cleanup and reconciliation remain available.
+Native lifecycle and developer/upstream runners automatically compact dumps of at least 8 MiB
+after successful owned cleanup. They verify the complete decompressed contents before removing
+the raw copy. A failed compaction keeps the original and reports the storage error separately
+from the test outcome. Temporary compressed files also stay within the artifact budget.
 Use `mise exec -- python3 tools/artifact_storage.py status` to inspect usage.
 To compact an explicitly selected offline dump, run
 `mise exec -- python3 tools/artifact_storage.py compact /absolute/path/to/artifacts/run/payload.tar`.

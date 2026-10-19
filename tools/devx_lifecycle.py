@@ -206,6 +206,7 @@ def main():
         result["passed"] = result["passed"] and result["cleanup"]
         reference_lifecycle.write_json(archive / "result.json", result)
         print(json.dumps({"evidence": str(archive), **result}), flush=True)
+        reference.artifact_storage.compact_closed_run(archive, ROOT)
     if failure:
         raise RuntimeError("public developer lifecycle failed: " + str(archive)) from failure
 

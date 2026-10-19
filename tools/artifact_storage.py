@@ -134,9 +134,10 @@ def compact(path, root):
     receipt = path.with_name(path.name + ".encoding.json")
     if any(p.exists() or p.is_symlink() for p in [encoded, partial, receipt]):
         raise ValueError("encoded payload or receipt already exists")
-    maximum = shutil.disk_usage(root).free - FREE_RESERVE
+    maximum = min(shutil.disk_usage(root).free - FREE_RESERVE,
+                  ARTIFACT_LIMIT - allocated_bytes(root / "artifacts"))
     if maximum <= 0:
-        raise ValueError("compaction would consume reserved free disk space")
+        raise ValueError("compaction would exceed the artifact budget or reserved free disk space")
     import resource
     def limit_child():
         hard = resource.getrlimit(resource.RLIMIT_FSIZE)[1]
@@ -195,6 +196,30 @@ def compact(path, root):
         return record
     finally:
         partial.unlink(missing_ok=True)
+
+
+def compact_closed_run(directory, root):
+    """Retain large closed-run dumps without leaving their raw copies behind."""
+    directory = Path(directory)
+    result_path = directory / "result.json"
+    if (result_path.is_symlink() or not result_path.is_file() or
+            json.loads(result_path.read_text()).get("cleanup") is not True):
+        return
+    candidates = [directory / "output/capture-source.tar"]
+    candidates.extend(directory.glob("failed-volume-*.tar"))
+    report = {"compacted": [], "errors": []}
+    for path in candidates:
+        if not path.is_file() or path.is_symlink() or path.stat().st_size < 8 << 20:
+            continue
+        try:
+            report["compacted"].append(compact(path, root))
+        except Exception as error:
+            # The completed test outcome stays intact. compact preserves the
+            # original if verification or available storage prevents compaction.
+            report["errors"].append({"file": str(path), "error": str(error)})
+    if report["compacted"] or report["errors"]:
+        print(json.dumps({"storage_retention": str(directory), **report}), flush=True)
+    return report
 
 
 def main():
