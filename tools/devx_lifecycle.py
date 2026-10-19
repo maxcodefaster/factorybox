@@ -55,7 +55,7 @@ def main():
     output = archive / "output"
     output.mkdir(parents=True)
     scripts = ["devx-lifecycle.sh", "devx-lifecycle-body.sh", "devx-sandbox.sh", "devx-devcontainer.sh",
-               "private-cgroup-delegation.sh", "global-sysctl-observation.py"]
+               "private-cgroup-delegation.sh", "global-sysctl-observation.py", "wait-sysbox.sh"]
     for script in scripts:
         shutil.copyfile(ROOT / "tests" / script, archive / script)
     shutil.copyfile(ROOT / "tools/devx_lifecycle.py", archive / "runner.py")
@@ -136,7 +136,7 @@ def main():
         mounts += [(archive / file, "/" + file, True) for file in [
             "factorybox", "devx-actor", "devx-registry", "devx-lifecycle.test",
             "devx-lifecycle.sh", "devx-lifecycle-body.sh", "devx-sandbox.sh", "devx-devcontainer.sh",
-            "project-images.json"]]
+            "project-images.json", "wait-sysbox.sh"]]
         for source, destination, readonly in mounts:
             command += ["--mount", f"type=bind,source={source},target={destination}" +
                         (",readonly" if readonly else "")]

@@ -471,6 +471,29 @@ places an unrelated process in a child cgroup while the original init is stopped
 before creating its operation directory, retains the identical pause record and leaves that process
 alive. The original admission check accepted this fixture; the regression now passes.
 
+For a previously delegated hierarchy, resume also clears `cgroup.subtree_control` from the
+empty leaves towards the original root before launching Sysbox/CRIU. The root and child
+cgroup inodes remain in place. The same bounded traversal used by deletion validates every
+descendant and rejects foreign mounts or populated groups before changing an owned sibling.
+It admits the worker's `cpuset`, `cpu`, `io`, `memory` and `pids` controllers. CRIU then restores
+the captured controller sets and limits after creating its cgroup namespace and before restoring
+controller-file descriptors. This avoids entering an existing delegated parent during restore.
+
+The delegated regression passed with the selected Sysbox and CRIU builds in
+`factorybox-runtime-255c982f698445f4b6adb58473c153cc`: six tests, 18 subtests, zero skips and
+owned cleanup. It preserves distinct CPU/PID/memory limits and an open `memory.max` descriptor
+through fork, pause/resume and an independent fork of the resumed runtime after deleting the
+original source. Its individual checkpoint/fork/useful-resume observations were 0.593/0.939/0.349
+seconds. The cgroup mutation negatives passed in
+`factorybox-runtime-f44e186ef85247a3b55e4bf227f36d91`, including unchanged delegation in an owned
+sibling when another descendant is a foreign mount.
+
+Empty-tree preparation happens before the persisted runtime-attempt flag. An interrupted
+controller can repeat complete backing verification and empty-tree preparation before its first
+restore attempt. `factorybox-runtime-1fe32629ddd743b6b4fd5d3ee061c061` passed the delegated gate
+after stopping at exactly that boundary, retaining the original runtime identity, captured
+limits and private state through the resumed source's subsequent fork.
+
 The native pause suite uses an actual 32-MiB anonymous payload with a retained checksum:
 
 ```sh
@@ -946,6 +969,42 @@ against a test authority inside the captured network. Requests then traverse the
 protocol to the real app and its Compose dependency. The authority, app nonce and counter
 live in RAM. The gate requires complete captured state, independent app mutations and files,
 forks of forks, pause RAM release, resume and a fork of a resumed sandbox.
+
+Daemon startup waits for both private Sysbox sockets and records its actual wait in
+`sysbox-startup.json`. It has a 60-second startup ceiling within the unchanged 420-second outer
+deadline. Missing sockets or exited daemons fail the gate with process-state and daemon-log
+evidence. A previous fixture stopped silently after fifteen seconds before reaching its Go
+tests; that failed run remains recorded in
+`factorybox-devx-lifecycle-121f44c1525745979b8a6b0f1bd5241f`.
+
+The complete gate passed in `factorybox-devx-lifecycle-8e0eebe0f1344b7aadb9ba57137ab72b`.
+It used Sysbox build `factorybox-build-sysbox-a62d052944c84818b85a67c5f0a53e30`,
+CRIU build `factorybox-build-criu-182f84bb8fca4746b606fb83fc56f380` and native base
+`factorybox-build-native-base-aade0777712c460cbd8bf22156888b6f`. All required assertions
+completed in the 239.817-second outer execution, with unchanged inputs and global sysctl
+sentinels, no OOM and complete owned cleanup.
+The final-code repeat, `factorybox-devx-lifecycle-e4c2b64124ee4456ad3f2b9acc648233`, also passed
+with unchanged inputs/sentinels and complete owned cleanup in 313.279 seconds. Its Sysbox
+startup wait was one second.
+
+| Operation | First completed run | Final-code repeat |
+| --- | ---: | ---: |
+| Frozen rootfs, immutable base and OCI preparation | 32.281 s | 29.599 s |
+| Prepared start through useful Connector/app response | 36.142 s | 19.249 s |
+| First complete checkpoint | 17.067 s | 15.616 s |
+| Fork from that checkpoint through useful response | 14.215 s | 14.902 s |
+| Fork of the previously restored fork through useful response | 10.712 s | 29.521 s |
+| Complete pause | 13.722 s | 35.636 s |
+| Resume through useful response with retained app state | 4.612 s | 9.537 s |
+| Fork of the resumed runtime through useful response | 9.287 s | 15.720 s |
+
+Fork observations start after their checkpoint exists. The first checkpoint plus its useful
+fork response took about 31.3 and 30.5 seconds. Anonymous source memory and snapshot page residency
+both reached zero at pause; the stopped cgroup still accounted for about 201 and 74 MiB of file cache.
+These are individual observations on the shared ARM64 worker. The closed test authority is
+captured with the workload. Real external authority handoff, separate Theia, inference and a
+latency distribution remain unqualified. The substantial timing variance is not evidence of a
+repeatable performance improvement.
 
 The first complete prepared-start response passed with the real Connector, Docker vfs,
 Compose DNS, Dev Container hook and app RAM in

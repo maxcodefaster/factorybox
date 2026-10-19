@@ -53,6 +53,11 @@ func TestNativeEmptyCgroupRetirement(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		for _, directory := range []string{path, sibling} {
+			if err := os.WriteFile(directory+"/cgroup.subtree_control", []byte("+memory"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
 		peerIdentity, err := cgroupIdentity(peer)
 		if err != nil {
 			t.Fatal(err)
@@ -64,6 +69,15 @@ func TestNativeEmptyCgroupRetirement(t *testing.T) {
 		}()
 		if err := unix.Mount(peer, child, "", unix.MS_BIND, ""); err != nil {
 			t.Fatal(err)
+		}
+		if err := engine.prepareEmptyResumeCgroup(record); err == nil {
+			t.Error("resume preparation accepted a foreign mounted child")
+		}
+		for _, directory := range []string{path, sibling} {
+			data, err := os.ReadFile(directory + "/cgroup.subtree_control")
+			if err != nil || string(data) != "memory\n" {
+				t.Error("resume preparation changed delegation before validating the complete tree", directory, string(data), err)
+			}
 		}
 		_, rejected := engine.Delete(context.Background(), "empty-owned")
 		after, identityErr := cgroupIdentity(peer)
@@ -96,6 +110,9 @@ func TestNativeEmptyCgroupRetirement(t *testing.T) {
 		}()
 		if err := os.WriteFile(child+"/cgroup.procs", []byte(strconv.Itoa(process.Process.Pid)), 0600); err != nil {
 			t.Fatal(err)
+		}
+		if err := engine.prepareEmptyResumeCgroup(record); err == nil {
+			t.Error("resume preparation accepted a populated child")
 		}
 		_, rejected := engine.Delete(context.Background(), "empty-owned")
 		current, identityErr := cgroupIdentity(path)

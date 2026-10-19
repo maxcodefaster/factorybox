@@ -86,6 +86,11 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 		if err := e.prepareResume(ctx, lock, record, relative, request); err != nil {
 			return View{Record: record}, err
 		}
+		// Only empty, owned kernel groups change here. Preparation is
+		// idempotent while no runtime restore has been attempted.
+		if err := e.prepareEmptyResumeCgroup(record); err != nil {
+			return View{Record: record}, err
+		}
 		record.Pause.Resume.Attempted = true
 		if err := e.write(record); err != nil {
 			return View{Record: record}, err

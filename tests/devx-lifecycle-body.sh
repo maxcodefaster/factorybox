@@ -33,13 +33,7 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
-for attempt in $(seq 1 150); do
-  if test -S /run/sysbox/sysfs-seccomp.sock && test -S /run/sysbox/sysmgr.sock; then break; fi
-  kill -0 "$manager" "$filesystem"
-  sleep 0.1
-done
-test -S /run/sysbox/sysfs-seccomp.sock
-test -S /run/sysbox/sysmgr.sock
+/bin/bash /wait-sysbox.sh "$manager" "$filesystem" /output
 python3 - "$preparation_start" "$(date +%s%N)" <<'PY'
 import json, pathlib, sys
 pathlib.Path("/output/preparation.json").write_text(json.dumps({

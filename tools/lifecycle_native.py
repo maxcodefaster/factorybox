@@ -88,7 +88,10 @@ def main():
                   "populated-child preservation through Engine.Delete. No Sysbox daemon or process workload."
                   if options.test == "TestNativeEmptyCgroupRetirement" else
                   "Minimal parent plus two populated delegated cgroups with the same controller "
-                  "set as the real private Docker tree. Public checkpoint/fork and restored actor RAM. "
+                  "set as the real private Docker tree. Public checkpoint/fork, RAM-releasing pause, "
+                  "resume into the original delegated cgroup and an independent fork of that resumed "
+                  "runtime, preserving controller sets, limits, leaf membership and open controller descriptors, "
+                  "including controller loss after empty-tree preparation but before a runtime attempt. "
                   "No Docker, Compose, Connector, IDE or general delegated-runtime qualification."
                   if options.suite == "delegation" else
                   "Extracted source guard's eleven retained native failure/disarm cases and "

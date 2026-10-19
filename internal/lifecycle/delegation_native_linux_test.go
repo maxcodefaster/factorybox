@@ -94,6 +94,10 @@ for branch in first second; do
 done
 printf '67108864\n' > /sys/fs/cgroup/docker/first/memory.max
 printf '100663296\n' > /sys/fs/cgroup/docker/second/memory.max
+printf '32\n' > /sys/fs/cgroup/docker/first/pids.max
+printf '48\n' > /sys/fs/cgroup/docker/second/pids.max
+printf '50000 100000\n' > /sys/fs/cgroup/docker/first/cpu.max
+printf '25000 100000\n' > /sys/fs/cgroup/docker/second/cpu.max
 `
 	_, setupErr := engine.command(ctx, control, "exec", source.Record.RuntimeID, "/bin/sh", "-ec", script)
 	closeErr := control.Close()
@@ -157,6 +161,16 @@ printf '100663296\n' > /sys/fs/cgroup/docker/second/memory.max
 			if err != nil || strings.TrimSpace(string(data)) != expected {
 				t.Fatal("delegated memory limit changed", id, branch, string(data), err)
 			}
+			expectedPIDs, expectedCPU := "32", "50000 100000"
+			if branch == "second" {
+				expectedPIDs, expectedCPU = "48", "25000 100000"
+			}
+			for property, expected := range map[string]string{"pids.max": expectedPIDs, "cpu.max": expectedCPU} {
+				data, err := os.ReadFile(cgroupRoot + "/" + id + "/docker/" + branch + "/" + property)
+				if err != nil || strings.TrimSpace(string(data)) != expected {
+					t.Fatal("delegated controller limit changed", id, branch, property, string(data), err)
+				}
+			}
 		}
 	}
 	if err := os.WriteFile(cgroupRoot+"/"+forked.Record.RuntimeID+"/docker/first/memory.max", []byte("134217728"), 0600); err != nil {
@@ -171,4 +185,125 @@ printf '100663296\n' > /sys/fs/cgroup/docker/second/memory.max
 		t.Fatal("delegated fork changed original RAM", err)
 	}
 	t.Logf("delegated cgroup fork and first useful RAM=%s", time.Since(start))
+	pauseID := strings.Repeat("f", 32)
+	paused, err := pauseNativeCLI(engine, "delegated-fork", pauseID)
+	if err != nil {
+		t.Fatal("pause independently useful delegated fork", err)
+	}
+	if paused.Record.Phase != "paused" || paused.Record.Pause == nil ||
+		paused.Record.Pause.Snapshot.ResidentBytesAfter != 0 {
+		t.Fatal("delegated pause did not retain its original identity and release snapshot RAM")
+	}
+	// Lose the controller after complete private backing and empty-tree
+	// preparation, before the durable runtime-attempt flag. The public
+	// command must safely resume that exact operation without new inputs.
+	prepared := paused.Record
+	prepared.Phase = "resuming"
+	preparedPause := *prepared.Pause
+	preparedPause.Resume = &Operation{RequestedAt: now()}
+	prepared.Pause = &preparedPause
+	control, err = engine.lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepareErr := engine.write(prepared)
+	if prepareErr == nil {
+		prepareErr = engine.prepareResume(ctx, control, prepared,
+			"objects/delegated-fork/resumes/"+pauseID, engine.resumeRequest(prepared))
+	}
+	if prepareErr == nil {
+		prepareErr = engine.prepareEmptyResumeCgroup(prepared)
+	}
+	closeErr = control.Close()
+	if prepareErr != nil || closeErr != nil {
+		t.Fatal("prepare interrupted delegated resume", prepareErr, closeErr)
+	}
+	retained, err := engine.read("delegated-fork")
+	if err != nil || retained.Pause == nil || retained.Pause.Resume == nil || retained.Pause.Resume.Attempted {
+		t.Fatal("empty-tree preparation prematurely recorded a runtime attempt", err)
+	}
+	start = time.Now()
+	resumed, err := transitionNativeCLI(engine, "resume", "delegated-fork", pauseID)
+	if err != nil {
+		t.Fatal("resume original delegated cgroup subtree", err)
+	}
+	if resumed.Record.RuntimeID != forked.Record.RuntimeID ||
+		!reflect.DeepEqual(resumed.Record.Cgroup, forked.Record.Cgroup) {
+		t.Fatal("resume replaced the original delegated cgroup identity")
+	}
+	resumedActor, err := readCaptureActor(resumed.Runtime.PID, "get")
+	if err != nil || !reflect.DeepEqual(mutated, resumedActor) {
+		t.Fatal("delegated resume lost independent RAM or the open memory.max descriptor", err)
+	}
+	for _, suffix := range []string{"", "/docker"} {
+		path := cgroupRoot + "/" + resumed.Record.RuntimeID + suffix
+		controllers, err := os.ReadFile(path + "/cgroup.subtree_control")
+		if err != nil || strings.TrimSpace(string(controllers)) != "cpuset cpu io memory pids" {
+			t.Fatal("resume changed delegated controllers", suffix, string(controllers), err)
+		}
+		members, err := os.ReadFile(path + "/cgroup.procs")
+		if err != nil || len(strings.Fields(string(members))) != 0 {
+			t.Fatal("resume populated a delegated parent", suffix, string(members), err)
+		}
+	}
+	for _, leaf := range []string{"init.scope", "docker/first", "docker/second"} {
+		members, err := os.ReadFile(cgroupRoot + "/" + resumed.Record.RuntimeID + "/" + leaf + "/cgroup.procs")
+		if err != nil || len(strings.Fields(string(members))) != 1 {
+			t.Fatal("resume changed delegated leaf membership", leaf, string(members), err)
+		}
+	}
+	secondLimit, err := os.ReadFile(cgroupRoot + "/" + resumed.Record.RuntimeID + "/docker/second/memory.max")
+	if err != nil || strings.TrimSpace(string(secondLimit)) != "100663296" {
+		t.Fatal("resume changed the second delegated memory limit", string(secondLimit), err)
+	}
+	for branch, limits := range map[string]map[string]string{
+		"first":  {"pids.max": "32", "cpu.max": "50000 100000"},
+		"second": {"pids.max": "48", "cpu.max": "25000 100000"},
+	} {
+		for property, expected := range limits {
+			data, err := os.ReadFile(cgroupRoot + "/" + resumed.Record.RuntimeID + "/docker/" + branch + "/" + property)
+			if err != nil || strings.TrimSpace(string(data)) != expected {
+				t.Fatal("resume changed a delegated controller limit", branch, property, string(data), err)
+			}
+		}
+	}
+	if err := os.WriteFile(cgroupRoot+"/"+resumed.Record.RuntimeID+"/docker/first/memory.max", []byte("201326592"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	resumedActor, err = readCaptureActor(resumed.Runtime.PID, "advance")
+	if err != nil || resumedActor.CgroupLimit != "201326592" {
+		t.Fatal("resumed descriptor does not address its retained controller", resumedActor.CgroupLimit, err)
+	}
+	unchanged, err = readCaptureActor(source.Runtime.PID, "get")
+	if err != nil || !reflect.DeepEqual(before, unchanged) {
+		t.Fatal("delegated resume changed the original source", err)
+	}
+	t.Logf("delegated prepared resume and first useful RAM=%s", time.Since(start))
+	if _, err := engine.Delete(ctx, "delegated"); err != nil {
+		t.Fatal("delete original source before forking the resumed runtime", err)
+	}
+	resumedSnapshot := strings.Repeat("d", 32)
+	if _, err := engine.Checkpoint(ctx, "delegated-fork", resumedSnapshot); err != nil {
+		t.Fatal("capture resumed delegated runtime", err)
+	}
+	child, err := forkNativeCLI(engine, "delegated-fork", resumedSnapshot, "delegated-resumed-fork")
+	if err != nil {
+		t.Fatal("fork resumed delegated runtime", err)
+	}
+	t.Cleanup(func() {
+		if _, err := engine.Delete(ctx, "delegated-resumed-fork"); err != nil {
+			t.Error(err)
+		}
+	})
+	childActor, err := readCaptureActor(child.Runtime.PID, "get")
+	if err != nil || !reflect.DeepEqual(resumedActor, childActor) {
+		t.Fatal("fork of resumed delegated runtime lost complete RAM or its controller descriptor", err)
+	}
+	if _, err := readCaptureActor(child.Runtime.PID, "advance"); err != nil {
+		t.Fatal(err)
+	}
+	parentActor, err := readCaptureActor(resumed.Runtime.PID, "get")
+	if err != nil || !reflect.DeepEqual(resumedActor, parentActor) {
+		t.Fatal("fork of resumed delegated runtime changed its parent's private state", err)
+	}
 }

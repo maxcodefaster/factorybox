@@ -131,7 +131,27 @@ func (e *Engine) prepareCgroup(record *Record) error {
 	return e.write(*record)
 }
 
-func (e *Engine) retireEmptyCgroup(record Record) (resultErr error) {
+func (e *Engine) retireEmptyCgroup(record Record) error {
+	return e.updateEmptyCgroupTree(record, true)
+}
+
+// CRIU must briefly enter the namespace root before restoring delegation.
+// A resumed hierarchy still has its old controllers enabled. Clear only the
+// original, wholly empty tree; CRIU restores its captured controllers and
+// limits before restoring process descriptors. Keep every cgroup inode.
+func (e *Engine) prepareEmptyResumeCgroup(record Record) error {
+	if err := e.requireEmptyCgroup(record); err != nil {
+		return err
+	}
+	if err := e.updateEmptyCgroupTree(record, false); err != nil {
+		return err
+	}
+	return e.requireEmptyCgroup(record)
+}
+
+// Both operations validate the complete tree before changing any descendant.
+// Retirement removes directories; resume preparation clears delegation.
+func (e *Engine) updateEmptyCgroupTree(record Record, retire bool) (resultErr error) {
 	path := cgroupRoot + "/" + record.RuntimeID
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -224,6 +244,21 @@ func (e *Engine) retireEmptyCgroup(record Record) (resultErr error) {
 				}
 			}
 		}
+		var controls []string
+		if !retire {
+			data, err := captureReadFile(group, "cgroup.subtree_control", 4096)
+			if err != nil {
+				return err
+			}
+			controls = strings.Fields(string(data))
+			for _, control := range controls {
+				switch control {
+				case "cpuset", "cpu", "io", "memory", "pids":
+				default:
+					return fmt.Errorf("resume delegation contains an unsupported controller %q", control)
+				}
+			}
+		}
 		planned = append(planned, func() error {
 			if err := empty(); err != nil {
 				return err
@@ -243,7 +278,28 @@ func (e *Engine) retireEmptyCgroup(record Record) (resultErr error) {
 			if identityErr != nil || closeErr != nil || current != identity {
 				return fmt.Errorf("retirement cgroup descendant identity changed: %v", errors.Join(identityErr, closeErr))
 			}
-			return unix.Unlinkat(int(parent.Fd()), name, unix.AT_REMOVEDIR)
+			if retire {
+				return unix.Unlinkat(int(parent.Fd()), name, unix.AT_REMOVEDIR)
+			}
+			currentControls, err := captureReadFile(group, "cgroup.subtree_control", 4096)
+			if err != nil || strings.Join(strings.Fields(string(currentControls)), " ") != strings.Join(controls, " ") {
+				return fmt.Errorf("resume delegation changed after admission: %v", err)
+			}
+			if len(controls) == 0 {
+				return nil
+			}
+			disabled := make([]string, len(controls))
+			for index, control := range controls {
+				disabled[index] = "-" + control
+			}
+			controlFD, err := unix.Openat(int(group.Fd()), "cgroup.subtree_control",
+				unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+			if err != nil {
+				return err
+			}
+			file := os.NewFile(uintptr(controlFD), "original empty cgroup delegation")
+			_, writeErr := file.WriteString(strings.Join(disabled, " ") + "\n")
+			return errors.Join(writeErr, file.Close())
 		})
 		return nil
 	}
