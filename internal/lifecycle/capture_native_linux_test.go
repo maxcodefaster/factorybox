@@ -251,6 +251,16 @@ func TestCaptureActor(t *testing.T) {
 					t.Error(err)
 				}
 			case "get":
+				if len(ballast) != 0 {
+					digest := sha256.Sum256(ballast)
+					state.BallastSHA = fmt.Sprintf("%x", digest)
+				}
+			case "flip-ballast-without-refresh":
+				if len(ballast) < 2 {
+					t.Error("live-hash control requires anonymous ballast")
+					return
+				}
+				ballast[1] ^= 0xff
 			default:
 				t.Error("unknown RAM actor request")
 				return

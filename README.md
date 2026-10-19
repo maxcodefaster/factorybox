@@ -503,6 +503,17 @@ mise exec -- python3 tools/lifecycle_native.py \
   --native-base-build factorybox-build-native-base-EXACT_RUN_ID --suite pause
 ```
 
+The actor recomputes its checksum from the live anonymous mapping on every read. A negative
+control changes one byte without refreshing its cached checksum, requires the next read to
+detect the change, then restores the original bytes before the lifecycle assertions. A cached
+checksum alone is not evidence that restored RAM still has the captured contents.
+
+The strengthened prepared-base suite passed in
+`factorybox-runtime-bf806a49123d4722b7eedee679158be0`: six tests, 24 subtests, zero skips and
+complete owned cleanup, including the live-hash negative control, sixteen restore/delete cycles,
+receipt recovery and a fork of the resumed source. This was a correctness run; its individual
+pause/resume observations were 3.647/1.311 seconds on the shared worker.
+
 It proves anonymous source memory falling to zero, complete RAM payload files moving from resident
 to zero resident bytes, a fork from the stopped checkpoint, identical resumed RAM/files/private
 volume/virtual values, receipt recovery, an independent fork of a resumed source, and a second
@@ -517,6 +528,29 @@ after the retained writer and stops processes only after successful backing. Sav
 data survive failed transitions. Automatic recovery of every failed capture, partial preparation,
 resume failure or partially completed runtime deletion still requires hardening. Recovery requires the same live
 worker and unchanged exclusive working backing; worker restart/cross-node migration remain unsupported.
+
+Actual CRIU interruption has its own required gate:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py --suite interruption \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+```
+
+This gate currently fails. `factorybox-runtime-5230ed5343e94cc890bd8f4bbc62bae2` killed the
+verified CRIU child through its pidfd after a page image reached 8 MiB while the original
+source was traced. No completed checkpoint was published and cleanup completed, but the
+source remained paused and CRIU's private network DROP chain remained installed. The test
+pins the source's separate network namespace and compares its rules before and after the
+aborted dump. It also proves that the previous committed checkpoint still produces an
+independent, useful fork with the original live-verified 32-MiB contents.
+
+An earlier disposable diagnostic manually thawed the source: its RAM probe worked, yet its
+network rules were still changed. That diagnostic is not production recovery and is absent
+from the required gate. Absence of a tracer or a usable RAM probe does not establish complete
+rollback after CRIU dies. Automatic recovery of the interrupted current source remains
+unqualified; this failure blocks a production release.
 
 ## Pinned sources
 

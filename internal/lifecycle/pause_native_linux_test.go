@@ -76,6 +76,23 @@ func TestPauseNative(t *testing.T) {
 	if before.BallastBytes != 32<<20 || before.BallastSHA == "" {
 		t.Fatal("pause fixture lacks its private 32-MiB RAM payload")
 	}
+	t.Run("live-ballast-checksum", func(t *testing.T) {
+		stale, err := readCaptureActor(started.Runtime.PID, "flip-ballast-without-refresh")
+		if err != nil || stale.BallastSHA != before.BallastSHA {
+			t.Fatal("negative control did not preserve the cached hash", err)
+		}
+		changed, err := readCaptureActor(started.Runtime.PID, "get")
+		if err != nil || changed.BallastSHA == before.BallastSHA {
+			t.Fatal("RAM probe returned a cached hash after actual anonymous memory changed", err)
+		}
+		if _, err := readCaptureActor(started.Runtime.PID, "flip-ballast-without-refresh"); err != nil {
+			t.Fatal(err)
+		}
+		restored, err := readCaptureActor(started.Runtime.PID, "get")
+		if err != nil || !reflect.DeepEqual(before, restored) {
+			t.Fatal("negative control failed to restore the original RAM fixture", err)
+		}
+	})
 	lock, err := engine.lock()
 	if err != nil {
 		t.Fatal(err)

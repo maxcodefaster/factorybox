@@ -58,7 +58,7 @@ def archive_capture(archive, name, owner, result, image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption"], default="lifecycle")
     parser.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for checkpoint-based suites")
     parser.add_argument("--test", help="One exact native diagnostic test")
@@ -67,7 +67,7 @@ def main():
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
-    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd"]
+    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption"]
     if capture_mode and (not options.criu_build or options.test):
         parser.error("checkpoint-based suites require --criu-build and run their complete selected suite")
     if options.criu_build and not capture_mode:
@@ -87,6 +87,12 @@ def main():
         "scope": ("Exact owned empty cgroup subtree retirement, foreign child-mount refusal and "
                   "populated-child preservation through Engine.Delete. No Sysbox daemon or process workload."
                   if options.test == "TestNativeEmptyCgroupRetirement" else
+                  "Actual pinned CRIU child interrupted through its pidfd after an image reaches "
+                  "8 MiB while tracing its verified original 32-MiB RAM source. Failed capture "
+                  "must preserve original identity, RAM, private network rules, useful work and "
+                  "incomplete evidence without publishing a checkpoint. Its previous committed "
+                  "checkpoint must still produce an independently useful recovery fork. No diagnostic thaw."
+                  if options.suite == "interruption" else
                   "Minimal parent plus two populated delegated cgroups with the same controller "
                   "set as the real private Docker tree. Public checkpoint/fork, RAM-releasing pause, "
                   "resume into the original delegated cgroup and an independent fork of that resumed "
@@ -222,6 +228,7 @@ def main():
             "--env", "FACTORYBOX_NATIVE_TIME=" + ("1" if options.suite == "time" else "0"),
             "--env", "FACTORYBOX_NATIVE_DELEGATION=" + ("1" if options.suite == "delegation" else "0"),
             "--env", "FACTORYBOX_NATIVE_MOUNT_FD=" + ("1" if options.suite == "mountfd" else "0"),
+            "--env", "FACTORYBOX_NATIVE_INTERRUPTION=" + ("1" if options.suite == "interruption" else "0"),
             "--env", "FACTORYBOX_NATIVE_TEST=" + (options.test or ""),
             "--env", "FACTORYBOX_RUNTIME_SHA256=" + components["binary_sha256"]["sysbox-runc"],
             "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB",
@@ -273,7 +280,8 @@ def main():
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + 6 + 12) and
-            (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 11 + 12) and
+            (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 12 + 12) and
+            (options.suite != "interruption" or result["passed_subtests"] == 18) and
             (options.suite != "namespaces" or result["passed_subtests"] == 7 + 12) and
             (options.suite != "time" or result["passed_subtests"] == 6 + 12) and
             (options.suite != "delegation" or result["passed_subtests"] == 18) and
