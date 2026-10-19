@@ -547,40 +547,50 @@ mise exec -- python3 tools/lifecycle_native.py --suite interruption \
   --native-base-build factorybox-build-native-base-EXACT_RUN_ID
 ```
 
-This gate currently fails. `factorybox-runtime-5230ed5343e94cc890bd8f4bbc62bae2` killed the
-verified CRIU child through its pidfd after a page image reached 8 MiB while the original
-source was traced. No completed checkpoint was published and cleanup completed, but the
-source remained paused and CRIU's private network DROP chain remained installed. The test
-pins the source's separate network namespace and compares its rules before and after the
-aborted dump. It also proves that the previous committed checkpoint still produces an
-independent, useful fork with the original live-verified 32-MiB contents.
+This gate currently fails because the original source remains paused.
+`factorybox-runtime-c51e3a47b1d242e19b937b240feed432` killed the verified CRIU child through
+its pidfd after a page image reached 8 MiB while the original source was traced. No complete
+checkpoint was published. The preceding committed checkpoint still produced an independent,
+useful fork with its live-verified 32-MiB contents, and exact owned cleanup completed.
+Seven adapter tests and 35 subtests passed; the original-source recovery assertion failed.
 
-An earlier disposable diagnostic manually thawed the source: its RAM probe worked, yet its
-network rules were still changed. That diagnostic is not production recovery and is absent
-from the required gate. Absence of a tracer or a usable RAM probe does not establish complete
-rollback after CRIU dies. Automatic recovery of the interrupted current source remains
-unqualified; this failure blocks a production release.
+Before CRIU runs, the capture worker pins the source's private network namespace and records
+IPv4/IPv6 filter rules. It inventories TCP sockets through original process pidfds, recording
+descriptor numbers, socket cookies, repair modes and marks while the source is frozen.
+After CRIU has exited, failure handling re-establishes the original freezer and validates source
+identity and absence of tracers. Both firewall families and every socket are admitted before
+repair starts. Only the exact pinned CRIU firewall delta and unchanged socket identities with
+the known `TCP_REPAIR` transition are accepted. Foreign changes refuse repair.
 
-The network part is now repaired in `factorybox-runtime-1a71e73421b54db08ca0b13435718cf9`.
-The capture worker pins the original private network namespace and snapshots IPv4/IPv6 filter
-rules before CRIU runs. When CRIU returns an error, it first re-establishes the original source
-freezer, validates its identity and absence of tracers, then removes only the exact known CRIU
-delta. A pre-existing `CRIU` chain or any other rule change refuses cleanup. Both families are
-validated before either is changed; the narrow removal is verified against the original rules.
-The private generation retains the baseline and a source-bound network rollback receipt.
+The interruption fixture verifies restored firewall rules, socket cookies, marks and repair
+modes. It also exchanges data in both directions through the original connected sockets while
+the application remains frozen. Native negative cases preserve pre-existing CRIU chains and
+foreign IPv4/IPv6 changes. Socket admission rejects reused descriptors, foreign marks and unknown
+repair modes. Baselines and rollback receipts remain in the private generation.
 
-Native kernel negatives prove preservation of pre-existing chains and foreign IPv4/IPv6
-changes, including refusal before changing an otherwise owned IPv4 delta when IPv6 differs.
-The complete interruption gate still fails because the source remains paused: repaired
-netfilter rules alone do not prove that every interrupted process/socket mutation has rolled
-back. The worker does not thaw the source or publish a successful checkpoint on that evidence.
-The normal prepared-base pause suite passed with the new network guard in
-`factorybox-runtime-69b4900c094948abbc9bdb314f1cd089`: seven tests, 37 subtests, zero skips and
-owned cleanup.
-The complete Docker/Compose/Dev Containers/Connector lifecycle also passed with the guard in
-`factorybox-devx-lifecycle-b34b5b15784f4a7492f467113f4e93f5`, in 306.778 seconds with unchanged
-inputs/global sentinels and complete owned cleanup. This does not qualify the still-held
-current source after an interrupted CRIU dump.
+These checks do not establish complete process rollback after CRIU dies. The worker keeps the
+source held and does not publish a successful checkpoint. There is no manual diagnostic thaw
+in the required gate. Automatic recovery of that current source remains unqualified and blocks
+a production release.
+
+A read-only diagnostic in `factorybox-runtime-f8ed2482cb9c4ae9ac2445c0c6c844f6` reproduced
+that failure and retained `output/process-probe-comparison.json`. The source kept an additional
+5.023-MiB executable shared `/memfd:CRIUMFD` mapping. Its original descriptors, all five threads'
+observed signal states and syscall-reported program/stack positions matched their frozen
+baselines; these observations do not cover every register or process mutation. The diagnostic
+instrumentation has been removed from the runtime. This narrows the next recovery work to
+CRIU's remaining process state without permitting an unproved thaw.
+
+The prepared-base pause regression passed with the network/socket guard in
+`factorybox-runtime-3002210d52a04dca9fd3460bd3f7cb49`: eight tests, 41 subtests, zero skips,
+unchanged inputs/components and owned cleanup. Its complete 827,326,464-byte archive was
+automatically compacted to 34,325,260 bytes after full decompression verification.
+The earlier full Docker/Compose/Dev Containers/Connector lifecycle passed with the firewall
+guard in `factorybox-devx-lifecycle-b34b5b15784f4a7492f467113f4e93f5`, in 306.778 seconds with
+unchanged inputs/global sentinels and owned cleanup. The full lifecycle with the socket guard
+also passed in `factorybox-devx-lifecycle-42fc814a167b406cb844b2ebe864ac4a`, in 236.712 seconds
+with the same input, sentinel and cleanup checks. Its 64 frozen source files match the
+maintained runtime after removal of the disposable diagnostic.
 
 ## Pinned sources
 
@@ -1051,19 +1061,22 @@ The final-code repeat, `factorybox-devx-lifecycle-e4c2b64124ee4456ad3f2b9acc6482
 with unchanged inputs/sentinels and complete owned cleanup in 313.279 seconds. Its Sysbox
 startup wait was one second.
 
-| Operation | First completed run | Final-code repeat |
-| --- | ---: | ---: |
-| Frozen rootfs, immutable base and OCI preparation | 32.281 s | 29.599 s |
-| Prepared start through useful Connector/app response | 36.142 s | 19.249 s |
-| First complete checkpoint | 17.067 s | 15.616 s |
-| Fork from that checkpoint through useful response | 14.215 s | 14.902 s |
-| Fork of the previously restored fork through useful response | 10.712 s | 29.521 s |
-| Complete pause | 13.722 s | 35.636 s |
-| Resume through useful response with retained app state | 4.612 s | 9.537 s |
-| Fork of the resumed runtime through useful response | 9.287 s | 15.720 s |
+The socket-guard run `factorybox-devx-lifecycle-42fc814a167b406cb844b2ebe864ac4a` also passed
+with unchanged inputs/sentinels and owned cleanup in 236.712 seconds.
+
+| Operation | First completed run | Repeat | Socket guard |
+| --- | ---: | ---: | ---: |
+| Frozen rootfs, immutable base and OCI preparation | 32.281 s | 29.599 s | 18.358 s |
+| Prepared start through useful Connector/app response | 36.142 s | 19.249 s | 29.450 s |
+| First complete checkpoint | 17.067 s | 15.616 s | 20.169 s |
+| Fork from that checkpoint through useful response | 14.215 s | 14.902 s | 12.728 s |
+| Fork of the previously restored fork through useful response | 10.712 s | 29.521 s | 17.437 s |
+| Complete pause | 13.722 s | 35.636 s | 14.037 s |
+| Resume through useful response with retained app state | 4.612 s | 9.537 s | 6.822 s |
+| Fork of the resumed runtime through useful response | 9.287 s | 15.720 s | 18.677 s |
 
 Fork observations start after their checkpoint exists. The first checkpoint plus its useful
-fork response took about 31.3 and 30.5 seconds. Anonymous source memory and snapshot page residency
+fork response took about 31.3, 30.5 and 32.9 seconds. Anonymous source memory and snapshot page residency
 both reached zero at pause; the stopped cgroup still accounted for about 201 and 74 MiB of file cache.
 These are individual observations on the shared ARM64 worker. The closed test authority is
 captured with the workload. Real external authority handoff, separate Theia, inference and a

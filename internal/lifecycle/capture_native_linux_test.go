@@ -33,6 +33,9 @@ type captureActorState struct {
 	NestedPID    int    `json:"nested_pid,omitempty"`
 	TimeMode     string `json:"time_mode,omitempty"`
 	CgroupLimit  string `json:"cgroup_limit,omitempty"`
+	TCPClient    int    `json:"tcp_client,omitempty"`
+	TCPServer    int    `json:"tcp_server,omitempty"`
+	TCPListener  int    `json:"tcp_listener,omitempty"`
 }
 
 func TestCaptureTimeNamespaceLauncher(t *testing.T) {
@@ -178,6 +181,44 @@ func TestCaptureActor(t *testing.T) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			switch request {
+			case "make-tcp-pair":
+				if state.TCPClient != 0 {
+					t.Error("owned TCP fixture already exists")
+					return
+				}
+				listener, err := unix.Socket(unix.AF_INET, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, unix.IPPROTO_TCP)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if err := unix.Bind(listener, &unix.SockaddrInet4{Addr: [4]byte{127, 0, 0, 1}}); err != nil {
+					t.Error(err)
+					return
+				}
+				if err := unix.Listen(listener, 1); err != nil {
+					t.Error(err)
+					return
+				}
+				address, err := unix.Getsockname(listener)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				tcp, err := unix.Socket(unix.AF_INET, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, unix.IPPROTO_TCP)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if err := unix.Connect(tcp, address); err != nil {
+					t.Error(err)
+					return
+				}
+				accepted, _, err := unix.Accept4(listener, unix.SOCK_CLOEXEC)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				state.TCPClient, state.TCPServer, state.TCPListener = tcp, accepted, listener
 			case "open-cgroup-limit":
 				if cgroupLimit != nil {
 					t.Error("cgroup limit descriptor already open")

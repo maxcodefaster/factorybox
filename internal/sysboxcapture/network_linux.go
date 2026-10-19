@@ -19,10 +19,13 @@ import (
 const networkOutputLimit = 1 << 20
 
 type captureNetwork struct {
-	namespace *os.File
-	pid       int
-	start     string
-	before    map[string][]byte
+	namespace  *os.File
+	pid        int
+	start      string
+	before     map[string][]byte
+	generation string
+	processes  map[int]socketProcess
+	sockets    []captureSocket
 }
 
 // CaptureNetwork holds the original private namespace across the dump. It
@@ -171,7 +174,8 @@ func criuEmptyNetworkChain(before, current []byte) bool {
 // BeginCaptureNetwork is called only after the lifecycle guard has verified
 // the original frozen source. The snapshot lives in its private generation.
 func BeginCaptureNetwork(pid int, start, generation string) (_ *CaptureNetwork, resultErr error) {
-	n := &CaptureNetwork{state: captureNetwork{pid: pid, start: start, before: map[string][]byte{}}}
+	n := &CaptureNetwork{state: captureNetwork{pid: pid, start: start, generation: generation,
+		before: map[string][]byte{}, processes: map[int]socketProcess{}}}
 	var err error
 	n.state.namespace, err = os.Open(fmt.Sprintf("/proc/%d/ns/net", pid))
 	if err != nil {
@@ -213,12 +217,18 @@ func BeginCaptureNetwork(pid int, start, generation string) (_ *CaptureNetwork, 
 	return n, nil
 }
 
-func (n *CaptureNetwork) Close() error { return n.state.namespace.Close() }
+func (n *CaptureNetwork) Close() error {
+	result := n.state.namespace.Close()
+	for _, process := range n.state.processes {
+		result = errors.Join(result, process.file.Close())
+	}
+	return result
+}
 
 // Rollback removes only an exactly recognized CRIU delta after the capture
 // worker has returned and the caller has revalidated frozen, untraced source
 // ownership. This does not establish complete process rollback or thaw it.
-func (n *CaptureNetwork) Rollback() error {
+func (n *CaptureNetwork) Rollback() (resultErr error) {
 	if err := n.validate(); err != nil {
 		return err
 	}
@@ -235,6 +245,11 @@ func (n *CaptureNetwork) Rollback() error {
 		}
 		current[program] = rules
 	}
+	sockets, err := n.prepareSocketRollback()
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, closeSocketRollback(sockets)) }()
 	for _, program := range []string{"iptables", "ip6tables"} {
 		before := n.state.before[program]
 		rules := current[program]
@@ -269,7 +284,10 @@ func (n *CaptureNetwork) Rollback() error {
 			return fmt.Errorf("private %s rules did not return to their original baseline", program)
 		}
 	}
-	return n.validate()
+	if err := n.validate(); err != nil {
+		return err
+	}
+	return restoreCaptureSockets(sockets)
 }
 
 var _ io.Writer = (*networkOutput)(nil)

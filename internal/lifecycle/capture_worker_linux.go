@@ -99,6 +99,13 @@ func captureWorkerServe() (resultErr error) {
 		return err
 	}
 	defer func() { resultErr = errors.Join(resultErr, network.Close()) }()
+	threads, err := captureGuardThreads(request.Guard, anchors)
+	if err != nil {
+		return err
+	}
+	if err := network.TrackSockets(threads); err != nil {
+		return err
+	}
 	captured, err = sysboxcapture.Capture(sysboxcapture.Request{
 		RuntimeRoot: request.Guard.Root + "/runtime", RuntimeID: request.Guard.Source.RuntimeID,
 		Owner: request.Guard.Source.Owner, Rootfs: request.Guard.Source.Rootfs,

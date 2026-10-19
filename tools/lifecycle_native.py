@@ -17,8 +17,8 @@ import upstream_unit
 ROOT = reference.ROOT
 EXPECTED_TESTS = 6
 EXPECTED_CAPTURE_SUBTESTS = 17
-EXPECTED_ADAPTER_TESTS = 6
-EXPECTED_ADAPTER_SUBTESTS = 31
+EXPECTED_ADAPTER_TESTS = 7
+EXPECTED_ADAPTER_SUBTESTS = 35
 
 
 def archive_capture(archive, name, owner, result, image):

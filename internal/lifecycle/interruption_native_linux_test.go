@@ -5,6 +5,8 @@ package lifecycle
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -65,9 +67,102 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if err != nil || workerErr != nil || os.SameFile(privateNetwork, workerNetwork) {
 		t.Fatal("interruption requires the source's separate private network namespace", err, workerErr)
 	}
+	loopback := exec.Command("nsenter", "--net=/proc/self/fd/3", "--", "ip", "link", "set", "dev", "lo", "up")
+	loopback.ExtraFiles = []*os.File{network}
+	if output, err := loopback.CombinedOutput(); err != nil {
+		t.Fatalf("prepare only the private source loopback: %v: %s", err, output)
+	}
+	before, err = readCaptureActor(source.Runtime.PID, "make-tcp-pair")
+	if err != nil || before.TCPClient <= 2 || before.TCPServer <= 2 || before.TCPListener <= 2 {
+		t.Fatal("prepare real established TCP sockets", err)
+	}
+	type socketState struct {
+		FD     int    `json:"fd"`
+		Cookie uint64 `json:"cookie"`
+		Repair int    `json:"repair"`
+		Mark   int    `json:"mark"`
+	}
+	sockets := func() ([]socketState, error) {
+		pidfd, err := unix.PidfdOpen(source.Runtime.PID, 0)
+		if err != nil {
+			return nil, err
+		}
+		defer unix.Close(pidfd)
+		var result []socketState
+		for _, original := range []int{before.TCPClient, before.TCPServer, before.TCPListener} {
+			fd, err := unix.PidfdGetfd(pidfd, original, 0)
+			if err != nil {
+				return nil, err
+			}
+			cookie, cookieErr := unix.GetsockoptUint64(fd, unix.SOL_SOCKET, unix.SO_COOKIE)
+			repair, repairErr := unix.GetsockoptInt(fd, unix.IPPROTO_TCP, unix.TCP_REPAIR)
+			mark, markErr := unix.GetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_MARK)
+			closeErr := unix.Close(fd)
+			if err := errors.Join(cookieErr, repairErr, markErr, closeErr); err != nil {
+				return nil, err
+			}
+			result = append(result, socketState{original, cookie, repair, mark})
+		}
+		return result, nil
+	}
 	committed := strings.Repeat("b", 32)
 	if _, err := engine.Checkpoint(ctx, "interrupted", committed); err != nil {
 		t.Fatal("create the committed recovery point before fault injection", err)
+	}
+	beforeSockets, err := sockets()
+	if err != nil {
+		t.Fatal("observe original TCP socket properties", err)
+	}
+	exchange := func() error {
+		pidfd, err := unix.PidfdOpen(source.Runtime.PID, 0)
+		if err != nil {
+			return err
+		}
+		defer unix.Close(pidfd)
+		client, err := unix.PidfdGetfd(pidfd, before.TCPClient, 0)
+		if err != nil {
+			return err
+		}
+		defer unix.Close(client)
+		server, err := unix.PidfdGetfd(pidfd, before.TCPServer, 0)
+		if err != nil {
+			return err
+		}
+		defer unix.Close(server)
+		message := []byte("owned-socket-round-trip\n")
+		transfer := func(send, receive int) error {
+			n, err := unix.SendmsgN(send, message, nil, nil, unix.MSG_DONTWAIT|unix.MSG_NOSIGNAL)
+			if err != nil || n != len(message) {
+				return fmt.Errorf("send original socket probe: %d: %w", n, err)
+			}
+			deadline := time.Now().Add(time.Second)
+			var received []byte
+			for len(received) < len(message) {
+				var buffer [64]byte
+				n, _, err := unix.Recvfrom(receive, buffer[:], unix.MSG_DONTWAIT)
+				if err != nil && !errors.Is(err, unix.EAGAIN) {
+					return err
+				}
+				if errors.Is(err, unix.EAGAIN) {
+					n = 0
+				}
+				received = append(received, buffer[:n]...)
+				if time.Now().After(deadline) {
+					return fmt.Errorf("original socket probe timed out")
+				}
+				if n == 0 {
+					time.Sleep(time.Millisecond)
+				}
+			}
+			if !bytes.Equal(received, message) {
+				return fmt.Errorf("original socket changed probe data")
+			}
+			return nil
+		}
+		return errors.Join(transfer(client, server), transfer(server, client))
+	}
+	if err := exchange(); err != nil {
+		t.Fatal("committed TCP fixture is not usable before interruption", err)
 	}
 	networkRules := func() ([]byte, error) {
 		command := exec.Command("nsenter", "--net=/proc/self/fd/3", "--", "iptables-save")
@@ -191,6 +286,21 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	}
 	if networkErr != nil || !bytes.Equal(beforeNetwork, afterNetwork) {
 		t.Errorf("interrupted capture did not restore its original private network rules: %v", networkErr)
+	}
+	afterSockets, socketErr := sockets()
+	socketData, marshalErr := json.Marshal(map[string]any{"before": beforeSockets, "after": afterSockets})
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
+	}
+	if err := os.WriteFile("/output/interruption-sockets.json", append(socketData, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if socketErr != nil || !reflect.DeepEqual(beforeSockets, afterSockets) {
+		t.Errorf("interrupted capture changed original socket identity or properties: %v; before=%+v after=%+v",
+			socketErr, beforeSockets, afterSockets)
+	}
+	if err := exchange(); err != nil {
+		t.Error("rolled-back original TCP sockets are not bidirectionally usable", err)
 	}
 	recovered, recoverErr := forkNativeCLI(engine, "interrupted", committed, "committed-recovery")
 	if recoverErr != nil {
