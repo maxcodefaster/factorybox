@@ -4,7 +4,14 @@ USER root
 COPY --from=go /usr/local/go /usr/local/go
 ENV PATH=/usr/local/go/bin:/root/go/bin:$PATH
 ENV GOMAXPROCS=2 GOFLAGS=-p=2 GOTOOLCHAIN=local
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG FACTORYBOX_BUILD_CACHE=shared
+RUN rm -f /etc/apt/sources.list.d/* \
+    && printf '%s\n' \
+      'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261018T000000Z jammy main restricted universe multiverse' \
+      'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261018T000000Z jammy-updates main restricted universe multiverse' \
+      'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261018T000000Z jammy-security main restricted universe multiverse' \
+      > /etc/apt/sources.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
       build-essential pkg-config libseccomp-dev patch protobuf-compiler libprotobuf-dev \
     && rm -rf /var/lib/apt/lists/* && mkdir -p /out
 COPY sysbox-runc /src/sysbox-runc
@@ -14,29 +21,31 @@ COPY sysbox-fs /src/sysbox-fs
 COPY sysbox-mgr /src/sysbox-mgr
 COPY sysbox-runc-pristine.tar.gz /tmp/runc.tar.gz
 WORKDIR /src/sysbox-runc
-RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
-    --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
+    --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
     go version > /out/toolchain.txt \
     && cc --version >> /out/toolchain.txt \
     && dpkg-query -W libseccomp-dev protobuf-compiler libprotobuf-dev >> /out/toolchain.txt \
+    && dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' > /out/packages.tsv \
+    && cp /etc/apt/sources.list /out/apt-sources.list \
     && go install github.com/golang/protobuf/protoc-gen-go@v1.5.4 \
     && make -C /src/sysbox-ipc
-RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
-    --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
+    --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
     go test -mod=readonly ./libsysbox/syscont \
       -run '^(TestCfgSeccomp|TestExperimentSeccompBlacklist)' -count=1 \
     && go test -mod=readonly -tags 'seccomp apparmor idmapped_mnt netgo osusergo' . \
       -run '^(TestExperiment(CopyPipeline|Lineage)|TestFactorybox(FsSnapshotScope|Restore|Resume))' -count=1 \
     && go test -mod=readonly -tags 'seccomp apparmor idmapped_mnt netgo osusergo' ./libcontainer \
       -run '^TestFactoryboxRestoreCgroup$' -count=1
-RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
-    --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
+    --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
     go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
       -o /out/libcontainer.test ./libcontainer \
     && go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
       -o /out/integration.test ./libcontainer/integration
-RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
-    --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
+    --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
     CGO_ENABLED=1 go build -mod=readonly -buildvcs=false -trimpath \
       -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
       -ldflags '-extldflags -static -X main.version=0.7.1-experiment -X main.commitId=081856cc5d17e7095f066b08d0eca6bb0b515c47-experiment' \
@@ -46,8 +55,8 @@ RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
 RUN rm -rf /src/sysbox-runc && mkdir /src/sysbox-runc \
     && tar -xzf /tmp/runc.tar.gz --strip-components=1 -C /src/sysbox-runc
 WORKDIR /src/sysbox-fs
-RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
-    --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
+    --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
     go test -mod=readonly ./state -run '^TestExperiment(Retained|Fork)' -count=1 \
     && go test -mod=readonly ./state -run '^TestFactoryboxSnapshotRejectsMalformedState$' -count=1 \
     && go test -mod=readonly ./ipc -run '^TestContainerPreRegister$' -count=1 \
@@ -56,8 +65,8 @@ RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
       -ldflags '-extldflags -static -X main.version=0.7.1-experiment -X main.commitId=c3d2ebc65102e32e74e383675f03b45556326888-experiment' \
       -o /out/sysbox-fs ./cmd/sysbox-fs
 WORKDIR /src/sysbox-mgr
-RUN --mount=type=cache,id=factorybox-go-mod,target=/root/go/pkg/mod \
-    --mount=type=cache,id=factorybox-go-build,target=/root/.cache/go-build \
+RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
+    --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
     CGO_ENABLED=1 go build -mod=readonly -buildvcs=false -trimpath \
       -tags 'idmapped_mnt netgo osusergo' \
       -ldflags '-extldflags -static -X main.version=0.7.1-experiment -X main.commitId=2d45af01bcfd8641e6641f76104c6003bf501cd7' \

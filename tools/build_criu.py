@@ -10,6 +10,7 @@ import uuid
 
 import native_base
 import reference
+import reference_lifecycle
 import sources
 
 ROOT = reference.ROOT
@@ -20,9 +21,27 @@ HISTORICAL = "2b74a9712aa928245cdc43db1702083f4b87f454f4b077b7fe12b71dbfef3ab1"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build")
+    parser.add_argument("--compare", help="Require a binary identical to one exact successful CRIU build")
     options = parser.parse_args()
     builder, base_result = (native_base.load(options.native_base_build)
                             if options.native_base_build else (BUILDER, None))
+    component = json.loads((ROOT / "upstream/lock.json").read_text())["components"]["criu"]
+    build_inputs = ROOT / "upstream/criu-build.json"
+    recipe = json.loads(build_inputs.read_text())
+    if (recipe["schema"] != 1 or not isinstance(recipe["source_date_epoch"], int) or
+            not 0 < recipe["source_date_epoch"] <= 0xffffffff or
+            recipe["source_recipe_sha256"] != sources.recipe_sha(component)):
+        raise ValueError("CRIU build recipe changed; review and pin its new source epoch/cache identity")
+    comparison = None
+    if options.compare:
+        previous, comparison = reference_lifecycle.component_build(
+            options.compare, "factorybox-build-criu-")
+        if reference.sha(previous / "criu") != comparison["binary_sha256"]:
+            raise ValueError("comparison CRIU binary changed")
+        if builder != comparison["builder"]:
+            parser.error("--compare requires the same pinned native builder")
+        if comparison.get("build_inputs_sha256") != reference.sha(build_inputs):
+            parser.error("--compare requires the same pinned CRIU build inputs")
     owner = uuid.uuid4().hex
     name = "factorybox-build-criu-" + owner
     output = ROOT / "artifacts" / name
@@ -30,10 +49,13 @@ def main():
     lock = ROOT / "upstream/lock.json"
     shutil.copyfile(lock, output / "source-lock.json")
     shutil.copyfile(ROOT / "tests/criu-owned-scope.c", output / "criu-owned-scope.c")
-    component = json.loads(lock.read_text())["components"]["criu"]
+    shutil.copyfile(build_inputs, output / "criu-build.json")
     result = {
         "schema": 1, "owner": owner, "container_name": name, "builder": builder,
         "native_base_build": options.native_base_build,
+        "comparison_build": options.compare,
+        "source_date_epoch": recipe["source_date_epoch"],
+        "build_inputs_sha256": reference.sha(build_inputs),
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "source_lock_sha256": reference.sha(lock), "passed": False,
         "scope_test_sha256": reference.sha(output / "criu-owned-scope.c"),
@@ -52,6 +74,7 @@ def main():
             "--cpus=2", "--memory=1g", "--pids-limit=128", "--network=none",
             "--read-only", "--cgroupns=private", "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
+            "--env", "SOURCE_DATE_EPOCH=" + str(recipe["source_date_epoch"]),
             "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=384m",
             "--mount", f"type=bind,source={tree},target=/source,readonly",
             "--mount", f"type=bind,source={output},target=/output",
@@ -92,6 +115,10 @@ def main():
         result["matches_historical_binary"] = result["binary_sha256"] == HISTORICAL
         result["version"] = (output / "version.txt").read_text().strip()
         result["toolchain"] = (output / "toolchain.txt").read_text()
+        if comparison:
+            result["matches_comparison_binary"] = result["binary_sha256"] == comparison["binary_sha256"]
+            if not result["matches_comparison_binary"]:
+                raise ValueError("clean CRIU build differs from the declared comparison")
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)

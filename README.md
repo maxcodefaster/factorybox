@@ -342,6 +342,13 @@ worker-wide changes. Its completion receipt binds the request to the renewed pro
 the original runtime ID, owner and creation time. Repeated requests and lost controller outcomes
 reconcile that process. Unconfirmed restores refuse a second restore.
 
+Before the first restore attempt, a lost preparation receipt can be recovered when every private
+input file still matches the complete immutable pause generation. The controller verifies and syncs
+those files and their directories, then publishes the missing receipt without replacing an image.
+An incomplete or damaged copy stays retained and cannot start a restore. A native test removes the
+receipt, first withholds a RAM image to prove refusal, then restores it and confirms successful
+resume with the identical original page-file inode.
+
 Resume also requires the entire original cgroup tree to be empty with its freezer cleared.
 The controller checks events through the identity-verified original cgroup before changing pause
 intent, before preparing images and immediately before the restore call. A native negative fixture
@@ -444,7 +451,9 @@ assertions, must finish in `PASS` and cannot hide an earlier `FAIL` behind a lat
 
 `tests/criu-core-cases.json` declares the selection and required arguments. The adapter uses the
 upstream static C daemon/readiness/SIGTERM protocol in host flavor inside its owned PID/net/IPC
-container. It checks descriptors and refuses unadmitted hooks, dependencies and flavors.
+container. It uses upstream's UID 18943, GID 58467 and supplementary groups for the sixteen
+unprivileged cases; the two `suid` cases retain root. It verifies actual credentials before dump
+and after each restore. It checks descriptors and refuses unadmitted hooks, dependencies and flavors.
 It preserves compiler `-Werror` and every original test assertion. It does not invoke `zdtm.py`'s
 entry point, which unconditionally configures global hugepages. `/proc/sys/vm` is read-only in the
 fixture. The test source crosses the Mac file share as a hash-verified archive, preserving dangling
@@ -467,8 +476,42 @@ mise exec -- python3 tools/build_sysbox.py
 The recipe pins the Go and Envbox image digests, disables automatic Go toolchain replacement and
 records native compiler/package versions and every context input. The manager includes upstream's
 `idmapped_mnt` build tag. A successful build includes the selected inherited fork, registration and
-seccomp regressions. It does not establish complete upstream compatibility. APT dependencies are
-recorded but still need a pinned clean-machine reconstruction.
+seccomp regressions. It does not establish complete upstream compatibility. Signed APT inputs use
+the same dated Ubuntu snapshot as the public native base. The complete installed package manifest
+and APT source list are retained with their hashes.
+
+Run two builds without layer reuse and with independent empty Go module/compiler caches:
+
+```sh
+mise exec -- python3 tools/build_sysbox.py --clean
+mise exec -- python3 tools/build_sysbox.py --clean \
+  --compare factorybox-build-sysbox-FIRST_SUCCESSFUL_RUN_ID
+```
+
+The comparison requires identical Sysbox runc/fs/mgr binary hashes and installed package manifests.
+Two such builds passed on the reference ARM64 builder and reproduced the exact three binaries used
+by the preceding native qualification. This proves byte-identical component output with these
+inputs on this builder. It does not qualify another architecture or establish a deterministic OCI
+image manifest.
+
+CRIU also builds from fresh source inside a new owned container each time. Compare it against one
+successful build with the identical pinned native base:
+
+```sh
+mise exec -- python3 tools/build_criu.py \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --compare factorybox-build-criu-FIRST_SUCCESSFUL_RUN_ID
+```
+
+The comparison fails if the binary differs and retains both outputs for inspection.
+`upstream/criu-build.json` pins `SOURCE_DATE_EPOCH` and the exact CRIU source recipe.
+Upstream uses the build time in its kernel-feature cache magic, so an unfixed build time changes
+the executable. The initial comparison found 26 differing bytes, including the ELF build ID.
+The builder now uses upstream's existing reproducible-build setting. Review and advance this
+release epoch when changing CRIU's source/cache recipe; the build refuses an unreviewed source
+recipe change. No CRIU assertion or source patch is needed for this setting.
+Two independent builds with that pinned epoch produced the identical CRIU executable on the
+reference ARM64 builder. The 31 source-scope cases also passed in each build.
 The restore helper is in a separate package so the core library can compile under its natural
 Sysbox module name. The component build compiles that test package and the full libcontainer
 integration package as guards; execution is a separate native gate. The full upstream Go gate

@@ -62,11 +62,13 @@ def require_pass(text):
         raise ValueError("upstream test reported failure, including before PASS")
 
 
-def execute(command, directory, log, timeout=30):
+def execute(command, directory, log, timeout=30, environment=None):
+    env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "TMPDIR": "/tmp"}
+    env.update(environment or {})
     with log.open("xb") as stream:
         done = subprocess.run(command, cwd=directory, stdout=stream,
                               stderr=subprocess.STDOUT, timeout=timeout,
-                              env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "TMPDIR": "/tmp"})
+                              env=env)
     if done.returncode:
         raise ValueError("command failed with exit %d: %s" %
                          (done.returncode, " ".join(map(str, command))))
@@ -95,6 +97,15 @@ def process_tree(pid):
     return sorted(seen)
 
 
+def task_credentials(pid):
+    credentials = {}
+    for line in pathlib.Path("/proc/%d/status" % pid).read_text().splitlines():
+        key, _, value = line.partition(":")
+        if key in {"Uid", "Gid", "Groups"}:
+            credentials[key] = [int(number) for number in value.split()]
+    return credentials
+
+
 def run_case(case, static, results, cycles):
     name = case["name"]
     directory = results / name
@@ -106,11 +117,27 @@ def run_case(case, static, results, cycles):
         if row["descriptor"].get("feature"):
             execute(["/criu", "check", "--feature", row["descriptor"]["feature"]],
                     directory, directory / "feature.log")
+        environment = {"ZDTM_THREAD_BOMB": "5"}
+        if "suid" not in row["descriptor"].get("flags", "").split():
+            # Match upstream zdtm_test.start, including supplementary groups
+            # and writable output directory, instead of running every C test
+            # with root's permissions.
+            environment.update(ZDTM_UID="18943", ZDTM_GID="58467", ZDTM_GROUPS="27495 48244")
+            directory.chmod(directory.stat().st_mode | 0o222)
+        row["test_environment"] = environment
         execute([str(static / name), "--pidfile=test.pid", "--outfile=test.out",
-                 *case.get("args", [])], directory, directory / "start.log")
+                 *case.get("args", [])], directory, directory / "start.log", environment=environment)
         pid = int((directory / "test.pid").read_text())
         if pid <= 1:
             raise ValueError("test did not publish an owned daemon PID")
+        credentials = task_credentials(pid)
+        expected = ({"Uid": [18943] * 4, "Gid": [58467] * 4, "Groups": [27495, 48244]}
+                    if "ZDTM_UID" in environment else
+                    {"Uid": [0] * 4, "Gid": [0] * 4, "Groups": [0]})
+        if credentials != expected:
+            raise ValueError("test credentials differ from upstream host-flavor admission: " +
+                             repr(credentials))
+        row["credentials"] = credentials
         for cycle in range(cycles):
             images = directory / ("images-%d" % cycle)
             images.mkdir()
@@ -142,6 +169,8 @@ def run_case(case, static, results, cycles):
             current = pathlib.Path("/proc/%d/stat" % restored).read_text().rsplit(")", 1)[1].split()[19]
             if current == birth:
                 raise ValueError("restoration did not replace the original process")
+            if task_credentials(restored) != credentials:
+                raise ValueError("restoration changed the original test credentials")
             row["cycles"].append({"index": cycle, "pid": pid, "original_birth": birth,
                                   "terminated_original_processes": list(processes),
                                   "restored_birth": current,
