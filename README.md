@@ -1098,8 +1098,8 @@ That cleanup receipt does not change the failed lifecycle result.
 12.58 seconds with a parent actor and two populated delegated cgroups, without Docker,
 Compose, Connector or IDE. Its checkpoint succeeded, while the public fork's retained
 CRIU log reports the same `cgroup.subtree_control` error. That failed fixture completed
-archival and owned cleanup. This case remains a required failing regression, not support
-for arbitrary delegated cgroup restoration.
+archival and owned cleanup. This case remains a required regression for the tested delegated
+hierarchy; it does not qualify arbitrary cgroup restoration.
 
 Two diagnostic-only CRIU builds reproduced the failure and identified CRIU itself as the
 process directly populating the target root. Sysbox restore called `ApplyChildCgroup` without
@@ -1111,9 +1111,49 @@ diagnostics are absent from the selected sources.
 `factorybox-runtime-903784cb6d8a4123b74f12a51afe81c3` confirms that the first error is gone,
 but the delegated test still fails. CRIU next tries to enter the target root to create its
 cgroup namespace after controller delegation has already been activated. That migration also
-returns `EBUSY`. This is an unresolved restore-ordering failure; Docker fork/resume is still
+returns `EBUSY`. At that revision, the restore-ordering failure kept Docker fork/resume
 unqualified. The regression additionally requires empty delegated parents, exact root and
 Docker controller sets, preserved leaf membership and independent RAM mutation.
+
+The ordered `criu-delegation-after-cgroupns.patch` addresses that ordering failure. It keeps
+early cgroup type restoration, then restores unified controller properties top-down after
+the root task has created its cgroup namespace and moved to its final group, before the
+forking stage and controller-file restoration. A stronger regression also exposed missing
+`memory.max` capture in the pinned CRIU property list. `criu-v2-memory-limit.patch` adds that
+property; the saved hard limit no longer silently becomes `max`.
+
+`factorybox-runtime-b7d81a1f21754d90b7507e86996097da` passed all six tests and 18 subtests,
+with zero skips and owned cleanup. The actual delegated hierarchy, two populated leaves,
+different memory limits and an open `memory.max` descriptor survive checkpoint/fork.
+Changing the restored limit through the fork's controller is visible through its retained
+descriptor and leaves the original RAM and limit unchanged. Individual observations were
+0.381 seconds for checkpoint and 0.626 seconds for fork through the useful state and
+independence checks.
+
+The selected CRIU build is `factorybox-build-criu-001ec24844f74fdb9e419a82ee0a02ab`, SHA-256
+`b28304c5a101e47606da7be0e0d04d5f900a2abfef9e2a9c99b86bf2fc11e12e`. It passed all 31 C scope
+checks and the 18 unchanged two-cycle core cases in
+`factorybox-criu-core-6e2f34bbcf324e9c8a9f48df5a07875b`. Fresh build
+`factorybox-build-criu-6aa4515b633c45b195cb23cac67d7e74` reproduced those exact binary bytes.
+All 1,030 original CRIU test files
+remain unchanged. The prepared-base pause suite passed all six tests and 23 subtests in
+`factorybox-runtime-e3e3576c78964f4db6cc8725fff5fd31`, including all sixteen restore/delete
+cycles, receipt recovery, fork of a resumed source and another pause/resume. Its individual
+pause/resume observations were 0.678/0.490 seconds, with zero snapshot payload residency at
+pause. Both native gates completed owned cleanup.
+
+The full developer run `factorybox-devx-lifecycle-713833c262d442ed8b995377a28babd1`
+prepared in 15.584 seconds and reached the app after another 22.749 seconds. Its checkpoint
+completed in 5.661 seconds, and the first independent fork answered through the real
+Connector app channel in 4.672 seconds. Source and fork mutations remained independent,
+and the fork continued after source deletion. The next checkpoint of that fork failed:
+a live `runc` process held an unattached proc directory at `/2814/task/2814/fd`, outside
+the existing canonical-root descriptor support. No developer descendant, pause or resume
+result passed. The run retained its complete 8,562,671,616-byte failed archive and completed
+owned cleanup. Its SHA-256 is
+`135b64d98c4469989964d1de8bff04ddca498eb821fbbf5a18367179a5927244`.
+These are individual observations on the same shared worker, not an established latency
+distribution or a claim that the cgroup changes caused the filesystem timing difference.
 
 The same Sysbox build passed the prepared-base capture/fork suite in
 `factorybox-runtime-1efcd5827a034a5c91911701d2612e1a`, with six tests, 35 subtests, zero skips

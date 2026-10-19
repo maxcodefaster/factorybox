@@ -1,0 +1,11 @@
+diff --git a/criu/cgroup-props.c b/criu/cgroup-props.c
+--- a/criu/cgroup-props.c
++++ b/criu/cgroup-props.c
+@@ -47,6 +47,7 @@ static const char *____criu_global_props_v2____[] = {
+ 	"cgroup.type",
+ 	"pids.max",
+ 	"cpu.max",
++	"memory.max",
+ };
+ // clang-format on
+ 

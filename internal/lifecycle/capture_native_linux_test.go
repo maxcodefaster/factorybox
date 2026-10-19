@@ -32,6 +32,7 @@ type captureActorState struct {
 	BallastBytes int    `json:"ballast_bytes,omitempty"`
 	NestedPID    int    `json:"nested_pid,omitempty"`
 	TimeMode     string `json:"time_mode,omitempty"`
+	CgroupLimit  string `json:"cgroup_limit,omitempty"`
 }
 
 func TestCaptureTimeNamespaceLauncher(t *testing.T) {
@@ -67,6 +68,7 @@ func TestCaptureActor(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ballast []byte
+	var cgroupLimit *os.File
 	if os.Getenv("FACTORYBOX_CAPTURE_BALLAST") == "1" {
 		var err error
 		ballast, err = unix.Mmap(-1, 0, 32<<20, unix.PROT_READ|unix.PROT_WRITE, unix.MAP_PRIVATE|unix.MAP_ANON)
@@ -176,6 +178,16 @@ func TestCaptureActor(t *testing.T) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			switch request {
+			case "open-cgroup-limit":
+				if cgroupLimit != nil {
+					t.Error("cgroup limit descriptor already open")
+					return
+				}
+				cgroupLimit, err = os.Open("/sys/fs/cgroup/docker/first/memory.max")
+				if err != nil {
+					t.Error(err)
+					return
+				}
 			case "make-shared-child":
 				if state.NestedPID != 0 {
 					t.Error("owned child already exists")
@@ -242,6 +254,15 @@ func TestCaptureActor(t *testing.T) {
 			default:
 				t.Error("unknown RAM actor request")
 				return
+			}
+			if cgroupLimit != nil {
+				var value [64]byte
+				n, err := cgroupLimit.ReadAt(value[:], 0)
+				if err != nil && err != io.EOF {
+					t.Error("read retained cgroup limit descriptor", err)
+					return
+				}
+				state.CgroupLimit = strings.TrimSpace(string(value[:n]))
 			}
 			if err := json.NewEncoder(client).Encode(state); err != nil {
 				t.Error(err)

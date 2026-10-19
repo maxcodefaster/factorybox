@@ -1,0 +1,119 @@
+diff --git a/criu/cgroup.c b/criu/cgroup.c
+--- a/criu/cgroup.c
++++ b/criu/cgroup.c
+@@ -1869,10 +1869,10 @@ static int restore_special_property(char *paux, size_t off, CgroupPropEntry *pr)
+ 	return restore_cgroup_prop(pr, paux, off, false, false);
+ }
+ 
+-static int restore_special_props(char *paux, size_t off, CgroupDirEntry *e)
++static int restore_special_props(char *paux, size_t off, CgroupDirEntry *e, bool type_only)
+ {
+ 	unsigned int j;
+ 
+ 	pr_info("Restore special props\n");
+ 	/* A threaded cgroup must have its type before delegation is enabled. */
+ 	for (j = 0; j < e->n_properties; j++) {
+@@ -1881,6 +1881,9 @@ static int restore_special_props(char *paux, size_t off, CgroupDirEntry *e)
+ 			return -1;
+ 	}
+ 
++	if (type_only)
++		return 0;
++
+ 	for (j = 0; j < e->n_properties; j++) {
+ 		CgroupPropEntry *prop = e->properties[j];
+ 
+@@ -1896,6 +1899,48 @@ static int restore_special_props(char *paux, size_t off, CgroupDirEntry *e)
+ 	return 0;
+ }
+ 
++static int prepare_delegation_dirs(char *path, size_t off, CgroupDirEntry **ents, size_t n_ents)
++{
++	size_t i;
++
++	for (i = 0; i < n_ents; i++) {
++		CgroupDirEntry *e = ents[i];
++		size_t off2 = off + sprintf(path + off, "/%s", e->dir_name);
++
++		if (restore_special_props(path, off2, e, false) < 0)
++			return -1;
++		if (prepare_delegation_dirs(path, off2, e->children, e->n_children) < 0)
++			return -1;
++	}
++
++	return 0;
++}
++
++int prepare_cgroup_delegation(void)
++{
++	char path[PATH_MAX];
++	unsigned int i;
++
++	if (!(root_ns_mask & CLONE_NEWCGROUP))
++		return 0;
++
++	/* The root task has entered its cgroup namespace and final leaf, but
++	 * is still waiting for CR_STATE_FORKING. Enable unified controllers
++	 * top-down now, before restoring controller-file descriptors. */
++	for (i = 0; i < n_controllers; i++) {
++		CgControllerEntry *c = controllers[i];
++		int off;
++
++		if (c->n_cnames != 1 || c->cnames[0][0])
++			continue;
++		off = ctrl_dir_and_opt(c, path, sizeof(path), NULL, 0);
++		if (prepare_delegation_dirs(path, off, c->dirs, c->n_dirs) < 0)
++			return -1;
++	}
++
++	return 0;
++}
++
+ static int prepare_dir_perms(int cg, char *path, CgroupPerms *perms)
+ {
+ 	int fd, ret = 0;
+@@ -1946,7 +1991,8 @@ static int prepare_cgroup_dirs(char **controllers, int n_controllers, char *paux, size_t off, CgroupDirEntry **ents,
+ 				return -1;
+ 
+ 			for (j = 0; j < n_controllers; j++) {
+-				if (restore_special_props(paux, off2, e) < 0) {
++				if (restore_special_props(paux, off2, e,
++						!controllers[0][0] && (root_ns_mask & CLONE_NEWCGROUP)) < 0) {
+ 					pr_err("Restoring special cpuset props failed!\n");
+ 					return -1;
+ 				}
+@@ -1973,7 +2019,8 @@ static int prepare_cgroup_dirs(char **controllers, int n_controllers, char *paux, size_t off, CgroupDirEntry **ents,
+ 			/* Full mode also prepares the root supplied by the runtime before
+ 			 * child directories and saved controller descriptors are restored. */
+ 			if (!(opts.manage_cgroups & (CG_MODE_NONE | CG_MODE_SOFT)) &&
+-			    restore_special_props(paux, off2, e) < 0)
++			    restore_special_props(paux, off2, e,
++					!controllers[0][0] && (root_ns_mask & CLONE_NEWCGROUP)) < 0)
+ 				return -1;
+ 		}
+ 
+diff --git a/criu/cr-restore.c b/criu/cr-restore.c
+--- a/criu/cr-restore.c
++++ b/criu/cr-restore.c
+@@ -2387,6 +2387,10 @@ static int restore_root_task(struct pstree_item *init)
+ 	if (ret)
+ 		goto out_kill;
+ 
++	ret = prepare_cgroup_delegation();
++	if (ret)
++		goto out_kill;
++
+ 	__restore_switch_stage(CR_STATE_FORKING);
+ 
+ skip_ns_bouncing:
+diff --git a/criu/include/cgroup.h b/criu/include/cgroup.h
+--- a/criu/include/cgroup.h
++++ b/criu/include/cgroup.h
+@@ -12,6 +12,7 @@ int dump_cgroups(void);
+ int restore_task_cgroup(struct pstree_item *);
+ int prepare_cgroup_namespace(struct pstree_item *);
+ int prepare_cgroup(void);
++int prepare_cgroup_delegation(void);
+ /* Restore things like cpu_limit in known cgroups. */
+ int prepare_cgroup_properties(void);
+ int restore_freezer_state(void);

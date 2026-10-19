@@ -92,12 +92,18 @@ for branch in first second; do
   /bin/sleep 300 </dev/null >/dev/null 2>&1 &
   printf '%s\n' "$!" > "/sys/fs/cgroup/docker/$branch/cgroup.procs"
 done
+printf '67108864\n' > /sys/fs/cgroup/docker/first/memory.max
+printf '100663296\n' > /sys/fs/cgroup/docker/second/memory.max
 `
 	_, setupErr := engine.command(ctx, control, "exec", source.Record.RuntimeID, "/bin/sh", "-ec", script)
 	closeErr := control.Close()
 	if setupErr != nil || closeErr != nil {
 		details, readErr := os.ReadFile(bundle + "/rootfs/state/delegation-setup.log")
 		t.Fatalf("prepare delegated cgroups: %v %v; workload log=%s (%v)", setupErr, closeErr, details, readErr)
+	}
+	before, err = readCaptureActor(source.Runtime.PID, "open-cgroup-limit")
+	if err != nil || before.CgroupLimit != "67108864" {
+		t.Fatal("open delegated controller descriptor", before.CgroupLimit, err)
 	}
 	snapshot := strings.Repeat("e", 32)
 	start := time.Now()
@@ -118,7 +124,9 @@ done
 	})
 	after, err := readCaptureActor(forked.Runtime.PID, "get")
 	if err != nil || !reflect.DeepEqual(before, after) {
-		t.Fatal("delegated restore lost private RAM", err)
+		t.Fatalf("delegated restore state mismatch: error=%v payload_equal=%t counter=%d/%d memory.max=%q/%q",
+			err, reflect.DeepEqual(before.Payload, after.Payload), before.Counter, after.Counter,
+			before.CgroupLimit, after.CgroupLimit)
 	}
 	for _, id := range []string{source.Record.RuntimeID, forked.Record.RuntimeID} {
 		for _, suffix := range []string{"", "/docker"} {
@@ -141,10 +149,22 @@ done
 			if err != nil || len(strings.Fields(string(data))) != 1 {
 				t.Fatal("delegated child membership changed", id, branch, string(data), err)
 			}
+			expected := "67108864"
+			if branch == "second" {
+				expected = "100663296"
+			}
+			data, err = os.ReadFile(cgroupRoot + "/" + id + "/docker/" + branch + "/memory.max")
+			if err != nil || strings.TrimSpace(string(data)) != expected {
+				t.Fatal("delegated memory limit changed", id, branch, string(data), err)
+			}
 		}
 	}
-	if _, err := readCaptureActor(forked.Runtime.PID, "advance"); err != nil {
+	if err := os.WriteFile(cgroupRoot+"/"+forked.Record.RuntimeID+"/docker/first/memory.max", []byte("134217728"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	mutated, err := readCaptureActor(forked.Runtime.PID, "advance")
+	if err != nil || mutated.CgroupLimit != "134217728" {
+		t.Fatal("restored descriptor does not address the fork's controller", mutated.CgroupLimit, err)
 	}
 	unchanged, err := readCaptureActor(source.Runtime.PID, "get")
 	if err != nil || !reflect.DeepEqual(before, unchanged) {
