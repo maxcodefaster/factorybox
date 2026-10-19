@@ -929,6 +929,9 @@ zero skips and owned cleanup. It re-clones each restored handle to read the actu
 `hidepid`/`subset` options, verifies mount flags and sharing, and checks independent RAM
 mutation. The tested CRIU build `factorybox-build-criu-8c8770c07fa744e5af567b55c100eb51`
 has SHA-256 `9228c3e8e5ea6d619d62efb91d5273a22739446bf616551dbc480204f9019019`.
+Fresh build `factorybox-build-criu-061cfbce00f94d30b2180e982d30dc91` reproduced that exact
+binary with the same pinned builder and source recipe. Both builds passed all 31 C scope
+checks; all 1,030 original CRIU test files remain unchanged.
 
 ```sh
 mise exec -- python3 tools/lifecycle_native.py --suite mountfd \
@@ -942,7 +945,7 @@ prepared in 67.105 seconds and reached the app in another 56.750 seconds. CRIU's
 reports a complete process-tree dump in 3.293 seconds. The public checkpoint still failed:
 the capture worker reached its 60-second deadline after CRIU, with the 1.63-GB base-layer copy
 present but no upper-layer copy yet. No complete checkpoint, fork or resume was published.
-Its stopped-volume archive exceeded 600 seconds, so the original failed volume remains
+Its stopped-volume archive exceeded 600 seconds, so the original failed volume was
 retained for reconciliation. The partial archive is not a completed cleanup receipt.
 Reconciliation `e204abb2881d4268a19ab61afbd264b7` later completed the
 4,626,317,312-byte archive and owned cleanup. Its SHA-256 is
@@ -959,6 +962,20 @@ present. Read-only inspection found 41,379 entries and 1.529 GB of unique file c
 base, plus 25,222 entries and 1.174 GB in the writable layer. There was no oversized sparse
 file explaining the delay. The metadata benchmark improvement has not yet qualified this full
 filesystem workload or produced a developer fork/resume result.
+The run completed its owned cleanup after retaining a 4,634,705,920-byte archive with SHA-256
+`e8067441df6d1bff34f587e8ba316f5d8cb80b271a0c4a73a0da34939ceaebf5`.
+
+A private capture-only phase probe in
+`factorybox-devx-lifecycle-d71123b3a09549a79877d3f410d0a529` narrowed the deadline to the
+first base-layer source digest, before cloning started. The CLI now reports the worker's
+context deadline explicitly rather than only `signal: killed`. Its 61.712-second command
+used 29.099 CPU seconds without quota throttling. Whole-fixture counters recorded about
+1.16 GB of additional disk reads, swap activity and page reclamation; those counters are
+not isolated to the digest. These observations do not establish the cause of the slow scan.
+The temporary phase probes were removed. Full developer checkpoint/fork qualification remains
+blocked on that large base scan.
+The failed run completed owned cleanup after retaining a 3,036,676,096-byte archive with SHA-256
+`048f4be076cbadc71bdab3cd4f1328fd518bc7fa0afa14d142aeae8493227c7f`.
 
 Run the positive nested-time lifecycle gate:
 

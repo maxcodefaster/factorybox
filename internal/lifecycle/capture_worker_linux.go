@@ -213,6 +213,9 @@ func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File
 	command.Stdout, command.Stderr = &stdout, &stderr
 	command.WaitDelay = 2 * time.Second
 	if err := command.Run(); err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("retained source capture worker context ended: %w: %s", ctx.Err(), stderr.String())
+		}
 		return fmt.Errorf("retained source capture: %w: %s", err, stderr.String())
 	}
 	if err := guard.captureOperationReturned(); err != nil {
