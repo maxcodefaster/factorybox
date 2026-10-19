@@ -204,6 +204,27 @@ FACTORYBOX_NATIVE_RETAINED_CAPTURE=1 /sysboxcapture.test \
   -test.run='^$' -test.bench='^BenchmarkFilesystemCloneNative$' -test.benchtime=1x
 ```
 
+The large developer-base digest has a separate diagnostic benchmark. Its read-only input replays
+the archived base's content and tar metadata: 41,384 entries, 1,538,002,936 logical bytes and
+1,528,828,345 unique content bytes. This replay does not qualify original xattrs or running
+developer processes. The initial scan reached its 60-second deadline after 38,675 entries.
+Its heap profile attributed about 1,035 MiB of allocation to `io.Copy` buffers.
+
+The scanner now reuses one 32-KiB buffer for the complete tree. The allocation regression
+rejected the old scanner's 1,210,174,776 allocated bytes and accepted the corrected scanner's
+44,715,232 bytes, with identical entry counts and digest
+`ed1df47804576af70723ff76cf36c34b07bcd73d96599e58adbcdc3a0f6bd5ec`.
+The corrected scan took 46.078 seconds in that repeat. Other observations ranged from about
+18 seconds to the unchanged deadline, including a failed corrected repeat. No reliable scan
+latency improvement is established. A reused 1-MiB buffer was also tested; it did not establish
+a speed advantage over the smaller buffer and is not the selected implementation.
+The regression artifacts are `factorybox-developer-digest-2fa20c11e1304220a610fb13a045e2c7`
+and `factorybox-developer-digest-0d988b190c50488fa4e080cdcf4922e1`.
+
+The same buffer change passed the native capture/fork gate in
+`factorybox-runtime-d6a8ac7e7eb1487e9daa3b9aefa61abb`, with five top-level tests,
+23 subtests, no skips and owned cleanup. This does not replace the full developer lifecycle.
+
 The guarded capture also exports Sysbox's virtual proc/sys state at that same frozen point.
 A root-only Unix RPC returns a bounded, versioned snapshot of its cached virtual values,
 creation time, UID/GID mappings and proc protections. It includes no PID, namespace or FUSE-server

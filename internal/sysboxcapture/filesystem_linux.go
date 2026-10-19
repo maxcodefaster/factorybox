@@ -390,6 +390,9 @@ func fingerprintTree(ctx context.Context, root, independentFrom *os.File, syncFi
 	encoder := json.NewEncoder(hash)
 	type hardlinkContent struct{ Path, SHA256 string }
 	links := map[[2]uint64]hardlinkContent{}
+	// The scan is sequential. Reuse one buffer for the entire tree instead
+	// of allocating io.Copy's default buffer for every regular file.
+	buffer := make([]byte, 32<<10)
 	var rootStat unix.Statx_t
 	if err := unix.Statx(int(root.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &rootStat); err != nil {
 		return result, err
@@ -494,7 +497,7 @@ func fingerprintTree(ctx context.Context, root, independentFrom *os.File, syncFi
 				}
 				file := os.NewFile(uintptr(fd), name)
 				payload := sha256.New()
-				_, copyErr := io.Copy(payload, contextFileReader{ctx, file})
+				_, copyErr := io.CopyBuffer(payload, contextFileReader{ctx, file}, buffer)
 				closeErr := file.Close()
 				if err := errors.Join(copyErr, closeErr); err != nil {
 					return err

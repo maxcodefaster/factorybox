@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -57,6 +58,104 @@ func BenchmarkFilesystemCloneNative(b *testing.B) {
 		}
 		b.ReportMetric(float64(tree.Entries), "entries/op")
 		b.ReportMetric(float64(tree.HashedBytes), "hashed-bytes/op")
+	}
+}
+
+func BenchmarkDeveloperBaseDigestNative(b *testing.B) {
+	if os.Getenv("FACTORYBOX_NATIVE_DEVELOPER_DIGEST") != "1" {
+		b.Skip("requires the owned archived developer-base fixture")
+	}
+	var expected struct {
+		Entries     int   `json:"entries"`
+		FileBytes   int64 `json:"file_bytes"`
+		HashedBytes int64 `json:"hashed_bytes"`
+	}
+	data, err := os.ReadFile("/input.json")
+	if err != nil || json.Unmarshal(data, &expected) != nil ||
+		expected.Entries < 40000 || expected.HashedBytes < 1<<30 {
+		b.Fatal("developer base does not have its pinned complete dataset", err)
+	}
+	root, err := openDirectory("/var/lib/sysbox/lower")
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer root.Close()
+	cold := os.Getenv("FACTORYBOX_NATIVE_DEVELOPER_DIGEST_COLD") == "1"
+	if cold {
+		if err := filepath.WalkDir("/var/lib/sysbox/lower", func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if !entry.Type().IsRegular() {
+				return nil
+			}
+			fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_NOATIME|unix.O_CLOEXEC, 0)
+			if err != nil {
+				return err
+			}
+			adviceErr := unix.Fadvise(fd, 0, 0, unix.FADV_DONTNEED)
+			closeErr := unix.Close(fd)
+			if adviceErr != nil {
+				return adviceErr
+			}
+			return closeErr
+		}); err != nil {
+			b.Fatal("evict only the owned archived dataset's clean file pages", err)
+		}
+	}
+	b.SetBytes(expected.HashedBytes)
+	b.ResetTimer()
+	for range b.N {
+		var before, after unix.Rusage
+		var memoryBefore, memoryAfter runtime.MemStats
+		if err := unix.Getrusage(unix.RUSAGE_SELF, &before); err != nil {
+			b.Fatal(err)
+		}
+		runtime.ReadMemStats(&memoryBefore)
+		started := time.Now()
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		tree, scanErr := fingerprintTree(ctx, root, nil, false)
+		cancel()
+		elapsed := time.Since(started)
+		runtime.ReadMemStats(&memoryAfter)
+		allocated := memoryAfter.TotalAlloc - memoryBefore.TotalAlloc
+		if err := unix.Getrusage(unix.RUSAGE_SELF, &after); err != nil {
+			b.Fatal(err)
+		}
+		cpu := func(value unix.Timeval) float64 {
+			return float64(value.Sec) + float64(value.Usec)/1e6
+		}
+		observation := map[string]any{
+			"seconds": elapsed.Seconds(), "tree": tree, "complete": scanErr == nil,
+			"cold_file_data":  cold,
+			"allocated_bytes": allocated,
+			"user_seconds":    cpu(after.Utime) - cpu(before.Utime),
+			"system_seconds":  cpu(after.Stime) - cpu(before.Stime),
+			"major_faults":    after.Majflt - before.Majflt,
+		}
+		if scanErr != nil {
+			observation["error"] = scanErr.Error()
+		}
+		encoded, err := json.MarshalIndent(observation, "", "  ")
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := os.WriteFile("/output/digest.json", encoded, 0600); err != nil {
+			b.Fatal(err)
+		}
+		b.Logf("developer base digest=%s entries=%d hashed=%d complete=%t",
+			elapsed, tree.Entries, tree.HashedBytes, scanErr == nil)
+		if scanErr != nil {
+			b.Fatal(scanErr)
+		}
+		if tree.Entries != expected.Entries || tree.FileBytes != expected.FileBytes ||
+			tree.HashedBytes != expected.HashedBytes {
+			b.Fatal("developer base digest omitted or duplicated archived data", tree)
+		}
+		if allocated >= 128<<20 {
+			b.Fatal("developer base scan exceeded its 128-MiB allocation regression budget", allocated)
+		}
+		b.ReportMetric(float64(tree.Entries), "entries/op")
 	}
 }
 
