@@ -1,0 +1,12 @@
+{
+  "name": "Factorybox Factory consumer",
+  "dockerComposeFile": "compose.yaml",
+  "service": "workspace",
+  "runServices": ["workspace", "dependency"],
+  "workspaceFolder": "/workspace",
+  "remoteUser": "node",
+  "updateRemoteUserUID": false,
+  "overrideCommand": true,
+  "shutdownAction": "stopCompose",
+  "postCreateCommand": "node -e \"require('node:fs').writeFileSync('.devcontainer-hook-ran', 'ready\\n')\""
+}

@@ -43,7 +43,7 @@ Install mise, then use the pinned Go and Python tools:
 
 ```sh
 mise install
-mise exec -- go test ./...
+mise exec -- go test ./cmd/... ./internal/... ./tests/...
 mise exec -- python3 -m unittest discover -s tools -p 'test_*.py'
 mise exec -- go build -trimpath -buildvcs=false -o dist/factorybox ./cmd/factorybox
 ./dist/factorybox version
@@ -53,6 +53,9 @@ mise exec -- go build -trimpath -buildvcs=false -o dist/factorybox ./cmd/factory
 `doctor` prints JSON and returns nonzero on the Mac. The runtime executes on Linux. Matching the
 reference platform alone does not qualify a node: filesystem, userfaultfd, ownership, leases and
 runtime installation need their own checks.
+The Go package patterns select maintained commands, libraries and fixtures. Generated evidence
+can contain copied upstream Go sources under `artifacts`; those are not packages in this module.
+The retained reference modules have their own gates below.
 
 ## Local administrative lifecycle
 
@@ -753,7 +756,52 @@ worker restart are outside the first release. Kubernetes deployment needs approp
 and runtime installation; a container image alone does not make arbitrary managed clusters supported.
 
 `examples/minimal/.devcontainer/devcontainer.json` is an ordinary digest-pinned Linux workspace.
-It has no IDE or agent dependency and requires no access to a node Docker socket. A Factory
-composition with separate Theia, the Factory Runtime Connector and optional OpenCode is still
-being extracted. Compositions use ordinary Dev Container, Compose and Kubernetes files.
-Production Factory integration and public publication are separate steps after qualification.
+It has no IDE or agent dependency and requires no access to a node Docker socket.
+`examples/factory` adds an ordinary two-service Compose Dev Container and the existing Factory
+Connector V1 assignment format. Both services use the same exact native Node image. The
+`node` remote user keeps UID 1000 with `updateRemoteUserUID: false`; the example prepares checkout
+ownership explicitly instead of letting the CLI rebuild the image to match the root daemon user.
+Its app reports an instance nonce and counter held only in RAM, reads the workspace marker and
+post-create hook file, and requests its dependency through Compose DNS.
+
+Prepare existing Factory consumer images by exact role digests, then export the runtime rootfs:
+
+```sh
+mise exec -- python3 tools/devx_inputs.py \
+  --factory-artifacts /absolute/path/to/runtime-artifacts.json --pull-missing
+mise exec -- python3 tools/devx_project_images.py
+mise exec -- python3 tools/devx_compose.py \
+  --consumer-inputs factorybox-devx-inputs-EXACT_RUN_ID \
+  --project-images factorybox-devx-project-images-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+```
+
+The artifact JSON supplies `build-runtime-host` and `developer-ide` digest references. Preparation
+checks Linux ARM64 and actual Docker repository digests, records versions, and exports a
+never-started runtime container without anonymous volumes. Digest comparison accepts Docker's
+familiar `node@sha256:...` spelling for `docker.io/library/node:TAG@sha256:...`; repository and digest
+must still match. The observed existing runtime contains Docker 29.9.0, Compose 5.6.0,
+Dev Containers CLI 0.89.0, Node 24.21.0, the real Factory Connector, OpenCode server 2.0.27
+and Bun 1.4.3.
+
+The component gate passed with both services, the real CLI's `read-configuration`, `up` and `exec`,
+the post-create hook, Compose DNS/HTTP and the app's initial RAM state. It uses a separate
+3-CPU/3-GiB container with private PID/network/cgroup namespaces and its own Docker socket and
+data volumes. A test-only PID 1 helper delegates controllers within its bounded private cgroup
+and drops global module/raw-I/O/boot/time/syslog capabilities before starting the image's init.
+The native script checks those capabilities after exec and compares fixed global kernel
+sentinels before and after. It verifies frozen inputs and archives failed volumes before exact
+owned cleanup.
+
+An initial offline load exposed that Docker's saved OCI archive did not restore `RepoDigests`.
+The passing fixture instead pulls through a loopback-only, read-only test mirror that verifies
+every retained blob checksum and serves the original manifest bytes from that archive. Its
+outer network is disabled. The ordinary example and Connector retain their exact digest pins;
+no tag substitution or digest-check bypass is used.
+
+This passing component gate does not qualify Factorybox capture/fork/resume of the developer
+stack, an active Connector control connection, separate Theia or OpenCode inference. The
+assignment's endpoint and example identities require explicit test or installation wiring.
+Separate Theia and optional OpenCode composition remain in progress. IDEs and agent harnesses
+remain outside the core lifecycle. Production Factory integration and public publication are
+separate steps after qualification.

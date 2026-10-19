@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "runtimeAttemptId": "factorybox-example",
+  "generation": 1,
+  "workspaceFolder": "/workspace/project",
+  "remoteWorkspaceFolder": "/workspace",
+  "repositoryUrl": "file:///opt/factorybox/example.git",
+  "repositoryIdentity": "factorybox-example",
+  "preserveWorkspace": true,
+  "revision": "HEAD",
+  "devcontainerPath": ".devcontainer/devcontainer.json",
+  "composeProjectName": "factorybox-example",
+  "controlUrl": "ws://172.17.0.1:4700/control",
+  "channels": [
+    {"name": "app", "kind": "app", "target": "http://127.0.0.1:3000", "healthPath": "/health"},
+    {"name": "ide", "kind": "ide"}
+  ],
+  "processes": [
+    {"name": "app", "command": ["node", "/workspace/server.mjs"]}
+  ]
+}
