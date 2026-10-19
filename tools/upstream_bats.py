@@ -2,6 +2,7 @@
 """Run pinned Sysbox Bats assertions in an owned private Linux fixture."""
 import argparse
 import datetime
+import functools
 import hashlib
 import json
 import pathlib
@@ -97,6 +98,24 @@ def archive_failure(archive, name, owner, volumes, image, result, *, timeout=60)
                            timeout=timeout)
 
 
+def archive_file_limit(path, reserve_bytes=4 << 30):
+    import resource
+    budget = shutil.disk_usage(path).free - reserve_bytes
+    hard = resource.getrlimit(resource.RLIMIT_FSIZE)[1]
+    if hard != resource.RLIM_INFINITY:
+        budget = min(budget, hard)
+    if budget <= 0:
+        raise ValueError("archive would consume the host's reserved free disk space")
+    return budget
+
+
+def limit_archive_process(maximum):
+    import resource
+    # Only the child Docker client's output is capped. The parent's limits
+    # and the stopped source volume are unchanged.
+    resource.setrlimit(resource.RLIMIT_FSIZE, (maximum, maximum))
+
+
 def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, timeout=60):
     result["failed_volume_archives"] = {}
     for index, volume in enumerate(volumes):
@@ -124,12 +143,17 @@ def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, tim
         ]
         command += ["-C", "/input", "-cpf", "-", "."]
         try:
+            maximum = archive_file_limit(archive)
+            result.setdefault("archive_file_limits", {})[volume] = maximum
             # Keep the binary stream off the Mac bind share and Docker logs.
             # Raw attach streaming completed the multi-gigabyte fixture after
             # the bind-share and compressed attempts timed out.
             with (archive / (filename + ".log")).open("x") as log, \
                     (archive / filename).open("xb") as payload:
-                subprocess.run(command, stdout=payload, stderr=log, check=True, timeout=timeout)
+                subprocess.run(command, stdout=payload, stderr=log, check=True, timeout=timeout,
+                               preexec_fn=functools.partial(limit_archive_process, maximum))
+            if (archive / filename).stat().st_size >= maximum:
+                raise ValueError("archive reached its host free-space cap; source must be retained")
             result["failed_volume_archives"][volume] = {
                 "file": filename, "sha256": file_sha(archive / filename),
                 "bytes": (archive / filename).stat().st_size}

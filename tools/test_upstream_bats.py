@@ -1,5 +1,9 @@
 import json
 import pathlib
+import functools
+import resource
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -57,10 +61,13 @@ class BatsEvidenceTests(unittest.TestCase):
                 self.assertEqual(command[-2:], ["-", "."])
                 self.assertEqual(kwargs["stdout"].name, str(archive / "failed-volume-0.tar"))
                 self.assertEqual(kwargs["timeout"], 240)
+                self.assertIs(kwargs["preexec_fn"].func, upstream_bats.limit_archive_process)
+                self.assertEqual(kwargs["preexec_fn"].args, (1 << 30,))
                 (archive / "failed-volume-0.tar").write_bytes(b"complete retained payload")
             result = {}
             with mock.patch.object(upstream_bats.reference, "docker", side_effect=docker), \
                     mock.patch.object(upstream_bats.reference, "owned_delete") as remove, \
+                    mock.patch.object(upstream_bats, "archive_file_limit", return_value=1 << 30), \
                     mock.patch.object(upstream_bats.subprocess, "run", side_effect=save):
                 upstream_bats.archive_stopped_volumes(
                     archive, name, owner, [volume], "image", result, timeout=240)
@@ -68,6 +75,60 @@ class BatsEvidenceTests(unittest.TestCase):
                 "file": "failed-volume-0.tar",
                 "sha256": upstream_bats.file_sha(archive / "failed-volume-0.tar"),
                 "bytes": len(b"complete retained payload")})
+            remove.assert_called_once_with("container", name + "-archive-0", owner)
+
+    def test_archive_budget_preserves_host_free_space_and_hard_process_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(upstream_bats.shutil, "disk_usage") as usage, \
+                    mock.patch.object(resource, "getrlimit",
+                                      return_value=(resource.RLIM_INFINITY, resource.RLIM_INFINITY)):
+                usage.return_value.free = (4 << 30) + 8192
+                self.assertEqual(upstream_bats.archive_file_limit(directory), 8192)
+                usage.return_value.free = 4 << 30
+                with self.assertRaisesRegex(ValueError, "reserved free disk"):
+                    upstream_bats.archive_file_limit(directory)
+            with mock.patch.object(upstream_bats.shutil, "disk_usage") as usage, \
+                    mock.patch.object(resource, "getrlimit", return_value=(1024, 2048)):
+                usage.return_value.free = 8 << 30
+                self.assertEqual(upstream_bats.archive_file_limit(directory), 2048)
+
+    def test_real_child_cannot_write_beyond_archive_cap_or_change_parent_limits(self):
+        before = resource.getrlimit(resource.RLIMIT_FSIZE)
+        with tempfile.TemporaryDirectory() as directory:
+            payload = pathlib.Path(directory) / "bounded-output"
+            with payload.open("xb") as output:
+                child = subprocess.run(
+                    [sys.executable, "-B", "-S", "-c",
+                     "import os; os.write(1,b'x'*8192); os.write(1,b'x'*8192)"],
+                    stdout=output, stderr=subprocess.DEVNULL,
+                    preexec_fn=functools.partial(upstream_bats.limit_archive_process, 1024),
+                    timeout=10)
+            self.assertNotEqual(child.returncode, 0)
+            self.assertEqual(payload.stat().st_size, 1024)
+        self.assertEqual(resource.getrlimit(resource.RLIMIT_FSIZE), before)
+
+    def test_zero_exit_at_archive_cap_cannot_publish_a_cleanup_receipt(self):
+        owner, name, volume = "a" * 32, "exact-fixture", "exact-volume"
+        def docker(args):
+            if args[:2] == ["volume", "inspect"]:
+                return json.dumps([{"Labels": {"com.factorybox.run": owner}}])
+            if args[:2] == ["container", "ls"]:
+                return ""
+            raise AssertionError("unexpected Docker call")
+        with tempfile.TemporaryDirectory() as directory:
+            archive = pathlib.Path(directory)
+            def truncated(command, **kwargs):
+                kwargs["stdout"].write(b"x" * 1024)
+                kwargs["stdout"].flush()
+            result = {}
+            with mock.patch.object(upstream_bats.reference, "docker", side_effect=docker), \
+                    mock.patch.object(upstream_bats.reference, "owned_delete") as remove, \
+                    mock.patch.object(upstream_bats, "archive_file_limit", return_value=1024), \
+                    mock.patch.object(upstream_bats.subprocess, "run", side_effect=truncated):
+                with self.assertRaisesRegex(ValueError, "source must be retained"):
+                    upstream_bats.archive_stopped_volumes(
+                        archive, name, owner, [volume], "image", result)
+            self.assertEqual(result["failed_volume_archives"], {})
             remove.assert_called_once_with("container", name + "-archive-0", owner)
 
     def test_zero_exit_cannot_hide_a_missing_or_failed_assertion(self):
