@@ -34,7 +34,7 @@ func runLifecycle(args []string) error {
 		return err
 	}
 	if flags.NArg() < 1 {
-		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA start|state|checkpoint|fork|pause|resume|delete")
+		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA prepare-base|start|state|checkpoint|fork|pause|resume|delete")
 	}
 	command, remaining := flags.Arg(0), flags.Args()[1:]
 	bundle := ""
@@ -60,6 +60,16 @@ func runLifecycle(args []string) error {
 		if snapshot == "" {
 			return fmt.Errorf("%s requires --snapshot-id", command)
 		}
+	} else if command == "prepare-base" {
+		base := flag.NewFlagSet(command, flag.ContinueOnError)
+		base.StringVar(&source, "source", "", "complete administrator-prepared base directory")
+		if err := base.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = base.Args()
+		if source == "" {
+			return fmt.Errorf("prepare-base requires --source")
+		}
 	} else if command == "fork" {
 		fork := flag.NewFlagSet("fork", flag.ContinueOnError)
 		fork.StringVar(&source, "source", "", "sandbox that owns the published checkpoint")
@@ -84,6 +94,13 @@ func runLifecycle(args []string) error {
 	defer engine.Close()
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if command == "prepare-base" {
+		result, err := engine.PrepareBase(ctx, remaining[0], source)
+		if result.ID != "" {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
 	if command == "checkpoint" {
 		result, err := engine.Checkpoint(ctx, remaining[0], snapshot)
 		if result.ID != "" {

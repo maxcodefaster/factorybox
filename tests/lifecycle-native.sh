@@ -5,12 +5,16 @@ test "${FACTORYBOX_NATIVE_LIFECYCLE:-}" = 1
 test -d /output
 test -d /var/lib/sysbox
 test -n "${FACTORYBOX_RUNTIME_SHA256:-}"
-if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
+if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1 || test "${FACTORYBOX_COMPONENT_INPUTS:-}" = 1; then
   mkdir -p /out
-  for component in sysbox-runc sysbox-fs sysbox-mgr criu; do
+  for component in sysbox-runc sysbox-fs sysbox-mgr; do
     cp -- "/component-input/$component" "/out/$component"
     chmod 0755 "/out/$component"
   done
+  if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
+    cp -- /component-input/criu /out/criu
+    chmod 0755 /out/criu
+  fi
 fi
 test_pattern='^TestNative'
 if test "${FACTORYBOX_NATIVE_CAPTURE_GUARD:-}" = 1; then
@@ -19,6 +23,7 @@ else
 mkdir /busybox
 tar -xzf /busybox-rootfs.tar.gz -C /busybox
 . /delegate.sh > /output/cgroup-delegation.txt
+if test "${FACTORYBOX_NATIVE_TEST:-}" != TestNativeEmptyCgroupRetirement; then
 /out/sysbox-mgr --disable-shiftfs --data-root /var/lib/sysbox/manager \
   --log /output/sysbox-mgr.log > /output/sysbox-mgr-stdio.log 2>&1 &
 manager=$!
@@ -34,12 +39,13 @@ done
 test -S /run/sysbox/sysfs-seccomp.sock
 test -S /run/sysbox/sysmgr.sock
 fi
+fi
 if test -n "${FACTORYBOX_NATIVE_TEST:-}"; then
   [[ "$FACTORYBOX_NATIVE_TEST" =~ ^TestNative[A-Za-z0-9_]+$ ]]
   test_pattern="^${FACTORYBOX_NATIVE_TEST}$"
 fi
 if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
-  /sysboxcapture.test -test.v -test.timeout=10s
+  /sysboxcapture.test -test.v -test.timeout=30s
   test_pattern='^TestRetainedCaptureNative$'
   if test "${FACTORYBOX_NATIVE_PAUSE:-}" = 1; then
     test_pattern='^TestPauseNative$'

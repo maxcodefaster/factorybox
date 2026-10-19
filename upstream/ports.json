@@ -34,7 +34,8 @@
       "Promote complete filesystem/image copying and fresh Sysbox restore into an application-independent public fork operation.",
       "Persist immutable fork identity and pinned checkpoint/recipe before preparing backing or attempting runtime creation.",
       "Reconcile completed restore receipts against original process birth and kernel identities; refuse ambiguous preparation or restore replay.",
-      "Verify and unmount only the fork-owned overlay, retaining source, backing and operation evidence."
+      "Verify and unmount only the fork-owned overlay, retaining source, backing and operation evidence.",
+      "Verify published RAM/metadata once per exclusive fork call and all filesystem payloads at materialization; a later retry must verify again rather than trust a persisted validation marker."
     ],
     "sources": {
       "tests/reference/driver/cmd/lab/criu_sysbox_copy.go": "7b7c0bcc68d90aad3899bacbb325f96b1d724f03fc6c829d51f0cd2c58b54d01",
@@ -67,14 +68,30 @@
     "changes": [
       "Port the proved GNU cp archive/reflink path for physical overlay backing directories and private Sysbox-managed volumes.",
       "Require the actual single-lower overlay layout, explicit manager root and saved ID-mapped Sysbox mount identities; reject unowned external binds.",
-      "Capture both lower and upper independently rather than assuming the administrator-provided lower is already an immutable template.",
+      "Capture caller-provided lower and upper independently unless the source explicitly uses a completely verified private Factorybox base.",
       "Add complete content, mode, UID/GID, mtime, link, device and xattr digests, foreign-mount rejection and independent-inode checks.",
       "Hash hardlinked payloads once per inode inside each frozen-tree scan while retaining every path and link relationship.",
-      "Materialize a new complete filesystem from verified saved trees, with fresh writable inodes, no live source dependency and no replacement of existing destinations."
+      "Materialize a new complete filesystem from verified saved trees, with fresh writable inodes, no live source dependency and no replacement of existing destinations.",
+      "Reuse only the imported worker-owned immutable lower through checked read-only aliases; keep complete content/metadata verification for every writable tree.",
+      "Reuse a source digest freshly verified inside materialization for complete target comparison instead of scanning the same source again; reject changed content even when size and mtime are preserved."
     ],
     "sources": {
       "tests/reference/driver/cmd/lab/criu_sysbox_copy.go": "7b7c0bcc68d90aad3899bacbb325f96b1d724f03fc6c829d51f0cd2c58b54d01",
       "upstream/overlays/sysbox-runc/experiment_copy.go": "812aab6fc70538481cb7e1ce3c04a5eb293170f003e531eba5c77ae75244ada6"
+    }
+  },
+  "internal/sysboxcapture/base_linux.go": {
+    "changes": [
+      "Extract the reference's prepared read-only base and shared immutable lower behavior into an application-independent filesystem adapter.",
+      "Replace the fixture's caller-pinned provenance with an actual complete source/copy digest and inode-independent import into private root-owned Factorybox storage.",
+      "Retain the canonical read-only base mount, verify original inode/metadata/mount identity and reject writable aliases, foreign successors and descendant mounts.",
+      "Persist each alias's uncovered mountpoint identity for exact unmount and lost-outcome reconciliation; retain the base with all checkpoints which reference it.",
+      "Port admission, metadata, xattr, hardlink, source-deletion and mutation-independence tests without modifying the sealed reference assertions."
+    ],
+    "sources": {
+      "tests/reference/driver/cmd/lab/rootfs_cache_linux.go": "82534ec1d03741cd87cb0881a82c96eaa8a26a082f005f8691b5e6a22ef56c2f",
+      "tests/reference/driver/cmd/lab/rootfs_cache_linux_test.go": "7b89bac44722fe4530838f34fd8ca14fe55dbbc237146c33cd789b7746e3c803",
+      "tests/reference/driver/cmd/lab/criu_sysbox_copy.go": "7b7c0bcc68d90aad3899bacbb325f96b1d724f03fc6c829d51f0cd2c58b54d01"
     }
   },
   "internal/sysboxcapture/capture_linux.go": {
@@ -138,7 +155,10 @@
     "changes": [
       "Port the reference's cgroup2 device, inode and mount-identity check to the local lifecycle controller.",
       "Generate cgroup paths from persisted runtime IDs and save their kernel identity before starting Sysbox.",
-      "Retirement here only removes the exact empty directory. The complete replay-tree cleanup and its original regressions remain in the sealed reference."
+      "Extract bounded empty-tree retirement from the reference: validate the complete original cgroup2 subtree before removing any node in postorder.",
+      "Use pinned parent/child descriptors and compare original inode/mount identities before descriptor-relative removal; reject foreign mounts and populated descendants without signaling processes.",
+      "After a confirmed runtime deletion, allow up to two seconds for original tasks or asynchronous kernel cgroup release to finish; revalidate the original objects on every observation.",
+      "Add native regressions for nested empty descendants, complete-tree foreign-mount refusal and populated-child preservation without changing the sealed reference."
     ],
     "sources": {
       "tests/reference/driver/cmd/lab/epoch_replay_cgroup_linux.go": "67e90debe549da5aa46f22cd32f4c542aad3e3ede37158e2c723755d9f1ea86c"

@@ -99,6 +99,7 @@ func captureWorkerServe() (resultErr error) {
 		RuntimeCreated: request.Guard.Source.RuntimeCreated, PID: request.Guard.PID,
 		Generation: filepath.Dir(request.Guard.Evidence), Criu: request.Criu,
 		Bundle: request.Guard.Source.InputBundle, ManagerRoot: request.ManagerRoot,
+		Base: request.Guard.Source.Base,
 	})
 	if err != nil {
 		return err

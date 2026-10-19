@@ -304,6 +304,13 @@ func (e *Engine) readCheckpointJSON(path string, value any) error {
 }
 
 func (e *Engine) verifyCheckpoint(ctx context.Context, record Record, id, relative string, result Checkpoint) error {
+	if err := e.verifyCheckpointMetadata(ctx, record, id, relative, result); err != nil {
+		return err
+	}
+	return sysboxcapture.VerifyFilesystemSnapshot(ctx, filepath.Join(e.config.Root, relative), result.Filesystem)
+}
+
+func (e *Engine) verifyCheckpointMetadata(ctx context.Context, record Record, id, relative string, result Checkpoint) error {
 	if result.Version != 1 || result.ID != id || result.SourceID != record.ID || result.RuntimeID != record.RuntimeID ||
 		result.Owner != record.Owner || result.BootID != record.BootID || result.ConfigSHA256 != record.ConfigSHA256 ||
 		result.RuntimeSHA256 != record.RuntimeSHA256 || result.CriuSHA256 != e.config.CriuSHA256 ||
@@ -338,7 +345,33 @@ func (e *Engine) verifyCheckpoint(ctx context.Context, record Record, id, relati
 	if intent.StopSource != result.SourceStopped {
 		return fmt.Errorf("checkpoint source-stop mode differs from its persisted intent")
 	}
-	return sysboxcapture.VerifyFilesystemSnapshot(ctx, filepath.Join(e.config.Root, relative), result.Filesystem)
+	return nil
+}
+
+// A fork verifies filesystem payloads once at the materialization boundary,
+// before creating backing. Its intent still binds the complete published RAM,
+// filesystem manifest and source-release outcome before any external create.
+func (e *Engine) publishedCheckpointMetadata(ctx context.Context, record Record, id, relative string) (Checkpoint, error) {
+	if err := privateDirectory(filepath.Join(e.config.Root, relative)); err != nil {
+		return Checkpoint{}, err
+	}
+	ready, err := e.readCheckpoint(relative, "checkpoint.json")
+	if err != nil {
+		return ready, err
+	}
+	if ready.ReleasedAt == "" {
+		return ready, fmt.Errorf("ready checkpoint has no confirmed source release")
+	}
+	captured, err := e.readCheckpoint(relative, "capture-result.json")
+	if err != nil {
+		return ready, err
+	}
+	unreleased := ready
+	unreleased.ReleasedAt = ""
+	if !reflect.DeepEqual(unreleased, captured) {
+		return ready, fmt.Errorf("ready checkpoint differs from its completed capture")
+	}
+	return ready, e.verifyCheckpointMetadata(ctx, record, id, relative, ready)
 }
 
 func (e *Engine) reconcileCheckpoint(ctx context.Context, record Record, id, relative string) (Checkpoint, error) {

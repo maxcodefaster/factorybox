@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"factorybox/internal/lifecycle"
+	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
 
@@ -72,7 +73,11 @@ func (fixture *fixture) resources() map[string]string {
 func (fixture *fixture) command(args ...string) []byte {
 	fixture.t.Helper()
 	fixture.index++
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	timeout := 90 * time.Second
+	if len(args) != 0 && args[0] == "prepare-base" {
+		timeout = 180 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	prefix := []string{
 		"--root", fixture.root, "--runtime", "/out/sysbox-runc",
@@ -232,6 +237,27 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 		t.Skip("requires its bounded native Sysbox developer fixture")
 	}
 	bundle := "/var/lib/sysbox/devx/bundle"
+	fixture := &fixture{t: t, root: "/var/lib/sysbox/devx/controller"}
+	preparationStart := time.Now()
+	var base lifecycle.Base
+	if err := json.Unmarshal(fixture.command("prepare-base", "--source", bundle+"/lower", "developer-base"), &base); err != nil {
+		t.Fatal(err)
+	}
+	if base.Tree.Immutable == nil || base.PreparedAt == "" {
+		t.Fatal("public base preparation omitted its complete verified backing")
+	}
+	if err := os.Rename(bundle+"/lower", bundle+"/lower-input"); err != nil {
+		t.Fatal(err)
+	}
+	alias, err := sysboxcapture.BindFilesystemBase(base.Tree, bundle+"/lower")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := sysboxcapture.RetireImmutableAlias(bundle+"/lower", alias); err != nil {
+			t.Error("retire only the developer fixture's original base alias", err)
+		}
+	})
 	for _, child := range []string{"rootfs", "upper", "work"} {
 		if err := os.Mkdir(filepath.Join(bundle, child), 0755); err != nil {
 			t.Fatal(err)
@@ -278,6 +304,12 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 		capabilities[key] = retained
 	}
 	spec["root"].(map[string]any)["readonly"] = false
+	annotations, _ := spec["annotations"].(map[string]any)
+	if annotations == nil {
+		annotations = map[string]any{}
+	}
+	annotations["io.factorybox.base"] = base.ID
+	spec["annotations"] = annotations
 	linux := spec["linux"].(map[string]any)
 	linux["resources"] = map[string]any{
 		"pids": map[string]any{"limit": 384}, "devices": []map[string]any{{"allow": true, "access": "rwm"}},
@@ -302,7 +334,32 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 	if err := os.WriteFile(bundle+"/config.json", data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	fixture := &fixture{t: t, root: "/var/lib/sysbox/devx/controller"}
+	preparationBytes, err := os.ReadFile("/output/preparation.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preparation map[string]any
+	if err := json.Unmarshal(preparationBytes, &preparation); err != nil {
+		t.Fatal(err)
+	}
+	originalSeconds, ok := preparation["seconds"].(float64)
+	if !ok {
+		t.Fatal("original rootfs preparation has no charged time")
+	}
+	baseSeconds := time.Since(preparationStart).Seconds()
+	preparation["frozen_rootfs_seconds"] = originalSeconds
+	preparation["immutable_base_and_oci_seconds"] = baseSeconds
+	preparation["seconds"] = originalSeconds + baseSeconds
+	preparation["scope"] = "Unpack the frozen rootfs, inject test inputs, start Sysbox daemons, " +
+		"import and completely verify the owned immutable base, bind its read-only alias and prepare OCI. " +
+		"This precedes the prepared-start first-use observation."
+	preparationBytes, err = json.MarshalIndent(preparation, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("/output/preparation.json", append(preparationBytes, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
 	start := time.Now()
 	source := fixture.view("start", "--bundle", bundle, "source")
 	fixture.cleanup("source")

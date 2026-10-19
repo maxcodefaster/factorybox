@@ -260,6 +260,50 @@ func TestFilesystemCopyNative(t *testing.T) {
 	if copied.HashedBytes >= copied.FileBytes {
 		t.Fatal("hardlinked content was read repeatedly")
 	}
+	t.Run("known-digest-complete-target", func(t *testing.T) {
+		actual, err := cloneFilesystemTreeExpected(context.Background(), root, base+"/known-digest-copy", &copied)
+		if err != nil || !sameFilesystemTree(actual, copied) {
+			t.Fatal("known complete source did not produce the same verified independent target", err)
+		}
+	})
+	t.Run("known-digest-rejects-changed-content", func(t *testing.T) {
+		path := source + "/file"
+		original, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, bytes.Repeat([]byte{'x'}, len(original)), 0640); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+		_, rejected := cloneFilesystemTreeExpected(context.Background(), root, base+"/changed-known-digest", &copied)
+		if err := os.WriteFile(path, original, 0640); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+		if rejected == nil {
+			t.Fatal("known-digest copy accepted changed content with the original size and mtime")
+		}
+	})
+	t.Run("known-digest-cancellation-before-target", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		destination := base + "/canceled-known-digest"
+		if _, err := cloneFilesystemTreeExpected(ctx, root, destination, &copied); err == nil {
+			t.Fatal("known-digest copy ignored cancellation")
+		}
+		if _, err := os.Lstat(destination); !os.IsNotExist(err) {
+			t.Fatal("canceled known-digest copy created a target", err)
+		}
+	})
 	if err := os.WriteFile(source+"/file", []byte("source-after\n"), 0640); err != nil {
 		t.Fatal(err)
 	}

@@ -24,22 +24,26 @@ import (
 
 type filesystemRoot struct {
 	Name, Source string
+	Expected     *FilesystemTree
 }
 
 type FilesystemSnapshot struct {
-	Version int              `json:"version"`
-	Roots   []FilesystemTree `json:"roots"`
+	Version      int              `json:"version"`
+	Roots        []FilesystemTree `json:"roots"`
+	DurabilityUS int64            `json:"durability_us,omitempty"`
 }
 
 type FilesystemTree struct {
-	Name        string `json:"name"`
-	Source      string `json:"source"`
-	Saved       string `json:"saved"`
-	SHA256      string `json:"sha256"`
-	Entries     int    `json:"entries"`
-	FileBytes   int64  `json:"file_bytes"`
-	HashedBytes int64  `json:"hashed_bytes"`
-	CaptureUS   int64  `json:"capture_us"`
+	Name        string          `json:"name"`
+	Source      string          `json:"source"`
+	Saved       string          `json:"saved"`
+	SHA256      string          `json:"sha256"`
+	Entries     int             `json:"entries"`
+	FileBytes   int64           `json:"file_bytes"`
+	HashedBytes int64           `json:"hashed_bytes"`
+	CaptureUS   int64           `json:"capture_us"`
+	Immutable   *ImmutableTree  `json:"immutable,omitempty"`
+	Alias       *ImmutableAlias `json:"immutable_alias,omitempty"`
 }
 
 var managedDirectories = map[string]string{
@@ -95,7 +99,10 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 	if err := CheckOverlayLayout(request.Bundle); err != nil {
 		return nil, err
 	}
-	roots := []filesystemRoot{{"lower", request.Bundle + "/lower"}, {"upper", request.Bundle + "/upper"}}
+	roots := []filesystemRoot{
+		{Name: "lower", Source: request.Bundle + "/lower", Expected: request.Base},
+		{Name: "upper", Source: request.Bundle + "/upper"},
+	}
 	seen := map[string]bool{}
 	fusePrefix := state.Sysbox.Fs.Mountpoint + "/" + request.RuntimeID + "/"
 	for _, mount := range state.Config.Mounts {
@@ -119,7 +126,7 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 			return nil, fmt.Errorf("checkpoint cannot omit or share external bind %s -> %s", mount.Source, mount.Destination)
 		}
 		seen[kind] = true
-		roots = append(roots, filesystemRoot{"volumes/" + kind, mount.Source})
+		roots = append(roots, filesystemRoot{Name: "volumes/" + kind, Source: mount.Source})
 	}
 	return roots, nil
 }
@@ -199,11 +206,24 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 	result := &FilesystemSnapshot{Version: 1}
 	for _, root := range roots {
 		start := time.Now()
+		if root.Expected != nil && root.Expected.Immutable != nil {
+			if root.Name != "lower" {
+				return nil, fmt.Errorf("only the prepared immutable lower may be shared")
+			}
+			tree, err := bindImmutableTree(root.Source, destination+"/"+root.Name, *root.Expected)
+			if err != nil {
+				return nil, err
+			}
+			tree.Name, tree.Source, tree.Saved = root.Name, root.Source, destination+"/"+root.Name
+			tree.CaptureUS = time.Since(start).Microseconds()
+			result.Roots = append(result.Roots, tree)
+			continue
+		}
 		source, err := openDirectory(root.Source)
 		if err != nil {
 			return nil, err
 		}
-		tree, err := cloneFilesystemTree(ctx, source, destination+"/"+root.Name)
+		tree, err := cloneFilesystemTreeTo(ctx, source, destination+"/"+root.Name, root.Expected, false)
 		closeErr := source.Close()
 		if err := errors.Join(err, closeErr); err != nil {
 			return nil, err
@@ -212,6 +232,19 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 		tree.CaptureUS = time.Since(start).Microseconds()
 		result.Roots = append(result.Roots, tree)
 	}
+	// All writable targets were created inside this new private destination.
+	// Its immutable lower, if any, was already made durable at import. Flush
+	// the complete verified generation once instead of forcing the same
+	// filesystem's journal again for every small tree and empty volume.
+	durabilityStart := time.Now()
+	directory, err := openDirectory(destination)
+	if err != nil {
+		return nil, err
+	}
+	if err := errors.Join(unix.Syncfs(int(directory.Fd())), directory.Close()); err != nil {
+		return nil, fmt.Errorf("persist complete filesystem generation: %w", err)
+	}
+	result.DurabilityUS = time.Since(durabilityStart).Microseconds()
 	for _, path := range []string{destination + "/volumes", destination} {
 		directory, err := os.Open(path)
 		if err != nil {
@@ -252,7 +285,8 @@ func MaterializeFilesystemSnapshot(ctx context.Context, generation, destination 
 	}
 	roots := make([]filesystemRoot, 0, len(snapshot.Roots))
 	for _, tree := range snapshot.Roots {
-		roots = append(roots, filesystemRoot{Name: tree.Name, Source: tree.Saved})
+		copy := tree
+		roots = append(roots, filesystemRoot{Name: tree.Name, Source: tree.Saved, Expected: &copy})
 	}
 	result, err := copyFilesystem(ctx, roots, destination+"/filesystem")
 	if err != nil {
@@ -279,6 +313,9 @@ func sameFilesystemTree(actual, expected FilesystemTree) bool {
 // VerifyFilesystemSnapshot reads every saved tree again and checks the exact
 // content/metadata digest. Saved paths must belong to this generation.
 func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *FilesystemSnapshot) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if snapshot == nil || snapshot.Version != 1 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
 		return fmt.Errorf("filesystem snapshot root set is absent or invalid")
 	}
@@ -292,6 +329,15 @@ func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *
 			return fmt.Errorf("filesystem snapshot root escaped its generation or is duplicated")
 		}
 		seen[tree.Name] = true
+		if tree.Immutable != nil {
+			if tree.Name != "lower" {
+				return fmt.Errorf("only the prepared immutable lower may be shared")
+			}
+			if err := VerifyImmutableTree(tree.Saved, tree); err != nil {
+				return err
+			}
+			continue
+		}
 		directory, err := openDirectory(tree.Saved)
 		if err != nil {
 			return err
@@ -321,6 +367,15 @@ func VerifyLiveFilesystemSnapshot(ctx context.Context, snapshot *FilesystemSnaps
 		if !cleanAbsolute(tree.Source) {
 			return fmt.Errorf("live pause backing path is not canonical")
 		}
+		if tree.Immutable != nil {
+			if tree.Name != "lower" {
+				return fmt.Errorf("only the prepared immutable lower may be shared")
+			}
+			if err := VerifyImmutableTree(tree.Source, tree); err != nil {
+				return err
+			}
+			continue
+		}
 		directory, err := openDirectory(tree.Source)
 		if err != nil {
 			return err
@@ -338,9 +393,29 @@ func VerifyLiveFilesystemSnapshot(ctx context.Context, snapshot *FilesystemSnaps
 }
 
 func cloneFilesystemTree(ctx context.Context, source *os.File, destination string) (FilesystemTree, error) {
-	expected, err := fingerprintTree(ctx, source, nil, false)
-	if err != nil {
+	return cloneFilesystemTreeExpected(ctx, source, destination, nil)
+}
+
+func cloneFilesystemTreeExpected(ctx context.Context, source *os.File, destination string, known *FilesystemTree) (FilesystemTree, error) {
+	return cloneFilesystemTreeTo(ctx, source, destination, known, true)
+}
+
+func cloneFilesystemTreeTo(ctx context.Context, source *os.File, destination string, known *FilesystemTree, durable bool) (FilesystemTree, error) {
+	var expected FilesystemTree
+	if err := ctx.Err(); err != nil {
 		return expected, err
+	}
+	if known == nil {
+		var err error
+		expected, err = fingerprintTree(ctx, source, nil, false)
+		if err != nil {
+			return expected, err
+		}
+	} else {
+		// Materialization has just verified this complete source. The full
+		// target scan below compares all bytes/metadata to that same digest;
+		// a source change during cp cannot publish a different generation.
+		expected = *known
 	}
 	if err := os.Mkdir(destination, 0700); err != nil {
 		return expected, err
@@ -358,7 +433,7 @@ func cloneFilesystemTree(ctx context.Context, source *os.File, destination strin
 	if output, err := command.CombinedOutput(); err != nil {
 		return expected, fmt.Errorf("clone filesystem backing: %w: %.4096s", err, output)
 	}
-	actual, err := fingerprintTree(ctx, target, source, true)
+	actual, err := fingerprintTree(ctx, target, source, durable)
 	if err != nil {
 		return expected, err
 	}

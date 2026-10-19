@@ -92,6 +92,7 @@ func (e *Engine) Fork(ctx context.Context, sourceID, snapshotID, targetID string
 		return View{}, fmt.Errorf("fork requires pinned CRIU and a canonical manager root")
 	}
 	operation := "forks/" + targetID
+	metadataVerified := false
 	intent, err := e.readForkIntent(operation, sourceID, snapshotID, targetID)
 	if errors.Is(err, os.ErrNotExist) {
 		if _, exists := e.root.Lstat(operation); exists == nil {
@@ -105,6 +106,7 @@ func (e *Engine) Fork(ctx context.Context, sourceID, snapshotID, targetID string
 			return View{}, exists
 		}
 		intent, err = e.newForkIntent(ctx, sourceID, snapshotID, targetID)
+		metadataVerified = err == nil
 		if err == nil {
 			err = e.root.Mkdir(operation, 0700)
 		}
@@ -134,7 +136,7 @@ func (e *Engine) Fork(ctx context.Context, sourceID, snapshotID, targetID string
 	if !errors.Is(err, os.ErrNotExist) {
 		return View{}, err
 	}
-	if err := e.prepareForkBacking(ctx, lock, operation, intent); err != nil {
+	if err := e.prepareForkBacking(ctx, lock, operation, intent, metadataVerified); err != nil {
 		return View{}, err
 	}
 	bundle := e.config.Root + "/" + operation + "/materialized/filesystem"
@@ -196,7 +198,7 @@ func (e *Engine) newForkIntent(ctx context.Context, sourceID, snapshotID, target
 	if _, err := e.readCheckpoint(generation, "checkpoint.json"); err != nil {
 		return intent, fmt.Errorf("fork requires an already published checkpoint: %w", err)
 	}
-	checkpoint, err := e.reconcileCheckpoint(ctx, source, snapshotID, generation)
+	checkpoint, err := e.publishedCheckpointMetadata(ctx, source, snapshotID, generation)
 	if err != nil {
 		return intent, err
 	}
@@ -252,11 +254,12 @@ func forkOCI(data []byte, bundle string) ([]byte, error) {
 		return nil, err
 	}
 	delete(annotations, ownerAnnotation)
+	delete(annotations, baseAnnotation)
 	spec["annotations"], _ = json.Marshal(annotations)
 	return json.Marshal(spec)
 }
 
-func (e *Engine) prepareForkBacking(ctx context.Context, lock *os.File, operation string, intent forkIntent) error {
+func (e *Engine) prepareForkBacking(ctx context.Context, lock *os.File, operation string, intent forkIntent, metadataVerified bool) error {
 	materialized := operation + "/materialized"
 	destination := e.config.Root + "/" + materialized
 	expected, err := json.Marshal(intent)
@@ -286,10 +289,14 @@ func (e *Engine) prepareForkBacking(ctx context.Context, lock *os.File, operatio
 		return fmt.Errorf("fork preparation is incomplete or uncertain; refusing to overwrite its backing: %v", err)
 	}
 	generation, _ := checkpointPath(intent.Origin.SourceID, intent.Origin.CheckpointID)
-	// This verifies complete images and trees before copying. The operation
-	// never reads a later live rootfs or mutable source registration.
-	if err := e.verifyCheckpoint(ctx, intent.Source, intent.Checkpoint.ID, generation, intent.Checkpoint); err != nil {
-		return err
+	// A new intent's complete images and metadata were verified under this
+	// same exclusive lock. Retry verifies them again. Materialization below
+	// verifies every source tree once and every target against that digest.
+	// No persisted marker substitutes for fresh verification in a later call.
+	if !metadataVerified {
+		if err := e.verifyCheckpointMetadata(ctx, intent.Source, intent.Checkpoint.ID, generation, intent.Checkpoint); err != nil {
+			return err
+		}
 	}
 	filesystem, err := sysboxcapture.MaterializeFilesystemSnapshot(ctx,
 		e.config.Root+"/"+generation, destination, intent.Checkpoint.Filesystem)
@@ -523,7 +530,7 @@ func (e *Engine) retireForkOverlay(record Record) error {
 			if err != nil || len(entries) != 0 {
 				return fmt.Errorf("fork deletion original mountpoint is not empty: %v", err)
 			}
-			return nil
+			return e.retireForkBaseAlias(record)
 		}
 		return err
 	}
@@ -539,5 +546,15 @@ func (e *Engine) retireForkOverlay(record Record) error {
 	if err != nil || identity.MountID != record.RootfsMountID {
 		return fmt.Errorf("fork deletion overlay mount identity changed: %v", err)
 	}
-	return unix.Unmount(record.Rootfs, 0)
+	if err := unix.Unmount(record.Rootfs, 0); err != nil {
+		return err
+	}
+	return e.retireForkBaseAlias(record)
+}
+
+func (e *Engine) retireForkBaseAlias(record Record) error {
+	if record.Base == nil {
+		return nil
+	}
+	return sysboxcapture.RetireImmutableAlias(record.InputBundle+"/lower", *record.Base)
 }

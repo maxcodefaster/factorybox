@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"factorybox/internal/platform"
+	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
 
@@ -49,28 +50,29 @@ type Operation struct {
 // Record retains the original start request even after deletion. An attempted
 // create with no runtime state has an uncertain outcome and is never reissued.
 type Record struct {
-	Version        int              `json:"version"`
-	ID             string           `json:"id"`
-	Owner          string           `json:"owner"`
-	RuntimeID      string           `json:"runtime_id"`
-	RuntimeSHA256  string           `json:"runtime_sha256"`
-	BootID         string           `json:"boot_id"`
-	Phase          string           `json:"phase"`
-	InputBundle    string           `json:"input_bundle"`
-	InputSHA256    string           `json:"input_sha256"`
-	ConfigSHA256   string           `json:"config_sha256"`
-	Rootfs         string           `json:"rootfs"`
-	RootfsDevice   uint64           `json:"rootfs_device"`
-	RootfsInode    uint64           `json:"rootfs_inode"`
-	RootfsMountID  uint64           `json:"rootfs_mount_id,omitempty"`
-	RuntimeCreated string           `json:"runtime_created,omitempty"`
-	CgroupParent   KernelObject     `json:"cgroup_parent"`
-	Cgroup         *KernelObject    `json:"cgroup,omitempty"`
-	Start          Operation        `json:"start"`
-	Delete         *Operation       `json:"delete,omitempty"`
-	Fork           *ForkOrigin      `json:"fork,omitempty"`
-	Pause          *PauseOperation  `json:"pause,omitempty"`
-	PauseHistory   []PauseOperation `json:"pause_history,omitempty"`
+	Version        int                           `json:"version"`
+	ID             string                        `json:"id"`
+	Owner          string                        `json:"owner"`
+	RuntimeID      string                        `json:"runtime_id"`
+	RuntimeSHA256  string                        `json:"runtime_sha256"`
+	BootID         string                        `json:"boot_id"`
+	Phase          string                        `json:"phase"`
+	InputBundle    string                        `json:"input_bundle"`
+	InputSHA256    string                        `json:"input_sha256"`
+	ConfigSHA256   string                        `json:"config_sha256"`
+	Rootfs         string                        `json:"rootfs"`
+	RootfsDevice   uint64                        `json:"rootfs_device"`
+	RootfsInode    uint64                        `json:"rootfs_inode"`
+	RootfsMountID  uint64                        `json:"rootfs_mount_id,omitempty"`
+	RuntimeCreated string                        `json:"runtime_created,omitempty"`
+	CgroupParent   KernelObject                  `json:"cgroup_parent"`
+	Cgroup         *KernelObject                 `json:"cgroup,omitempty"`
+	Start          Operation                     `json:"start"`
+	Delete         *Operation                    `json:"delete,omitempty"`
+	Fork           *ForkOrigin                   `json:"fork,omitempty"`
+	Pause          *PauseOperation               `json:"pause,omitempty"`
+	PauseHistory   []PauseOperation              `json:"pause_history,omitempty"`
+	Base           *sysboxcapture.FilesystemTree `json:"base,omitempty"`
 }
 
 type View struct {
@@ -130,7 +132,7 @@ func Open(config Config) (_ *Engine, resultErr error) {
 			root.Close()
 		}
 	}()
-	for _, name := range []string{"objects", "runtime", "forks"} {
+	for _, name := range []string{"objects", "runtime", "forks", "bases"} {
 		if err := root.Mkdir(name, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 			return nil, err
 		}
@@ -215,7 +217,7 @@ func (e *Engine) validateRoot() error {
 	if err != nil || !os.SameFile(anchored, current) {
 		return fmt.Errorf("controller root identity changed: %v", err)
 	}
-	for _, path := range []string{e.config.Root, e.config.Root + "/objects", e.config.Root + "/runtime", e.config.Root + "/forks"} {
+	for _, path := range []string{e.config.Root, e.config.Root + "/objects", e.config.Root + "/runtime", e.config.Root + "/forks", e.config.Root + "/bases"} {
 		if err := privateDirectory(path); err != nil {
 			return err
 		}
@@ -449,6 +451,10 @@ func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner st
 	if _, exists := annotations[ownerAnnotation]; exists {
 		return record, fmt.Errorf("reserved Factorybox ownership annotation")
 	}
+	base, err := e.recordBase(id, bundle, origin, annotations)
+	if err != nil {
+		return record, err
+	}
 	annotations[ownerAnnotation] = owner
 	spec["root"], _ = json.Marshal(root)
 	spec["annotations"], _ = json.Marshal(annotations)
@@ -472,7 +478,7 @@ func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner st
 		InputBundle: bundle, InputSHA256: sum(input), ConfigSHA256: sum(config),
 		Rootfs: root.Path, RootfsDevice: uint64(stat.Dev), RootfsInode: stat.Ino, RootfsMountID: rootIdentity.MountID,
 		CgroupParent: parent,
-		Start:        Operation{RequestedAt: now()}, Fork: origin}
+		Start:        Operation{RequestedAt: now()}, Fork: origin, Base: base}
 	if origin != nil {
 		record.Start.RequestedAt = origin.RequestedAt
 	}

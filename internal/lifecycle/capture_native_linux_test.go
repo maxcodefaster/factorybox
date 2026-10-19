@@ -286,6 +286,7 @@ func TestRetainedCaptureNative(t *testing.T) {
 	}
 	engine.config.Criu, engine.config.CriuSHA256 = "/out/criu", os.Getenv("FACTORYBOX_CRIU_SHA256")
 	engine.config.ManagerRoot = "/var/lib/sysbox/manager"
+	prepareNativeBase(t, engine, bundle)
 	ctx := context.Background()
 	view, err := engine.Start(ctx, "captured", bundle)
 	if err != nil {

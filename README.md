@@ -167,24 +167,76 @@ directories. The worker's manager root is explicit. Every external bind must be 
 private manager volume, the source's Sysbox FUSE tree or `/dev/null`; unowned binds are rejected.
 This initial policy is not arbitrary mount or filesystem support.
 
-The worker copies `lower`, `upper` and all admitted private volume directories through pinned
-directory handles with the reference's `cp -a --reflink=auto` behavior. Source and saved trees
-receive complete content/metadata digests. Copies must have independent inodes and preserve
+For an ordinary administrator-provided bundle, the worker copies `lower`, `upper` and all admitted
+private volume directories through pinned directory handles with the reference's
+`cp -a --reflink=auto` behavior. Source and saved trees receive complete content/metadata digests.
+Copies must have independent inodes and preserve
 UID/GID, mode, mtime, hardlink relationships, symlink targets, device identities and extended
 attributes. The native fixture includes whiteouts, FIFO/socket nodes, sparse file data and a
 trusted overlay xattr. Physical inode identities and ctime are not promised to remain equal.
 Foreign mounts and xattr corruption are detected. Source marker and Docker-volume mutations,
 followed by original-runtime deletion, leave the captured files intact.
 
-Each tree records entry counts, logical file bytes, actually hashed bytes and charged capture
-time. Hardlinked payloads are hashed once per inode per frozen-tree scan. In two individual
+An explicitly prepared Factorybox base avoids repeating that complete lower-layer read and copy.
+The public `prepare-base --source PATH BASE_ID` command imports the administrator's source into
+`ROOT/bases/BASE_ID/rootfs`, compares the complete source/copy content and metadata, persists its
+intent and manifest, and covers the private backing with a read-only self-bind. Preparation is
+charged before application startup. The caller binds that prepared root read-only at the ordinary
+bundle's `lower` path and adds the OCI annotation `"io.factorybox.base": "BASE_ID"`.
+The original mutable input is never trusted as an immutable base or shared into checkpoints.
+
+For example, inside the existing worker mount namespace, with an empty bundle `lower` directory:
+
+```sh
+factorybox --root /var/lib/factorybox \
+  --runtime /out/sysbox-runc --runtime-sha256 EXACT_SHA256 \
+  prepare-base --source /work/base-input developer-base
+mount --bind /var/lib/factorybox/bases/developer-base/rootfs /work/bundle/lower
+mount -o remount,bind,ro /work/bundle/lower
+```
+
+Only this imported immutable lower is shared. Every checkpoint and fork gets its own checked
+read-only alias; writable upper layers and private volumes retain complete digests and independent
+inodes. Admission checks the canonical base's original mount, inode, ownership, mode and timestamps,
+both paths' read-only flags, private root-owned ancestors and absence of descendant mounts.
+Aliases retain their original uncovered mountpoint identity for exact deletion and replay.
+Worker root remains trusted. The base stays retained with its checkpoints, including after the
+original runtime or caller input is removed. Base garbage collection and recreation after losing
+the worker mount namespace are not implemented.
+
+The `base` native profile runs the existing capture/fork/source-deletion/recovery assertions with
+this explicit prepared-base path. `factorybox-runtime-900bff3d6f9f42f5bc21998a199951f7` passed six
+top-level tests and 32 subtests, with no skips and owned cleanup. It includes nine new immutable-base
+admission, source-independence and alias-retirement cases. Individual small-workload observations
+were 3.627 s for checkpoint and 1.983/1.825 s through the first useful fork/descendant RAM response.
+These observations do not establish a latency distribution or qualify the full developer workload.
+Use `tools/lifecycle_native.py --suite base` or `--suite base-pause` with the same exact build
+arguments as the ordinary capture/pause profiles.
+The first `base-pause` run, `factorybox-runtime-a7e274790e7c49f68483b36acda838ec`, failed during
+the sixteen-cycle restore/delete test. Its initial 1.979-second pause released all original
+anonymous memory and snapshot payload residency, and the first stopped-source fork passed.
+The fourth cycle spent about 25 seconds reaching completed backing preparation, then the
+test's 30-second public-fork deadline killed its controller during restore. Later operations
+correctly refused the still-held operation lock. This does not qualify repeated pause/resume.
+The complete 217,055,232-byte failed archive is retained with SHA-256
+`af51397334983774024fde07cc5ec005d5968db9d28e90248a42cd7f52b82b53`.
+An archive-helper removal exceeded its Docker client timeout; a separate ownership-checked
+reconciliation verified that archive again and completed cleanup. The original failed result
+remains unchanged.
+
+Each tree records entry counts, logical file bytes, unique hashed content size and charged capture
+time. For an immutable lower, the content counts describe its verified import; subsequent alias
+capture does not read that payload again. Hardlinked payloads are hashed once per inode per
+frozen-tree scan. In two individual
 observations of the small native fixture, repeated logical payload reads dropped from about
 471 MB to 19 MB and the recorded filesystem phase changed from 1.59 s to 0.32 s. The workload
 contained nine roots and 472 entries, mostly an empty private runtime. These observations are
 not a full developer-workload fork/resume distribution or p95.
 
-Filesystem copies now use one `syncfs` durability barrier after the complete target digest,
-instead of syncing every file and directory separately. Every entry still undergoes mount,
+Filesystem generation copies now use one `syncfs` durability barrier after all complete target
+digests, instead of flushing the same filesystem separately for each layer or empty private volume.
+The generation records that shared barrier time as `durability_us`; per-tree `capture_us` excludes it.
+Standalone tree imports retain their own barrier. Every entry still undergoes mount,
 content, metadata and source-inode independence checks. A failed barrier prevents publication.
 The barrier also flushes other dirty data on the same filesystem, so its latency depends on
 other writes there.
@@ -224,6 +276,14 @@ and `factorybox-developer-digest-0d988b190c50488fa4e080cdcf4922e1`.
 The same buffer change passed the native capture/fork gate in
 `factorybox-runtime-d6a8ac7e7eb1487e9daa3b9aefa61abb`, with five top-level tests,
 23 subtests, no skips and owned cleanup. This does not replace the full developer lifecycle.
+
+Two further read hints were rejected on the archived-base fixture. Sequential advice for
+large files measured 56.215 seconds against a 40.873-second control. Evicting each scanned
+file's clean pages first measured 22.167 seconds, but its repeat measured 42.814 seconds
+against a 38.673-second control. Every completed scan retained the same digest and counts.
+Neither hint is in the runtime; these observations establish no reliable latency gain.
+The frozen commands, source contexts and profiles remain under the corresponding
+`factorybox-developer-digest-*` artifacts.
 
 The guarded capture also exports Sysbox's virtual proc/sys state at that same frozen point.
 A root-only Unix RPC returns a bounded, versioned snapshot of its cached virtual values,
@@ -993,10 +1053,34 @@ context deadline explicitly rather than only `signal: killed`. Its 61.712-second
 used 29.099 CPU seconds without quota throttling. Whole-fixture counters recorded about
 1.16 GB of additional disk reads, swap activity and page reclamation; those counters are
 not isolated to the digest. These observations do not establish the cause of the slow scan.
-The temporary phase probes were removed. Full developer checkpoint/fork qualification remains
-blocked on that large base scan.
+The temporary phase probes were removed. The later explicit prepared-base path below bypasses
+that repeated lower-layer scan; complete developer fork/resume qualification remains incomplete.
 The failed run completed owned cleanup after retaining a 3,036,676,096-byte archive with SHA-256
 `048f4be076cbadc71bdab3cd4f1328fd518bc7fa0afa14d142aeae8493227c7f`.
+
+The first full developer run with an owned prepared base,
+`factorybox-devx-lifecycle-bffc08820b4343b39d9e491d6a480b06`, published its complete public checkpoint
+in 47.994 seconds. Its 41,384-entry lower was reused through a checked read-only alias in 0.003268
+seconds. Capturing the 25,100-entry private Docker volume, with 1,174,254,497 unique content bytes,
+took 29.548 seconds. The remaining checkpoint time includes CRIU, metadata/RAM-image verification,
+saved-filesystem verification and source release. The checkpoint contains 256 metadata/image files
+totaling 222,464,301 bytes; that count is not a RAM-only size.
+Cold preparation took 217.834 seconds, including 142.578 seconds for the one-time base import and
+OCI setup. The real Connector app answered after another 89.496 seconds. The first fork then
+exceeded the unchanged 420-second whole-lifecycle deadline, before any useful fork response.
+No complete developer fork/resume passed. The run retained a complete 5,857,345,536-byte archive
+with SHA-256 `3fadb1880ecc71f08ab591124b529ce7fa8c1e90c6b5b68d4706988a1cc71c33` and completed owned
+cleanup. Preparation remains an explicit cost; these are individual shared-worker observations.
+
+The fork path now verifies published RAM/metadata once under its exclusive operation lock, verifies
+each source filesystem tree at materialization, then verifies every target byte and metadata entry
+against that saved digest. It no longer rescans those same trees at each intermediate call.
+An existing intent retried in a later operation receives fresh validation. The copied target still
+rejects altered content with preserved size/mtime and has independent writable inodes.
+`factorybox-runtime-2cc3decc656d443dbffb7f40f0667bef` passed the prepared-base capture/fork profile
+with six top-level tests, 35 subtests, no skips and owned cleanup after this change. Its three added
+copy regressions cover the complete known digest, changed content and cancellation before target
+creation. The full developer lifecycle has not yet been qualified with this reduced scanning path.
 
 Run the positive nested-time lifecycle gate:
 
@@ -1059,6 +1143,38 @@ RAM payload and the absence of each deleted cgroup before proceeding. It passed 
 `factorybox-runtime-b426517a09d4407ba60c91afb17bbc27`, with five top-level tests, eleven subtests,
 zero skips and exact cleanup. This increases coverage; it has not established the cause or
 a fix for the original intermittent failure.
+
+The later prepared-base run `factorybox-runtime-d826ce46fc1a48c3ad9a5138306b3302` exposed an
+empty `init.scope` child still present at the failed parent removal. A minimal native regression,
+`factorybox-runtime-a098c9d138fd430aa96711b6015f6ce0`, reproduced `EBUSY` in 2.42 seconds without
+starting a guest. The controller's retirement routine had only removed the parent directory.
+The extracted cleanup now pins and validates the complete empty original subtree before removing
+children in postorder. It checks inode/mount identity again before every removal, retains foreign
+mounts and populated groups, and never signals a process. A confirmed Runtime delete may briefly
+precede `populated 0`; only that confirmed deletion receives a two-second, identity-checked wait.
+The complete-tree regression passed all three cases in
+`factorybox-runtime-8b793195f4a840b1a09c6bf25c0d51cc`, including preservation of an owned sibling
+when a foreign mount prevents whole-tree admission. This focused proof does not replace the
+sixteen-cycle restore/delete gate or qualify the developer workload.
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py --suite lifecycle \
+  --test TestNativeEmptyCgroupRetirement \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID
+```
+
+The lifecycle-only fixture can use the same explicit native base and pinned Sysbox binaries as
+checkpoint fixtures. This focused cgroup case skips Sysbox daemons because it starts no runtime.
+Native fixture failures are archived before removing their owned data volumes.
+The complete start/state/delete suite passed in
+`factorybox-runtime-cbb14487a49a4410912093bd8ed62f5b`, with six native top-level tests,
+the three cgroup retirement subtests, zero skips and owned cleanup. A prepared-base
+pause repetition still exceeded its test deadline in
+`factorybox-runtime-df086e29ed9f4ea7be53431b3412224c`; that failed archive and cleanup receipt remain
+retained. The fixture now reports each restore/delete cycle's useful-fork and deletion times.
+Its public-fork subprocess also bounds inherited output-pipe waiting after its existing deadline,
+so a surviving backend cannot hide the failing operation behind the suite's final timeout.
 
 The combined mount-descriptor and filesystem-barrier changes passed the required focused
 regressions with the newer CRIU build:

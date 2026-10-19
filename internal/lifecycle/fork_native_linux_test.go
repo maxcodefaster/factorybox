@@ -28,6 +28,7 @@ func forkNativeCLI(engine *Engine, source, snapshot, target string) (View, error
 		"--runtime", engine.config.Runtime, "--runtime-sha256", engine.config.RuntimeSHA256,
 		"--criu", engine.config.Criu, "--criu-sha256", engine.config.CriuSHA256,
 		"--manager-root", engine.config.ManagerRoot, "fork", "--source", source, "--snapshot-id", snapshot, target)
+	command.WaitDelay = 2 * time.Second
 	output, err := command.CombinedOutput()
 	var view View
 	if err != nil {

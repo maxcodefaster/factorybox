@@ -5,9 +5,11 @@ package lifecycle
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -129,7 +131,7 @@ func (e *Engine) prepareCgroup(record *Record) error {
 	return e.write(*record)
 }
 
-func (e *Engine) retireEmptyCgroup(record Record) error {
+func (e *Engine) retireEmptyCgroup(record Record) (resultErr error) {
 	path := cgroupRoot + "/" + record.RuntimeID
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -139,11 +141,130 @@ func (e *Engine) retireEmptyCgroup(record Record) error {
 	if err := e.validateCgroup(record); err != nil {
 		return err
 	}
-	events, err := os.ReadFile(path + "/cgroup.events")
-	if err != nil || !strings.Contains("\n"+string(events), "\npopulated 0\n") {
-		return fmt.Errorf("cannot retire a populated or unproved cgroup: %v", err)
+	parent, err := captureGuardOpen(cgroupRoot)
+	if err != nil {
+		return err
 	}
-	// Rmdir refuses non-empty trees. Do not recursively remove an unresolved
-	// runtime's cgroups or signal its processes through a guessed pathname.
-	return os.Remove(path)
+	defer parent.Close()
+	parentIdentity, err := cgroupFDIdentity(int(parent.Fd()))
+	if err != nil || parentIdentity != record.CgroupParent {
+		return fmt.Errorf("retirement cgroup parent identity changed: %v", err)
+	}
+	if record.Cgroup == nil {
+		return fmt.Errorf("retirement lacks its original cgroup identity")
+	}
+	var opened []*os.File
+	defer func() {
+		for _, group := range opened {
+			resultErr = errors.Join(resultErr, group.Close())
+		}
+	}()
+	var planned []func() error
+	populatedErr := errors.New("cannot retire a populated cgroup")
+	deadline := time.Now().Add(2 * time.Second)
+	visited := 0
+	var collect func(*os.File, string, *KernelObject, int) error
+	collect = func(parent *os.File, name string, expected *KernelObject, depth int) error {
+		visited++
+		if depth > 32 || visited > 4096 {
+			return fmt.Errorf("retirement cgroup tree exceeds bounds")
+		}
+		if err := e.validateCgroup(record); err != nil {
+			return err
+		}
+		fd, err := unix.Openat(int(parent.Fd()), name,
+			unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if err != nil {
+			return err
+		}
+		group := os.NewFile(uintptr(fd), "original empty cgroup descendant")
+		opened = append(opened, group)
+		identity, err := cgroupFDIdentity(fd)
+		if err != nil || identity.MountID != record.Cgroup.MountID ||
+			(expected != nil && identity != *expected) {
+			return fmt.Errorf("retirement crosses a changed or foreign cgroup mount: %v", err)
+		}
+		empty := func() error {
+			events, err := captureGuardEvents(group)
+			populated, present := events["populated"]
+			if err != nil || !present || populated > 1 {
+				return fmt.Errorf("cannot retire an unproved cgroup: %v", err)
+			}
+			if populated != 0 {
+				return populatedErr
+			}
+			return nil
+		}
+		for {
+			if err := empty(); err == nil {
+				break
+			} else if !errors.Is(err, populatedErr) || depth != 0 || record.Delete == nil || !record.Delete.Attempted ||
+				record.RuntimeCreated == "" || time.Now().After(deadline) {
+				return err
+			}
+			// Sysbox may return before the killed original tasks finish
+			// leaving their cgroups. Wait only for this confirmed deletion,
+			// without signaling any remaining or newly observed process.
+			if err := e.validateCgroup(record); err != nil {
+				return err
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		entries, err := group.ReadDir(8193)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		if len(entries) > 8192 {
+			return fmt.Errorf("retirement cgroup directory exceeds bounds")
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				if err := collect(group, entry.Name(), nil, depth+1); err != nil {
+					return err
+				}
+			}
+		}
+		planned = append(planned, func() error {
+			if err := empty(); err != nil {
+				return err
+			}
+			if err := e.validateCgroup(record); err != nil {
+				return err
+			}
+			// Check the named entry again before descriptor-relative rmdir.
+			// Replaced descendants and foreign bind mounts are retained.
+			currentFD, err := unix.Openat(int(parent.Fd()), name,
+				unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+			if err != nil {
+				return err
+			}
+			current, identityErr := cgroupFDIdentity(currentFD)
+			closeErr := unix.Close(currentFD)
+			if identityErr != nil || closeErr != nil || current != identity {
+				return fmt.Errorf("retirement cgroup descendant identity changed: %v", errors.Join(identityErr, closeErr))
+			}
+			return unix.Unlinkat(int(parent.Fd()), name, unix.AT_REMOVEDIR)
+		})
+		return nil
+	}
+	// Validate the complete tree before removing an owned sibling of a
+	// foreign mount or an unresolved populated descendant.
+	if err := collect(parent, record.RuntimeID, record.Cgroup, 0); err != nil {
+		return err
+	}
+	for _, remove := range planned {
+		for {
+			err := remove()
+			if err == nil {
+				break
+			}
+			// Kernel cgroup release may finish asynchronously. Every retry
+			// rechecks the original root, pinned descendant and empty state.
+			if !errors.Is(err, unix.EBUSY) || time.Now().After(deadline) {
+				return err
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	return nil
 }

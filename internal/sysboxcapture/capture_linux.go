@@ -32,6 +32,7 @@ type Request struct {
 	Criu           string
 	Bundle         string
 	ManagerRoot    string
+	Base           *FilesystemTree
 }
 
 type Result struct {

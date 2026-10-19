@@ -50,6 +50,7 @@ func TestPauseNative(t *testing.T) {
 	}
 	engine.config.Criu, engine.config.CriuSHA256 = "/out/criu", os.Getenv("FACTORYBOX_CRIU_SHA256")
 	engine.config.ManagerRoot = "/var/lib/sysbox/manager"
+	prepareNativeBase(t, engine, bundle)
 	ctx := context.Background()
 	started, err := engine.Start(ctx, "pausable", bundle)
 	if err != nil {
@@ -137,6 +138,7 @@ func TestPauseNative(t *testing.T) {
 		// always deleting one before creating the next.
 		for index := range 16 {
 			id := fmt.Sprintf("retire-fork-%02d", index)
+			start := time.Now()
 			forked, err := forkNativeCLI(engine, "pausable", snapshot, id)
 			if err != nil {
 				t.Fatal(err)
@@ -150,6 +152,8 @@ func TestPauseNative(t *testing.T) {
 			if err != nil || !reflect.DeepEqual(actor, before) {
 				t.Fatal("retirement fixture lost restored private RAM", err)
 			}
+			forkElapsed := time.Since(start)
+			deleteStart := time.Now()
 			if _, err := engine.Delete(ctx, id); err != nil {
 				path := cgroupRoot + "/" + forked.Record.RuntimeID
 				events, eventsErr := os.ReadFile(path + "/cgroup.events")
@@ -167,6 +171,8 @@ func TestPauseNative(t *testing.T) {
 			if _, err := os.Lstat(cgroupRoot + "/" + forked.Record.RuntimeID); !os.IsNotExist(err) {
 				t.Fatal("successful deletion retained the original cgroup", err)
 			}
+			t.Logf("restore/delete cycle %d: fork and useful RAM=%s, exact deletion=%s",
+				index, forkElapsed, time.Since(deleteStart))
 		}
 	})
 	t.Run("reject-populated-resume-before-intent", func(t *testing.T) {
