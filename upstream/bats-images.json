@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "platform": "linux/arm64",
+  "images": [
+    {
+      "alias": "ghcr.io/nestybox/ubuntu-focal-systemd:latest",
+      "image": "ghcr.io/nestybox/ubuntu-focal-systemd@sha256:cc92865799434697f81b870fbfa89fcd674a911580a9cee3aaea06e3c6444a6e"
+    },
+    {
+      "alias": "ghcr.io/nestybox/ubuntu-focal-systemd-docker:latest",
+      "image": "ghcr.io/nestybox/ubuntu-focal-systemd-docker@sha256:6c6d9b65712551aca14e4c0cff618a851eb34b8de4f817ad2fadcc242cc0d8cb"
+    }
+  ]
+}

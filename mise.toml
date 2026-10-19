@@ -54,5 +54,11 @@ run = "python3 tools/reference_lifecycle.py"
 [tasks."upstream:unit"]
 run = "python3 tools/upstream_unit.py"
 
+[tasks."upstream:bats"]
+run = "python3 tools/upstream_bats.py"
+
+[tasks."upstream:bats-images"]
+run = "python3 tools/bats_images.py"
+
 [tasks."lifecycle:native"]
 run = "python3 tools/lifecycle_native.py"

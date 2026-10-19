@@ -400,8 +400,10 @@ cached archives.
 Source preparation does not install a runtime, change the worker kernel or run the upstream suites.
 The selected CRIU source starts from the recorded CAST AI nested-namespace commit. It is not the
 unmodified upstream CRIU release. Sysbox components also carry explicit experimental changes.
-The unmodified Sysbox umbrella integration suite is pinned separately at v0.7.1; individual runtime
-component commits remain explicit in the lock.
+The Sysbox umbrella integration suite is pinned separately at v0.7.1. Declared test-only
+compatibility patches load its missing Cgroup helper and wait for actual daemon-listener readiness.
+Original test bodies and assertions remain unchanged. Individual runtime component commits remain
+explicit in the lock.
 
 Cached trees also record the complete source tree and its preparation recipe. A changed
 implementation file, patch or recipe is rejected even when its tests are untouched. When a reviewed
@@ -657,8 +659,76 @@ independent import after source-registration removal, exact wire encoding and pa
 After the new resume adapter, the complete Runc module passed 279 top-level tests and 227 subtests
 with 14 explicit upstream skips. The unchanged modules retain their preceding combined pass. The manager's
 four shiftfs tests explicitly skip on this worker, which has no shiftfs module. The
-umbrella/Bats/systemd and the wider CRIU checkpoint/restore matrix remain unqualified.
+broader umbrella/outer-systemd and CRIU checkpoint/restore matrices remain unqualified.
 The separately selected 18 ordinary CRIU C cases have passed their two-cycle gate.
+
+Run the complete selected upstream Bats daemon-lifecycle file:
+
+```sh
+mise exec -- python3 tools/upstream_bats.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID --suite lifecycle
+```
+
+All seven cases passed with zero skips in the first original run. They cover PID files, graceful
+and SIGKILL restart of both daemons, and rejection of overlapping instances. A repeat under worker
+load exposed the fixed one-second startup assumption: PID checks ran before startup completed.
+A declared fixture patch retains that delay, then waits at most five seconds for the actual RPC
+listener. It never polls the PID-file predicate being tested. All original test bodies and PID-file
+assertions are byte-identical. Both daemons create their PID file before opening that listener.
+The complete lifecycle file passed again with seven executed passes and zero skips after that
+fixture fix, with unchanged binaries, input hashes and observed global sentinels.
+The fixture owns its PID/network/cgroup namespaces, native data volumes and daemon logs. It uses
+the exact selected Sysbox binaries, signed dated APT dependencies and Bats 1.2.1. Capabilities for
+kernel modules, raw I/O, reboot, time and syslog are absent from effective, permitted and bounding
+sets before any daemon starts.
+
+Prepare the original ARM64 Systemd test images in a separate owned private Docker daemon, then
+run the whole selected upstream guest-Systemd file:
+
+```sh
+mise exec -- python3 tools/bats_images.py \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+mise exec -- python3 tools/upstream_bats.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --suite systemd --images factorybox-bats-images-EXACT_RUN_ID
+```
+
+`upstream/bats-images.json` fixes the two upstream ARM64 image manifests. Acquisition checks
+architecture and digest, creates the original test aliases only inside its new daemon, and records
+the archive hash and exact image configuration IDs. The test fixture loads that verified archive
+offline and checks those IDs again. It has no worker Docker socket. Selected global kernel
+sentinels are compared before and after; no helper writes or restores a kernel value.
+
+The full selected Systemd file executed with three passes, two original upstream skips and one
+failure. Focal boot/service restart and both mount-conflict/override cases passed. The `/proc`
+exposure case expects a present `/proc/kcore` whose read fails with `Permission denied`.
+The reference OrbStack worker does not expose `/proc/kcore`, even in a separate privileged
+non-Sysbox fixture. The actual error is `No such file or directory`. That assertion remains
+unchanged and the gate remains failed. A matching kernel/platform is still needed to qualify
+the complete original exposure check; this task changes neither the kernel nor the assertion.
+
+An initial Systemd attempt exposed a fixture incompatibility: adding a read-only `/proc/sys`
+parent bind prevents Sysbox's existing helper from mounting the target PID namespace's procfs.
+A separate bounded namespace probe reproduced the difference with identical capabilities.
+The daemon-lifecycle fixture retains that extra read-only bind; the guest-Systemd fixture uses
+the ordinary privileged upstream topology with module-loading still blocked. This required no
+Sysbox runtime patch.
+
+The pinned Systemd file also omitted its existing Cgroup helper import. Its declared patch adds
+that import only, with original/prepared hashes in the source lock. It preserves every test body,
+assertion and skip condition. The Bionic case requires cgroup v1; Arch has its original unconditional
+upstream skip. Both remain explicit in evidence. The runner checks the complete TAP plan, exact
+case titles and numbers, process exit, OOM state and observed global sentinels. A missing case or
+unexpected skip fails the gate. Failed native volumes are archived before exact owned cleanup;
+archive failure retains those volumes.
+
+These are direct Sysbox/Docker integration cases. They do not qualify the whole umbrella suite,
+outer-host Systemd service packaging, Factorybox RAM restoration of Systemd or the complete
+developer composition. The native fixture has a 3-CPU/3-GiB ceiling, a 330-second Bats deadline
+and at most one guest container. Upstream's fixed 40-second waits are retained, so this suite
+is not a startup-latency benchmark.
 
 ## Release requirements
 

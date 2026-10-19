@@ -1,0 +1,36 @@
+--- a/tests/lifecycle/basic.bats
++++ b/tests/lifecycle/basic.bats
+@@ -44,16 +44,33 @@
+     sleep 2
+ }
+ 
++# The PID-file assertions below must run after startup has completed. Keep
++# the original delay, then observe the independent RPC listener with a bound.
++# Do not poll the PID file whose correctness the test itself verifies.
++function waitForDaemonListener() {
++    local socket=$1
++    local attempt
++    for attempt in $(seq 1 100); do
++        if awk -v socket="$socket" '$4 == "00010000" && $8 == socket { found=1 } END { exit !found }' /proc/net/unix; then
++            return 0
++        fi
++        sleep 0.05
++    done
++    return 1
++}
++
+ function sysboxMgrStart() {
+     bats_bg sysbox-mgr --log /var/log/sysbox-mgr.log &
+ 
+     sleep 1
++    waitForDaemonListener /run/sysbox/sysmgr.sock
+ }
+ 
+ function sysboxFsStart() {
+     bats_bg sysbox-fs --ignore-handler-errors --log /var/log/sysbox-fs.log &
+ 
+     sleep 1
++    waitForDaemonListener /run/sysbox/sysfs.sock
+ }
+ 
+ # Verify proper operation of pid files in steady-state.
