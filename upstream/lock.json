@@ -9,7 +9,8 @@
         "upstream/patches/criu-root-owned-time.patch": "65d059925a83f69e141f1936d7242e4f295790ebe197cfcfb1e426e317b7f7e7",
         "upstream/patches/criu-detached-proc-root.patch": "4e9c031dd304baf421230f107297579b1fca1908c17135278197bac99f4bcc07",
         "upstream/patches/criu-delegation-after-cgroupns.patch": "79755ab41d523a048acab76ca1f5629b170ddc7a5564f31bee741ba1728441d7",
-        "upstream/patches/criu-v2-memory-limit.patch": "92bdd132094b31d6c8688452849b2c260a63ff1abd2c3e893c5e549e12ae1700"
+        "upstream/patches/criu-v2-memory-limit.patch": "92bdd132094b31d6c8688452849b2c260a63ff1abd2c3e893c5e549e12ae1700",
+        "upstream/patches/criu-detached-proc-self-fd.patch": "3b0b08d2dfaef24dbb6ab1604e4b2d410aebcad8261d533a7d53c7a01541766d"
       },
       "overlays": {},
       "patches": [
@@ -18,7 +19,8 @@
         "upstream/patches/criu-root-owned-time.patch",
         "upstream/patches/criu-detached-proc-root.patch",
         "upstream/patches/criu-delegation-after-cgroupns.patch",
-        "upstream/patches/criu-v2-memory-limit.patch"
+        "upstream/patches/criu-v2-memory-limit.patch",
+        "upstream/patches/criu-detached-proc-self-fd.patch"
       ],
       "prefix": "criu-086df34a2da27125fa05e66ba4d6b63cbb220b2e",
       "prepared_files_sha256": {
@@ -427,7 +429,7 @@
         "criu/file-ids.c": "7d07ca15fb273acac9e44daa52a8fa9813b3493d97d359fcde4cc6f199b56107",
         "criu/file-lock.c": "21e974c9908f0269b60854eaa728adb39e116dcdae09586e798621f5baf3f3d4",
         "criu/files-ext.c": "1e49798c23b50e665eeea6f4c0d09a117a56cc7f8d364c67c6ad24cc55726235",
-        "criu/files-reg.c": "709445479f81974bebd5edba3fa879ba8a9068bb3d046269b862e8daff060f82",
+        "criu/files-reg.c": "bba0629f16ab4833db6ae42c5846b99050ccd2452e09f726c670bb3f92b51f5c",
         "criu/files.c": "2d6418097390b279474cc20a48061ab32383a3847a8b2ec8631c2c39a7fc8d3b",
         "criu/filesystems.c": "1ea49ca658a0ce80b4a1c2dbbfcf73682b05619500dd9a806fb14fcdebb8d782",
         "criu/fsnotify.c": "547362e3bf381fd20eed1e41c9cde33ab4b8899d14967b70763e4af36ced4267",

@@ -1162,7 +1162,53 @@ proc root. Recapture then fails at the same unknown-mount check for `/1/task/1/f
 the default and restricted proc cases. The test retains every earlier assertion and adds
 required descendant restore, descriptor use and RAM checks after deleting the captured parent;
 those later assertions remain unexecuted until recapture is fixed. The failed gate completed
-archival and exact owned cleanup. Readable proc-directory support remains a release blocker.
+archival and exact owned cleanup. At that revision, readable proc-directory support remained
+a release blocker.
+
+`criu-detached-proc-self-fd.patch` adds the demonstrated readable, zero-offset
+`/PID/task/PID/fd` directory. Dump validates the file owner's own PID, walks the descriptor's
+proc ancestry and requires the same mount identity and device before applying the existing
+PID/user-namespace, mount-option and descendant-mount checks. Restore requires that same
+captured mount to have a canonical root descriptor, keeps the mount descriptor alive and
+opens the directory only in its owning process and namespaces. General proc descendants,
+non-leader thread directories, foreign PID namespaces and unsupported cursor state remain
+unqualified.
+
+The first candidate rejected the worker kernel's `O_LARGEFILE` bit because this ARM64 libc
+defines that constant as zero. A compiler-macro observation confirmed the difference.
+Admission now checks read access, directory type and creation flags separately, retaining
+the original flags rather than normalizing them. The native regression compares the exact
+flags after restore.
+
+`factorybox-runtime-baad9018722f4e6bb6c24de83e0072e2` passed six tests and all 20 subtests,
+with zero skips and owned cleanup. Both default and restricted proc variants now complete
+the added recapture, original-process deletion and useful descendant restore, including
+the retained directory, mount sharing, security options and RAM state. The gate took
+31.69 seconds. The selected CRIU build
+`factorybox-build-criu-182f84bb8fca4746b606fb83fc56f380` has SHA-256
+`a44f17d71b70d58185b54e033b9422596b5f96d4bb9702a3bcfa1cce1cbc81c1`.
+It passed the 31 C scope checks and the 18 unchanged two-cycle core cases in
+`factorybox-criu-core-ea025fce7b7f4939b70aeec382d5bdfe`, with owned cleanup.
+Fresh build `factorybox-build-criu-3781b0dbb40f4928a0b52b046ec6f4bd` reproduced the exact
+selected binary. All 1,030 original upstream CRIU test files remain unchanged.
+These focused passes do not qualify the complete developer lifecycle.
+
+The full retry `factorybox-devx-lifecycle-a2081465c9d540e397dcbc322864b6df` prepared in
+113.466 seconds and reached the app after another 62.238 seconds. Its first checkpoint
+failed at the capture worker's 60-second deadline; the public command returned in 64.149
+seconds. Read-only inspection of the stopped owned data confirmed that CRIU had finished
+successfully in 4.098 seconds. The filesystem target already contained 25,100 Docker entries
+and 1,174,254,495 regular-file bytes, but no completed filesystem manifest; the later Rancher
+roots were still absent. The timeout therefore occurred in filesystem capture after CRIU,
+before any new developer fork. A cleanup state query correctly refused the still-held
+operation lock. This failed run does not qualify the complete workflow.
+
+Its first archive reached the process-local 5,304,729,600-byte file limit. Independent
+reconciliation `ae7a6fde4e6e477798a4b1687f76a26f` verified the complete 5,860,491,264-byte archive
+with SHA-256 `4215aa492c4270de2a40fee22e0da85167a5a3dccc9e1bfa65c1db1eb96576f6` and completed
+owned cleanup. The original failed result is unchanged. A full comparison proved that the
+capped stream was an exact prefix of this archive; its hash and reconstruction length were
+recorded before reclaiming that duplicate payload.
 
 The same Sysbox build passed the prepared-base capture/fork suite in
 `factorybox-runtime-1efcd5827a034a5c91911701d2612e1a`, with six tests, 35 subtests, zero skips

@@ -1,0 +1,159 @@
+diff --git a/criu/files-reg.c b/criu/files-reg.c
+--- a/criu/files-reg.c
++++ b/criu/files-reg.c
+@@ -2,6 +2,7 @@
+ #include <unistd.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#include <limits.h>
+ #include <string.h>
+ #include <sys/mman.h>
+ #include <sys/mount.h>
+@@ -1856,7 +1857,35 @@ out:
+ 	return ret;
+ }
+ 
+-static int dump_detached_proc(int lfd, const struct fd_parms *p, const struct fd_link *link,
++static bool detached_proc_self_fd_dir(const char *path, pid_t *pid)
++{
++	char expected[64], *end;
++	long value;
++
++	if (!path || path[0] != '/')
++		return false;
++	errno = 0;
++	value = strtol(path + 1, &end, 10);
++	if (errno || end == path + 1 || value <= 0 || value > INT_MAX)
++		return false;
++	snprintf(expected, sizeof(expected), "/%ld/task/%ld/fd", value, value);
++	if (strcmp(path, expected))
++		return false;
++	*pid = (pid_t)value;
++	return true;
++}
++
++static bool detached_proc_readable_dir(unsigned int flags, off_t pos)
++{
++	/* F_GETFL can include kernel O_LARGEFILE when libc defines it as zero.
++	 * Keep the original bits and constrain access and creation separately. */
++	return pos == 0 &&
++	       (flags & (O_ACCMODE | O_DIRECTORY | O_PATH)) == (O_RDONLY | O_DIRECTORY) &&
++	       !(flags & (O_CREAT | O_EXCL | O_TRUNC | O_CLOEXEC)) &&
++	       (flags & O_TMPFILE) != O_TMPFILE;
++}
++
++static int dump_detached_proc_root(int lfd, const struct fd_parms *p, const struct fd_link *link,
+ 			      DetachedProcMount *image)
+ {
+ 	struct detached_proc_probe probe = { .fd = lfd };
+@@ -1904,6 +1933,41 @@ static int dump_detached_proc(int lfd, const struct fd_parms *p, const struct fd_link *link,
+ 	return 0;
+ }
+ 
++static int dump_detached_proc(int lfd, const struct fd_parms *p, const struct fd_link *link,
++			      DetachedProcMount *image)
++{
++	struct fd_parms root_parms = *p;
++	struct fd_link root_link = { .name = "./", .len = 2 };
++	pid_t pid;
++	int root, mount_id, ret = -1;
++
++	if (!strcmp(link->name + 1, "/"))
++		return dump_detached_proc_root(lfd, p, link, image);
++	if (!nested_ns_enabled() || p->mnt_id <= 0 || p->fs_type != PROC_SUPER_MAGIC ||
++	    !S_ISDIR(p->stat.st_mode) || !detached_proc_readable_dir(p->flags, p->pos) ||
++	    !detached_proc_self_fd_dir(link->name + 1, &pid))
++		return -1;
++	if (nested_ns_dump_own_pid(p->pid, -1) != pid) {
++		pr_err("Detached proc directory is not the file owner's own fd table\n");
++		return -1;
++	}
++
++	/* Walk only this canonical directory's own proc ancestry. Never replace
++	 * the saved handle with a different visible proc mount. */
++	root = openat(lfd, "../../../..", O_PATH | O_CLOEXEC);
++	if (root < 0)
++		return -1;
++	if (fstat(root, &root_parms.stat) || get_fd_mntid(root, &mount_id) ||
++	    mount_id != p->mnt_id || root_parms.stat.st_dev != p->stat.st_dev)
++		goto out;
++	root_parms.flags = O_PATH;
++	root_parms.pos = 0;
++	ret = dump_detached_proc_root(root, &root_parms, &root_link, image);
++out:
++	close(root);
++	return ret;
++}
++
+ int dump_one_reg_file(int lfd, u32 id, const struct fd_parms *p)
+ {
+ 	struct fd_link _link, *link;
+@@ -2711,6 +2775,7 @@ struct detached_proc_restore {
+ 	DetachedProcMount *image;
+ 	mutex_t lock;
+ 	int fdstore_id;
++	bool root_seen;
+ };
+ 
+ static LIST_HEAD(detached_proc_mounts);
+@@ -2720,13 +2785,16 @@ static int collect_detached_proc(struct reg_file_info *rfi)
+ 	DetachedProcMount *image = rfi->rfe->detached_proc;
+ 	struct detached_proc_restore *mount;
+ 	struct ns_id *pidns;
++	pid_t pid;
++	bool root = !strcmp(rfi->rfe->name, "/") && rfi->rfe->flags == O_PATH;
+ 
+ 	if (!image)
+ 		return 0;
+ 	pidns = lookup_ns_by_id(image->pid_ns_id, &pid_ns_desc);
+ 	if (!nested_ns_enabled() || !pidns || !root_item->ids->has_user_ns_id ||
+ 	    image->user_ns_id != root_item->ids->user_ns_id || !image->mount_id ||
+-	    strcmp(rfi->rfe->name, "/") || rfi->rfe->flags != O_PATH ||
++	    (!root && !(detached_proc_readable_dir(rfi->rfe->flags, rfi->rfe->pos) &&
++			detached_proc_self_fd_dir(rfi->rfe->name, &pid))) ||
+ 	    !rfi->rfe->has_mode || !S_ISDIR(rfi->rfe->mode) || rfi->rfe->has_mnt_id ||
+ 	    rfi->rfe->ext || strlen(image->options) > 1024) {
+ 		pr_err("Invalid detached proc root image\n");
+@@ -2742,6 +2810,7 @@ static int collect_detached_proc(struct reg_file_info *rfi)
+ 			pr_err("Inconsistent detached proc mount images\n");
+ 			return -1;
+ 		}
++		mount->root_seen |= root;
+ 		rfi->detached_proc = mount;
+ 		return 0;
+ 	}
+@@ -2750,6 +2819,7 @@ static int collect_detached_proc(struct reg_file_info *rfi)
+ 		return -1;
+ 	memset(mount, 0, sizeof(*mount));
+ 	mount->image = image;
++	mount->root_seen = root;
+ 	mount->fdstore_id = -1;
+ 	mutex_init(&mount->lock);
+ 	list_add_tail(&mount->list, &detached_proc_mounts);
+@@ -2788,8 +2858,24 @@ static int open_detached_proc(struct reg_file_info *rfi)
+ 	 * appears readable. Canonical O_PATH roots of the same detached
+ 	 * mount currently share this open file description.
+ 	 */
+-	fd = root;
+-	root = -1;
++	if (!strcmp(rfi->rfe->name, "/")) {
++		fd = root;
++		root = -1;
++	} else {
++		pid_t pid;
++
++		if (!mount->root_seen || current->ids->pid_ns_id != image->pid_ns_id ||
++		    current->ids->user_ns_id != image->user_ns_id ||
++		    !detached_proc_self_fd_dir(rfi->rfe->name, &pid) || getpid() != pid) {
++			pr_err("Detached proc directory needs its captured root and owning process\n");
++			goto out;
++		}
++		fd = openat(root, rfi->path, rfi->rfe->flags | O_CLOEXEC);
++		if (fd < 0) {
++			pr_perror("Can't reopen own fd directory in detached proc");
++			goto out;
++		}
++	}
+ 	if (fd >= 0 && restore_fown(fd, rfi->rfe->fown)) {
+ 		close(fd);
+ 		fd = -1;
