@@ -61,12 +61,26 @@ def load(name, *, rootfs=False):
     result = json.loads((archive / "result.json").read_text())
     if not result.get("passed") or not result.get("cleanup"):
         raise ValueError("developer inputs did not pass preparation and cleanup")
+    if set(result["selected_images"]) != set(ROLES) or set(result["images"]) != set(ROLES):
+        raise ValueError("developer inputs do not contain the exact consumer roles")
     for role, image in result["selected_images"].items():
-        current = inspect_image(image)
-        if current["id"] != result["images"][role]["id"]:
-            raise ValueError("consumer image changed since its preparation")
-    if rootfs and file_sha(archive / "runtime-rootfs.tar") != result["rootfs_tar_sha256"]:
-        raise ValueError("prepared runtime rootfs archive changed")
+        canonical_digest(image)
+        saved = result["images"][role]
+        if (saved["image"] != image or saved["architecture"] != "arm64" or saved["os"] != "linux" or
+                not re.fullmatch(r"sha256:[0-9a-f]{64}", saved["id"])):
+            raise ValueError("recorded consumer image identity or platform differs")
+        if not rootfs:
+            current = inspect_image(image)
+            if current["id"] != saved["id"]:
+                raise ValueError("consumer image changed since its preparation")
+    if rootfs:
+        # This consumer executes the sealed export, not an image in Docker's
+        # mutable cache. Require the actual archive, even after image eviction.
+        payload = archive / "runtime-rootfs.tar"
+        if (payload.is_symlink() or not payload.is_file() or
+                payload.stat().st_size != result["rootfs_tar_bytes"] or
+                file_sha(payload) != result["rootfs_tar_sha256"]):
+            raise ValueError("prepared runtime rootfs archive changed")
     return archive, result
 
 

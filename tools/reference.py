@@ -84,7 +84,10 @@ def owned_delete(kind, name, owner):
     actual_name = data.get("Name", "").removeprefix("/")
     if actual_name != name or not labels or labels.get("com.factorybox.run") != owner:
         raise ValueError(f"refusing to remove foreign {kind}: {name}")
-    docker([kind, "rm", *(["--force"] if kind == "container" else []), name])
+    # Unlinking a stopped multi-gigabyte developer volume can exceed the
+    # ordinary inspection budget. Ownership checks above stay unchanged.
+    docker([kind, "rm", *(["--force"] if kind == "container" else []), name],
+           timeout=60 if kind == "volume" else 15)
 
 
 def native():

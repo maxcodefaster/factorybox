@@ -120,6 +120,7 @@ def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, tim
             "--cap-drop=ALL", "--cap-add=DAC_READ_SEARCH", "--security-opt=no-new-privileges",
             "--mount", f"type=volume,source={volume},target=/input,readonly",
             "--entrypoint", "/bin/tar", image, "--numeric-owner", "--sparse",
+            "--blocking-factor=2048",
         ]
         command += ["-C", "/input", "-cpf", "-", "."]
         try:

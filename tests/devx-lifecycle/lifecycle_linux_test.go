@@ -38,9 +38,10 @@ type observedState struct {
 }
 
 type observation struct {
-	Phase  string        `json:"phase"`
-	Millis float64       `json:"milliseconds"`
-	State  observedState `json:"state"`
+	Phase           string            `json:"phase"`
+	Millis          float64           `json:"milliseconds"`
+	State           observedState     `json:"state"`
+	WorkerResources map[string]string `json:"worker_resources"`
 }
 
 type fixture struct {
@@ -48,6 +49,24 @@ type fixture struct {
 	root    string
 	index   int
 	samples []observation
+}
+
+// These counters belong to the complete bounded fixture, including its
+// controller and Sysbox services. They are not isolated application charges.
+func (fixture *fixture) resources() map[string]string {
+	values := map[string]string{"sampled_at": time.Now().UTC().Format(time.RFC3339Nano)}
+	for _, name := range []string{
+		"cpu.stat", "cpu.pressure", "memory.current", "memory.peak",
+		"memory.stat", "memory.pressure", "io.stat", "io.pressure",
+	} {
+		data, err := os.ReadFile("/sys/fs/cgroup/" + name)
+		if err != nil {
+			values[name] = "unavailable: " + err.Error()
+		} else {
+			values[name] = strings.TrimSpace(string(data))
+		}
+	}
+	return values
 }
 
 func (fixture *fixture) command(args ...string) []byte {
@@ -64,9 +83,11 @@ func (fixture *fixture) command(args ...string) []byte {
 	command := exec.CommandContext(ctx, "/factorybox", append(prefix, args...)...)
 	var output, errors bytes.Buffer
 	command.Stdout, command.Stderr = &output, &errors
+	resourcesBefore := fixture.resources()
 	start := time.Now()
 	err := command.Run()
 	elapsed := time.Since(start)
+	resourcesAfter := fixture.resources()
 	path := fmt.Sprintf("/output/cli-%02d-%s", fixture.index, args[0])
 	if writeErr := os.WriteFile(path+".json", output.Bytes(), 0600); writeErr != nil {
 		fixture.t.Fatal(writeErr)
@@ -74,7 +95,10 @@ func (fixture *fixture) command(args ...string) []byte {
 	if writeErr := os.WriteFile(path+".stderr", errors.Bytes(), 0600); writeErr != nil {
 		fixture.t.Fatal(writeErr)
 	}
-	timing, writeErr := json.Marshal(map[string]any{"arguments": args, "seconds": elapsed.Seconds()})
+	timing, writeErr := json.Marshal(map[string]any{
+		"arguments": args, "seconds": elapsed.Seconds(),
+		"worker_resources_before": resourcesBefore, "worker_resources_after": resourcesAfter,
+	})
 	if writeErr != nil {
 		fixture.t.Fatal(writeErr)
 	}
@@ -149,7 +173,9 @@ func (fixture *fixture) useful(phase string, view lifecycle.View, start time.Tim
 	}
 	readiness := 60 * time.Second
 	if phase == "prepared-start-first-use" {
-		readiness = 120 * time.Second
+		// Cold preparation includes image acquisition and Dev Containers setup.
+		// The outer fixture still enforces its 420-second lifecycle deadline.
+		readiness = 180 * time.Second
 	}
 	deadline := time.Now().Add(readiness)
 	var state observedState
@@ -166,7 +192,9 @@ func (fixture *fixture) useful(phase string, view lifecycle.View, start time.Tim
 		time.Sleep(100 * time.Millisecond)
 	}
 	elapsed := float64(time.Since(start)) / float64(time.Millisecond)
-	fixture.samples = append(fixture.samples, observation{Phase: phase, Millis: elapsed, State: state})
+	fixture.samples = append(fixture.samples, observation{
+		Phase: phase, Millis: elapsed, State: state, WorkerResources: fixture.resources(),
+	})
 	data, err := json.MarshalIndent(fixture.samples, "", "  ")
 	if err != nil {
 		fixture.t.Fatal(err)

@@ -20,6 +20,20 @@ import upstream_unit
 ROOT = reference.ROOT
 
 
+def collect_observations(output, result):
+    for filename, key in [
+        ("devx-observations.json", "observations"),
+        ("preparation.json", "preparation"),
+    ]:
+        path = output / filename
+        if path.exists():
+            result[key] = json.loads(path.read_text())
+    if (output / "sysctls-after.json").exists():
+        result["observed_global_sysctls_unchanged"] = (
+            json.loads((output / "sysctls-before.json").read_text()) ==
+            json.loads((output / "sysctls-after.json").read_text()))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--consumer-inputs", required=True)
@@ -135,8 +149,10 @@ def main():
         attempted = True
         with (archive / "stdout.txt").open("x") as stdout, (archive / "stderr.txt").open("x") as stderr:
             execution_start = time.monotonic()
-            done = subprocess.run(command, stdout=stdout, stderr=stderr, timeout=420)
-            result["execution_seconds"] = time.monotonic() - execution_start
+            try:
+                done = subprocess.run(command, stdout=stdout, stderr=stderr, timeout=420)
+            finally:
+                result["execution_seconds"] = time.monotonic() - execution_start
         result["exit_code"] = done.returncode
         state = json.loads(reference.docker(["container", "inspect", name]))[0]["State"]
         result["container_state"] = state
@@ -148,14 +164,7 @@ def main():
             upstream_unit.context_manifest(archive / "example") == result["example"] and
             upstream_unit.context_manifest(context) == result["source_context"])
         text = (archive / "stdout.txt").read_text()
-        if (output / "devx-observations.json").exists():
-            result["observations"] = json.loads((output / "devx-observations.json").read_text())
-        if (output / "preparation.json").exists():
-            result["preparation"] = json.loads((output / "preparation.json").read_text())
-        if (output / "sysctls-after.json").exists():
-            result["observed_global_sysctls_unchanged"] = (
-                json.loads((output / "sysctls-before.json").read_text()) ==
-                json.loads((output / "sysctls-after.json").read_text()))
+        collect_observations(output, result)
         expected = {
             "prepared-start-first-use", "fork-first-use", "source-advance", "branch-advance", "source-independent",
             "fork-of-fork-first-use", "resume-first-use", "fork-of-resumed-first-use"}
@@ -171,12 +180,16 @@ def main():
     except Exception as error:
         failure = error
         result["error"] = str(error)
+        try:
+            collect_observations(output, result)
+        except Exception as observation_error:
+            result["observation_error"] = str(observation_error)
     finally:
         preserve = False
         if attempted and failure:
             try:
                 upstream_bats.archive_failure(archive, name, owner, [name], image, result,
-                                             timeout=240)
+                                             timeout=600)
             except Exception as error:
                 preserve = True
                 result["archive_error"] = str(error)

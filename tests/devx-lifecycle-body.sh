@@ -8,7 +8,7 @@ for component in sysbox-runc sysbox-fs sysbox-mgr criu; do
   cp -- "/component-input/$component" "/out/$component"
   chmod 0755 "/out/$component"
 done
-tar --numeric-owner --same-owner --xattrs --acls -xpf /runtime-rootfs.tar \
+tar --blocking-factor=2048 --numeric-owner --same-owner --xattrs --acls -xpf /runtime-rootfs.tar \
   -C /var/lib/sysbox/devx/bundle/lower
 root=/var/lib/sysbox/devx/bundle/lower/opt/factorybox
 mkdir -p "$root"

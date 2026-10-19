@@ -50,6 +50,51 @@ class ImageIdentityTests(unittest.TestCase):
             docker.assert_not_called()
 
 
+class ConsumerArchiveTests(unittest.TestCase):
+    def prepared(self, root):
+        name = "factorybox-devx-inputs-" + "a" * 32
+        archive = root / "artifacts" / name
+        archive.mkdir(parents=True)
+        payload = archive / "runtime-rootfs.tar"
+        payload.write_bytes(b"complete exported rootfs")
+        selected = {role: role + "@sha256:" + "b" * 64 for role in devx_inputs.ROLES}
+        result = {
+            "passed": True, "cleanup": True, "selected_images": selected,
+            "images": {role: {
+                "image": image, "id": "sha256:" + "c" * 64, "architecture": "arm64", "os": "linux",
+            } for role, image in selected.items()},
+            "rootfs_tar_bytes": payload.stat().st_size,
+            "rootfs_tar_sha256": devx_inputs.file_sha(payload),
+        }
+        (archive / "result.json").write_text(json.dumps(result))
+        return name, archive, result
+
+    def test_frozen_rootfs_survives_consumer_image_cache_eviction(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            name, archive, _ = self.prepared(root)
+            with patch.object(devx_inputs, "ROOT", root), \
+                    patch.object(devx_inputs, "inspect_image", side_effect=AssertionError("cache evicted")) as inspect:
+                directory, _ = devx_inputs.load(name, rootfs=True)
+                self.assertEqual(directory, archive)
+                inspect.assert_not_called()
+                payload = archive / "runtime-rootfs.tar"
+                original = payload.read_bytes()
+                payload.write_bytes(b"X" + original[1:])
+                with self.assertRaises(ValueError):
+                    devx_inputs.load(name, rootfs=True)
+
+    def test_direct_image_consumers_still_require_current_image_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            name, _, _ = self.prepared(root)
+            with patch.object(devx_inputs, "ROOT", root), \
+                    patch.object(devx_inputs, "inspect_image", side_effect=ValueError("cache evicted")) as inspect:
+                with self.assertRaisesRegex(ValueError, "cache evicted"):
+                    devx_inputs.load(name)
+                self.assertEqual(inspect.call_count, 1)
+
+
 class ProjectArchiveTests(unittest.TestCase):
     def test_archive_payload_recipe_and_repository_identity_are_bound(self):
         with tempfile.TemporaryDirectory() as temporary:
