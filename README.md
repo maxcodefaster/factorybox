@@ -1082,6 +1082,29 @@ with six top-level tests, 35 subtests, no skips and owned cleanup after this cha
 copy regressions cover the complete known digest, changed content and cancellation before target
 creation. The full developer lifecycle has not yet been qualified with this reduced scanning path.
 
+The next full run, `factorybox-devx-lifecycle-7cd93f97c5b6488387b7c1e90b4c016e`, prepared in
+177.635 seconds and reached the app after another 81.897 seconds. It published a complete
+checkpoint in 71.628 seconds. Its private Docker capture took 43.962 seconds; the shared
+filesystem durability barrier took 0.163 seconds. The first fork completed its backing
+preparation, then CRIU failed restoring `cgroup.subtree_control` with `EBUSY`.
+The unchanged 420-second lifecycle deadline interrupted that request before a useful fork
+response. Its first archive reached the 600-second archive deadline; the original volume
+remains retained until separate verified reconciliation succeeds.
+
+`factorybox-runtime-d2b79504c8ec4ac28127b333d05c28ed` reproduced the same restore failure in
+12.58 seconds with a parent actor and two populated delegated cgroups, without Docker,
+Compose, Connector or IDE. Its checkpoint succeeded, while the public fork's retained
+CRIU log reports the same `cgroup.subtree_control` error. That failed fixture completed
+archival and owned cleanup. This case remains a required failing regression, not support
+for arbitrary delegated cgroup restoration:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py --suite delegation \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+```
+
 Run the positive nested-time lifecycle gate:
 
 ```sh
@@ -1235,6 +1258,14 @@ If Docker completes volume removal after its caller times out, a subsequent reco
 requires an existing complete archive for that exact run and owner. It requires a regular
 file with the recorded byte count and SHA-256 before recording cleanup. A missing volume by
 itself, a changed archive or another inspection error cannot establish success.
+Completed failed-volume payloads may be retained with lossless Zstandard encoding to limit local
+disk use. An `archive-encoding.json` receipt records both encoded bytes/SHA-256 and the original
+TAR bytes/SHA-256, plus the original result-file hash. The original TAR is removed only after
+streaming the whole decompressed payload and matching its exact original size and digest.
+The original failed result remains unchanged. Use the receipt's reconstruction command, or stream
+the `.tar.zst` through `zstd --decompress --stdout` into a TAR reader without allocating another
+complete TAR file. Frozen runtime inputs and benchmark input archives are not rewritten by this
+retention step.
 The actual timed-out deletion from `factorybox-devx-lifecycle-fc9af7475bd2499a91964ca3ed78577d`
 was recovered this way in reconciliation `a680c1717b94427585905e344254b5ff`, reusing the
 verified 3,088,056,320-byte archive. The original failed lifecycle and cleanup results are

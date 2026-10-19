@@ -56,6 +56,9 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
   if test "${FACTORYBOX_NATIVE_TIME:-}" = 1; then
     test_pattern='^TestTimeNamespaceForkNative$'
   fi
+  if test "${FACTORYBOX_NATIVE_DELEGATION:-}" = 1; then
+    test_pattern='^TestDelegatedCgroupForkNative$'
+  fi
   if test "${FACTORYBOX_NATIVE_MOUNT_FD:-}" = 1; then
     test_pattern='^TestDetachedMountForkNative$'
   fi

@@ -58,7 +58,7 @@ def archive_capture(archive, name, owner, result, image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "namespaces", "time", "mountfd"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd"], default="lifecycle")
     parser.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for checkpoint-based suites")
     parser.add_argument("--test", help="One exact native diagnostic test")
@@ -67,7 +67,7 @@ def main():
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
-    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "namespaces", "time", "mountfd"]
+    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd"]
     if capture_mode and (not options.criu_build or options.test):
         parser.error("checkpoint-based suites require --criu-build and run their complete selected suite")
     if options.criu_build and not capture_mode:
@@ -87,6 +87,10 @@ def main():
         "scope": ("Exact owned empty cgroup subtree retirement, foreign child-mount refusal and "
                   "populated-child preservation through Engine.Delete. No Sysbox daemon or process workload."
                   if options.test == "TestNativeEmptyCgroupRetirement" else
+                  "Minimal parent plus two populated delegated cgroups with the same controller "
+                  "set as the real private Docker tree. Public checkpoint/fork and restored actor RAM. "
+                  "No Docker, Compose, Connector, IDE or general delegated-runtime qualification."
+                  if options.suite == "delegation" else
                   "Extracted source guard's eleven retained native failure/disarm cases and "
                   "foreign-mount rejection. "
                   "Kernel RAM actors only; not complete Sysbox capture qualification."
@@ -213,6 +217,7 @@ def main():
             "--env", "FACTORYBOX_NATIVE_IMMUTABLE_BASE=" + ("1" if options.suite in ["base", "base-pause"] else "0"),
             "--env", "FACTORYBOX_NATIVE_NAMESPACES=" + ("1" if options.suite == "namespaces" else "0"),
             "--env", "FACTORYBOX_NATIVE_TIME=" + ("1" if options.suite == "time" else "0"),
+            "--env", "FACTORYBOX_NATIVE_DELEGATION=" + ("1" if options.suite == "delegation" else "0"),
             "--env", "FACTORYBOX_NATIVE_MOUNT_FD=" + ("1" if options.suite == "mountfd" else "0"),
             "--env", "FACTORYBOX_NATIVE_TEST=" + (options.test or ""),
             "--env", "FACTORYBOX_RUNTIME_SHA256=" + components["binary_sha256"]["sysbox-runc"],
@@ -268,6 +273,7 @@ def main():
             (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 11 + 12) and
             (options.suite != "namespaces" or result["passed_subtests"] == 7 + 12) and
             (options.suite != "time" or result["passed_subtests"] == 6 + 12) and
+            (options.suite != "delegation" or result["passed_subtests"] == 18) and
             (options.suite != "mountfd" or result["passed_subtests"] == 8 + 12) and
             result.get("components_unchanged", True) and
             result["skipped_tests"] == 0)
