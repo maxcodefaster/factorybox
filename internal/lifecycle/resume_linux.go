@@ -136,13 +136,27 @@ func (e *Engine) prepareResume(ctx context.Context, lock *os.File, record Record
 		}
 		var prepared []CheckpointFile
 		if err := e.readCheckpointJSON(relative+"/resume-prepared.json", &prepared); err != nil {
-			return fmt.Errorf("resume backing remains incomplete; refusing overwrite: %w", err)
+			if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			// No restore was attempted yet. A lost publication can leave all
+			// complete input files without their preparation receipt. Verify
+			// against the immutable pause generation and sync them again before
+			// publishing. Never overwrite partial or damaged backing here.
+			files, err := e.checkpointFiles(ctx, relative)
+			if err != nil || !reflect.DeepEqual(files, saved.Files) {
+				return fmt.Errorf("resume backing remains incomplete; refusing overwrite: %v", err)
+			}
+			if err := e.syncResumeBacking(ctx, relative, files); err != nil {
+				return err
+			}
+			return e.publishCheckpoint(relative, "resume-prepared.json", files)
 		}
 		actual, err := e.checkpointFiles(ctx, relative)
 		if err != nil {
 			return err
 		}
-		if !reflect.DeepEqual(actual, prepared) {
+		if !reflect.DeepEqual(actual, prepared) || !reflect.DeepEqual(prepared, saved.Files) {
 			return fmt.Errorf("prepared resume images changed")
 		}
 		return nil
@@ -183,6 +197,31 @@ func (e *Engine) prepareResume(ctx context.Context, lock *os.File, record Record
 		return fmt.Errorf("private resume images differ from their complete pause checkpoint")
 	}
 	return e.publishCheckpoint(relative, "resume-prepared.json", files)
+}
+
+func (e *Engine) syncResumeBacking(ctx context.Context, relative string, files []CheckpointFile) error {
+	for _, saved := range files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		file, err := e.root.Open(relative + "/" + saved.Name)
+		if err != nil {
+			return err
+		}
+		if err := errors.Join(file.Sync(), file.Close()); err != nil {
+			return err
+		}
+	}
+	for _, path := range []string{relative + "/images", relative} {
+		directory, err := e.root.Open(path)
+		if err != nil {
+			return err
+		}
+		if err := errors.Join(directory.Sync(), directory.Close()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (e *Engine) resumeCompleted(ctx context.Context, lock *os.File, record Record) (restoreResult, *RuntimeState, error) {

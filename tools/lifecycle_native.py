@@ -242,7 +242,7 @@ def main():
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite != "capture" or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS) and
-            (options.suite != "pause" or result["passed_subtests"] == 3) and
+            (options.suite != "pause" or result["passed_subtests"] == 4) and
             result.get("components_unchanged", True) and
             result["skipped_tests"] == 0)
         if not result["passed"]:

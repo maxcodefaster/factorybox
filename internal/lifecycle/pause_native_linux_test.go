@@ -259,9 +259,70 @@ func TestPauseNative(t *testing.T) {
 		pausedAgain.Record.Pause.Snapshot.ResidentBytesAfter != 0 || pausedAgain.Record.Pause.After.Anon >= 8<<20 {
 		t.Fatal("second pause lost history or retained private RAM")
 	}
-	resumedAgain, err := transitionNativeCLI(engine, "resume", "pausable", second)
-	if err != nil {
-		t.Fatal("resume the second independent pause generation", err)
+	var resumedAgain View
+	t.Run("recover-complete-resume-preparation", func(t *testing.T) {
+		record := pausedAgain.Record
+		record.Phase = "resuming"
+		pause := *record.Pause
+		pause.Resume = &Operation{RequestedAt: now()}
+		record.Pause = &pause
+		lock, err := engine.lock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		relative := "objects/pausable/resumes/" + second
+		prepareErr := engine.write(record)
+		if prepareErr == nil {
+			prepareErr = engine.prepareResume(ctx, lock, record, relative, engine.resumeRequest(record))
+		}
+		closeErr := lock.Close()
+		if prepareErr != nil || closeErr != nil {
+			t.Fatal("prepare exact resume backing before controller outcome loss", prepareErr, closeErr)
+		}
+		images, err := os.ReadDir(engine.config.Root + "/" + relative + "/images")
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages := ""
+		for _, image := range images {
+			if strings.HasPrefix(image.Name(), "pages-") && strings.HasSuffix(image.Name(), ".img") {
+				pages = engine.config.Root + "/" + relative + "/images/" + image.Name()
+				break
+			}
+		}
+		if pages == "" {
+			t.Fatal("prepared resume lacks its captured RAM payload")
+		}
+		original, err := os.Stat(pages)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := engine.root.Remove(relative + "/resume-prepared.json"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(pages, pages+".held"); err != nil {
+			t.Fatal(err)
+		}
+		_, rejected := transitionNativeCLI(engine, "resume", "pausable", second)
+		restoreErr := os.Rename(pages+".held", pages)
+		if rejected == nil || restoreErr != nil {
+			t.Fatal("resume recovered an incomplete private image set", rejected, restoreErr)
+		}
+		unchanged, err := engine.read("pausable")
+		if err != nil || unchanged.Pause.Resume.Attempted {
+			t.Fatal("incomplete resume issued a restore", err)
+		}
+		resumedAgain, err = transitionNativeCLI(engine, "resume", "pausable", second)
+		if err != nil {
+			t.Fatal("resume did not recover complete backing after lost preparation publication", err)
+		}
+		reused, err := os.Stat(pages)
+		if err != nil || !os.SameFile(original, reused) {
+			t.Fatal("resume replaced its already-complete RAM input instead of verifying it", err)
+		}
+	})
+	if resumedAgain.Runtime == nil {
+		t.Fatal("second resume has no confirmed process")
 	}
 	finalState, err := readCaptureActor(resumedAgain.Runtime.PID, "get")
 	if err != nil || !reflect.DeepEqual(finalState, advanced) ||
