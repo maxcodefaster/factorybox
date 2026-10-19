@@ -37,11 +37,21 @@ class NativeBaseInputsTests(unittest.TestCase):
                 "dockerfile_sha256": native_base.reference.sha(recipe),
                 "packages_sha256": native_base.reference.sha(packages),
                 "image": name + "@sha256:" + "b" * 64,
+                "image_config": "sha256:" + "c" * 64,
             }
             record = archive / "result.json"
             record.write_text(json.dumps(result))
-            with patch.object(native_base.reference, "ROOT", root):
+            inspected = {
+                "Id": result["image_config"], "RepoDigests": [result["image"]],
+                "Architecture": "arm64", "Os": "linux",
+            }
+            with patch.object(native_base.reference, "ROOT", root), \
+                    patch.object(native_base.reference, "docker", side_effect=lambda _: json.dumps([inspected])):
                 self.assertEqual(native_base.load(name)[0], result["image"])
+                inspected["Architecture"] = "amd64"
+                with self.assertRaisesRegex(ValueError, "identity/platform differs"):
+                    native_base.load(name)
+                inspected["Architecture"] = "arm64"
                 recipe.write_text("FROM changed-test-input\n")
                 with self.assertRaisesRegex(ValueError, "recipe changed"):
                     native_base.load(name)

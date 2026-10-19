@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +30,30 @@ type captureActorState struct {
 	Counter      int    `json:"counter"`
 	BallastSHA   string `json:"ballast_sha,omitempty"`
 	BallastBytes int    `json:"ballast_bytes,omitempty"`
+	NestedPID    int    `json:"nested_pid,omitempty"`
+	TimeMode     string `json:"time_mode,omitempty"`
+}
+
+func TestCaptureTimeNamespaceLauncher(t *testing.T) {
+	if os.Getenv("FACTORYBOX_CAPTURE_TIME_LAUNCHER") != "1" {
+		t.Skip("owned nested-time-namespace launcher only")
+	}
+	runtime.LockOSThread()
+	// Keep the creator out of the final captured tree. Its child enters the
+	// new time namespace; PID 1 retains its original time/time_for_children.
+	if err := unix.Unshare(unix.CLONE_NEWTIME); err != nil {
+		t.Fatal(err)
+	}
+	child := exec.Command("/bin/sleep", "300")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("/state/nested-time.pid", []byte(strconv.Itoa(child.Process.Pid)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Process.Release(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCaptureActor(t *testing.T) {
@@ -72,6 +98,29 @@ func TestCaptureActor(t *testing.T) {
 	if err := os.WriteFile("/var/lib/docker/capture-marker", []byte("private-daemon-before\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("FACTORYBOX_CAPTURE_NESTED_TIME") == "1" {
+		state.TimeMode = "child"
+		launcher := exec.Command(os.Args[0], "-test.run=^TestCaptureTimeNamespaceLauncher$", "-test.timeout=0")
+		launcher.Env = append(os.Environ(), "FACTORYBOX_CAPTURE_TIME_LAUNCHER=1")
+		if output, err := launcher.CombinedOutput(); err != nil {
+			t.Fatalf("nested time namespace launcher: %v: %s", err, output)
+		}
+		data, err := os.ReadFile("/state/nested-time.pid")
+		if err != nil {
+			t.Fatal(err)
+		}
+		state.NestedPID, err = strconv.Atoi(string(data))
+		if err != nil || state.NestedPID <= 1 {
+			t.Fatal("nested time namespace child lacks its exact PID", err)
+		}
+	}
+	if os.Getenv("FACTORYBOX_CAPTURE_NESTED_TIME") == "children-only" {
+		runtime.LockOSThread()
+		if err := unix.Unshare(unix.CLONE_NEWTIME); err != nil {
+			t.Fatal(err)
+		}
+		state.TimeMode = "children-only"
+	}
 	server, err := net.Listen("unix", "/state/control.sock")
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +142,37 @@ func TestCaptureActor(t *testing.T) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			switch request {
+			case "make-shared-child":
+				if state.NestedPID != 0 {
+					t.Error("owned child already exists")
+					return
+				}
+				child := exec.Command("/bin/sleep", "300")
+				if err := child.Start(); err != nil {
+					t.Error(err)
+					return
+				}
+				state.NestedPID, state.TimeMode = child.Process.Pid, "shared"
+				if err := child.Process.Release(); err != nil {
+					t.Error(err)
+					return
+				}
+			case "drop-time-child":
+				if state.NestedPID <= 1 {
+					t.Error("no owned time namespace child")
+					return
+				}
+				if err := unix.Kill(state.NestedPID, unix.SIGTERM); err != nil {
+					t.Error(err)
+					return
+				}
+				var status unix.WaitStatus
+				pid, err := unix.Wait4(state.NestedPID, &status, 0, nil)
+				if err != nil || pid != state.NestedPID || !status.Signaled() || status.Signal() != unix.SIGTERM {
+					t.Error("owned time namespace child did not terminate", pid, status, err)
+					return
+				}
+				state.NestedPID, state.TimeMode = 0, ""
 			case "advance":
 				state.Payload[0] ^= 0xff
 				state.Counter++

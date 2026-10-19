@@ -28,4 +28,6 @@ def load(name):
     image = result["image"]
     if not re.fullmatch(re.escape(name) + r"@sha256:[0-9a-f]{64}", image):
         raise ValueError("native base image is not its pinned build output")
+    inspected = json.loads(reference.docker(["image", "inspect", image]))[0]
+    verify_image(result, inspected)
     return image, result

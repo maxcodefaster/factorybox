@@ -15,6 +15,8 @@ type PauseOperation struct {
 	SnapshotID  string         `json:"snapshot_id"`
 	RequestedAt string         `json:"requested_at"`
 	CompletedAt string         `json:"completed_at,omitempty"`
+	RejectedAt  string         `json:"rejected_at,omitempty"`
+	Error       string         `json:"error,omitempty"`
 	SourcePID   int            `json:"source_pid"`
 	Before      SandboxMemory  `json:"before"`
 	After       SandboxMemory  `json:"after"`
@@ -72,18 +74,29 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 		return View{Record: record}, fmt.Errorf("pause does not match the persisted transition")
 	}
 	var captured Checkpoint
-	if _, err := e.root.Lstat(relative); errors.Is(err, os.ErrNotExist) {
+	_, generationErr := e.root.Lstat(relative)
+	if errors.Is(generationErr, os.ErrNotExist) {
 		captured, err = e.captureCheckpoint(ctx, lock, record, snapshot, relative, true)
-		if err != nil {
-			return View{Record: record}, err
-		}
-	} else if err != nil {
-		return View{Record: record}, err
+	} else if generationErr != nil {
+		return View{Record: record}, generationErr
 	} else {
 		captured, err = e.reconcileCheckpoint(ctx, record, snapshot, relative)
-		if err != nil {
-			return View{Record: record}, err
+	}
+	if err != nil {
+		var admission *checkpointAdmissionError
+		if errors.As(err, &admission) && admission.recovered {
+			state, stateErr := e.state(ctx, record, lock)
+			if stateErr != nil || state == nil || state.Status != "running" ||
+				state.PID != record.Pause.SourcePID {
+				return View{Record: record, Runtime: state}, errors.Join(err, stateErr,
+					fmt.Errorf("rejected pause lacks its confirmed original running source"))
+			}
+			record.Pause.RejectedAt, record.Pause.Error = admission.rejectedAt, admission.Error()
+			record.PauseHistory = append(record.PauseHistory, *record.Pause)
+			record.Pause, record.Phase = nil, "running"
+			return View{Record: record, Runtime: state}, errors.Join(err, e.write(record))
 		}
+		return View{Record: record}, err
 	}
 	if !captured.SourceStopped || captured.SourcePID != record.Pause.SourcePID {
 		return View{Record: record}, fmt.Errorf("pause checkpoint did not stop its original source")

@@ -44,6 +44,9 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
   if test "${FACTORYBOX_NATIVE_PAUSE:-}" = 1; then
     test_pattern='^TestPauseNative$'
   fi
+  if test "${FACTORYBOX_NATIVE_NAMESPACES:-}" = 1; then
+    test_pattern='^TestCapture(Namespaces|ChildrenNamespace)Native$'
+  fi
 fi
 set +e
 test_timeout=90s
@@ -62,6 +65,7 @@ for file in /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/record.
             /var/lib/sysbox/factorybox-lifecycle-*/controller*/forks/*/preparation.json \
             /var/lib/sysbox/factorybox-lifecycle-*/controller*/forks/*/overlay-origin.json \
             /var/lib/sysbox/factorybox-lifecycle-*/controller*/runtime/*/state.json \
+            /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/captures/*/admission-rejected.json \
             /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/captures/*/guard/*.json; do
   if test -f "$file"; then
     index=$((index + 1))

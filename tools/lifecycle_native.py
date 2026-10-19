@@ -58,7 +58,7 @@ def archive_capture(archive, name, owner, result, image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "namespaces"], default="lifecycle")
     parser.add_argument("--criu-build", help="Required rebuilt CRIU artifact for --suite capture")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for --suite capture")
     parser.add_argument("--test", help="One exact native diagnostic test")
@@ -67,13 +67,13 @@ def main():
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
-    capture_mode = options.suite in ["capture", "pause"]
+    capture_mode = options.suite in ["capture", "pause", "namespaces"]
     if capture_mode and (not options.criu_build or options.test):
-        parser.error("capture/pause suites require --criu-build and run their complete selected suite")
+        parser.error("capture/pause/namespaces suites require --criu-build and run their complete selected suite")
     if options.criu_build and not capture_mode:
-        parser.error("--criu-build is only used by capture/pause suites")
+        parser.error("--criu-build is only used by capture/pause/namespaces suites")
     if options.native_base_build and not capture_mode:
-        parser.error("--native-base-build is only used by capture/pause suites")
+        parser.error("--native-base-build is only used by capture/pause/namespaces suites")
     build, components = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
     owner = uuid.uuid4().hex
@@ -89,6 +89,12 @@ def main():
                   "foreign-mount rejection. "
                   "Kernel RAM actors only; not complete Sysbox capture qualification."
                   if options.suite == "guard" else
+                  "Public checkpoint/pause rejection of a minimal owned child time namespace "
+                  "before CRIU, original RAM/files and useful work preserved, retained failed "
+                  "pause intent with recovery of lost publication and refusal of an unsafe receipt, "
+                  "then ordinary capture of the same tree sharing its root time namespace. "
+                  "This does not qualify nested time namespace capture or the developer lifecycle."
+                  if options.suite == "namespaces" else
                   "Public pause/resume with complete 32-MiB private RAM, original-cgroup anonymous "
                   "memory release, zero resident file-backed snapshot payload, retained runtime "
                   "identity, repeated cycles, receipt reconciliation and independent fork of a "
@@ -192,6 +198,7 @@ def main():
             "--env", "FACTORYBOX_NATIVE_CAPTURE_GUARD=" + ("1" if options.suite == "guard" else "0"),
             "--env", "FACTORYBOX_NATIVE_RETAINED_CAPTURE=" + ("1" if capture_mode else "0"),
             "--env", "FACTORYBOX_NATIVE_PAUSE=" + ("1" if options.suite == "pause" else "0"),
+            "--env", "FACTORYBOX_NATIVE_NAMESPACES=" + ("1" if options.suite == "namespaces" else "0"),
             "--env", "FACTORYBOX_NATIVE_TEST=" + (options.test or ""),
             "--env", "FACTORYBOX_RUNTIME_SHA256=" + components["binary_sha256"]["sysbox-runc"],
             "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB",
@@ -238,11 +245,12 @@ def main():
                 for component, expected in result["component_sha256"].items())
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
-            result["passed_tests"] == (4 if capture_mode else
+            result["passed_tests"] == (5 if options.suite == "namespaces" else 4 if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite != "capture" or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS) and
             (options.suite != "pause" or result["passed_subtests"] == 4) and
+            (options.suite != "namespaces" or result["passed_subtests"] == 1) and
             result.get("components_unchanged", True) and
             result["skipped_tests"] == 0)
         if not result["passed"]:

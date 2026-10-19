@@ -438,6 +438,9 @@ not kernel ownership by itself or successful checkpoint/restore.
 The native base can be reconstructed without the historical experiment image. A repeatable compiler
 recipe does not by itself prove bit-identical CRIU output or production runtime qualification.
 The historical default builder remains available only when its exact retained image is present.
+Consumers recheck the selected image's current local digest, configuration identity and native
+platform before allocating fixtures. A saved successful build does not prove that a later Docker
+cache still contains its image; restore or rebuild that exact input instead of selecting a tag.
 
 Run the selected ordinary CRIU checkpoint/restore core cases:
 
@@ -844,10 +847,46 @@ The same developer run failed its first checkpoint: the selected CRIU reports
 developer fork, pause or resume qualification. The selected CRIU nested-namespace adapter admits
 user, UTS, network, PID, IPC and cgroup namespaces; time namespaces remain unsupported.
 The unchanged upstream `timens_nested` case also declares an expected checkpoint failure.
-This needs a focused reproducer and an explicit compatibility decision before modifying CRIU.
+A minimal Sysbox parent and one child in a new time namespace reproduce the same CRIU error
+in an individual 452-ms checkpoint request, without Docker, the Connector or an IDE.
 The full gate remains failed. An initial diagnostic attempted exec after the failed capture;
 that is unsuitable for an unresolved frozen source and has been removed from the fixture.
 Logs are observed through the real CLI's stderr and the guest's merged filesystem instead.
+
+The runtime now checks each owned thread's `time` and `time_for_children` handles while the
+exact cgroup tree is frozen, before entering CRIU's guarded capture phase. It verifies the
+namespace filesystem/type and compares them to a pinned handle for the original root time
+namespace. A distinct child or future-children time namespace is rejected before ptrace,
+network hooks or snapshot payload writes. The source guard then releases the original tree.
+The rejected checkpoint ID remains reserved with its original intent and rejection.
+An early rejected pause returns the same running source and retains `rejected_at` and `error`
+in pause history. Lost publication of that result can be recovered only from its exact
+pre-capture rejection, completed safe guard outcome and still-matching live kernel identities.
+An in-flight, missing or contradictory outcome cannot promote a pending pause to running.
+
+Run the focused native namespace-admission regression:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py --suite namespaces \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+```
+
+It checks rejection with byte-identical original RAM, useful work after the failure, retained
+failed pause intent, immutable failed IDs and controller-outcome recovery. A changed
+`time_for_children` on an individual Go thread is a separate case. Replacing the private-time
+child with an ordinary child in the shared root time namespace permits the real checkpoint
+again. This is failure-path hardening; nested time namespace capture/restore still needs
+implementation and full developer lifecycle proof.
+The complete focused gate passed with five top-level tests and its controller-recovery subtest
+in `factorybox-runtime-020ec27cddfa4017a2e2c6754c71e89f`, with zero skips and owned cleanup.
+The original minimal red case and the lost-publication red case are retained separately.
+After this change, the existing full selected capture gate passed again with four top-level
+tests and seventeen subtests in `factorybox-runtime-b1f828f4e84240aca1ef1802a7b39daf`.
+The selected 32-MiB pause/resume gate passed with four top-level tests and four subtests in
+`factorybox-runtime-4c737a53a1e0490a9643920f587b01b8`. Both used unchanged pinned Sysbox/CRIU
+binaries and completed exact owned cleanup. These runs preserve their narrow qualification scope.
 
 The captured test authority proves the actual local protocol path. It does not prove real
 external Factory handoff, fresh credentials for a fork, external TCP recovery, Theia, browser

@@ -140,13 +140,26 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 		return Checkpoint{}, err
 	}
 	finished := false
+	var admission *checkpointAdmissionError
 	defer func() {
 		if !finished {
-			resultErr = errors.Join(resultErr, guard.finish(true))
+			recoveryErr := guard.finish(true)
+			if admission != nil && recoveryErr == nil {
+				admission.recovered = true
+			}
+			resultErr = errors.Join(resultErr, recoveryErr)
 		}
 	}()
 	if err := guard.freeze(true); err != nil {
 		return Checkpoint{}, err
+	}
+	if err := guard.admitCheckpointNamespaces(); err != nil {
+		admission = &checkpointAdmissionError{cause: err, rejectedAt: now()}
+		evidenceErr := e.publishCheckpoint(relative, "admission-rejected.json", checkpointAdmissionRejection{
+			Version: 1, SourceID: record.ID, SnapshotID: snapshot,
+			SourcePID: state.PID, RejectedAt: admission.rejectedAt, Error: admission.Error(),
+		})
+		return Checkpoint{}, errors.Join(admission, evidenceErr)
 	}
 	if err := guard.capturePhase(true); err != nil {
 		return Checkpoint{}, err
@@ -348,6 +361,9 @@ func (e *Engine) reconcileCheckpoint(ctx context.Context, record Record, id, rel
 		return ready, e.verifyCheckpoint(ctx, record, id, relative, ready)
 	}
 	if !errors.Is(err, os.ErrNotExist) {
+		return Checkpoint{}, err
+	}
+	if err := e.reconcileRejectedCheckpoint(record, id, relative); err != nil {
 		return Checkpoint{}, err
 	}
 	captured, err := e.readCheckpoint(relative, "capture-result.json")
