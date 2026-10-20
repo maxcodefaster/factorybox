@@ -94,6 +94,15 @@ def run_with_theia(command, stdout, stderr, peer, output, *, timeout=420):
 def cleanup_resources(archive, name, owner, image, result, peer,
                       attempted, volume_attempted, failure):
     preserve = False
+    if peer and attempted and failure:
+        # Killing the Docker client does not stop its container. End the
+        # workload before a slow peer close can consume more execution time.
+        try:
+            upstream_bats.stop_failed_fixture(name, owner)
+            result["worker_stopped_before_peer"] = True
+        except Exception as error:
+            result["worker_stopped_before_peer"] = False
+            result["worker_stop_error"] = str(error)
     if peer:
         try:
             peer.close(bool(failure))

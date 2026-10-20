@@ -85,15 +85,23 @@ def observations(text, expected):
             "skipped": [r["name"] for r in rows if r["skipped"]]}
 
 
-def archive_failure(archive, name, owner, volumes, image, result, *, timeout=60, compressed=False):
+def stop_failed_fixture(name, owner):
     state = json.loads(reference.docker(["container", "inspect", name]))[0]
-    if state["Config"].get("Labels", {}).get("com.factorybox.run") != owner:
-        raise ValueError("failed Bats fixture ownership changed")
+    def require_owner():
+        if (state.get("Name", "").removeprefix("/") != name or
+                state["Config"].get("Labels", {}).get("com.factorybox.run") != owner):
+            raise ValueError("failed fixture ownership changed")
+    require_owner()
     if state["State"]["Running"]:
         reference.docker(["container", "stop", "--time=2", name])
         state = json.loads(reference.docker(["container", "inspect", name]))[0]
+        require_owner()
     if state["State"]["Running"] or state["State"]["Pid"] != 0:
         raise ValueError("failed fixture writers have not stopped")
+
+
+def archive_failure(archive, name, owner, volumes, image, result, *, timeout=60, compressed=False):
+    stop_failed_fixture(name, owner)
     archive_stopped_volumes(archive, name, owner, volumes, image, result,
                            timeout=timeout, compressed=compressed)
 

@@ -31,7 +31,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 97 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 99 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
@@ -87,6 +87,8 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Docker fault attempt with file admission | **Failing**, unqualified, in `factorybox-devx-lifecycle-c1f6664e9c3947c28f1607e38e50ca58`: initial rootfs/base preparation consumes 191.16 seconds, and first useful app takes another individually observed 75.645 seconds. The actual tracer never reaches the required root page-image boundary within the unchanged 30-second tracing limit; no complete injected-fault/recovery proof is published. Go takes 247.32 seconds and outer execution 321.35. Inputs/global sentinels remain unchanged, all 3,605,004,288 failure-archive bytes verify and owned cleanup passes. This missed injection does not qualify the Docker `/runc` recapture fix |
 | Native fault-tracer wait | Polling baseline `factorybox-fault-wait-2839c920006f45228a8ae080aca272ce` takes 1.808 seconds for 2,716 observations and fails its separate one-second diagnostic budget. SIGCHLD-based waiting passes in `factorybox-fault-wait-11820cc9c52f4039ad4f5375c2877e4c` at 0.205 seconds. Repository runner `factorybox-fault-wait-2016c1fde8fe48c48263af50803821d2` passes both the counted producer at 0.640 seconds and an absolute deadline with a stale notification at 20.140 ms. Inputs and owned cleanup pass. The Docker injection deadline and page-image assertion remain unchanged; these observations measure test instrumentation, not fork/resume performance |
 | Complete candidate Docker-root recovery | `factorybox-devx-lifecycle-8dcd74a0ca0b4019ba45556ac1e46092` passes the complete dedicated gate with the SHM FS composition and shared-root CRIU candidate, using Docker Overlay2. Tracer death after 69,632 actual root page-image bytes is cured with 13 original processes/103 threads. New Docker exec, original-state mutation, fresh checkpoint, independent useful current-state fork, divergent branch/source mutation and a useful prior-checkpoint fork all pass. Go takes 346.66 seconds and outer execution 402.81, within the unchanged 390/420-second bounds. Inputs/global sentinels and exact cleanup pass. Current/prior forks take 22.162/38.834 seconds through useful work; preparation takes 179.608 seconds and cold first use 90.303. Components and storage driver remain unselected pending ordinary developer and remaining failure gates; no latency distribution or production release is qualified |
+| Combined candidate developer attempt | **Failing** in `factorybox-devx-lifecycle-b11fca474290494b97cb5a01a14c6ffa`: the same components with Overlay2, separate Theia and OpenCode reach only the first useful app/IDE/API phase before the 420-second outer deadline. Preparation takes 178.435 seconds, cold first use 122.498, first checkpoint 65.207 and the fork CLI 60.355. The fork completes after the outer deadline; no useful-fork, descendant or pause/resume verdict is qualified. All 4,381,999,104 failure-archive bytes verify. Worker cleanup passes; the original result correctly retains failed IDE cleanup. Separate IDE reconciliation `0674564a6fce471c8ea0f858126737b3` verifies its 1-MiB workspace and removes it. Offline verification confirms frozen inputs/components/source/example and absence of all owned resources. Terminal global-sentinel checks did not run |
+| Stop failed worker before peer cleanup | Native baseline `factorybox-cleanup-order-0b9189eab46144658983e0aa6c09fb73` observes the real worker still running when peer cleanup begins. `factorybox-cleanup-order-e2726e0bc4d045059034c8f26a530977` passes after moving the ownership-checked stop ahead of peer cleanup. Both tiny failure archives verify and exact cleanup passes. Unit regressions preserve stop/peer/archive order and refuse changed ownership before or after stopping. This is cleanup evidence, not a replacement for the combined developer gate |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
@@ -819,6 +821,9 @@ At admission, new builds/runs require 8 GiB of headroom inside a 32-GiB artifact
 Fixtures share verified immutable component outputs through hardlinks and mount them read-only.
 Developer results distinguish `worker_cleanup` from complete `cleanup`; the latter also requires
 the optional IDE's cleanup. A retained `-ide-work` volume blocks the next developer run.
+On failure, the runner stops and verifies the exact owned worker before closing the IDE peer;
+ending the Docker client alone does not stop its container. Archival follows peer cleanup so
+external workspace writers are also quiescent.
 `reconcile_devx.py --ide` checks the exact derived IDE names and owner before archiving/removing
 that workspace. It leaves original failed results unchanged and records its own observation.
 For the older delete-observer failure, `theia/reconciliations/5d5e8a5ebbf44164a3ba520a32eb4bdd`
@@ -844,6 +849,15 @@ Timeouts, corruption and capacity failures retain the source and remove incomple
 Other closed-run dumps and unique lifecycle test executables are automatically compacted
 after successful cleanup. Shared executable inputs retain their existing hardlinks. Frozen
 inputs and active runs remain directly usable.
+
+After the complete Docker-root replacement passed, retirements
+`factorybox-storage-retirement-9f9ff32096154300bb82c5286c553a5a` and
+`factorybox-storage-retirement-b572b6b16d9b43f986a85fb9213f8c5b` retired the superseded `/runc`
+and missed-injection payloads, reclaiming 969,805,733 file bytes. Their source/results/logs,
+all member metadata, small contents and large-file hashes remain. The minimal detached-file
+reproducers and current unresolved developer archive remain complete. Lossless compaction
+of cleaned test executables reclaimed another 619,675,648 allocated bytes, with standard
+decoding receipts. The new developer failure occupies 1,440,734,965 encoded bytes.
 
 Reconciliation `b6c1452e4c3f46c498a1b3a8365276f1` verified 21,307,064,320 original bytes against a
 7,145,530,085-byte archive in 441 seconds, then removed the original owned developer volume.

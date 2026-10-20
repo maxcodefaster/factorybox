@@ -6,13 +6,33 @@ import devx_lifecycle
 
 
 class DeveloperStorageTests(unittest.TestCase):
+    def test_failed_worker_stops_before_peer_cleanup_and_failure_archival(self):
+        events = []
+        peer = mock.Mock()
+        peer.result = {"passed": False, "cleanup": True}
+        peer.close.side_effect = lambda _: events.append("peer")
+        result = {"passed": False, "cleanup": False}
+        failure = ValueError("native deadline expired")
+        with mock.patch.object(devx_lifecycle.upstream_bats, "stop_failed_fixture",
+                               side_effect=lambda *_: events.append("stop")), \
+                mock.patch.object(devx_lifecycle.upstream_bats, "archive_failure",
+                                  side_effect=lambda *_, **__: events.append("archive")), \
+                mock.patch.object(devx_lifecycle.reference, "owned_delete"):
+            returned = devx_lifecycle.cleanup_resources(
+                "archive", "worker", "owner", "image", result, peer, True, True, failure)
+        self.assertIs(returned, failure)
+        self.assertEqual(events, ["stop", "peer", "archive"])
+        self.assertTrue(result["cleanup"])
+        self.assertFalse(result["passed"])
+
     def test_failed_ide_cleanup_cannot_be_reported_as_complete_worker_cleanup(self):
         peer = mock.Mock()
         peer.result = {"passed": False, "cleanup": False,
                        "cleanup_error": "owned IDE container removal timed out"}
         result = {"passed": False, "cleanup": False}
         failure = ValueError("native deadline expired")
-        with mock.patch.object(devx_lifecycle.upstream_bats, "archive_failure"), \
+        with mock.patch.object(devx_lifecycle.upstream_bats, "stop_failed_fixture"), \
+                mock.patch.object(devx_lifecycle.upstream_bats, "archive_failure"), \
                 mock.patch.object(devx_lifecycle.reference, "owned_delete") as remove:
             returned = devx_lifecycle.cleanup_resources(
                 "archive", "worker", "owner", "image", result, peer, True, True, failure)

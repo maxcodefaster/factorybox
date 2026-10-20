@@ -12,6 +12,28 @@ import upstream_bats
 
 
 class BatsEvidenceTests(unittest.TestCase):
+    def test_failure_stop_requires_exact_owner_before_and_after_stopping(self):
+        owner, name = "a" * 32, "exact-fixture"
+        running = {"Name": "/" + name, "Config": {"Labels": {"com.factorybox.run": owner}},
+                   "State": {"Running": True, "Pid": 123}}
+        stopped = dict(running, State={"Running": False, "Pid": 0})
+        foreign = dict(stopped, Name="/foreign")
+        with mock.patch.object(upstream_bats.reference, "docker", side_effect=[
+                json.dumps([running]), "", json.dumps([stopped])]) as docker:
+            upstream_bats.stop_failed_fixture(name, owner)
+            self.assertEqual(docker.call_args_list, [
+                mock.call(["container", "inspect", name]),
+                mock.call(["container", "stop", "--time=2", name]),
+                mock.call(["container", "inspect", name])])
+        for states in [[foreign], [dict(running, Config={"Labels": {}})], [running, "", foreign]]:
+            replies = [value if isinstance(value, str) else json.dumps([value]) for value in states]
+            with self.subTest(states=states), \
+                    mock.patch.object(upstream_bats.reference, "docker", side_effect=replies) as docker:
+                with self.assertRaisesRegex(ValueError, "ownership changed"):
+                    upstream_bats.stop_failed_fixture(name, owner)
+                if len(states) == 1:
+                    self.assertEqual(docker.call_args_list, [mock.call(["container", "inspect", name])])
+
     def test_archive_refuses_live_or_foreign_attachments_before_starting_a_helper(self):
         owner, name, volume = "a" * 32, "exact-fixture", "exact-volume"
         for container in [
