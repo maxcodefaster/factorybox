@@ -110,6 +110,9 @@ def verify_compacted(path, expected):
         if encoded["file"] != path.name + ".zst":
             raise ValueError("encoded payload identity differs")
         payload = path.parent / encoded["file"]
+        repacked = not payload.exists() and not payload.is_symlink()
+        if repacked:
+            payload, encoded = verified_replacement(payload, encoded, expected)
         before = identity(payload)
         with payload.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -117,7 +120,8 @@ def verify_compacted(path, expected):
             raise ValueError("encoded payload no longer matches its receipt")
         digest = hashlib.sha256()
         count = 0
-        with subprocess.Popen(["zstd", "-q", "-dc", "--", str(payload)],
+        with subprocess.Popen(["zstd", "-q", "-dc", *(["--long=31"] if repacked else []),
+                               "--", str(payload)],
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as process:
             try:
                 while data := process.stdout.read(1 << 20):
@@ -133,6 +137,71 @@ def verify_compacted(path, expected):
                     process.kill()
         return encoded
     raise ValueError("missing verified compacted payload")
+
+
+def verified_replacement(payload, encoded, expected):
+    """Resolve one pinned lossless replacement; never execute receipt commands."""
+    artifact_root = next((parent for parent in payload.parents if parent.name == "artifacts"), None)
+    if artifact_root is None:
+        raise ValueError("replacement archive must remain within artifacts")
+    real_root = artifact_root.resolve()
+
+    def checked_path(value):
+        path = Path(value)
+        if not path.is_absolute() or not path.is_relative_to(artifact_root):
+            raise ValueError("replacement path must remain within artifacts")
+        canonical = real_root / path.relative_to(artifact_root)
+        if path.resolve() != canonical or path.is_symlink():
+            raise ValueError("replacement path must not contain symlinks")
+        return path
+
+    def read_receipt(path, expected_sha=None):
+        checked_path(path)
+        before = identity(path)
+        if before[2] > 1 << 20:
+            raise ValueError("replacement receipt exceeds its size limit")
+        content = path.read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        if (identity(path) != before or
+                expected_sha is not None and digest != expected_sha):
+            raise ValueError("replacement receipt no longer matches")
+        return json.loads(content), digest
+
+    pointer_path = payload.with_name(payload.name + ".repacked.json")
+    pointer, pointer_sha = read_receipt(pointer_path)
+    if (pointer.get("schema") != 1 or pointer.get("original_archive") != str(payload) or
+            pointer.get("original_encoded_sha256") != encoded["sha256"] or
+            pointer.get("original_tar_bytes") != expected["bytes"] or
+            pointer.get("original_tar_sha256") != expected["sha256"]):
+        raise ValueError("replacement pointer differs from original archive receipt")
+    replacement = checked_path(pointer["replacement_archive"])
+    result_path = checked_path(pointer["verified_result"])
+    if (replacement == payload or replacement.parent != result_path.parent or
+            result_path.name != "result.json" or
+            not replacement.parent.name.startswith("factorybox-storage-repack-")):
+        raise ValueError("replacement must belong to its lossless repack result")
+    result, _ = read_receipt(result_path, pointer["verified_result_sha256"])
+    if (result.get("operation") != "lossless_closed_archive_repack" or
+            any(result.get(key) is not True for key in
+                ["passed", "cleanup", "source_removed", "whole_decoded_bytes_verified"]) or
+            result.get("source") != str(payload) or
+            result.get("source_encoded_sha256") != encoded["sha256"] or
+            result.get("source_encoded_bytes") != encoded["bytes"] or
+            result.get("new_archive") != str(replacement) or
+            result.get("encoded_sha256") != pointer["replacement_encoded_sha256"] or
+            result.get("raw_bytes") != expected["bytes"] or
+            result.get("raw_sha256") != expected["sha256"] or
+            type(result.get("encoded_bytes")) is not int or result["encoded_bytes"] <= 0):
+        raise ValueError("replacement result differs from original archive receipt")
+    # Only one replacement is admitted. Missing/repacked replacements fail here;
+    # this cannot chase an unbounded chain or a cycle.
+    identity(replacement)
+    return replacement, {
+        "file": replacement.name, "bytes": result["encoded_bytes"],
+        "sha256": result["encoded_sha256"], "artifact_path": str(replacement),
+        "repacked_from": str(payload), "pointer_sha256": pointer_sha,
+        "repack_result_sha256": pointer["verified_result_sha256"],
+    }
 
 
 def compact(path, root):

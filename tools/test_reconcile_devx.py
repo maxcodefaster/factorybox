@@ -94,6 +94,106 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(result["archive_reused_from"]["encoding"]["file"], "failed-volume-0.tar.zst")
         self.assertFalse(payload.exists())
 
+    def repack(self):
+        payload = self.previous / "failed-volume-0.tar"
+        storage = reconcile_devx.reference.artifact_storage
+        self.saved["cleanup"] = True
+        self.save()
+        original = storage.compact(payload, self.root)
+        source = self.previous / original["encoded"]["file"]
+        replacement = self.root / "artifacts" / ("factorybox-storage-repack-" + "d" * 32)
+        replacement.mkdir()
+        encoded = replacement / source.name
+        # A replacement is independent bytes with its own pinned receipt. The
+        # codec need not change for this test of archive discovery and trust.
+        shutil.copyfile(source, encoded)
+        result = replacement / "result.json"
+        result.write_text(json.dumps({
+            "operation": "lossless_closed_archive_repack", "passed": True,
+            "cleanup": True, "source_removed": True,
+            "source": str(source), "source_encoded_sha256": original["encoded"]["sha256"],
+            "source_encoded_bytes": original["encoded"]["bytes"],
+            "new_archive": str(encoded), "encoded_sha256": storage_hash(encoded),
+            "encoded_bytes": encoded.stat().st_size,
+            "raw_bytes": original["original"]["bytes"],
+            "raw_sha256": original["original"]["sha256"],
+            "whole_decoded_bytes_verified": True,
+        }))
+        pointer = source.with_name(source.name + ".repacked.json")
+        pointer.write_text(json.dumps({
+            "schema": 1, "original_archive": str(source),
+            "original_encoded_sha256": original["encoded"]["sha256"],
+            "replacement_archive": str(encoded),
+            "replacement_encoded_sha256": storage_hash(encoded),
+            "original_tar_bytes": original["original"]["bytes"],
+            "original_tar_sha256": original["original"]["sha256"],
+            "verified_result": str(result), "verified_result_sha256": storage_hash(result),
+        }))
+        source.unlink()
+        return payload, pointer, encoded, result
+
+    @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
+    def test_losslessly_repacked_archive_proves_cleanup_without_a_raw_copy(self):
+        payload, _, encoded, _ = self.repack()
+        self.invoke()
+        receipts = list((self.archive / "reconciliations").glob("*/result.json"))
+        result = json.loads(next(path for path in receipts if path.parent != self.previous).read_text())
+        self.assertTrue(result["cleanup"])
+        self.assertEqual(result["archive_reused_from"]["encoding"]["artifact_path"], str(encoded))
+        self.assertFalse(payload.exists())
+
+    @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
+    def test_repacked_archive_rejects_changed_receipts_paths_and_contents(self):
+        _, pointer, encoded, result = self.repack()
+        saved_pointer, saved_result = pointer.read_text(), result.read_text()
+        cases = [
+            ("original_encoded_sha256", "0" * 64),
+            ("original_tar_bytes", 1),
+            ("original_tar_sha256", "0" * 64),
+            ("replacement_encoded_sha256", "0" * 64),
+            ("verified_result_sha256", "0" * 64),
+            ("replacement_archive", str(self.root / encoded.name)),
+        ]
+        for key, value in cases:
+            with self.subTest(key=key):
+                record = json.loads(saved_pointer)
+                record[key] = value
+                pointer.write_text(json.dumps(record))
+                with self.assertRaisesRegex(ValueError, "no longer matches"):
+                    self.invoke()
+                pointer.write_text(saved_pointer)
+        result.write_text(saved_result + "\n")
+        with self.assertRaisesRegex(ValueError, "no longer matches"):
+            self.invoke()
+        result.write_text(saved_result)
+        content = encoded.read_bytes()
+        encoded.write_bytes(b"X" + content[1:])
+        with self.assertRaisesRegex(ValueError, "no longer matches"):
+            self.invoke()
+        encoded.write_bytes(content)
+        foreign = self.root / "foreign.zst"
+        encoded.rename(foreign)
+        encoded.symlink_to(foreign)
+        with self.assertRaisesRegex(ValueError, "no longer matches"):
+            self.invoke()
+
+    @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
+    def test_repack_receipt_cannot_substitute_different_decoded_bytes(self):
+        _, pointer, encoded, result = self.repack()
+        original = b"retained complete stopped runtime archive"
+        encoded.write_bytes(subprocess.check_output(
+            ["zstd", "-q", "-c"], input=b"X" + original[1:]))
+        saved_result = json.loads(result.read_text())
+        saved_result.update(encoded_sha256=storage_hash(encoded),
+                            encoded_bytes=encoded.stat().st_size)
+        result.write_text(json.dumps(saved_result))
+        saved_pointer = json.loads(pointer.read_text())
+        saved_pointer.update(replacement_encoded_sha256=storage_hash(encoded),
+                             verified_result_sha256=storage_hash(result))
+        pointer.write_text(json.dumps(saved_pointer))
+        with self.assertRaisesRegex(ValueError, "no longer matches"):
+            self.invoke()
+
     def test_changed_archive_fails(self):
         path = self.previous / "failed-volume-0.tar"
         payload = path.read_bytes()
@@ -110,6 +210,10 @@ class ReconcileTests(unittest.TestCase):
     def test_inspection_error_is_not_absence(self):
         with self.assertRaises(subprocess.CalledProcessError):
             self.invoke(stderr="permission denied")
+
+
+def storage_hash(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 if __name__ == "__main__":

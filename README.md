@@ -31,14 +31,14 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 87 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 90 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
 | Current runc integration | `factorybox-upstream-9e3324f1d97e4130a6d6ea6040d62b5a`: 47 passes, twelve original upstream skips |
 | Unchanged fs/mgr/IPC/library modules | Retain the combined pass in `factorybox-upstream-eafc65ac3e6f46fcb89b97480cf224d8`; the manager's four shiftfs cases skip on this worker |
 | Current CRIU core | `factorybox-criu-core-ea025fce7b7f4939b70aeec382d5bdfe`: 18 unchanged C tests, two dump/restore cycles each, zero skips |
-| Prepared-base pause/resume | `factorybox-runtime-04215c24e3dd483cb877f24ba44afa82`: nine tests, 46 subtests, zero skips, owned cleanup; selected CRIU remains unchanged after adding the optional guard-authorized recovery path |
+| Prepared-base pause/resume | `factorybox-runtime-cb225f6502304e15ac47e7b8c1410aa7`: nine tests, 46 subtests, zero skips, unchanged frozen inputs/source/components and owned cleanup. Current descriptor admission and managed-volume settings retain the selected CRIU's full pause/resume/RAM-release and resumed-source fork assertions |
 | Capture guard failure/disarm | `factorybox-runtime-d1ff147321434c1391dbbc3893b6e90d`: all twelve original cases after retrying interrupted pidfd polls, owned cleanup |
 | Worker loss after completed CRIU | `factorybox-runtime-09a48beb73f94b9cb8e0749a548d648e`: nine tests, 43 subtests, zero skips; checkpoint/pause source recovery, copy-child death, live/forged receipt refusal and lost failed-pause publication recovery |
 | Filesystem and descriptor admission | `factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`: ten tests/43 subtests, zero skips, selected CRIU. Original hook assertions remain; held root/child mount contexts reject before CRIU with original PID/RAM/useful work and history intact. A transient context settles before a complete checkpoint and independent fork. Changed descriptor observation refused on replay; 128 real contexts produce less than 4 KiB of evidence |
@@ -55,6 +55,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Docker recovery with corrected client namespace | **Failing** in `factorybox-devx-lifecycle-c26bd35b1a214f3dac2ff1ad591fa548`: the original process-tree candidate refused a changed original thread identity before granting cure. No complete cure result was published. Inputs/global sentinels unchanged; verified failure archive and owned cleanup. Earlier isolated/two-process passes do not qualify this real workload |
 | Early-hold Docker attempt before proc admission | **Failing** in `factorybox-devx-lifecycle-30459414a2d941b793e2f7cc7912006f`: the first ordinary checkpoint failed on a directory handle from an unenumerable proc mount, before fault injection. This does not test early-hold recovery. Full failure archive verified and owned cleanup completed; the small proc admission regression reproduces the failure without Docker |
 | Docker cure and fresh recapture with proc admission | **Failing** as a complete gate in `factorybox-devx-lifecycle-1c5479188db2407492e30ad2ab6adfed`: authorized cure retained 13 processes/103 threads; new Docker exec, original-source mutation, fresh checkpoint, independently useful current-state fork and divergent branch/source mutation passed. Outer execution timed out at 420 seconds during the final prior-checkpoint fork. The separate 600-second archive attempt also timed out and retained its exact volume; offline reconciliation is recorded separately. No complete gate or latency distribution is qualified |
+| Overlay2 consumer diagnostic | **Failing**, unselected, in `factorybox-devx-lifecycle-977034ecb79f4547bf463ce678509fd5`: the actual private Docker daemon used Overlay2; first useful application and checkpoint passed, but the first fork failed while CRIU restored a nested overlay mount with `ENOENT`. Complete 4,363,124,736-byte failure archive verified and owned cleanup passed. The frozen wrapper changes only the consumer's storage-driver flag. This is not a performance improvement or developer qualification |
 | Unix client namespace diagnostic | `factorybox-runtime-3c5218a84cdf47269bf70ba96848c418` reproduced an accepted server socket with the external worker's namespace cookie, absent from the source Unix table, without Docker or CRIU. `factorybox-runtime-15cb7afe89f842e4adfe816e2b2286c6` verified that the corrected test client creates a visible socket with the source listener's cookie. Original actor RAM/useful work and owned cleanup passed. This is a fixture mechanism, not recovery qualification |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
@@ -429,6 +430,8 @@ New native runs build from a complete frozen Go source context in their own arti
 check it again afterward. The failed pre-fix proc run additionally retains an exact
 reconstruction of all 52 originally recorded source hashes under `source-reconstruction`;
 its original binaries/results remain unchanged.
+Native test binaries use `-trimpath -buildvcs=false`, like the CLI, so identical frozen
+contexts can share executable bytes without embedding each run's temporary source path.
 
 ```sh
 mise exec -- python3 tools/upstream_unit.py \
@@ -630,6 +633,13 @@ all CLI timings. Background worker load remains uncontrolled, so these are indiv
 observations; only the removed sync-out work is selected, not a uniform latency improvement.
 The CRIU candidate remains unselected.
 
+The separate unselected Overlay2 consumer attempt
+`factorybox-devx-lifecycle-977034ecb79f4547bf463ce678509fd5` reached first useful work and
+checkpoint, then failed the first fork. Its retained CRIU restore log reports a missing
+path while mounting a nested Docker overlay. The CLI's listener-handoff error is the
+subsequent symptom. The full failure archive and exact driver-only wrapper are retained;
+VFS remains the reference. No Overlay2 speed or footprint claim is selected from this failure.
+
 The earlier regression `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`
 exceeded the unchanged 390-second Go/420-second outer limits. Seven app, IDE and OpenCode phases
 completed; the final resumed-source checkpoint was still in progress when the Go deadline fired.
@@ -781,6 +791,22 @@ No executable bytes or failure data were discarded by these shares.
 Further identical closed CLI shares are recorded in
 `factorybox-storage-share-3a2ed6854dfd44f692864f2a533a36fd` and
 `factorybox-storage-share-a181d759322147098597b95305277c57`.
+The subsequent `factorybox-storage-share-b2b32ba94006420da9f63fad3f332745` shares 200
+identical closed-run executables and reclaims 2,460,667,904 allocated bytes after checking
+their declared hashes, modes, ownership and closed-run status.
+`factorybox-storage-share-00e6a7f53a7a43efa2d7804d4c3fcff5` shares ten further identical
+closed-run executables, reclaiming 62,029,824 allocated bytes.
+
+Reconciliation `074130fbd8ee4171bf5210a680c71f7f` completed the retained Docker-cure
+failure's cleanup after verifying all 11,050,942,464 raw bytes. Its lossless replacement
+in `factorybox-storage-repack-6f1f2ea51d6a4079a338be25ad8cd9ec` occupies 845,743,491 bytes
+and reclaimed 2,888,524,443 bytes from the prior encoding. The original receipts remain.
+Cleanup verification now resolves one replacement through its original pointer and pinned
+repack result, rejects foreign/symlink paths and changed receipts, and checks both the encoded
+hash and complete bounded decoded stream. It does not execute commands from receipts or
+recreate raw copies. `artifacts/storage-replacement-work/verification.json` records a full
+verification of that real replacement; three regressions cover discovery, tampering and a
+replacement whose valid encoded hash conceals different decoded bytes.
 
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another
