@@ -27,6 +27,9 @@ func (failure *checkpointAdmissionError) Error() string {
 func (failure *checkpointAdmissionError) Unwrap() error { return failure.cause }
 
 func checkpointAdmissionPrefix(kind string) string {
+	if kind == "descriptors" {
+		return "checkpoint descriptor admission: "
+	}
 	if kind == "filesystem" {
 		return "checkpoint filesystem admission: "
 	}
@@ -56,7 +59,7 @@ func (e *Engine) reconcileRejectedCheckpoint(record Record, id, relative string)
 	}
 	if rejection.Version != 1 || rejection.SourceID != record.ID || rejection.SnapshotID != id ||
 		rejection.SourcePID <= 1 || rejection.RejectedAt == "" ||
-		(rejection.Kind != "" && rejection.Kind != "filesystem") ||
+		(rejection.Kind != "" && rejection.Kind != "filesystem" && rejection.Kind != "descriptors") ||
 		!strings.HasPrefix(rejection.Error, checkpointAdmissionPrefix(rejection.Kind)) {
 		return fmt.Errorf("checkpoint admission rejection differs from its original operation")
 	}
@@ -77,6 +80,14 @@ func (e *Engine) reconcileRejectedCheckpoint(record Record, id, relative string)
 	if config.Token != id || config.PID != rejection.SourcePID || config.Root != e.config.Root ||
 		config.StopSource != intent.StopSource || !reflect.DeepEqual(config.Source, record) {
 		return fmt.Errorf("checkpoint admission guard differs from its original source")
+	}
+	if rejection.Kind == "descriptors" {
+		var observation captureDescriptorAdmission
+		err := e.readCheckpointJSON(relative+"/guard/descriptor-admission.json", &observation)
+		if err != nil || observation.Version != 1 || observation.Token != config.Token ||
+			observation.SourcePID != config.PID || observation.SourceStart != config.Start || observation.Passed {
+			return fmt.Errorf("descriptor admission observation differs from its original rejection: %v", err)
+		}
 	}
 	for _, path := range []string{"/guard/guard-capture-entered.json", "/capture-result.json", "/checkpoint.json"} {
 		if _, err := e.root.Lstat(relative + path); !errors.Is(err, os.ErrNotExist) {

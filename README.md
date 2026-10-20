@@ -39,13 +39,14 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Unchanged fs/mgr/IPC/library modules | Retain the combined pass in `factorybox-upstream-eafc65ac3e6f46fcb89b97480cf224d8`; the manager's four shiftfs cases skip on this worker |
 | Current CRIU core | `factorybox-criu-core-ea025fce7b7f4939b70aeec382d5bdfe`: 18 unchanged C tests, two dump/restore cycles each, zero skips |
 | Prepared-base pause/resume | `factorybox-runtime-04215c24e3dd483cb877f24ba44afa82`: nine tests, 46 subtests, zero skips, owned cleanup; selected CRIU remains unchanged after adding the optional guard-authorized recovery path |
-| Capture guard failure/disarm | `factorybox-runtime-add7e8235d534cfbade83308eeb4aefd`: all twelve original cases, owned cleanup |
+| Capture guard failure/disarm | `factorybox-runtime-d1ff147321434c1391dbbc3893b6e90d`: all twelve original cases after retrying interrupted pidfd polls, owned cleanup |
 | Worker loss after completed CRIU | `factorybox-runtime-09a48beb73f94b9cb8e0749a548d648e`: nine tests, 43 subtests, zero skips; checkpoint/pause source recovery, copy-child death, live/forged receipt refusal and lost failed-pause publication recovery |
-| Filesystem preflight rejection | `factorybox-runtime-f8ec18cb222e4feb9e91acccce6abb24`: checkpoint/pause and immutable replay preserve the original running PID, RAM and useful work; forged rejection kind refused |
-| Image ownership and durability | `factorybox-runtime-f8ec18cb222e4feb9e91acccce6abb24`: nine tests and 40 subtests, including one complete-directory barrier, failed-barrier refusal and symlink/hardlink/foreign-mount rejection |
+| Filesystem and descriptor admission | `factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`: ten tests/43 subtests, zero skips, selected CRIU. Original hook assertions remain; held root/child mount contexts reject before CRIU with original PID/RAM/useful work and history intact. A transient context settles before a complete checkpoint and independent fork. Changed descriptor observation refused on replay; 128 real contexts produce less than 4 KiB of evidence |
+| Image ownership and durability | `factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`: original eight adapter tests and 40 adapter subtests unchanged, including one complete-directory barrier, failed-barrier refusal and symlink/hardlink/foreign-mount rejection |
 | Earlier separate-Theia baseline | `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b`: eight app phases and nine IDE checks, unchanged inputs/global sentinels, full cleanup |
 | Last completed developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-33d1823f30604cf0924f6378cc404355`: eight app, nine IDE and eight authenticated OpenCode API checks; 363.96 seconds Go, 394.26 seconds outer; unchanged inputs/global sentinels and full cleanup. Includes worker-loss recovery and copy-stage measurements; precedes the separately native-tested alias timing correction |
 | Process-tree candidate developer lifecycle | **Failing** in `factorybox-devx-lifecycle-9e5ae782721743058bd9a18d0b507894`: six app, six IDE and six OpenCode phases completed; pause encountered an open `anon_inode:[fscontext]` mount-transaction descriptor that CRIU cannot dump. Pause remained unresolved. 200.07 seconds Go, 246.86 seconds outer execution, verified failure archive and owned cleanup. This is not a successful performance observation |
+| Developer lifecycle after descriptor admission | **Failing** in `factorybox-devx-lifecycle-d7ed29713e7f4feaacfa7e352c909e52`: all eight app/eight OpenCode phases and nine IDE checks completed, including RAM-releasing pause/resume, fork of resumed state and independent IDE edits. Go reached its original 390-second limit during deletion of `after-resume`; the outer 420-second deadline also expired. The separate IDE peer passed and cleaned up; the worker failure archive was verified and owned resources cleaned. This does not qualify the complete lifecycle |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
 | Retained Compel context mechanism | `factorybox-compel-recovery-65c298fc4c094c368c60e626f757a0d4`: unretained negative control and 25 recovery cases, including eight freezer, eight three-thread and eight outstanding-RPC repeats; original RAM/FP marker/descriptors, useful work and owned cleanup. Not integrated into the runtime guard or qualified for real page dumping |
@@ -356,6 +357,29 @@ unresolved after CRIU's normal failure. Its complete failure archive is retained
 `factorybox-devx-lifecycle-9e5ae782721743058bd9a18d0b507894`. Handling or rejecting that
 kernel state before capture, with a proved original-source recovery outcome, remains required.
 
+The minimal original failure is retained in
+`factorybox-runtime-eec02c0d2df94530ad7377b1d2664987`: an actual open guest `fscontext`
+also leaves the source held with the selected CRIU. Descriptor admission now runs before
+capture-enter. It inspects frozen source thread file tables, deduplicating only after a
+successful kernel `KCMP_FILES` comparison. Unshared tables and comparison failures receive
+their own scan. Bounds are 8,192 descriptors per inspected table and 65,536 across a scan.
+Only the observed unsupported mount-context class receives a bounded settle interval.
+
+When a mount context is present, the controller briefly releases and re-freezes the original
+source for at most two seconds of admission time. Namespace and filesystem checks then run
+at the final frozen point. A stable workload has no intentional settle delay or extra
+descriptor receipt. A context that stays open receives a durable pre-capture rejection;
+the independent guard restores the original running source, and a failed pause retains its
+history. Replay verifies the original descriptor observation and never runs capture again.
+Diagnostic samples are capped at sixteen contexts. This uses no application or agent hook.
+
+The first settle probe in `factorybox-runtime-634335460c1d42ebbe38a1bce2a3b76a` found that
+an interrupted zero-time pidfd poll was treated as a dead or invalid source. Retrying
+`EINTR` fixed it. The complete selected-CRIU admission gate passed in
+`factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`. The subsequent full developer
+reproduction completed all app, IDE and OpenCode assertions, including the previously failing
+pause, but timed out during final deletion. That separate deadline failure remains a release gate.
+
 ## Execute native gates
 
 Commands take exact successful local input artifact names. The reference remains immutable:
@@ -534,6 +558,16 @@ The first two precede the worker-loss recovery changes. The latest includes thos
 and stage measurements, and precedes clearing inherited immutable-alias timing fields.
 That timing-only correction passed the native base/pause suite separately.
 
+The unselected process-tree candidate with descriptor admission completed every functional
+phase in `factorybox-devx-lifecycle-d7ed29713e7f4feaacfa7e352c909e52`, but the complete gate
+timed out during final deletion. Its individual observations were checkpoint 32.079 seconds,
+first fork through useful work 29.685 seconds, pause 22.730 seconds and resume through useful
+work 20.211 seconds. Immutable-base import took 41.746 seconds versus 9.698 in the last complete
+selected-component pass. Earlier deletes in the same failed run took 29.922 and 14.741 seconds;
+final deletion started with less than sixteen seconds left on the Go deadline. These observations
+do not yet distinguish slow deletion from insufficient remaining execution time. No performance
+optimization or deadline increase has been selected from this failed run.
+
 The earlier regression `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`
 exceeded the unchanged 390-second Go/420-second outer limits. Seven app, IDE and OpenCode phases
 completed; the final resumed-source checkpoint was still in progress when the Go deadline fired.
@@ -644,11 +678,19 @@ original encoding receipts, selected inputs, current proofs and unresolved failu
 The new developer `fscontext` failure archive consumes part of the fixed 32-GiB budget;
 the 8-GiB next-run reserve is enforced unchanged.
 
+Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
+`factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another
+367,439,872 allocated bytes from four older successful lifecycle payloads, using later
+complete same-component native proofs. Verified small-file contents/member indexes, source,
+results, logs and original encoding receipts remain. The latest complete developer timeout
+archive remains retained; new runs still require the original 8-GiB reserve.
+
 ## Remaining release requirements
 
 Production qualification requires complete bounded failure recovery beyond the candidate's
 one/two-process page-dump proofs, including real Docker/Dev Container trees, recovery on the
-selected path, bounded handling/rejection of live mount-transaction descriptors and resolution of the observed
+selected path, a complete developer pass within the unchanged deadlines after descriptor admission,
+and resolution of the observed
 daemon-startup hang; resolution of required upstream failures/skips on supported
 workers; continued full developer qualification within the existing deadlines after behavioral
 changes; and native qualification of every claimed deployment target. The latest complete pass

@@ -163,8 +163,12 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 	if err := guard.freeze(true); err != nil {
 		return Checkpoint{}, err
 	}
-	kind := ""
-	admissionErr := guard.admitCheckpointNamespaces(features.RootOwnedTimeNamespaces)
+	kind := "descriptors"
+	admissionErr := guard.admitCheckpointDescriptors(ctx)
+	if admissionErr == nil {
+		kind = ""
+		admissionErr = guard.admitCheckpointNamespaces(features.RootOwnedTimeNamespaces)
+	}
 	if admissionErr == nil {
 		kind = "filesystem"
 		admissionErr = sysboxcapture.AdmitFilesystem(sysboxcapture.Request{

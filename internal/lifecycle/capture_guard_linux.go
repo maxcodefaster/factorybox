@@ -157,7 +157,13 @@ func captureGuardValidateState(config captureGuardConfig, anchor captureGuardAnc
 		return fmt.Errorf("guard source belongs to a different worker boot: %v", err)
 	}
 	poll := []unix.PollFd{{Fd: int32(anchor.pid.Fd()), Events: unix.POLLIN}}
-	n, err := unix.Poll(poll, 0)
+	var n int
+	for {
+		n, err = unix.Poll(poll, 0)
+		if !errors.Is(err, unix.EINTR) {
+			break
+		}
+	}
 	if err != nil || (!stopped && n != 0) ||
 		(stopped && (n != 1 || poll[0].Revents&unix.POLLIN == 0 || poll[0].Revents&unix.POLLNVAL != 0)) {
 		return fmt.Errorf("guard source pidfd is exited or invalid: %v", err)

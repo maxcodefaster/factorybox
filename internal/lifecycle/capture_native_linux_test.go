@@ -38,6 +38,8 @@ type captureActorState struct {
 	TCPClient      int    `json:"tcp_client,omitempty"`
 	TCPServer      int    `json:"tcp_server,omitempty"`
 	TCPListener    int    `json:"tcp_listener,omitempty"`
+	MountContextFD int    `json:"mount_context_fd,omitempty"`
+	MountContexts  int    `json:"mount_contexts,omitempty"`
 }
 
 func TestCaptureTimeNamespaceLauncher(t *testing.T) {
@@ -175,6 +177,7 @@ func TestCaptureActor(t *testing.T) {
 	}
 	defer server.Close()
 	var mutex sync.Mutex
+	var mountContexts []*os.File
 	for {
 		client, err := server.Accept()
 		if err != nil {
@@ -190,6 +193,51 @@ func TestCaptureActor(t *testing.T) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			switch request {
+			case "open-fscontext", "open-transient-fscontext", "open-many-fscontext":
+				if len(mountContexts) != 0 {
+					t.Error("owned mount context is already open")
+					return
+				}
+				count := 1
+				if request == "open-many-fscontext" {
+					count = 128
+				}
+				for index := 0; index < count; index++ {
+					fd, err := unix.Fsopen("tmpfs", unix.FSOPEN_CLOEXEC)
+					if err != nil {
+						t.Error("create only an unconfigured guest mount context", err)
+						return
+					}
+					mountContexts = append(mountContexts, os.NewFile(uintptr(fd), "owned guest mount context"))
+				}
+				state.MountContextFD, state.MountContexts = int(mountContexts[0].Fd()), len(mountContexts)
+				if request == "open-transient-fscontext" {
+					original := mountContexts[0]
+					go func() {
+						time.Sleep(1500 * time.Millisecond)
+						mutex.Lock()
+						defer mutex.Unlock()
+						if len(mountContexts) != 0 && mountContexts[0] == original {
+							if err := original.Close(); err != nil {
+								t.Error(err)
+								return
+							}
+							mountContexts, state.MountContextFD, state.MountContexts = nil, 0, 0
+						}
+					}()
+				}
+			case "close-fscontext":
+				if len(mountContexts) == 0 {
+					t.Error("owned mount context is not open")
+					return
+				}
+				for _, file := range mountContexts {
+					if err := file.Close(); err != nil {
+						t.Error(err)
+						return
+					}
+				}
+				mountContexts, state.MountContextFD, state.MountContexts = nil, 0, 0
 			case "make-tcp-pair":
 				if state.TCPClient != 0 {
 					t.Error("owned TCP fixture already exists")

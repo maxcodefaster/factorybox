@@ -101,9 +101,10 @@ def main():
                   "with immutable history while refusing changed receipts and source-state bytes. "
                   "Hard CRIU-tracer interruption remains a separate required gate."
                   if options.suite == "worker-loss" else
-                  "Public checkpoint/pause filesystem admission before process capture. A successfully "
-                  "started no-op hook remains unsupported for capture; rejection and immutable replay "
-                  "must preserve the original running PID, RAM and useful work without starting CRIU."
+                  "Public checkpoint/pause admission before process capture. Original hook assertions "
+                  "remain unchanged. Held root/child fscontext descriptors must reject without entering "
+                  "capture, preserving original identity, RAM, useful work and immutable failure history. "
+                  "A real transient mount context must settle before capture and produce an independent fork."
                   if options.suite == "admission" else
                   "Actual pinned CRIU child interrupted through its pidfd after an image reaches "
                   "8 MiB while tracing its verified original 32-MiB RAM source. Failed capture "
@@ -301,13 +302,13 @@ def main():
                 for component, expected in result["component_sha256"].items())
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
-            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (2 if options.suite == "namespaces" else 1) if capture_mode else
+            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (2 if options.suite in ["namespaces", "admission"] else 1) if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 6 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "interruption" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
-            (options.suite != "admission" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "admission" or result["passed_subtests"] == 3 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "worker-loss" or result["passed_subtests"] == 3 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "namespaces" or result["passed_subtests"] == 1 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["time", "delegation"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
