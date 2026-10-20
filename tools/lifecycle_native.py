@@ -168,13 +168,15 @@ def main():
         result["source_context"] = upstream_unit.context_manifest(context)
         env = dict(os.environ, GOOS="linux", GOARCH="arm64", CGO_ENABLED="0")
         binary = archive / "lifecycle.test"
-        subprocess.run(["go", "test", "-c", "-o", str(binary), "./internal/lifecycle"],
+        subprocess.run(["go", "test", "-c", "-trimpath", "-buildvcs=false",
+                        "-o", str(binary), "./internal/lifecycle"],
                        cwd=context, env=env, check=True, timeout=120)
         cli = archive / "factorybox"
         subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-o", str(cli),
                         "./cmd/factorybox"], cwd=context, env=env, check=True, timeout=120)
         if capture_mode:
-            subprocess.run(["go", "test", "-c", "-o", str(archive / "sysboxcapture.test"),
+            subprocess.run(["go", "test", "-c", "-trimpath", "-buildvcs=false",
+                            "-o", str(archive / "sysboxcapture.test"),
                             "./internal/sysboxcapture"], cwd=context, env=env, check=True, timeout=120)
         for script in ["lifecycle-native.sh", "private-cgroup-delegation.sh"]:
             shutil.copyfile(ROOT / "tests" / script, archive / script)
