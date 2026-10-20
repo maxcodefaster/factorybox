@@ -60,6 +60,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Nested-overlay candidate CRIU core | `factorybox-criu-core-d95764528974401693b8a911fd4288b0`: all 18 unchanged C tests passed two dump/restore cycles each; 1,030 upstream test files remain unchanged; exact cleanup passed. This does not replace the full developer or interrupted-Docker gates |
 | Shared-root candidate developer lifecycle | **Failing** in `factorybox-devx-lifecycle-2353068904b44e84a5f526cffa2b02f6`: all eight app, eight OpenCode and nine Theia phases completed, but the unchanged 390-second Go deadline fired while waiting for the final `delete after-resume` process. Outer execution took 418.04 seconds. Frozen inputs/global sysctls and the separate IDE peer passed; all 7,601,127,424 failure-archive bytes verified and owned cleanup passed. This is not a complete developer qualification |
 | Delete observer diagnostic | **Failing**, diagnostic only, in `factorybox-devx-lifecycle-63d5dfe38d514510b5e64543547e41f1`: an archived CLI-only stack observer left every original assertion and deadline unchanged. The outer 420-second deadline expired before the descendant fork became useful; no slow-delete stack was collected. Preparation consumed 206.07 seconds. All 5,722,079,232 worker-archive bytes verified. Initial worker cleanup passed, but IDE removal timed out; separate reconciliation now confirms the IDE cleanup. Terminal input/global checks were not completed |
+| Overlay2 Docker-abort attempt | **Failing before Docker** in `factorybox-devx-lifecycle-833336aec74042219ccedee937053ab4`: the selected Sysbox-fs again missed the unchanged 60-second readiness deadline while its manager was ready. No application or injected Docker-abort assertion ran. Execution took 89.83 seconds; inputs/global sysctls stayed unchanged, all 1,585,446,912 failure-archive bytes verified and owned cleanup passed. Startup remains unresolved |
 | Unix client namespace diagnostic | `factorybox-runtime-3c5218a84cdf47269bf70ba96848c418` reproduced an accepted server socket with the external worker's namespace cookie, absent from the source Unix table, without Docker or CRIU. `factorybox-runtime-15cb7afe89f842e4adfe816e2b2286c6` verified that the corrected test client creates a visible socket with the source listener's cookie. Original actor RAM/useful work and owned cleanup passed. This is a fixture mechanism, not recovery qualification |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
@@ -77,6 +78,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Current candidate lifecycle regressions | `factorybox-runtime-b2de68ed2c034956af84484d4b013ec2` and `factorybox-runtime-5096b5a264c042f5953d9fead26ce6da`: prepared-base pause/resume with nine tests/46 subtests and worker-loss recovery with nine tests/43 subtests, zero skips, owned cleanup |
 | Daemon startup | `factorybox-devx-lifecycle-41c1d086fa494fd3810d14261ef26499` hit the unchanged 60-second Sysbox-fs readiness deadline before capture; a subsequent minimal worker with the same binaries/capability bounds started successfully in `factorybox-startup-probe-3c2ff51d8adb42e18b70a1efaa9e614c`. The startup hang's cause remains unresolved |
 | Isolated daemon startup repeats | `factorybox-startup-repeat-688b6049d2424070bccb7ab81685140f` and `factorybox-startup-repeat-7cae3a33d0134e2b93337e51b5f04f33`: 32 real Sysbox-fs starts each, normal and `GOGC=1`, original 60-second deadline, owned cleanup. Neither reproduced the earlier startup hang; no manager or active workload was present |
+| Manager/filesystem startup reproducer | **Failing**, diagnostic only, in `factorybox-startup-manager-da3ab5045441469f9bfee89ed54b59e0`: seven starts reached readiness in 0.215 to 1.594 seconds; the eighth missed the original 60-second limit. The captured Go stack waits in `linuxUtils.ShmSysctlUserNamespaced()` on its helper, whose sole thread is blocked on a futex inside libc's `setxid_mark_thread`. Same selected daemon bytes, writable worker, actual `--log` flags and capability/resource limits; no application or rootfs unpacking. Inputs unchanged and owned cleanup passed. The helper failure is reproduced; no runtime fix is selected |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
@@ -695,6 +697,26 @@ This exposes preparation and read/verification variance in addition to the late-
 timeout; it does not establish a delete-specific implementation defect or justify weaker
 integrity checks. No maintained CLI instrumentation or new runtime selection was introduced.
 
+Three isolated preparation diagnostics use the same frozen CLI and rootfs archive without
+Docker, Sysbox daemons, IDE or harness processes. Controls imported the complete base in
+163.263 and 77.402 seconds. Discarding only the input tar's clean cache pages after extraction
+took 84.954 seconds; that hint is not promoted. Each import preserved all 41,368 entries and
+1,457,081,288 file bytes, passed its source/copy/target integrity mechanism and cleaned its
+owned resources, but failed the separate 30-second diagnostic budget.
+`artifacts/base-prepare-work/comparison.json` binds the inputs and observations. Tree digests
+differ: the tar has no root-directory header, so each new extraction has its own root mtime,
+which the digest includes. No identical whole-tree hash or application lifecycle pass is claimed.
+
+A frozen diagnostic CLI adds only CPU profiling around the unchanged preparation command.
+Run `factorybox-base-prepare-9088035c2c99450ea31e8e0b3c223eb3` imported in 122.076 seconds,
+including 47.706 seconds source verification, 15.942 copying and 57.329 target verification.
+Its 36.56 sampled CPU seconds include 25.16 in file reads, 3.34 in SHA-256 and less than one
+in JSON encoding. File-cache refaults/reclaim increased despite no cgroup memory-limit or OOM
+events and a peak below 1 GiB. This identifies file reading as the main sampled CPU cost; it
+does not establish why shared-worker preparation varies or justify removing integrity checks.
+Earlier larger-buffer and file-cache-hint diagnostics also failed to establish a repeatable gain.
+The production scanner, component selection and complete developer deadlines remain unchanged.
+
 The earlier regression `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`
 exceeded the unchanged 390-second Go/420-second outer limits. Seven app, IDE and OpenCode phases
 completed; the final resumed-source checkpoint was still in progress when the Go deadline fired.
@@ -891,6 +913,16 @@ checks that different paths within one context retain distinct inodes; identical
 only across contexts at the same relative path. Frozen file modes, ownership, mtimes and contents
 remain. Further closed executable sharing is recorded in
 `factorybox-storage-share-b357d1d83dd6498ea7ff6ef921f2efad`.
+
+Archive `factorybox-storage-executables-44d7b5774c024456bbf4644c4ed32d2a` losslessly retains
+74 exclusive executable inode groups from older successful runs absent from this README's
+named proofs. The complete decoded contents, hashes, modes, owners, hardlinks and nanosecond
+mtimes were verified before replacing those old executable paths with recovery receipts.
+The 374,763,056-byte archive reclaimed 633,786,368 allocated bytes. Selected component builds,
+named proofs, all failed runs and source/results/logs were not changed. Its `result.json`
+contains the exact extraction command; restore only the needed member for a concrete replay.
+`restore-verification.json` records an actual single-member extraction on this Mac with matching
+contents, ownership, mode and nanosecond mtime. The temporary restored copy was removed.
 
 Retirement `factorybox-storage-retirement-d00fb19e41a04902a08f283db7a5fcd2` removes three
 superseded successful payloads, reclaiming about 223 MB after preserving complete member
