@@ -40,7 +40,12 @@ provenance rather than copies of its images, binaries, failed runs or large nati
 Build and native runners check storage before creating a new artifact directory. They require
 8 GiB of headroom within a 64-GiB artifact budget and leave 12 GiB of host disk space free.
 Failed-volume archive streams also stop at the remaining artifact budget. They retain the source
-volume if a complete archive cannot be saved. Cleanup and reconciliation remain available.
+volume if a complete archive cannot be saved. Developer lifecycle failures stream directly into
+verified compressed archives, avoiding a second raw dump on disk. Cleanup and reconciliation remain
+available. New lifecycle fixtures share verified immutable Sysbox/CRIU build outputs through hard
+links instead of copying the same binaries into every run. Their container mounts remain read-only.
+The developer runner refuses to start while an earlier developer volume remains retained.
+Reconcile that exact run first, so failed tests cannot accumulate private Docker data on the worker.
 Native lifecycle and developer/upstream runners automatically compact dumps of at least 8 MiB
 after successful owned cleanup. They verify the complete decompressed contents before removing
 the raw copy. A failed compaction keeps the original and reports the storage error separately
@@ -50,6 +55,11 @@ To compact an explicitly selected offline dump, run
 `mise exec -- python3 tools/artifact_storage.py compact /absolute/path/to/artifacts/run/payload.tar`.
 This verifies every decompressed byte before removing the raw file and saves a SHA-256 receipt
 with the reconstruction command. Frozen input archives and active runs must stay uncompressed.
+Stopped developer volumes use a bounded compressed stream whose stored bytes are decoded and
+hashed concurrently with capture. The final encoded file must also match that verified stream.
+Reconciliation `b6c1452e4c3f46c498a1b3a8365276f1` preserved all 21,307,064,320 source bytes in a
+7,145,530,085-byte archive, verified it in 441 seconds and then removed only the original owned
+volume. Timeout, corruption and capacity failures retain that source and remove incomplete copies.
 Compaction uses one compression thread and a long-distance window capped at 128 MiB. This
 retains repeated RAM payloads once within the compressed stream: the completed 793-MiB native
 archive `factorybox-runtime-69b4900c094948abbc9bdb314f1cd089/output/capture-source.tar`
@@ -872,7 +882,13 @@ regressions pass. After adding virtual-state snapshots, all 18 Go module suites 
 in one native run: 393 top-level tests and 315 subtests. This includes the frozen FUSE export,
 independent import after source-registration removal, exact wire encoding and path-scope tests.
 After the new resume adapter, the complete Runc module passed 279 top-level tests and 227 subtests
-with 14 explicit upstream skips. The unchanged modules retain their preceding combined pass. The manager's
+with 14 explicit upstream skips. The currently selected Sysbox build
+`factorybox-build-sysbox-a62d052944c84818b85a67c5f0a53e30` repeated that complete module pass in
+`factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`. Its separate integration package passed
+47 original tests, with twelve original upstream skips, in
+`factorybox-upstream-9e3324f1d97e4130a6d6ea6040d62b5a`. Both runs verified unchanged inputs and
+completed owned cleanup. Skipped cases are not executed passes.
+The unchanged modules retain their preceding combined pass. The manager's
 four shiftfs tests explicitly skip on this worker, which has no shiftfs module. The
 broader umbrella/outer-systemd and CRIU checkpoint/restore matrices remain unqualified.
 The separately selected 18 ordinary CRIU C cases have passed their two-cycle gate.
@@ -1048,7 +1064,8 @@ image digest. HTTP frontend availability alone is not the pass condition.
 
 These directories are not live or restored Factorybox sandboxes. This component proof does
 not qualify workspace projection, IDE connection retention across fork/resume, browser editing
-or inference. Full separate-Theia composition and the optional OpenCode example remain open.
+or inference. The full lifecycle composition below separately qualifies the native workspace
+projection and retained IDE connection. The optional OpenCode example remains open.
 
 Run the developer stack through the public Factorybox CLI with the exact prepared inputs:
 
@@ -1060,6 +1077,38 @@ mise exec -- python3 tools/devx_lifecycle.py \
   --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
   --criu-build factorybox-build-criu-EXACT_RUN_ID
 ```
+
+Add `--theia-image EXACT_CACHED_IDE_REPOSITORY_DIGEST` to include the separate IDE. It starts
+after the live checkout's ownership is prepared, concurrently with the private Docker/Connector
+initialization. The fixture pins the original client PID, process birth, mount namespace and
+filesystem root. Short-lived filesystem helpers clone each actual live project mount in its
+original source namespace and transfer the detached mount by a private Unix socket. They do not
+edit raw overlay upper directories. The IDE uses the live workspace's mapped UID/GID, shares only
+its owned worker's private PID/network namespaces, has its own 1-CPU/768-MiB cgroup, read-only
+root and no capabilities. This is an explicit test composition, not a public workspace gateway.
+
+`factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b` passed all eight original application
+phases and nine native IDE checks through one unchanged Theia connection. Independent final IDE
+edits reached both actual Dev Containers through their real Connectors. It released all workspace
+views and namespace descriptors, stopped the IDE consumer before final sandbox teardown, and
+completed both runtime and outer container/volume cleanup. Inputs and global kernel sentinels
+remained unchanged. The Go lifecycle including teardown took 291.53 seconds; outer execution took
+318.03 seconds within the unchanged 420-second deadline.
+
+| Phase | Individual full developer observation with separate Theia |
+| --- | ---: |
+| Frozen rootfs, immutable base and OCI preparation | 42.707 s |
+| Prepared start through first useful Connector app response | 43.300 s |
+| Fork through first useful app response | 13.439 s |
+| Fork of fork through first useful app response | 14.380 s |
+| Pause with stopped source and released snapshot RAM | 14.980 s |
+| Resume through first useful app response | 4.122 s |
+| Fork of resumed source through first useful app response | 28.514 s |
+
+These are individual observations on the shared ARM64 worker. They do not establish p95 or
+isolate a latency improvement from background load. The test serializes external IDE writes
+outside capture operations; arbitrary concurrent external writers, browser editing and inference
+remain unqualified.
 
 This separate gate freezes its Go source context, scripts, ordinary example, component binaries
 and image archives. Its outer fixture has private namespaces, a 3-CPU/3-GiB limit, no external

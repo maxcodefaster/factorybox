@@ -50,6 +50,7 @@ type fixture struct {
 	root    string
 	index   int
 	samples []observation
+	ide     *nativeIDE
 }
 
 // These counters belong to the complete bounded fixture, including its
@@ -122,6 +123,11 @@ func (fixture *fixture) command(args ...string) []byte {
 
 func (fixture *fixture) view(args ...string) lifecycle.View {
 	fixture.t.Helper()
+	if fixture.ide != nil && len(args) >= 2 && (args[0] == "delete" || args[0] == "pause") {
+		if err := fixture.ide.release(args[len(args)-1]); err != nil {
+			fixture.t.Fatal("release exact IDE projection before lifecycle transition", err)
+		}
+	}
 	var view lifecycle.View
 	if err := json.Unmarshal(fixture.command(args...), &view); err != nil {
 		fixture.t.Fatal(err)
@@ -208,6 +214,9 @@ func (fixture *fixture) useful(phase string, view lifecycle.View, start time.Tim
 		fixture.t.Fatal(err)
 	}
 	fixture.t.Logf("%s through real Connector app response: %.3fms; individual shared-worker observation", phase, elapsed)
+	if fixture.ide != nil {
+		fixture.ide.ready(phase, view, start, state.App.Marker)
+	}
 	return state
 }
 
@@ -363,6 +372,7 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 	start := time.Now()
 	source := fixture.view("start", "--bundle", bundle, "source")
 	fixture.cleanup("source")
+	fixture.attachIDE(source)
 	initial := fixture.useful("prepared-start-first-use", source, start, "")
 	if initial.App.Counter != 0 || initial.App.Marker != "source" {
 		t.Fatal("source did not initialize its fresh RAM and workspace")
@@ -421,5 +431,9 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 	afterResumeState := fixture.useful("fork-of-resumed-first-use", afterResume, start, "")
 	if !reflect.DeepEqual(branchAfter, afterResumeState) {
 		t.Fatal("fork of the resumed developer sandbox changed complete state")
+	}
+	if fixture.ide != nil {
+		fixture.ide.diverge(resumed, afterResume)
+		fixture.ide.finish()
 	}
 }

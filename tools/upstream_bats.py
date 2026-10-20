@@ -85,7 +85,7 @@ def observations(text, expected):
             "skipped": [r["name"] for r in rows if r["skipped"]]}
 
 
-def archive_failure(archive, name, owner, volumes, image, result, *, timeout=60):
+def archive_failure(archive, name, owner, volumes, image, result, *, timeout=60, compressed=False):
     state = json.loads(reference.docker(["container", "inspect", name]))[0]
     if state["Config"].get("Labels", {}).get("com.factorybox.run") != owner:
         raise ValueError("failed Bats fixture ownership changed")
@@ -95,7 +95,7 @@ def archive_failure(archive, name, owner, volumes, image, result, *, timeout=60)
     if state["State"]["Running"] or state["State"]["Pid"] != 0:
         raise ValueError("failed fixture writers have not stopped")
     archive_stopped_volumes(archive, name, owner, volumes, image, result,
-                           timeout=timeout)
+                           timeout=timeout, compressed=compressed)
 
 
 def archive_file_limit(path, reserve_bytes=reference.artifact_storage.FREE_RESERVE):
@@ -119,7 +119,7 @@ def limit_archive_process(maximum):
     resource.setrlimit(resource.RLIMIT_FSIZE, (maximum, maximum))
 
 
-def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, timeout=60):
+def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, timeout=60, compressed=False):
     result["failed_volume_archives"] = {}
     for index, volume in enumerate(volumes):
         saved = json.loads(reference.docker(["volume", "inspect", volume]))[0]
@@ -148,6 +148,12 @@ def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, tim
         try:
             maximum = archive_file_limit(archive)
             result.setdefault("archive_file_limits", {})[volume] = maximum
+            if compressed:
+                with (archive / (filename + ".log")).open("x") as log:
+                    record = reference.artifact_storage.archive_stream(
+                        command, archive / filename, ROOT, log, maximum=maximum, timeout=timeout)
+                result["failed_volume_archives"][volume] = record["original"]
+                continue
             # Keep the binary stream off the Mac bind share and Docker logs.
             # Raw attach streaming completed the multi-gigabyte fixture after
             # the bind-share and compressed attempts timed out.

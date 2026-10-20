@@ -10,6 +10,7 @@ git -C /workspace/project remote add origin file:///opt/factorybox/example.git
 git -C /workspace/project add .
 git -C /workspace/project -c user.name=Factorybox -c user.email=fixture@example.invalid commit -qm 'Native fixture'
 chown -R 1000:1000 /workspace/project
+touch /run/factorybox-workspace-ready
 /opt/factorybox/devx-registry --archive=/opt/factorybox/project-images.tar \
   --pins=/opt/factorybox/project-images.json > /var/log/factorybox-registry.log 2>&1 &
 registry=$!

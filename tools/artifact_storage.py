@@ -8,6 +8,8 @@ from pathlib import Path
 import shutil
 import stat
 import subprocess
+import threading
+import time
 
 ARTIFACT_LIMIT = 64 << 30
 FREE_RESERVE = 12 << 30
@@ -57,6 +59,41 @@ def identity(path):
         raise ValueError("payload must be a regular file")
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
             info.st_ctime_ns)
+
+
+def share_frozen_input(source, destination, root, expected_sha256):
+    """Share a verified completed build output with a new read-only fixture input."""
+    supplied_root = Path(root).absolute()
+    root = supplied_root.resolve()
+    source, destination = Path(source).absolute(), Path(destination).absolute()
+    checked = []
+    for path in [source, destination]:
+        if not path.is_relative_to(supplied_root / "artifacts"):
+            raise ValueError("shared build inputs must stay within the real artifact directory")
+        expected = root / "artifacts" / path.relative_to(supplied_root / "artifacts")
+        if path.resolve() != expected:
+            raise ValueError("shared build inputs must stay within the real artifact directory")
+        checked.append(expected)
+    source, destination = checked
+    relative = source.relative_to(root / "artifacts")
+    if len(relative.parts) < 2 or not relative.parts[0].startswith("factorybox-build-"):
+        raise ValueError("shared input must belong to a completed component build")
+    result = root / "artifacts" / relative.parts[0] / "result.json"
+    if result.is_symlink() or json.loads(result.read_text()).get("passed") is not True:
+        raise ValueError("shared input build did not pass")
+    before = identity(source)
+    with source.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    if digest != expected_sha256 or identity(source) != before:
+        raise ValueError("shared build input differs from its pinned digest")
+    os.link(source, destination, follow_symlinks=False)
+    try:
+        linked = identity(destination)
+        if linked[:4] != before[:4]:
+            raise ValueError("shared build input identity changed before linking")
+    except Exception:
+        destination.unlink()
+        raise
 
 
 def verify_compacted(path, expected):
@@ -220,6 +257,196 @@ def compact_closed_run(directory, root):
     if report["compacted"] or report["errors"]:
         print(json.dumps({"storage_retention": str(directory), **report}), flush=True)
     return report
+
+
+def archive_stream(command, path, root, log, *, maximum, timeout):
+    """Save a stopped source's complete tar stream without a raw disk copy."""
+    supplied_root, path = Path(root).absolute(), Path(path).absolute()
+    if not path.is_relative_to(supplied_root / "artifacts"):
+        raise ValueError("stream archive must belong to this repository's artifacts")
+    relative = path.relative_to(supplied_root / "artifacts")
+    root = supplied_root.resolve()
+    expected = root / "artifacts" / relative
+    if path.resolve() != expected:
+        raise ValueError("stream archive path must not contain symlinks")
+    path = expected
+    encoded = path.with_name(path.name + ".zst")
+    partial = encoded.with_name(encoded.name + ".partial")
+    receipt = path.with_name(path.name + ".encoding.json")
+    if any(p.exists() or p.is_symlink() for p in [path, encoded, partial, receipt]):
+        raise ValueError("stream archive payload or receipt already exists")
+    maximum = min(maximum, ARTIFACT_LIMIT - allocated_bytes(root / "artifacts"),
+                  shutil.disk_usage(root).free - FREE_RESERVE) - (1 << 20)
+    if maximum <= 0:
+        raise ValueError("stream archive has no remaining storage budget")
+    import resource
+    def cap_encoder():
+        hard = resource.getrlimit(resource.RLIMIT_FSIZE)[1]
+        cap = maximum if hard == resource.RLIM_INFINITY else min(maximum, hard)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (cap, cap))
+    children, workers, failures = [], [], []
+    expired, encoder_finished, lock = threading.Event(), threading.Event(), threading.Lock()
+    def stop_children():
+        with lock:
+            for child in children:
+                if child.poll() is None:
+                    child.kill()
+    def kill_children():
+        expired.set()
+        stop_children()
+    def launch(args, **kwargs):
+        child = subprocess.Popen(args, **kwargs)
+        with lock:
+            children.append(child)
+            if (expired.is_set() or failures) and child.poll() is None:
+                child.kill()
+        return child
+    def work(function):
+        def guarded():
+            try:
+                function()
+            except Exception as error:
+                failures.append(error)
+                stop_children()
+        worker = threading.Thread(target=guarded, daemon=True)
+        workers.append(worker)
+        worker.start()
+    timer = threading.Timer(timeout, kill_children)
+    timer.daemon = True
+    started = time.monotonic()
+    digest, count = hashlib.sha256(), 0
+    decoded, encoded_digest = hashlib.sha256(), hashlib.sha256()
+    observed = {"decoded_bytes": 0, "encoded_bytes": 0}
+    def progress(phase):
+        os.write(log.fileno(), (json.dumps({
+            "archive_phase": phase, "raw_bytes": count, **observed,
+            "seconds": time.monotonic() - started,
+        }) + "\n").encode())
+    try:
+        with partial.open("xb") as output:
+            encoder = launch(["zstd", "-q", "-T1", "-1", "--long=27", "--stdout"],
+                             stdin=subprocess.PIPE, stdout=output, stderr=log,
+                             preexec_fn=cap_encoder)
+            decoder = launch(["zstd", "-q", "-dc"], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=log)
+            def decode_stored_bytes():
+                # Read the actual encoded file while its single bounded writer
+                # appends. EOF is final only after that writer has exited.
+                with partial.open("rb") as stored:
+                    while True:
+                        data = stored.read(1 << 20)
+                        if data:
+                            observed["encoded_bytes"] += len(data)
+                            encoded_digest.update(data)
+                            decoder.stdin.write(data)
+                        elif encoder_finished.is_set():
+                            break
+                        elif expired.is_set() or failures:
+                            return
+                        else:
+                            time.sleep(0.01)
+                decoder.stdin.close()
+            def hash_decoded_bytes():
+                while data := decoder.stdout.read(1 << 20):
+                    observed["decoded_bytes"] += len(data)
+                    if observed["decoded_bytes"] > ARTIFACT_LIMIT:
+                        raise ValueError("decoded archive exceeds its original observation bound")
+                    decoded.update(data)
+                decoder.stdout.close()
+            timer.start()
+            work(decode_stored_bytes)
+            work(hash_decoded_bytes)
+            try:
+                producer = launch(command, stdout=subprocess.PIPE, stderr=log)
+                last_progress = started
+                try:
+                    while data := producer.stdout.read(1 << 20):
+                        if expired.is_set():
+                            raise subprocess.TimeoutExpired(command, timeout)
+                        count += len(data)
+                        if count > ARTIFACT_LIMIT:
+                            raise ValueError("decoded archive stream exceeds its 64-GiB observation bound")
+                        digest.update(data)
+                        encoder.stdin.write(data)
+                        if time.monotonic() - last_progress >= 10:
+                            progress("streaming-and-verifying")
+                            last_progress = time.monotonic()
+                    encoder.stdin.close()
+                finally:
+                    producer.stdout.close()
+                if producer.wait(timeout=5) or encoder.wait(timeout=5):
+                    raise ValueError("source tar or bounded encoder failed; original volume must remain")
+                encoder_finished.set()
+                output.flush()
+                os.fsync(output.fileno())
+                for worker in workers:
+                    while worker.is_alive():
+                        worker.join(timeout=0.1)
+                        if expired.is_set():
+                            raise subprocess.TimeoutExpired(command, timeout)
+                if failures:
+                    raise ValueError("decoded archive differs from its complete original stream") from failures[0]
+                if (decoder.wait(timeout=5) or observed["decoded_bytes"] != count or
+                        decoded.hexdigest() != digest.hexdigest()):
+                    raise ValueError("decoded archive differs from its complete original stream")
+            finally:
+                encoder_finished.set()
+                stop_children()
+                for worker in workers:
+                    worker.join(timeout=5)
+        if partial.stat().st_size >= maximum:
+            raise ValueError("encoded archive reached its storage cap; original volume must remain")
+        progress("decoded-stream-verified")
+        with partial.open("rb") as stream:
+            encoded_sha = hashlib.file_digest(stream, "sha256").hexdigest()
+        if (observed["encoded_bytes"] != partial.stat().st_size or
+                encoded_digest.hexdigest() != encoded_sha):
+            raise ValueError("encoded archive changed during stream verification")
+        if expired.is_set():
+            raise subprocess.TimeoutExpired(command, timeout)
+        record = {
+            "schema": 1,
+            "original": {"file": path.name, "bytes": count, "sha256": digest.hexdigest()},
+            "encoded": {"file": encoded.name, "bytes": partial.stat().st_size, "sha256": encoded_sha},
+            "codec_parameters": ["-T1", "-1", "--long=27"],
+            "whole_decompressed_payload_verified": True,
+            "original_stream_hashed": True, "pipelined_disk_verification": True,
+            "seconds": time.monotonic() - started,
+            "reconstruct": ["zstd", "-d", "--keep", str(encoded), "-o", str(path)],
+        }
+        os.rename(partial, encoded)
+        with receipt.open("x") as output:
+            output.write(json.dumps(record, indent=2) + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+        if expired.is_set():
+            raise subprocess.TimeoutExpired(command, timeout)
+        return record
+    except Exception as error:
+        progress("failed")
+        if expired.is_set():
+            raise subprocess.TimeoutExpired(command, timeout) from error
+        raise
+    finally:
+        timer.cancel()
+        encoder_finished.set()
+        stop_children()
+        for worker in workers:
+            worker.join(timeout=5)
+        for child in children:
+            child.wait(timeout=5)
+            for stream in [child.stdin, child.stdout]:
+                if stream is not None and not stream.closed:
+                    try:
+                        stream.close()
+                    except BrokenPipeError:
+                        pass
+        partial.unlink(missing_ok=True)
 
 
 def main():

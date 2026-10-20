@@ -3,6 +3,12 @@ set -euo pipefail
 test "${FACTORYBOX_DEVX_LIFECYCLE:-}" = 1
 preparation_start=$(date +%s%N)
 python3 /observe-sysctls.py before
+if test "${FACTORYBOX_DEVX_PROJECTION:-}" = 1; then
+  status=0
+  /devx-lifecycle.test -test.v -test.timeout=30s -test.run '^TestNativeIDEProjectionNamespace$' || status=$?
+  python3 /observe-sysctls.py after || status=1
+  exit "$status"
+fi
 mkdir -p /out /var/lib/sysbox/devx/bundle/lower
 for component in sysbox-runc sysbox-fs sysbox-mgr criu; do
   cp -- "/component-input/$component" "/out/$component"
@@ -42,4 +48,15 @@ pathlib.Path("/output/preparation.json").write_text(json.dumps({
              "This precedes the prepared-start first-use observation."
 }, indent=2) + "\n")
 PY
-/devx-lifecycle.test -test.v -test.timeout=390s -test.run '^TestNativeDeveloperLifecycle$'
+status=0
+/devx-lifecycle.test -test.v -test.timeout=390s -test.run '^TestNativeDeveloperLifecycle$' || status=$?
+if test "${FACTORYBOX_DEVX_THEIA:-}" = 1; then
+  printf '%s\n' "$status" > /output/theia-lifecycle-complete.partial
+  mv /output/theia-lifecycle-complete.partial /output/theia-lifecycle-complete
+  for attempt in $(seq 1 300); do
+    if test -f /output/theia-host-finished; then break; fi
+    sleep 0.1
+  done
+  test -f /output/theia-host-finished || status=1
+fi
+exit "$status"

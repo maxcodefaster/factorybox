@@ -90,7 +90,7 @@ def main():
         if volume_present(options.run, owner):
             image, _ = native_base.load(original["native_base_build"])
             upstream_bats.archive_stopped_volumes(output, options.run, owner, [options.run], image,
-                                                 result, timeout=600)
+                                                 result, timeout=600, compressed=True)
             reference.owned_delete("volume", options.run, owner)
         else:
             # Docker may complete removal after its caller times out. Absence

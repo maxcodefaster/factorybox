@@ -11,6 +11,53 @@ import reference
 
 
 class ArtifactStorageTests(unittest.TestCase):
+    def test_completed_component_inputs_share_verified_bytes_without_another_disk_copy(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build = root / "artifacts/factorybox-build-sysbox-frozen"
+            build.mkdir(parents=True)
+            (build / "result.json").write_text('{"passed": true}')
+            source = build / "sysbox-runc"
+            source.write_bytes(os.urandom(8192))
+            source.chmod(0o755)
+            target = root / "artifacts/factorybox-runtime-new/sysbox-runc"
+            target.parent.mkdir()
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            before = artifact_storage.allocated_bytes(root / "artifacts")
+            artifact_storage.share_frozen_input(source, target, root, digest)
+            self.assertEqual(source.stat().st_ino, target.stat().st_ino)
+            self.assertEqual(artifact_storage.allocated_bytes(root / "artifacts"), before)
+            self.assertEqual(target.stat().st_mode & 0o777, 0o755)
+            with self.assertRaises(FileExistsError):
+                artifact_storage.share_frozen_input(source, target, root, digest)
+            target.unlink()
+            self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), digest)
+
+    def test_shared_component_rejects_changed_unfinished_or_symlink_inputs(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build = root / "artifacts/factorybox-build-criu-frozen"
+            build.mkdir(parents=True)
+            result = build / "result.json"
+            result.write_text('{"passed": true}')
+            source = build / "criu"
+            source.write_bytes(b"original")
+            target = root / "artifacts/new/criu"
+            target.parent.mkdir()
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            link = build / "linked"
+            link.symlink_to(source)
+            for supplied, expected in [(source, "0" * 64), (link, digest)]:
+                with self.subTest(source=str(supplied)), self.assertRaises(ValueError):
+                    artifact_storage.share_frozen_input(supplied, target, root, expected)
+                self.assertFalse(target.exists())
+            result.write_text('{"passed": false}')
+            with self.assertRaisesRegex(ValueError, "did not pass"):
+                artifact_storage.share_frozen_input(source, target, root, digest)
+            self.assertFalse(target.exists())
+
     def test_accounting_counts_hardlinks_once_and_does_not_follow_foreign_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -190,3 +237,186 @@ class ArtifactStorageTests(unittest.TestCase):
                     artifact_storage.compact(raw, root)
                 codec.assert_not_called()
             self.assertEqual(raw.read_bytes(), b"retained original")
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_decoder_consumes_the_stream_before_the_producer_finishes(self):
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifacts/stream-order"
+            archive.mkdir(parents=True)
+            observed = root / "decoder-started"
+            original = artifact_storage.subprocess.Popen
+            passthrough = """
+import os,sys
+from pathlib import Path
+source=open(sys.argv[1],'rb') if len(sys.argv)>2 else sys.stdin.buffer
+while data:=source.read(65536):
+ if len(sys.argv)>1:Path(sys.argv[-1]).touch()
+ sys.stdout.buffer.write(data)
+ sys.stdout.buffer.flush()
+"""
+            def codec(args, **kwargs):
+                if args[0] == "zstd":
+                    arguments = []
+                    if "-dc" in args:
+                        if "--" in args:
+                            arguments.append(args[-1])
+                        arguments.append(str(observed))
+                    args = [sys.executable, "-B", "-S", "-c", passthrough, *arguments]
+                return original(args, **kwargs)
+            producer = """
+from pathlib import Path
+import sys,time
+sys.stdout.buffer.write(b'a'*(1<<20));sys.stdout.buffer.flush()
+while not Path(sys.argv[1]).exists():time.sleep(.01)
+sys.stdout.buffer.write(b'b'*(1<<20))
+"""
+            with (archive / "log").open("xb") as log, \
+                    mock.patch.object(artifact_storage.subprocess, "Popen", side_effect=codec):
+                record = artifact_storage.archive_stream(
+                    [sys.executable, "-B", "-S", "-c", producer, str(observed)],
+                    archive / "failed-volume-0.tar", root, log, maximum=8 << 20, timeout=2)
+            self.assertEqual(record["original"]["bytes"], 2 << 20)
+            self.assertTrue(record["whole_decompressed_payload_verified"])
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_stream_archive_preserves_more_raw_data_than_its_storage_budget_without_a_raw_copy(self):
+        import hashlib
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifacts/closed-source"
+            archive.mkdir(parents=True)
+            source = root / "source"
+            content = b"complete original source\n" * (1 << 20)
+            source.write_bytes(content)
+            raw = archive / "failed-volume-0.tar"
+            command = [sys.executable, "-B", "-S", "-c",
+                       "import sys;sys.stdout.buffer.write(open(sys.argv[1],'rb').read())", str(source)]
+            with (archive / "log").open("xb") as log:
+                record = artifact_storage.archive_stream(
+                    command, raw, root, log, maximum=8 << 20, timeout=30)
+            self.assertFalse(raw.exists())
+            self.assertGreater(record["original"]["bytes"], 8 << 20)
+            self.assertEqual(record["original"]["sha256"], hashlib.sha256(content).hexdigest())
+            self.assertTrue(record["original_stream_hashed"])
+            self.assertEqual(artifact_storage.verify_compacted(raw, record["original"]),
+                             record["encoded"])
+            self.assertEqual(source.read_bytes(), content)
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_failed_source_stream_cannot_publish_an_archive_receipt(self):
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifacts/failed-source"
+            archive.mkdir(parents=True)
+            raw = archive / "failed-volume-0.tar"
+            command = [sys.executable, "-B", "-S", "-c",
+                       "import os;os.write(1,b'only a partial source');raise SystemExit(7)"]
+            with (archive / "log").open("xb") as log:
+                with self.assertRaisesRegex(ValueError, "source tar or bounded encoder failed"):
+                    artifact_storage.archive_stream(
+                        command, raw, root, log, maximum=8 << 20, timeout=30)
+            self.assertEqual(sorted(p.name for p in archive.iterdir()), ["log"])
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_stream_archive_rejects_corruption_before_original_volume_cleanup_is_allowed(self):
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifacts/corrupt-stream"
+            archive.mkdir(parents=True)
+            raw = archive / "failed-volume-0.tar"
+            original = artifact_storage.subprocess.Popen
+            def corrupt(args, **kwargs):
+                if args[:3] == ["zstd", "-q", "-dc"]:
+                    args = [sys.executable, "-B", "-S", "-c",
+                            "import sys;sys.stdin.buffer.read();sys.stdout.buffer.write(b'corrupted decode')"]
+                return original(args, **kwargs)
+            with (archive / "log").open("xb") as log, \
+                    mock.patch.object(artifact_storage.subprocess, "Popen", side_effect=corrupt):
+                with self.assertRaisesRegex(ValueError, "decoded archive differs"):
+                    artifact_storage.archive_stream(
+                        [sys.executable, "-B", "-S", "-c", "print('complete original stream')"],
+                        raw, root, log, maximum=8 << 20, timeout=30)
+            self.assertEqual(sorted(p.name for p in archive.iterdir()), ["log"])
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_stored_archive_corruption_after_decode_cannot_publish_a_receipt(self):
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifacts/changed-encoded-stream"
+            archive.mkdir(parents=True)
+            original = artifact_storage.hashlib.file_digest
+            def changed(stream, algorithm):
+                with Path(stream.name).open("r+b") as writable:
+                    value = writable.read(1)
+                    writable.seek(0)
+                    writable.write(bytes([value[0] ^ 1]))
+                return original(stream, algorithm)
+            with (archive / "log").open("xb") as log, \
+                    mock.patch.object(artifact_storage.hashlib, "file_digest", side_effect=changed):
+                with self.assertRaisesRegex(ValueError, "encoded archive changed"):
+                    artifact_storage.archive_stream(
+                        [sys.executable, "-B", "-S", "-c", "print('complete retained original')"],
+                        archive / "failed-volume-0.tar", root, log, maximum=8 << 20, timeout=5)
+            self.assertEqual(sorted(p.name for p in archive.iterdir()), ["log"])
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_encoded_storage_cap_reaps_the_pipeline_and_removes_its_incomplete_copy(self):
+        import subprocess
+        import sys
+        original, children = artifact_storage.subprocess.Popen, []
+        def launch(*args, **kwargs):
+            child = original(*args, **kwargs)
+            children.append(child)
+            return child
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifacts/full-encoded-storage"
+            archive.mkdir(parents=True)
+            source = root / "source"
+            content = os.urandom(3 << 20)
+            source.write_bytes(content)
+            with (archive / "log").open("xb") as log, \
+                    mock.patch.object(artifact_storage.subprocess, "Popen", side_effect=launch):
+                with self.assertRaises((ValueError, BrokenPipeError)):
+                    artifact_storage.archive_stream(
+                        [sys.executable, "-B", "-S", "-c",
+                         "import sys;sys.stdout.buffer.write(open(sys.argv[1],'rb').read())", str(source)],
+                        archive / "failed-volume-0.tar", root, log, maximum=2 << 20, timeout=5)
+            self.assertTrue(children)
+            self.assertTrue(all(child.poll() is not None for child in children))
+            self.assertEqual(source.read_bytes(), content)
+            self.assertEqual(sorted(p.name for p in archive.iterdir()), ["log"])
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_stream_deadline_reaps_codec_and_source_without_changing_parent_limits(self):
+        import resource
+        import subprocess
+        import sys
+        before = resource.getrlimit(resource.RLIMIT_FSIZE)
+        original, children = artifact_storage.subprocess.Popen, []
+        def launch(*args, **kwargs):
+            child = original(*args, **kwargs)
+            children.append(child)
+            return child
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifacts/timed-out-stream"
+            archive.mkdir(parents=True)
+            with (archive / "log").open("xb") as log, \
+                    mock.patch.object(artifact_storage.subprocess, "Popen", side_effect=launch):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    artifact_storage.archive_stream(
+                        [sys.executable, "-B", "-S", "-c", "import time;time.sleep(30)"],
+                        archive / "failed-volume-0.tar", root, log, maximum=8 << 20, timeout=0.2)
+            self.assertTrue(children)
+            self.assertTrue(all(child.poll() is not None for child in children))
+            self.assertEqual(sorted(p.name for p in archive.iterdir()), ["log"])
+        self.assertEqual(resource.getrlimit(resource.RLIMIT_FSIZE), before)

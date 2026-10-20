@@ -186,13 +186,15 @@ def main():
                 source = build / "output" / component
                 if reference.sha(source) != components["binary_sha256"][component]:
                     raise ValueError("rebuilt Sysbox executable changed: " + component)
-                shutil.copyfile(source, inputs / component)
+                reference.artifact_storage.share_frozen_input(
+                    source, inputs / component, ROOT, components["binary_sha256"][component])
             if capture_mode:
                 criu_build, criu = reference_lifecycle.component_build(
                     options.criu_build, "factorybox-build-criu-")
                 if reference.sha(criu_build / "criu") != criu["binary_sha256"]:
                     raise ValueError("rebuilt CRIU executable changed")
-                shutil.copyfile(criu_build / "criu", inputs / "criu")
+                reference.artifact_storage.share_frozen_input(
+                    criu_build / "criu", inputs / "criu", ROOT, criu["binary_sha256"])
                 result["criu_build"] = options.criu_build
             result["component_sha256"] = {p.name: reference.sha(p) for p in inputs.iterdir()}
             if options.native_base_build:
