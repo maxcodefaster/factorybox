@@ -678,12 +678,33 @@ original encoding receipts, selected inputs, current proofs and unresolved failu
 The new developer `fscontext` failure archive consumes part of the fixed 32-GiB budget;
 the 8-GiB next-run reserve is enforced unchanged.
 
+Lossless repacks retain the exact decoded archive bytes while using a larger Zstandard
+window. The historical executable archive now lives in
+`factorybox-storage-repack-9360baa2972347eaa7ac0f5afcb60b13/historical-executables.tar.zst`;
+all 1,242 original file hashes/modes and the complete 6,754,856,960-byte tar stream were
+verified before retiring the old encoding. The complete original mount-transaction failure
+archive now lives in
+`factorybox-storage-repack-25ba22d59d294e59babf32a76d18cd49/failed-volume-0.tar.zst`;
+all 13,358,858,240 decoded bytes match its original encoding receipt.
+The latest developer-timeout archive now lives in
+`factorybox-storage-repack-062dd845c947434d999b9f3ae37fc62f/failed-volume-0.tar.zst`;
+all 22,943,891,456 decoded bytes match its original encoding receipt. These three repacks
+reclaimed 10,705,268,770 bytes without removing decoded failure or executable data.
+The original manifests/results/encoding receipts remain unchanged. Each former archive path
+has a `.repacked.json` recovery pointer with the replacement SHA-256 and verified receipt.
+Decode these larger-window archives with `zstd -d --long=31`, as recorded in their receipts.
+
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another
 367,439,872 allocated bytes from four older successful lifecycle payloads, using later
 complete same-component native proofs. Verified small-file contents/member indexes, source,
 results, logs and original encoding receipts remain. The latest complete developer timeout
 archive remains retained; new runs still require the original 8-GiB reserve.
+
+Retirement `factorybox-storage-retirement-23611e9a3d6d4af49f6ead7cb0f6f54f` reclaimed another
+359,542,784 allocated bytes from twelve older successful payloads after checking later passes
+with matching components, native test hashes and test counts. Compressed member indexes,
+small-file contents, large-member hashes, source, binaries, results and original receipts remain.
 
 ## Remaining release requirements
 
