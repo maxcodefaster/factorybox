@@ -121,6 +121,91 @@ func captureForeignProcDirectory(path, target string, owner int, threads map[int
 	return target != fmt.Sprintf("/%d/task/%d/fd", owner, owner), nil
 }
 
+func captureDetachedFile(tid, descriptor int, target string, threads map[int]string,
+	mounts *map[uint64]bool) (bool, error) {
+	if !strings.HasPrefix(target, "/") {
+		return false, nil
+	}
+	info, err := os.Open(fmt.Sprintf("/proc/%d/fdinfo/%d", tid, descriptor))
+	if err != nil {
+		return false, err
+	}
+	data, readErr := io.ReadAll(io.LimitReader(info, 4097))
+	closeErr := info.Close()
+	if readErr != nil || closeErr != nil || len(data) > 4096 {
+		return false, fmt.Errorf("file descriptor flags exceed admission bounds: %v", errors.Join(readErr, closeErr))
+	}
+	var flags uint64
+	found := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "flags:") {
+			flags, err = strconv.ParseUint(strings.TrimSpace(strings.TrimPrefix(line, "flags:")), 8, 64)
+			if err != nil {
+				return false, err
+			}
+			found = true
+		}
+	}
+	if !found {
+		return false, fmt.Errorf("file descriptor flags are absent")
+	}
+	if flags&unix.O_PATH == 0 {
+		return false, nil
+	}
+	fd, err := unix.Open(fmt.Sprintf("/proc/%d/fd/%d", tid, descriptor), unix.O_PATH|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return false, err
+	}
+	defer unix.Close(fd)
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		return false, err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFREG {
+		return false, nil
+	}
+	var extended unix.Statx_t
+	if err := unix.Statx(fd, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &extended); err != nil {
+		return false, err
+	}
+	if *mounts == nil {
+		*mounts, err = captureMountIDs(threads)
+		if err != nil {
+			return false, err
+		}
+	}
+	if (*mounts)[extended.Mnt_id] {
+		return false, nil
+	}
+	// CRIU routes anonymous shmem/memfd objects through their own serializer.
+	// Compare the actual kernel device, as CRIU does, rather than trusting a
+	// workload-controlled filename which happens to start with "memfd".
+	sample, err := unix.MemfdCreate("factorybox-admission-device", unix.MFD_CLOEXEC)
+	if err != nil {
+		return false, err
+	}
+	var shmem unix.Stat_t
+	statErr := unix.Fstat(sample, &shmem)
+	closeErr = unix.Close(sample)
+	if statErr != nil || closeErr != nil {
+		return false, errors.Join(statErr, closeErr)
+	}
+	if stat.Dev == shmem.Dev {
+		return false, nil
+	}
+	var filesystem unix.Statfs_t
+	if err := unix.Fstatfs(fd, &filesystem); err != nil {
+		return false, err
+	}
+	if filesystem.Type == unix.HUGETLBFS_MAGIC {
+		return false, nil
+	}
+	if extended.Mask&unix.STATX_MNT_ID == 0 || extended.Mnt_id == 0 {
+		return false, fmt.Errorf("regular file lacks an original mount identity")
+	}
+	return true, nil
+}
+
 func captureDescriptorBlockers(config captureGuardConfig, anchors captureGuardAnchors) ([]captureDescriptorBlocker, error) {
 	threads, err := captureGuardThreads(config, anchors)
 	if err != nil {
@@ -205,6 +290,13 @@ func captureDescriptorBlockers(config captureGuardConfig, anchors captureGuardAn
 			if foreign && len(blocked) < 16 {
 				blocked = append(blocked, captureDescriptorBlocker{TID: tid, FD: fd, Kind: "detached-proc"})
 			}
+			detached, err := captureDetachedFile(tid, fd, target, threads, &mounts)
+			if err != nil {
+				return nil, err
+			}
+			if detached && len(blocked) < 16 {
+				blocked = append(blocked, captureDescriptorBlocker{TID: tid, FD: fd, Kind: "detached-file"})
+			}
 		}
 		birth, err := processBirth(tid)
 		if err != nil || birth != threads[tid] {
@@ -214,7 +306,7 @@ func captureDescriptorBlockers(config captureGuardConfig, anchors captureGuardAn
 	return blocked, nil
 }
 
-// Opaque mount transactions and unsupported detached proc references cannot
+// Opaque mount transactions and unsupported detached proc/file references cannot
 // enter CRIU. Source code may finish them between bounded frozen inspections.
 // Wait only before capture-enter, letting source code finish it between frozen
 // inspections. Namespace/filesystem admission must run after this method.

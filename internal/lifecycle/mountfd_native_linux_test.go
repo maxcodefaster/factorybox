@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -199,6 +200,24 @@ func TestMountFDActor(t *testing.T) {
 		}
 	}()
 	state := mountFDActorState{Payload: make([]byte, 8192), FD: fd, SharedFD: shared, OtherFD: other}
+	observedTransient := false
+	release := make(chan os.Signal, 1)
+	signal.Notify(release, unix.SIGUSR1)
+	defer signal.Stop(release)
+	go func() {
+		for range release {
+			mutex.Lock()
+			if observedTransient {
+				if err := closeDirectory(); err != nil {
+					t.Error(err)
+				} else {
+					state.DirectoryFD, state.DirectoryMountID, state.DirectoryFlags, state.DirectoryTarget = 0, 0, 0, ""
+					observedTransient = false
+				}
+			}
+			mutex.Unlock()
+		}
+	}()
 	if _, err := rand.Read(state.Payload); err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +259,8 @@ func TestMountFDActor(t *testing.T) {
 					return
 				}
 				state.DirectoryFD = directory
-			} else if command == "open-foreign-fds" || command == "open-transient-foreign-fds" {
+			} else if command == "open-foreign-fds" || command == "open-transient-foreign-fds" ||
+				command == "open-observed-transient-foreign-fds" {
 				if directory >= 0 || foreign != nil {
 					t.Error("owned proc directory child already exists")
 					return
@@ -271,6 +291,7 @@ func TestMountFDActor(t *testing.T) {
 				}
 				state.DirectoryFD = directory
 				transient = command == "open-transient-foreign-fds"
+				observedTransient = command == "open-observed-transient-foreign-fds"
 			} else if command == "close-directory" {
 				if err := closeDirectory(); err != nil {
 					t.Error(err)

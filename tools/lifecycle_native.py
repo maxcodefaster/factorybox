@@ -322,13 +322,13 @@ def main():
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
             result["source_context_unchanged"] and
-            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (3 if options.suite == "admission" else 2 if options.suite == "namespaces" else 1) if capture_mode else
+            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (4 if options.suite == "admission" else 2 if options.suite == "namespaces" else 1) if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 6 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "interruption" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
-            (options.suite != "admission" or result["passed_subtests"] == 5 + EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "admission" or result["passed_subtests"] == 8 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "worker-loss" or result["passed_subtests"] == 3 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "namespaces" or result["passed_subtests"] == 1 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["time", "delegation"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and

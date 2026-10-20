@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestProcDirectoryAdmissionNative(t *testing.T) {
@@ -69,11 +71,54 @@ func TestProcDirectoryAdmissionNative(t *testing.T) {
 			}
 			request := "open-foreign-fds"
 			if transient {
-				request = "open-transient-foreign-fds"
+				request = "open-observed-transient-foreign-fds"
 			}
 			opened, err := readMountFDActor(source.Runtime.PID, request)
 			if err != nil || opened.DirectoryFD <= 2 || opened.Visible {
 				t.Fatal("prepare the real detached foreign proc directory", err)
+			}
+			var released chan error
+			if transient {
+				released = make(chan error, 1)
+				stop := make(chan struct{})
+				defer close(stop)
+				go func() {
+					group, err := captureGuardOpen(cgroupRoot + "/" + source.Record.RuntimeID)
+					if err != nil {
+						released <- err
+						return
+					}
+					defer group.Close()
+					deadline := time.Now().Add(20 * time.Second)
+					for {
+						events, err := captureGuardEvents(group)
+						if err != nil {
+							released <- err
+							return
+						}
+						if events["frozen"] == 1 {
+							// Queue a signal while the actor is frozen. Its handler
+							// closes the real descriptor during the first thaw;
+							// no new RPC socket becomes part of the checkpoint.
+							pidfd, err := unix.PidfdOpen(source.Runtime.PID, 0)
+							if err == nil {
+								err = unix.PidfdSendSignal(pidfd, unix.SIGUSR1, nil, 0)
+								unix.Close(pidfd)
+							}
+							released <- err
+							return
+						}
+						if time.Now().After(deadline) {
+							released <- fmt.Errorf("source never reached the actual capture freeze")
+							return
+						}
+						select {
+						case <-stop:
+							return
+						case <-time.After(time.Millisecond):
+						}
+					}
+				}()
 			}
 			snapshot := strings.Repeat(fmt.Sprint(index+3), 32)
 			relative, _ := checkpointPath(source.Record.ID, snapshot)
@@ -100,6 +145,11 @@ func TestProcDirectoryAdmissionNative(t *testing.T) {
 			}
 			if err := command(); err != nil {
 				t.Fatal(err)
+			}
+			if transient {
+				if err := <-released; err != nil {
+					t.Fatal("release actual transient descriptor during admission", err)
+				}
 			}
 			view, err := engine.Inspect(context.Background(), source.Record.ID)
 			if err != nil || view.Runtime == nil || view.Runtime.PID != source.Runtime.PID ||

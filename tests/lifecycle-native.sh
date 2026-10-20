@@ -73,7 +73,7 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
     test_pattern='^TestCaptureWorkerLossNative$'
   fi
   if test "${FACTORYBOX_NATIVE_FILESYSTEM_ADMISSION:-}" = 1; then
-    test_pattern='^Test(Filesystem|Descriptor|ProcDirectory)AdmissionNative$'
+    test_pattern='^Test(Filesystem|Descriptor|ProcDirectory|DetachedFile)AdmissionNative$'
   fi
 fi
 set +e

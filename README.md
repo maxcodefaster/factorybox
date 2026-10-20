@@ -42,6 +42,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Capture guard failure/disarm | `factorybox-runtime-d1ff147321434c1391dbbc3893b6e90d`: all twelve original cases after retrying interrupted pidfd polls, owned cleanup |
 | Worker loss after completed CRIU | `factorybox-runtime-09a48beb73f94b9cb8e0749a548d648e`: nine tests, 43 subtests, zero skips; checkpoint/pause source recovery, copy-child death, live/forged receipt refusal and lost failed-pause publication recovery |
 | Filesystem and descriptor admission | `factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`: ten tests/43 subtests, zero skips, selected CRIU. Original hook assertions remain; held root/child mount contexts reject before CRIU with original PID/RAM/useful work and history intact. A transient context settles before a complete checkpoint and independent fork. Changed descriptor observation refused on replay; 128 real contexts produce less than 4 KiB of evidence |
+| Detached-file admission regression | The minimal same-inode visible/detached-file differential fails with both selected CRIU and the nested-overlay candidate. `factorybox-file-admission-8b6270e71471451eab9de7a96fb94816` proves that the actual guard scanner recognizes the unsupported detached file while admitting visible files and real memfd objects. Complete selected-component admission suite `factorybox-runtime-1b609b83bced4a129dcb0cde9e5190b7` passes twelve tests/48 subtests, zero skips, unchanged frozen sources/components and owned cleanup, including original RAM/replay/independent-fork assertions. This is safe admission, not persistent detached-file restore support |
 | Detached proc directory admission | Baseline `factorybox-runtime-ffe678d6c203485296eeaf68609cae43` enters CRIU with an unsupported foreign proc FD directory and loses its running-source outcome. `factorybox-runtime-3d8a35f3e5f149c3b3a17ff1c7433bfb` passes all eleven tests/45 subtests with selected CRIU, zero skips and owned cleanup. Held unsupported directories reject before CRIU with original identity/RAM and immutable replay; transient ones settle before a complete independent fork |
 | Supported detached proc regression | `factorybox-runtime-7c048c13dff14e70bea1c105da877778`: nine tests/42 subtests, zero skips, selected CRIU and owned cleanup. Default/restricted detached proc roots, readable own FD directory and descendant restore remain supported. The test pins its original mount outside the sandbox so a recycled numeric mount ID cannot produce a false separation failure; every original assertion remains |
 | Image ownership and durability | `factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`: original eight adapter tests and 40 adapter subtests unchanged, including one complete-directory barrier, failed-barrier refusal and symlink/hardlink/foreign-mount rejection |
@@ -83,6 +84,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Re-executed SHM helper startup candidate | `factorybox-startup-manager-9257f527a89e4b84a88a20c85736a3d7`: all sixteen real manager/FS starts pass within 0.053 to 0.459 seconds using the original 60-second bound. Sysbox-fs `factorybox-build-shm-56a79120673e44e0b6bc9ec2e627c51e` is rebuilt; manager bytes are unchanged. Frozen inputs and owned cleanup pass. This is startup evidence for an unselected candidate, not a fork/resume latency distribution |
 | SHM fixture consolidation and rebuild | The repository build command produces byte-identical FS/test executables in `factorybox-build-shm-80622be049604875b974e100dd8ffc0f`; original upstream test files remain unchanged. Repository runners pass another 32 supported probes in `factorybox-shm-probe-8aab46e9889d44e998643d840f2da805` and sixteen actual daemon starts in `factorybox-startup-manager-d6262342364144f4afbbaf8770fc6650`, within 0.073 to 1.156 seconds. Inputs and owned cleanup pass. These repeated fixture checks do not qualify the complete developer/failure lifecycle |
 | SHM-candidate Docker recovery | **Failing** as a complete gate in `factorybox-devx-lifecycle-759c03a993434903849e731bf4789352`: real startup, first useful app, prior checkpoint and root-tracer recovery of 13 processes/106 threads pass, including original containers/app state, new Docker exec and source mutation. The subsequent fresh checkpoint fails with `Can't lookup mount=83 for fd=18 path=/runc`; current-state and prior-state forks are not reached. Go takes 227.48 seconds and outer execution 269.12. Inputs/global sentinels remain unchanged; all 3,807,379,456 failure-archive bytes verify and owned cleanup passes. The unselected composition changes only FS; runc/manager bytes remain pinned |
+| Docker fault attempt with file admission | **Failing**, unqualified, in `factorybox-devx-lifecycle-c1f6664e9c3947c28f1607e38e50ca58`: initial rootfs/base preparation consumes 191.16 seconds, and first useful app takes another individually observed 75.645 seconds. The actual tracer never reaches the required root page-image boundary within the unchanged 30-second tracing limit; no complete injected-fault/recovery proof is published. Go takes 247.32 seconds and outer execution 321.35. Inputs/global sentinels remain unchanged, all 3,605,004,288 failure-archive bytes verify and owned cleanup passes. This missed injection does not qualify the Docker `/runc` recapture fix |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
@@ -397,7 +399,7 @@ also leaves the source held with the selected CRIU. Descriptor admission now run
 capture-enter. It inspects frozen source thread file tables, deduplicating only after a
 successful kernel `KCMP_FILES` comparison. Unshared tables and comparison failures receive
 their own scan. Bounds are 8,192 descriptors per inspected table and 65,536 across a scan.
-Only the observed unsupported mount-context class receives a bounded settle interval.
+Observed unsupported descriptor classes receive the bounded settle interval.
 
 When a mount context is present, the controller briefly releases and re-freezes the original
 source for at most two seconds of admission time. Namespace and filesystem checks then run
@@ -406,6 +408,23 @@ descriptor receipt. A context that stays open receives a durable pre-capture rej
 the independent guard restores the original running source, and a failed pause retains its
 history. Replay verifies the original descriptor observation and never runs capture again.
 Diagnostic samples are capped at sixteen contexts. This uses no application or agent hook.
+
+The same admission also recognizes regular-file `O_PATH` handles whose original mount ID
+is absent from every captured mount namespace. A minimal visible/detached file-clone
+differential reproduces the real Docker `/runc` dump error with both selected and candidate
+CRIU, without Sysbox or application services. The guard pins each relevant original handle
+without reading its data or changing its offset. Anonymous memfd/shmem objects are identified
+by their actual kernel device and remain on CRIU's dedicated path. This gives a transient
+runtime mount transaction a chance to finish before infection. A persistent detached-file
+mount remains unsupported; recognizing it is not a new CRIU restore implementation or a
+complete Docker recovery qualification.
+
+The proc-directory transient fixture now queues a close signal only after observing its actual
+source cgroup frozen. Its former wall-clock release could finish before admission began,
+failing the original assertion that a real blocker was observed. The original assertions and
+deadlines remain. `artifacts/runc-mount-work/transient-fixture.json` records exact before/after
+test-source hashes. The signal introduces no new captured RPC connection; this is a fixture
+synchronization change, not a production quiescence hook.
 
 The first settle probe in `factorybox-runtime-634335460c1d42ebbe38a1bce2a3b76a` found that
 an interrupted zero-time pidfd poll was treated as a dead or invalid source. Retrying
