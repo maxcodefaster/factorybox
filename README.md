@@ -31,7 +31,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 82 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 83 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
@@ -394,7 +394,7 @@ run remains failed; a later complete pass does not establish a latency distribut
 
 ## Storage and exact cleanup
 
-At admission, new builds/runs require 8 GiB of headroom inside a 64-GiB artifact budget and
+At admission, new builds/runs require 8 GiB of headroom inside a 32-GiB artifact budget and
 12 GiB of additional host free space. Developer runs refuse to start while a preceding volume is retained.
 Fixtures share verified immutable component outputs through hardlinks and mount them read-only.
 
@@ -426,6 +426,13 @@ There is no global Docker pruning or deletion of unrelated installation data.
 The obsolete OpenCode API-route probe payload was separately retired after the combined passing
 gate, in `factorybox-storage-retirement-495dcaaaad464d51b5a04053858ff3a6`. Its logs remain. The
 in-flight TCP capture failure is retained for failure-recovery hardening.
+
+Cleanup `factorybox-storage-cleanup-adeab56542034a96b1e92817d27e98c0` retired three superseded or
+incomplete developer archives and moved 1,242 historical generated executables into one
+lossless archive. Every archived file was decoded and checked against its original hash and
+mode before removal. The manifest retains paths and hardlinks for reconstruction; imported
+reference builds, current component inputs and the unresolved capture-failure dump remain usable.
+The cleanup reclaimed 7.72 GiB across both directories, including the retained archive.
 
 ## Remaining release requirements
 

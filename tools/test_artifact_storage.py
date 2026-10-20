@@ -98,6 +98,15 @@ class ArtifactStorageTests(unittest.TestCase):
                     artifact_storage.require_capacity(
                         directory, limit=33, run_reserve=8, free_reserve=12)
 
+    def test_default_budget_refuses_growth_above_32_gib_including_run_headroom(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(artifact_storage, "allocated_bytes", return_value=25 << 30), \
+                    mock.patch.object(artifact_storage.shutil, "disk_usage") as usage:
+                usage.return_value.free = 100 << 30
+                with self.assertRaisesRegex(ValueError, "32 GiB limit"):
+                    artifact_storage.require_capacity(directory)
+                self.assertFalse((Path(directory) / "artifacts").exists())
+
     @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
     def test_real_compaction_preserves_every_byte_and_publishes_a_reconstruction_receipt(self):
         import hashlib
