@@ -46,7 +46,8 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Earlier separate-Theia baseline | `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b`: eight app phases and nine IDE checks, unchanged inputs/global sentinels, full cleanup |
 | Last completed developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-33d1823f30604cf0924f6378cc404355`: eight app, nine IDE and eight authenticated OpenCode API checks; 363.96 seconds Go, 394.26 seconds outer; unchanged inputs/global sentinels and full cleanup. Includes worker-loss recovery and copy-stage measurements; precedes the separately native-tested alias timing correction |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
-| Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-6647e43c737e42a7a2ae50cc7e40acbe`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued |
+| Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
+| Retained Compel context mechanism | `factorybox-compel-recovery-65c298fc4c094c368c60e626f757a0d4`: unretained negative control and 25 recovery cases, including eight freezer, eight three-thread and eight outstanding-RPC repeats; original RAM/FP marker/descriptors, useful work and owned cleanup. Not integrated into the runtime guard or qualified for real page dumping |
 | Daemon startup | `factorybox-devx-lifecycle-41c1d086fa494fd3810d14261ef26499` hit the unchanged 60-second Sysbox-fs readiness deadline before capture; a subsequent minimal worker with the same binaries/capability bounds started successfully in `factorybox-startup-probe-3c2ff51d8adb42e18b70a1efaa9e614c`. The startup hang's cause remains unresolved |
 | Isolated daemon startup repeats | `factorybox-startup-repeat-688b6049d2424070bccb7ab81685140f` and `factorybox-startup-repeat-7cae3a33d0134e2b93337e51b5f04f33`: 32 real Sysbox-fs starts each, normal and `GOGC=1`, original 60-second deadline, owned cleanup. Neither reproduced the earlier startup hang; no manager or active workload was present |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
@@ -245,6 +246,23 @@ or memory mutation safe, and its instrumentation has been removed. There is no m
 weakened assertion in the required gate. Automatic recovery of that current source is still
 failing and blocks production qualification.
 
+The separate `tests/compel-recovery` mechanism fixture retains the live Compel control block
+and transport socket in a C child before killing the original tracer. The child waits for
+the exact original tracer's pidfd to report exit and resets its inherited SIGCHLD handler
+before taking ownership of new ptrace stops. It reuses Compel's existing cure routine, holds
+other threads stopped while curing the parasite leader, and re-freezes before detaching.
+The coordinator permits useful work only after that complete cure. This is a test mechanism,
+not an authority used by the runtime's guard.
+
+An unretained control leaves an injected mapping while its original C actor remains usable.
+The retained-context fixture separately checks the original PID, all 32 MiB of actor RAM,
+an ARM64 FP marker, descriptor targets, default unblocked SIGPIPE and removal of the injected
+mapping. It covers an ordinary recovery and eight repeats each with a frozen cgroup, three
+threads, and a three-thread outstanding RPC. The RPC payload is a dedicated sleep command;
+this does not qualify real page dumping, TCP rollback, a multi-process Sysbox workload or
+handoff between the capture worker and the independent guard. The required interruption
+gate above remains failing.
+
 ## Execute native gates
 
 Commands take exact successful local input artifact names. The reference remains immutable:
@@ -278,6 +296,9 @@ mise exec -- python3 tools/upstream_bats.py \
   --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID --suite lifecycle
 mise exec -- python3 tools/criu_core.py \
   --criu-build factorybox-build-criu-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+
+mise exec -- python3 tools/compel_recovery.py \
   --native-base-build factorybox-build-native-base-EXACT_RUN_ID
 ```
 

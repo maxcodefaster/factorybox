@@ -164,6 +164,20 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if err := exchange(); err != nil {
 		t.Fatal("committed TCP fixture is not usable before interruption", err)
 	}
+	if err := engine.validateCgroup(source.Record); err != nil {
+		t.Fatal("pin only the original source cgroup for interruption observation", err)
+	}
+	originalGroup, err := captureGuardOpen(cgroupRoot + "/" + source.Record.RuntimeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer originalGroup.Close()
+	if identity, err := cgroupFDIdentity(int(originalGroup.Fd())); err != nil ||
+		source.Record.Cgroup == nil || identity != *source.Record.Cgroup {
+		t.Fatal("interruption observation lost the original cgroup identity", err)
+	}
+	var freezerAtKill []byte
+	var freezerObservationErr error
 	networkRules := func() ([]byte, error) {
 		command := exec.Command("nsenter", "--net=/proc/self/fd/3", "--", "iptables-save")
 		command.ExtraFiles = []*os.File{network}
@@ -250,6 +264,10 @@ func TestInterruptedCaptureNative(t *testing.T) {
 						}
 						if statErr == nil && expectedErr == nil && statusErr == nil &&
 							os.SameFile(executable, expected) && ownedParent {
+							// Read only the pinned original freezer at the actual
+							// fault boundary. Write diagnostics after the kill so
+							// output I/O cannot delay the injection window.
+							freezerAtKill, freezerObservationErr = captureReadFile(originalGroup, "cgroup.freeze", 64)
 							err = unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0)
 							if err == nil {
 								interruptedPID = tracer
@@ -272,6 +290,19 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		t.Fatal("interrupted CRIU published a successful checkpoint")
 	}
 	waited = true
+	freezerAfter, freezeErr := captureReadFile(originalGroup, "cgroup.freeze", 64)
+	eventsAfter, eventsErr := captureReadFile(originalGroup, "cgroup.events", 4096)
+	boundary, marshalErr := json.Marshal(map[string]any{
+		"source_pid": source.Runtime.PID, "criu_pid": interruptedPID,
+		"freezer_at_kill": string(freezerAtKill), "freezer_after_wait": string(freezerAfter),
+		"events_after_wait": string(eventsAfter),
+	})
+	if err := errors.Join(freezerObservationErr, freezeErr, eventsErr, marshalErr); err != nil {
+		t.Fatal("read-only interruption-boundary observation failed", err)
+	}
+	if err := os.WriteFile("/output/interruption-boundary.json", append(boundary, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(filepath.Join(engine.config.Root, relative, "checkpoint.json")); !os.IsNotExist(err) {
 		t.Fatal("interrupted capture published complete backing", err)
 	}
