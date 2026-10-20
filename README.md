@@ -85,6 +85,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | SHM fixture consolidation and rebuild | The repository build command produces byte-identical FS/test executables in `factorybox-build-shm-80622be049604875b974e100dd8ffc0f`; original upstream test files remain unchanged. Repository runners pass another 32 supported probes in `factorybox-shm-probe-8aab46e9889d44e998643d840f2da805` and sixteen actual daemon starts in `factorybox-startup-manager-d6262342364144f4afbbaf8770fc6650`, within 0.073 to 1.156 seconds. Inputs and owned cleanup pass. These repeated fixture checks do not qualify the complete developer/failure lifecycle |
 | SHM-candidate Docker recovery | **Failing** as a complete gate in `factorybox-devx-lifecycle-759c03a993434903849e731bf4789352`: real startup, first useful app, prior checkpoint and root-tracer recovery of 13 processes/106 threads pass, including original containers/app state, new Docker exec and source mutation. The subsequent fresh checkpoint fails with `Can't lookup mount=83 for fd=18 path=/runc`; current-state and prior-state forks are not reached. Go takes 227.48 seconds and outer execution 269.12. Inputs/global sentinels remain unchanged; all 3,807,379,456 failure-archive bytes verify and owned cleanup passes. The unselected composition changes only FS; runc/manager bytes remain pinned |
 | Docker fault attempt with file admission | **Failing**, unqualified, in `factorybox-devx-lifecycle-c1f6664e9c3947c28f1607e38e50ca58`: initial rootfs/base preparation consumes 191.16 seconds, and first useful app takes another individually observed 75.645 seconds. The actual tracer never reaches the required root page-image boundary within the unchanged 30-second tracing limit; no complete injected-fault/recovery proof is published. Go takes 247.32 seconds and outer execution 321.35. Inputs/global sentinels remain unchanged, all 3,605,004,288 failure-archive bytes verify and owned cleanup passes. This missed injection does not qualify the Docker `/runc` recapture fix |
+| Native fault-tracer wait | Polling baseline `factorybox-fault-wait-2839c920006f45228a8ae080aca272ce` takes 1.808 seconds for 2,716 observations and fails its separate one-second diagnostic budget. SIGCHLD-based waiting passes in `factorybox-fault-wait-11820cc9c52f4039ad4f5375c2877e4c` at 0.205 seconds. Repository runner `factorybox-fault-wait-2016c1fde8fe48c48263af50803821d2` passes both the counted producer at 0.640 seconds and an absolute deadline with a stale notification at 20.140 ms. Inputs and owned cleanup pass. The Docker injection deadline and page-image assertion remain unchanged; these observations measure test instrumentation, not fork/resume performance |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
@@ -536,6 +537,15 @@ The root has
 a small address space; injection requires its own page image to contain at least one
 4096-byte page. This complements the existing 8-MiB actor probes and does not qualify
 Docker-child dump interruption or loss of the recovery helper/guard.
+The tracer waits for SIGCHLD and reaps only the exact owned PID, with an absolute deadline.
+Its small native regression counts actual producer stops and checks an absent event with a
+stale notification. It can run without preparing a developer workload:
+
+```sh
+mise exec -- python3 tools/fault_trace.py \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+```
+
 The failed dedicated gate exposed a test client outside the captured network namespace.
 The corrected client creates its socket inside that namespace before connecting. A separate
 native diagnostic verifies both invisible external-namespace and visible source-namespace
@@ -826,8 +836,9 @@ failure retention after the native workload stops; it does not raise native reso
 Stored bytes are decoded and hashed during capture; the final encoded file must match the
 verified stream. Source removal requires complete verification and exact ownership checks.
 Timeouts, corruption and capacity failures retain the source and remove incomplete copies.
-Other closed-run dumps are automatically compacted after successful cleanup. Frozen inputs
-and active runs remain directly usable.
+Other closed-run dumps and unique lifecycle test executables are automatically compacted
+after successful cleanup. Shared executable inputs retain their existing hardlinks. Frozen
+inputs and active runs remain directly usable.
 
 Reconciliation `b6c1452e4c3f46c498a1b3a8365276f1` verified 21,307,064,320 original bytes against a
 7,145,530,085-byte archive in 441 seconds, then removed the original owned developer volume.

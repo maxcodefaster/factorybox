@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -61,7 +62,23 @@ func faultProcessBirth(pid int) (string, error) {
 	return fields[19], nil
 }
 
-func faultTraceWait(pid int, deadline time.Time) (unix.WaitStatus, error) {
+type faultTraceWaiter struct {
+	events chan os.Signal
+}
+
+func newFaultTraceWaiter() *faultTraceWaiter {
+	waiter := &faultTraceWaiter{events: make(chan os.Signal, 1)}
+	signal.Notify(waiter.events, unix.SIGCHLD)
+	return waiter
+}
+
+func (waiter *faultTraceWaiter) close() {
+	signal.Stop(waiter.events)
+}
+
+func (waiter *faultTraceWaiter) wait(pid int, deadline time.Time) (unix.WaitStatus, error) {
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
 	for time.Now().Before(deadline) {
 		var status unix.WaitStatus
 		actual, err := unix.Wait4(pid, &status, unix.WALL|unix.WNOHANG, nil)
@@ -71,7 +88,14 @@ func faultTraceWait(pid int, deadline time.Time) (unix.WaitStatus, error) {
 		if err != nil || actual == pid {
 			return status, err
 		}
-		time.Sleep(100 * time.Microsecond)
+		// Register before tracing begins and always drain the exact PID first.
+		// A buffered notification covers a stop between Wait4 and this select;
+		// unrelated child events only cause another exact-PID check.
+		select {
+		case <-waiter.events:
+		case <-timer.C:
+			return 0, fmt.Errorf("owned CRIU trace deadline expired")
+		}
 	}
 	return 0, fmt.Errorf("owned CRIU trace deadline expired")
 }
@@ -196,6 +220,8 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	waiter := newFaultTraceWaiter()
+	defer waiter.close()
 	type container struct {
 		ID    string
 		Image string
@@ -303,14 +329,14 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	defer func() {
 		if tracing {
 			unix.PidfdSendSignal(tracerFD, unix.SIGKILL, nil, 0)
-			faultTraceWait(tracer, time.Now().Add(2*time.Second))
+			waiter.wait(tracer, time.Now().Add(2*time.Second))
 		}
 	}()
 	if err := unix.PtraceInterrupt(tracer); err != nil {
 		fixture.t.Fatal(err)
 	}
 	deadline = time.Now().Add(30 * time.Second)
-	status, err := faultTraceWait(tracer, deadline)
+	status, err := waiter.wait(tracer, deadline)
 	if err != nil || !status.Stopped() {
 		fixture.t.Fatal("owned CRIU did not stop for injection", err, status)
 	}
@@ -336,7 +362,7 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		if err := unix.PtraceSyscall(tracer, signal); err != nil {
 			fixture.t.Fatal(err)
 		}
-		status, err = faultTraceWait(tracer, deadline)
+		status, err = waiter.wait(tracer, deadline)
 		if err != nil || !status.Stopped() {
 			fixture.t.Fatal("CRIU exited before the real Docker root page-dump boundary", err, status)
 		}
@@ -362,7 +388,7 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	if err := unix.PidfdSendSignal(tracerFD, unix.SIGKILL, nil, 0); err != nil {
 		fixture.t.Fatal(err)
 	}
-	status, err = faultTraceWait(tracer, time.Now().Add(2*time.Second))
+	status, err = waiter.wait(tracer, time.Now().Add(2*time.Second))
 	if err != nil || (!status.Signaled() && !status.Exited()) {
 		fixture.t.Fatal("exact CRIU trace was not reaped", err, status)
 	}
