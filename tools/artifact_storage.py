@@ -305,7 +305,7 @@ def compact(path, root):
 
 
 def compact_closed_run(directory, root):
-    """Retain large closed-run dumps without leaving their raw copies behind."""
+    """Retain large closed-run dumps and unique tests without raw duplicates."""
     directory = Path(directory)
     result_path = directory / "result.json"
     if (result_path.is_symlink() or not result_path.is_file() or
@@ -313,6 +313,10 @@ def compact_closed_run(directory, root):
         return
     candidates = [directory / "output/capture-source.tar"]
     candidates.extend(directory.glob("failed-volume-*.tar"))
+    # Shared immutable inputs already occupy one inode. Encoding each link
+    # separately could use more storage than leaving that shared input alone.
+    candidates.extend(path for name in ("lifecycle.test", "devx-lifecycle.test")
+                      if (path := directory / name).is_file() and path.stat().st_nlink == 1)
     report = {"compacted": [], "errors": []}
     for path in candidates:
         if not path.is_file() or path.is_symlink() or path.stat().st_size < 8 << 20:

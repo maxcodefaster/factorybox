@@ -202,6 +202,13 @@ class ArtifactStorageTests(unittest.TestCase):
             raw.write_bytes(b"failed native evidence\n" * 450000)
             original = {"file": raw.name, "bytes": raw.stat().st_size,
                         "sha256": reference.sha(raw)}
+            executable = run / "lifecycle.test"
+            executable.write_bytes(b"unique test executable\n" * 400000)
+            binary = {"file": executable.name, "bytes": executable.stat().st_size,
+                      "sha256": reference.sha(executable)}
+            shared = run / "devx-lifecycle.test"
+            shared.write_bytes(b"shared test executable\n" * 400000)
+            os.link(shared, run / "shared-input")
             result = run / "result.json"
             result.write_text('{"cleanup": true, "passed": false}\n')
             report = artifact_storage.compact_closed_run(run, root)
@@ -210,6 +217,11 @@ class ArtifactStorageTests(unittest.TestCase):
             self.assertEqual(report["errors"], [])
             self.assertEqual(artifact_storage.verify_compacted(raw, original),
                              report["compacted"][0]["encoded"])
+            self.assertFalse(executable.exists())
+            self.assertEqual(artifact_storage.verify_compacted(executable, binary),
+                             report["compacted"][1]["encoded"])
+            self.assertTrue(shared.is_file())
+            self.assertEqual(shared.stat().st_nlink, 2)
             self.assertEqual(artifact_storage.compact_closed_run(run, root),
                              {"compacted": [], "errors": []})
 
