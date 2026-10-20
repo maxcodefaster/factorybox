@@ -160,16 +160,22 @@ def main():
     volume_attempted = False
     failure = None
     try:
+        context = archive / "context"
+        for directory in ["internal", "cmd/factorybox"]:
+            shutil.copytree(ROOT / directory, context / directory)
+        for module_file in ["go.mod", "go.sum"]:
+            shutil.copyfile(ROOT / module_file, context / module_file)
+        result["source_context"] = upstream_unit.context_manifest(context)
         env = dict(os.environ, GOOS="linux", GOARCH="arm64", CGO_ENABLED="0")
         binary = archive / "lifecycle.test"
         subprocess.run(["go", "test", "-c", "-o", str(binary), "./internal/lifecycle"],
-                       cwd=ROOT, env=env, check=True, timeout=120)
+                       cwd=context, env=env, check=True, timeout=120)
         cli = archive / "factorybox"
         subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-o", str(cli),
-                        "./cmd/factorybox"], cwd=ROOT, env=env, check=True, timeout=120)
+                        "./cmd/factorybox"], cwd=context, env=env, check=True, timeout=120)
         if capture_mode:
             subprocess.run(["go", "test", "-c", "-o", str(archive / "sysboxcapture.test"),
-                            "./internal/sysboxcapture"], cwd=ROOT, env=env, check=True, timeout=120)
+                            "./internal/sysboxcapture"], cwd=context, env=env, check=True, timeout=120)
         for script in ["lifecycle-native.sh", "private-cgroup-delegation.sh"]:
             shutil.copyfile(ROOT / "tests" / script, archive / script)
         shutil.copyfile(ROOT / "tests/capture-archive.sh", archive / "capture-archive.sh")
@@ -179,12 +185,12 @@ def main():
         if capture_mode:
             input_files.append(archive / "sysboxcapture.test")
         result["inputs_sha256"] = {p.name: reference.sha(p) for p in input_files}
-        result["source_sha256"] = {str(p.relative_to(ROOT)): reference.sha(p)
+        result["source_sha256"] = {str(p.relative_to(context)): reference.sha(p)
                                    for directory in ["internal/lifecycle", "internal/sysboxcapture",
                                                      "cmd/factorybox"]
-                                   for p in (ROOT / directory).glob("*.go")}
+                                   for p in (context / directory).glob("*.go")}
         for module_file in ["go.mod", "go.sum"]:
-            result["source_sha256"][module_file] = reference.sha(ROOT / module_file)
+            result["source_sha256"][module_file] = reference.sha(context / module_file)
         dockerfile = ROOT / "build/sysbox.Dockerfile"
         if reference.sha(dockerfile) != components["dockerfile_sha256"]:
             raise ValueError("Sysbox builder recipe changed")
@@ -296,19 +302,22 @@ def main():
         result["container_state"] = state
         result["inputs_unchanged"] = all(reference.sha(archive / name) == expected
                                          for name, expected in result["inputs_sha256"].items())
+        result["source_context_unchanged"] = (
+            upstream_unit.context_manifest(context) == result["source_context"])
         if component_inputs:
             result["components_unchanged"] = all(
                 reference.sha(inputs / component) == expected
                 for component, expected in result["component_sha256"].items())
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
-            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (2 if options.suite in ["namespaces", "admission"] else 1) if capture_mode else
+            result["source_context_unchanged"] and
+            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (3 if options.suite == "admission" else 2 if options.suite == "namespaces" else 1) if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 6 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "interruption" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
-            (options.suite != "admission" or result["passed_subtests"] == 3 + EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "admission" or result["passed_subtests"] == 5 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "worker-loss" or result["passed_subtests"] == 3 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "namespaces" or result["passed_subtests"] == 1 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["time", "delegation"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and

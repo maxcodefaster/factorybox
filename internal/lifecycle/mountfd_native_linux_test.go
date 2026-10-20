@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -174,6 +175,24 @@ func TestMountFDActor(t *testing.T) {
 	}
 	defer unix.Close(other)
 	directory := -1
+	var foreign *exec.Cmd
+	var mutex sync.Mutex
+	closeDirectory := func() error {
+		var result error
+		if directory >= 0 {
+			result = unix.Close(directory)
+			directory = -1
+		}
+		if foreign != nil {
+			killErr := foreign.Process.Kill()
+			waitErr := foreign.Wait()
+			if killErr != nil || waitErr == nil {
+				result = errors.Join(result, fmt.Errorf("retire owned proc directory child: %v %v", killErr, waitErr))
+			}
+			foreign = nil
+		}
+		return result
+	}
 	defer func() {
 		if directory >= 0 {
 			unix.Close(directory)
@@ -198,11 +217,14 @@ func TestMountFDActor(t *testing.T) {
 		}
 		func() {
 			defer client.Close()
+			mutex.Lock()
+			defer mutex.Unlock()
 			var command string
 			if err := json.NewDecoder(io.LimitReader(client, 1024)).Decode(&command); err != nil {
 				t.Error(err)
 				return
 			}
+			transient := false
 			if command == "advance" {
 				state.Counter++
 				state.Payload[0] ^= 0xff
@@ -218,6 +240,43 @@ func TestMountFDActor(t *testing.T) {
 					return
 				}
 				state.DirectoryFD = directory
+			} else if command == "open-foreign-fds" || command == "open-transient-foreign-fds" {
+				if directory >= 0 || foreign != nil {
+					t.Error("owned proc directory child already exists")
+					return
+				}
+				foreign = exec.Command("/bin/sleep", "300")
+				for index := 3; index <= fd; index++ {
+					duplicate, err := unix.Dup(fd)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					foreign.ExtraFiles = append(foreign.ExtraFiles, os.NewFile(uintptr(duplicate), "owned proc root"))
+				}
+				err = foreign.Start()
+				for _, inherited := range foreign.ExtraFiles {
+					inherited.Close()
+				}
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				pid := foreign.Process.Pid
+				directory, err = unix.Openat(fd, fmt.Sprintf("%d/task/%d/fd", pid, pid),
+					unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				state.DirectoryFD = directory
+				transient = command == "open-transient-foreign-fds"
+			} else if command == "close-directory" {
+				if err := closeDirectory(); err != nil {
+					t.Error(err)
+					return
+				}
+				state.DirectoryFD, state.DirectoryMountID, state.DirectoryFlags, state.DirectoryTarget = 0, 0, 0, ""
 			} else if command != "get" {
 				t.Error("invalid mount actor command")
 				return
@@ -294,6 +353,21 @@ func TestMountFDActor(t *testing.T) {
 				t.Error(err)
 				return
 			}
+			if transient {
+				originalDirectory, originalChild := directory, foreign
+				time.AfterFunc(1500*time.Millisecond, func() {
+					mutex.Lock()
+					defer mutex.Unlock()
+					if directory != originalDirectory || foreign != originalChild {
+						return
+					}
+					if err := closeDirectory(); err != nil {
+						t.Error(err)
+						return
+					}
+					state.DirectoryFD, state.DirectoryMountID, state.DirectoryFlags, state.DirectoryTarget = 0, 0, 0, ""
+				})
+			}
 			if err := json.NewEncoder(client).Encode(state); err != nil {
 				t.Error(err)
 			}
@@ -313,7 +387,11 @@ func readMountFDActor(pid int, command string) (mountFDActorState, error) {
 	if err := json.NewEncoder(client).Encode(command); err != nil {
 		return result, err
 	}
-	if err := json.NewDecoder(io.LimitReader(client, 32<<10)).Decode(&result); err != nil {
+	data, err := io.ReadAll(io.LimitReader(client, 32<<10))
+	if err != nil {
+		return result, err
+	}
+	if err := json.Unmarshal(data, &result); err != nil {
 		return result, err
 	}
 	if result.Error != "" {
@@ -464,6 +542,20 @@ func detachedMountForkNative(t *testing.T, mode string) {
 	if _, err := engine.Checkpoint(ctx, "mount-fork", descendantSnapshot); err != nil {
 		t.Fatal("recapture fork with readable directory in detached proc", err)
 	}
+	// Keep the old mount object alive only in the test process. Otherwise
+	// its numeric mount ID can be recycled after deleting the parent.
+	// The restorer never receives this handle; the unchanged different-ID
+	// assertion below proves separation while both mount objects exist.
+	parentFD, err := unix.PidfdOpen(branch.Runtime.PID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalMount, err := unix.PidfdGetfd(parentFD, withDirectory.FD, 0)
+	unix.Close(parentFD)
+	if err != nil {
+		t.Fatal("pin only the original captured mount identity", err)
+	}
+	defer unix.Close(originalMount)
 	// Keep the two-sandbox ceiling and prove restore without the captured parent.
 	if _, err := engine.Delete(ctx, "mount-fork"); err != nil {
 		t.Fatal(err)
@@ -486,6 +578,8 @@ func detachedMountForkNative(t *testing.T, mode string) {
 		restoredDirectory.ProcOptions != withDirectory.ProcOptions ||
 		restoredDirectory.Counter != withDirectory.Counter ||
 		!reflect.DeepEqual(restoredDirectory.Payload, withDirectory.Payload) {
-		t.Fatal("descendant lost independent proc descriptor or RAM", err)
+		beforeDetails, afterDetails := withDirectory, restoredDirectory
+		beforeDetails.Payload, afterDetails.Payload = nil, nil
+		t.Fatal("descendant lost independent proc descriptor or RAM", err, beforeDetails, afterDetails)
 	}
 }

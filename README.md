@@ -42,6 +42,8 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Capture guard failure/disarm | `factorybox-runtime-d1ff147321434c1391dbbc3893b6e90d`: all twelve original cases after retrying interrupted pidfd polls, owned cleanup |
 | Worker loss after completed CRIU | `factorybox-runtime-09a48beb73f94b9cb8e0749a548d648e`: nine tests, 43 subtests, zero skips; checkpoint/pause source recovery, copy-child death, live/forged receipt refusal and lost failed-pause publication recovery |
 | Filesystem and descriptor admission | `factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`: ten tests/43 subtests, zero skips, selected CRIU. Original hook assertions remain; held root/child mount contexts reject before CRIU with original PID/RAM/useful work and history intact. A transient context settles before a complete checkpoint and independent fork. Changed descriptor observation refused on replay; 128 real contexts produce less than 4 KiB of evidence |
+| Detached proc directory admission | Baseline `factorybox-runtime-ffe678d6c203485296eeaf68609cae43` enters CRIU with an unsupported foreign proc FD directory and loses its running-source outcome. `factorybox-runtime-3d8a35f3e5f149c3b3a17ff1c7433bfb` passes all eleven tests/45 subtests with selected CRIU, zero skips and owned cleanup. Held unsupported directories reject before CRIU with original identity/RAM and immutable replay; transient ones settle before a complete independent fork |
+| Supported detached proc regression | `factorybox-runtime-7c048c13dff14e70bea1c105da877778`: nine tests/42 subtests, zero skips, selected CRIU and owned cleanup. Default/restricted detached proc roots, readable own FD directory and descendant restore remain supported. The test pins its original mount outside the sandbox so a recycled numeric mount ID cannot produce a false separation failure; every original assertion remains |
 | Image ownership and durability | `factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`: original eight adapter tests and 40 adapter subtests unchanged, including one complete-directory barrier, failed-barrier refusal and symlink/hardlink/foreign-mount rejection |
 | Earlier separate-Theia baseline | `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b`: eight app phases and nine IDE checks, unchanged inputs/global sentinels, full cleanup |
 | Last completed developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-33d1823f30604cf0924f6378cc404355`: eight app, nine IDE and eight authenticated OpenCode API checks; 363.96 seconds Go, 394.26 seconds outer; unchanged inputs/global sentinels and full cleanup. Includes worker-loss recovery and copy-stage measurements; precedes the separately native-tested alias timing correction |
@@ -51,6 +53,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Initial Docker-root fault integration | **Failing** as a complete gate in `factorybox-devx-lifecycle-66939bbac7764ec49f3fde9241d3337a`: root tracer killed after 69,632 actual page-image bytes; authorized cure retained 15 processes/110 threads, original stable process births/app state/running containers and a new successful Docker exec. Seven ordinary app phases then completed. Go reached 390 seconds during the resumed-state fork; outer execution reached 420 seconds. Full failure archive verified and owned cleanup completed. The dedicated recovery regression additionally requires a fresh checkpoint/fork of the cured original; this partial run does not qualify it |
 | Docker recapture after cure | **Failing** in `factorybox-devx-lifecycle-1580441aaa3849c884b7054d10142189`: authorized cure of 15 processes/115 threads, unchanged containers/app state, new Docker exec and original-source mutation passed. The fresh checkpoint failed because CRIU could not enumerate a Docker Unix socket. Inputs/global sentinels unchanged; verified failure archive and owned cleanup |
 | Docker recovery with corrected client namespace | **Failing** in `factorybox-devx-lifecycle-c26bd35b1a214f3dac2ff1ad591fa548`: the original process-tree candidate refused a changed original thread identity before granting cure. No complete cure result was published. Inputs/global sentinels unchanged; verified failure archive and owned cleanup. Earlier isolated/two-process passes do not qualify this real workload |
+| Early-hold Docker attempt before proc admission | **Failing** in `factorybox-devx-lifecycle-30459414a2d941b793e2f7cc7912006f`: the first ordinary checkpoint failed on a directory handle from an unenumerable proc mount, before fault injection. This does not test early-hold recovery. Full failure archive verified and owned cleanup completed; the small proc admission regression reproduces the failure without Docker |
 | Unix client namespace diagnostic | `factorybox-runtime-3c5218a84cdf47269bf70ba96848c418` reproduced an accepted server socket with the external worker's namespace cookie, absent from the source Unix table, without Docker or CRIU. `factorybox-runtime-15cb7afe89f842e4adfe816e2b2286c6` verified that the corrected test client creates a visible socket with the source listener's cookie. Original actor RAM/useful work and owned cleanup passed. This is a fixture mechanism, not recovery qualification |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
@@ -235,6 +238,11 @@ guard enters CRIU capture. The worker repeats admission. Known preflight rejecti
 thaws the original process and retains a failed immutable operation rather than leaving it held.
 Namespace and filesystem rejection records remain distinct; replay refuses a changed kind.
 This does not authorize thaw after an uncertain CRIU failure.
+Descriptor admission also checks readable proc FD-table directories whose mount is absent
+from every captured mount namespace. The pinned CRIU's supported canonical own-process
+directory remains admitted. Unsupported foreign process/thread references get the same
+bounded settling/rejection path as mount transactions. Diagnostics keep at most sixteen
+samples; mount inventory is bounded to 8 MiB per namespace and 65,536 rows overall.
 
 ### Pause, recovery and failure containment
 
@@ -416,6 +424,10 @@ Lifecycle profiles include `lifecycle`, `guard`, `capture`, `pause`, `base`, `ba
 `delegation`, `namespaces`, `time`, `mountfd`, `admission`, `worker-loss` and the required failing `interruption` gate.
 Each runner checks declared assertions, inputs, process outcome and exact owned cleanup.
 Small native fixtures do not replace full developer-workload qualification.
+New native runs build from a complete frozen Go source context in their own artifact and
+check it again afterward. The failed pre-fix proc run additionally retains an exact
+reconstruction of all 52 originally recorded source hashes under `source-reconstruction`;
+its original binaries/results remain unchanged.
 
 ```sh
 mise exec -- python3 tools/upstream_unit.py \
@@ -757,6 +769,15 @@ Subsequent failed developer runs retain their complete decoded archives in
 The exact verified raw lengths are 12,149,850,112, 4,763,680,768 and 4,644,143,104 bytes,
 respectively. Original receipt paths have recovery pointers; no decoded failure content
 was removed. These repacks reclaimed 4,969,001,141 bytes within the same artifact budget.
+The pre-admission Docker failure retains all 3,396,337,664 original decoded bytes in
+`factorybox-storage-repack-8391fe2c8b544f7d82236d7316194e4b`; its former archive path
+has the verified recovery pointer. Identical closed-run CLI binaries also share immutable
+files, with full hash/closure checks recorded in
+`factorybox-storage-share-16651028400346e5afd2a6c315352269` and the subsequent share receipt.
+No executable bytes or failure data were discarded by these shares.
+Further identical closed CLI shares are recorded in
+`factorybox-storage-share-3a2ed6854dfd44f692864f2a533a36fd` and
+`factorybox-storage-share-a181d759322147098597b95305277c57`.
 
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another
