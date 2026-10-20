@@ -90,7 +90,10 @@ func TestImmutableBaseNative(t *testing.T) {
 	})
 	t.Run("readonly-canonical-and-alias", func(t *testing.T) {
 		alias := home + "/alias"
-		bind(t, base.Immutable.Root, base, alias)
+		bound := bind(t, base.Immutable.Root, base, alias)
+		if bound.CaptureUS != 0 || bound.SourceReadUS != 0 || bound.CopyUS != 0 || bound.TargetReadUS != 0 {
+			t.Fatal("read-only alias inherited the original base import's copy observations", bound)
+		}
 		for _, path := range []string{base.Immutable.Root, alias} {
 			file, err := os.OpenFile(path+"/state", os.O_WRONLY, 0)
 			if file != nil {

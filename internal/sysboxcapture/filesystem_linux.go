@@ -36,16 +36,19 @@ type FilesystemSnapshot struct {
 }
 
 type FilesystemTree struct {
-	Name        string          `json:"name"`
-	Source      string          `json:"source"`
-	Saved       string          `json:"saved"`
-	SHA256      string          `json:"sha256"`
-	Entries     int             `json:"entries"`
-	FileBytes   int64           `json:"file_bytes"`
-	HashedBytes int64           `json:"hashed_bytes"`
-	CaptureUS   int64           `json:"capture_us"`
-	Immutable   *ImmutableTree  `json:"immutable,omitempty"`
-	Alias       *ImmutableAlias `json:"immutable_alias,omitempty"`
+	Name         string          `json:"name"`
+	Source       string          `json:"source"`
+	Saved        string          `json:"saved"`
+	SHA256       string          `json:"sha256"`
+	Entries      int             `json:"entries"`
+	FileBytes    int64           `json:"file_bytes"`
+	HashedBytes  int64           `json:"hashed_bytes"`
+	CaptureUS    int64           `json:"capture_us"`
+	SourceReadUS int64           `json:"source_read_us,omitempty"`
+	CopyUS       int64           `json:"copy_us,omitempty"`
+	TargetReadUS int64           `json:"target_read_us,omitempty"`
+	Immutable    *ImmutableTree  `json:"immutable,omitempty"`
+	Alias        *ImmutableAlias `json:"immutable_alias,omitempty"`
 }
 
 var managedDirectories = map[string]string{
@@ -420,12 +423,15 @@ func cloneFilesystemTreeExpected(ctx context.Context, source *os.File, destinati
 
 func cloneFilesystemTreeTo(ctx context.Context, source *os.File, destination string, known *FilesystemTree, durable bool) (FilesystemTree, error) {
 	var expected FilesystemTree
+	var sourceReadUS int64
 	if err := ctx.Err(); err != nil {
 		return expected, err
 	}
 	if known == nil {
 		var err error
+		started := time.Now()
 		expected, err = fingerprintTree(ctx, source, nil, false)
+		sourceReadUS = time.Since(started).Microseconds()
 		if err != nil {
 			return expected, err
 		}
@@ -435,6 +441,9 @@ func cloneFilesystemTreeTo(ctx context.Context, source *os.File, destination str
 		// a source change during cp cannot publish a different generation.
 		expected = *known
 	}
+	// A reused source digest may carry the previous generation's observations.
+	// Record only work performed for this new independent copy.
+	expected.SourceReadUS, expected.CopyUS, expected.TargetReadUS = sourceReadUS, 0, 0
 	if err := os.Mkdir(destination, 0700); err != nil {
 		return expected, err
 	}
@@ -451,13 +460,17 @@ func cloneFilesystemTreeTo(ctx context.Context, source *os.File, destination str
 	command.WaitDelay = time.Second
 	// Linux ties Pdeathsig to the creating OS thread. Keep that thread
 	// alive through Wait, and kill a copy helper if its worker disappears.
+	copyStarted := time.Now()
 	runtime.LockOSThread()
 	output, copyErr := command.CombinedOutput()
 	runtime.UnlockOSThread()
+	expected.CopyUS = time.Since(copyStarted).Microseconds()
 	if copyErr != nil {
 		return expected, fmt.Errorf("clone filesystem backing: %w: %.4096s", copyErr, output)
 	}
+	targetStarted := time.Now()
 	actual, err := fingerprintTree(ctx, target, source, durable)
+	expected.TargetReadUS = time.Since(targetStarted).Microseconds()
 	if err != nil {
 		return expected, err
 	}

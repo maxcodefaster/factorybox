@@ -38,16 +38,17 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Current runc integration | `factorybox-upstream-9e3324f1d97e4130a6d6ea6040d62b5a`: 47 passes, twelve original upstream skips |
 | Unchanged fs/mgr/IPC/library modules | Retain the combined pass in `factorybox-upstream-eafc65ac3e6f46fcb89b97480cf224d8`; the manager's four shiftfs cases skip on this worker |
 | Current CRIU core | `factorybox-criu-core-ea025fce7b7f4939b70aeec382d5bdfe`: 18 unchanged C tests, two dump/restore cycles each, zero skips |
-| Prepared-base pause/resume | `factorybox-runtime-e7784bdf25834fe8abf22e47398bc787`: nine tests, 46 subtests, zero skips, owned cleanup |
+| Prepared-base pause/resume | `factorybox-runtime-d3be875bda4f47f59b97b678ff9b1b48`: nine tests, 46 subtests, zero skips, owned cleanup; includes clearing inherited immutable-alias copy timings |
 | Capture guard failure/disarm | `factorybox-runtime-4074fd3edb804dc199e870a19cd6dbaf`: all twelve original cases, owned cleanup |
 | Worker loss after completed CRIU | `factorybox-runtime-7d521d7c8ea54a3db9f086b88c0bf3a3`: nine tests, 43 subtests, zero skips; checkpoint/pause source recovery, copy-child death, live/forged receipt refusal and lost failed-pause publication recovery |
 | Filesystem preflight rejection | `factorybox-runtime-f8ec18cb222e4feb9e91acccce6abb24`: checkpoint/pause and immutable replay preserve the original running PID, RAM and useful work; forged rejection kind refused |
 | Image ownership and durability | `factorybox-runtime-f8ec18cb222e4feb9e91acccce6abb24`: nine tests and 40 subtests, including one complete-directory barrier, failed-barrier refusal and symlink/hardlink/foreign-mount rejection |
 | Earlier separate-Theia baseline | `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b`: eight app phases and nine IDE checks, unchanged inputs/global sentinels, full cleanup |
-| Last completed developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-147a342d25c245909ffc9e308334fcbf`: eight app, nine IDE and eight authenticated OpenCode API checks; unchanged inputs/global sentinels, full cleanup; precedes the worker-loss recovery changes |
-| Current developer regression | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases recorded; the Go test reached its 390-second limit during the resumed-source checkpoint and the outer run reached 420 seconds. Failed gate, fully verified failure archive and owned cleanup |
+| Last completed developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-33d1823f30604cf0924f6378cc404355`: eight app, nine IDE and eight authenticated OpenCode API checks; 363.96 seconds Go, 394.26 seconds outer; unchanged inputs/global sentinels and full cleanup. Includes worker-loss recovery and copy-stage measurements; precedes the separately native-tested alias timing correction |
+| Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-6647e43c737e42a7a2ae50cc7e40acbe`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued |
 | Daemon startup | `factorybox-devx-lifecycle-41c1d086fa494fd3810d14261ef26499` hit the unchanged 60-second Sysbox-fs readiness deadline before capture; a subsequent minimal worker with the same binaries/capability bounds started successfully in `factorybox-startup-probe-3c2ff51d8adb42e18b70a1efaa9e614c`. The startup hang's cause remains unresolved |
+| Isolated daemon startup repeats | `factorybox-startup-repeat-688b6049d2424070bccb7ab81685140f` and `factorybox-startup-repeat-7cae3a33d0134e2b93337e51b5f04f33`: 32 real Sysbox-fs starts each, normal and `GOGC=1`, original 60-second deadline, owned cleanup. Neither reproduced the earlier startup hang; no manager or active workload was present |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
@@ -349,7 +350,7 @@ workspace, requires `OPENCODE_PASSWORD`, binds to loopback and keeps its databas
 workspace's `.git` directory unless `OPENCODE_DB` is supplied. `FACTORY_OPENCODE_CONFIG` remains
 optional. Model fetching is disabled. The `--opencode` fixture option checks the supplied server's
 authenticated native API across lifecycle phases. Add it to the same command to include the
-optional harness in the Sysbox workload. The last completed combined gate passed in 352.08 seconds with full
+optional harness in the Sysbox workload. The last completed combined gate passed in 394.26 seconds with full
 cleanup. Every phase verified the supplied OpenCode 2.0.27 process's namespace PID/version through
 `/api/info`, authenticated session reads and rejection of unauthenticated reads. Probes execute
 inside the sandbox's user, PID, mount and network namespaces. Their own HTTP connections consume
@@ -366,32 +367,35 @@ by the core lifecycle.
 
 ## Performance observations
 
-| Phase | Separate Theia | Separate Theia and in-sandbox OpenCode |
-| --- | ---: | ---: |
-| Frozen rootfs, immutable base and OCI preparation | 42.707 s | 31.885 s |
-| Prepared start through first useful Connector response | 43.300 s | 57.278 s |
-| Source checkpoint preceding the first fork | 25.948 s | 17.374 s |
-| Fork of that checkpoint through first useful app response | 13.439 s | 29.156 s |
-| Branch checkpoint preceding the descendant fork | 10.735 s | 25.995 s |
-| Fork of fork through first useful app response | 14.380 s | 24.037 s |
-| Pause with stopped source and snapshot RAM release | 14.980 s | 15.666 s |
-| Resume through first useful app response | 4.122 s | 8.966 s |
-| Resumed-source checkpoint preceding its fork | 34.678 s | 31.192 s |
-| Fork of resumed source through first useful app response | 28.514 s | 14.070 s |
+| Phase | Earlier separate Theia | Earlier Theia and OpenCode | Latest Theia and OpenCode |
+| --- | ---: | ---: | ---: |
+| Frozen rootfs, immutable base and OCI preparation | 42.707 s | 31.885 s | 25.082 s |
+| Prepared start through first useful Connector response | 43.300 s | 57.278 s | 48.387 s |
+| Source checkpoint preceding the first fork | 25.948 s | 17.374 s | 19.435 s |
+| Fork of that checkpoint through first useful app response | 13.439 s | 29.156 s | 23.371 s |
+| Branch checkpoint preceding the descendant fork | 10.735 s | 25.995 s | 34.533 s |
+| Fork of fork through first useful app response | 14.380 s | 24.037 s | 37.682 s |
+| Pause with stopped source and snapshot RAM release | 14.980 s | 15.666 s | 32.464 s |
+| Resume through first useful app response | 4.122 s | 8.966 s | 16.739 s |
+| Resumed-source checkpoint preceding its fork | 34.678 s | 31.192 s | 21.852 s |
+| Fork of resumed source through first useful app response | 28.514 s | 14.070 s | 18.959 s |
 
-Both columns are individual shared-worker observations with the selected components. Evidence:
+All columns are individual shared-worker observations with the selected components. Evidence:
 `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b` and
-`factorybox-devx-lifecycle-147a342d25c245909ffc9e308334fcbf`. Outer execution took 318.03 and
-352.08 seconds respectively; Go lifecycle including teardown took 291.53 and 337.22 seconds.
+`factorybox-devx-lifecycle-147a342d25c245909ffc9e308334fcbf`, then
+`factorybox-devx-lifecycle-33d1823f30604cf0924f6378cc404355`. Outer execution took 318.03,
+352.08 and 394.26 seconds; Go lifecycle including teardown took 291.53, 337.22 and 363.96 seconds.
 The first column precedes the filesystem-admission and image-durability changes; it is a
 historical baseline, not a controlled before/after performance comparison.
-Both completed observations precede the worker-loss recovery changes.
+The first two precede the worker-loss recovery changes. The latest includes those changes
+and stage measurements, and precedes clearing inherited immutable-alias timing fields.
+That timing-only correction passed the native base/pause suite separately.
 
-The current-runtime regression `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`
+The earlier regression `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`
 exceeded the unchanged 390-second Go/420-second outer limits. Seven app, IDE and OpenCode phases
 completed; the final resumed-source checkpoint was still in progress when the Go deadline fired.
 Its prepared start took 77.363 seconds, prepared fork 46.838 seconds, pause 42.688 seconds and
-resume 13.544 seconds. These partial observations do not replace a passing full lifecycle.
+resume 13.544 seconds. These partial observations remain failed despite the later complete pass.
 The first checkpoint took 44.567 seconds. Its Docker backing still contained 25,100 entries and
 about 1.17 GB, but copying/verifying that tree took 22.071 seconds versus 8.778 in the prior pass.
 Worker counters recorded 42,666 swap-in pages during pause versus 447 previously, with no
@@ -399,9 +403,25 @@ additional CPU-quota throttling during either measured pause. `io-comparison.jso
 run retains exact timing/counter input hashes. This identifies filesystem work and reclamation
 for further measurement; it does not isolate a causal code regression or justify a larger deadline.
 
+Six isolated production-copy diagnostics retain their exact inputs, CPU profiles and result hashes
+in `artifacts/filesystem-compare-work/comparison.json`. They reuse the same frozen 25,100-entry
+Docker tree under 3 CPU/3 GiB. The previous copy implementation took 27.928 and 11.685 seconds;
+the current implementation took 11.994 and 13.245 seconds. A 256-KiB read-buffer candidate took
+11.702 seconds and was not promoted. Retaining an additional 384 MiB of anonymous RAM took
+9.809 seconds and did not reproduce the live workload's slowdown. These observations do not
+establish a causal code regression, a buffer improvement or a full-workload speedup.
+Writable-tree capture records separate `source_read_us`, `copy_us` and `target_read_us`
+observations. The latest full run's first Docker tree took 4.164 seconds to read/verify the
+source, 0.886 seconds to copy and 2.854 seconds to verify the independent target.
+Reused verified source digests record zero source-read time for the new copy; immutable aliases
+clear their import's historical copy observations. A native test reproduced the stale-alias
+measurement before correction in `factorybox-clone-compare-9fbf7a9b01104e4e818187cc167958e4`.
+The corrected complete adapter and base/pause suite passed in
+`factorybox-runtime-d3be875bda4f47f59b97b678ff9b1b48`. Every integrity check remains.
+
 Preparation precedes prepared start. Fork timings use an already published checkpoint. A fresh
-current-state fork must also pay its preceding checkpoint: the first combined observation's
-17.374-second checkpoint plus 29.156-second fork totals about 46.53 seconds. These are component
+current-state fork must also pay its preceding checkpoint: the latest combined observation's
+19.435-second checkpoint plus 23.371-second fork totals about 42.81 seconds. These are component
 sums, not a separately instrumented aggregate request. App-response timings precede the
 subsequent IDE/OpenCode assertions; those checks have their own observations. Artifacts retain
 CPU, I/O and memory samples. External IDE writes are serialized outside capture.
@@ -464,16 +484,20 @@ reference builds, current component inputs and the unresolved capture-failure du
 The cleanup reclaimed 7.72 GiB across both directories, including the retained archive.
 Retirement `factorybox-storage-retirement-a4f6b95e289b493f8baede3a31497018` later reclaimed
 another 5.65 GiB from the pre-receipt worker-loss payload and duplicate startup rootfs archive.
-Its successor native fault proof passed, and the newer complete developer-failure archive in
-`factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4` remains available. Startup logs,
-the unresolved startup finding and all source/results/encoding receipts remain.
+Its successor native fault proof passed. The newer complete developer-failure archive in
+`factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4` was retained until the complete
+`factorybox-devx-lifecycle-33d1823f30604cf0924f6378cc404355` replacement passed. Retirement
+`factorybox-storage-retirement-d50c4d0ae0d945f2b9c26e0b57dd2b68` then rechecked its encoded
+SHA-256 and retired only that superseded 5.72-GiB payload. Startup logs, the unresolved actual-CRIU
+interruption evidence, source/results, IO comparisons and encoding/retirement receipts remain.
 
 ## Remaining release requirements
 
 Production qualification requires complete bounded failure recovery, including the failing
 actual-CRIU interruption case and the observed daemon-startup hang; resolution of required upstream failures/skips on supported
-workers; a complete current developer lifecycle within the existing deadlines; and native
-qualification of every claimed deployment target. Browser behavior,
+workers; continued full developer qualification within the existing deadlines after behavioral
+changes; and native qualification of every claimed deployment target. The latest complete pass
+does not establish a latency distribution. Browser behavior,
 concurrent external writers and further workload compatibility need their own evidence.
 A deployment/installation contract, worker storage quotas and license review are required
 before distribution. The optional OpenCode API composition has native proof; model inference,

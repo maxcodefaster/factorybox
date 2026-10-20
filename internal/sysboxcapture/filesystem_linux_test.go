@@ -260,10 +260,16 @@ func TestFilesystemCopyNative(t *testing.T) {
 	if copied.HashedBytes >= copied.FileBytes {
 		t.Fatal("hardlinked content was read repeatedly")
 	}
+	if copied.SourceReadUS <= 0 || copied.CopyUS <= 0 || copied.TargetReadUS <= 0 {
+		t.Fatal("complete copy omitted its source, copy or independent-target observation", copied)
+	}
 	t.Run("known-digest-complete-target", func(t *testing.T) {
 		actual, err := cloneFilesystemTreeExpected(context.Background(), root, base+"/known-digest-copy", &copied)
 		if err != nil || !sameFilesystemTree(actual, copied) {
 			t.Fatal("known complete source did not produce the same verified independent target", err)
+		}
+		if actual.SourceReadUS != 0 || actual.CopyUS <= 0 || actual.TargetReadUS <= 0 {
+			t.Fatal("reused digest reported stale source work or omitted new copy/target work", actual)
 		}
 	})
 	t.Run("known-digest-rejects-changed-content", func(t *testing.T) {

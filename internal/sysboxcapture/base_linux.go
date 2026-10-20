@@ -230,6 +230,9 @@ func bindImmutableTree(source, destination string, tree FilesystemTree) (Filesys
 	if err := readonlyBind(tree.Immutable.Root, destination); err != nil {
 		return tree, err
 	}
+	// Sharing this verified read-only base performs no source scan or copy.
+	// Its import or previous alias observations belong to that earlier work.
+	tree.CaptureUS, tree.SourceReadUS, tree.CopyUS, tree.TargetReadUS = 0, 0, 0, 0
 	return tree, VerifyImmutableTree(destination, tree)
 }
 
