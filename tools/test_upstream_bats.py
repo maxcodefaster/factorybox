@@ -58,6 +58,10 @@ class BatsEvidenceTests(unittest.TestCase):
             archive = pathlib.Path(directory)
             def save(command, **kwargs):
                 self.assertIn("--log-driver=none", command)
+                self.assertIn("--cpus=1", command)
+                self.assertIn("--memory=1g", command)
+                self.assertIn("--memory-swap=1g", command)
+                self.assertIn("--read-only", command)
                 self.assertEqual(command[-2:], ["-", "."])
                 self.assertEqual(kwargs["stdout"].name, str(archive / "failed-volume-0.tar"))
                 self.assertEqual(kwargs["timeout"], 240)

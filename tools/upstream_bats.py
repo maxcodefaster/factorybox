@@ -137,7 +137,7 @@ def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, tim
         command = [
             *reference.DOCKER, "run", "--pull=never", "--name", helper,
             "--label", "com.factorybox.run=" + owner, "--network=none",
-            "--cpus=1", "--memory=256m", "--pids-limit=16", "--read-only",
+            "--cpus=1", "--memory=1g", "--memory-swap=1g", "--pids-limit=16", "--read-only",
             "--log-driver=none",
             "--cap-drop=ALL", "--cap-add=DAC_READ_SEARCH", "--security-opt=no-new-privileges",
             "--mount", f"type=volume,source={volume},target=/input,readonly",
