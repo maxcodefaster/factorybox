@@ -31,7 +31,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 90 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 91 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
@@ -56,6 +56,8 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Early-hold Docker attempt before proc admission | **Failing** in `factorybox-devx-lifecycle-30459414a2d941b793e2f7cc7912006f`: the first ordinary checkpoint failed on a directory handle from an unenumerable proc mount, before fault injection. This does not test early-hold recovery. Full failure archive verified and owned cleanup completed; the small proc admission regression reproduces the failure without Docker |
 | Docker cure and fresh recapture with proc admission | **Failing** as a complete gate in `factorybox-devx-lifecycle-1c5479188db2407492e30ad2ab6adfed`: authorized cure retained 13 processes/103 threads; new Docker exec, original-source mutation, fresh checkpoint, independently useful current-state fork and divergent branch/source mutation passed. Outer execution timed out at 420 seconds during the final prior-checkpoint fork. The separate 600-second archive attempt also timed out and retained its exact volume; offline reconciliation is recorded separately. No complete gate or latency distribution is qualified |
 | Overlay2 consumer diagnostic | **Failing**, unselected, in `factorybox-devx-lifecycle-977034ecb79f4547bf463ce678509fd5`: the actual private Docker daemon used Overlay2; first useful application and checkpoint passed, but the first fork failed while CRIU restored a nested overlay mount with `ENOENT`. Complete 4,363,124,736-byte failure archive verified and owned cleanup passed. The frozen wrapper changes only the consumer's storage-driver flag. This is not a performance improvement or developer qualification |
+| Nested-overlay shared-root candidate | `factorybox-runtime-71387dc3a4c544478999c8b735285313`: nine tests/44 subtests, zero skips, unchanged frozen inputs/components and owned cleanup. Plain/direct/relative-layer-link cases preserve independent RAM/files through descendant fork after source deletion, pause/resume and resumed-source fork; an escaping link refuses restore while its source remains useful. CRIU `factorybox-build-criu-retained-ef33bdea879e417f93ba5fb378f603a8` remains unselected. This small fixture does not qualify Docker or select Overlay2 |
+| Nested-overlay candidate CRIU core | `factorybox-criu-core-d95764528974401693b8a911fd4288b0`: all 18 unchanged C tests passed two dump/restore cycles each; 1,030 upstream test files remain unchanged; exact cleanup passed. This does not replace the full developer or interrupted-Docker gates |
 | Unix client namespace diagnostic | `factorybox-runtime-3c5218a84cdf47269bf70ba96848c418` reproduced an accepted server socket with the external worker's namespace cookie, absent from the source Unix table, without Docker or CRIU. `factorybox-runtime-15cb7afe89f842e4adfe816e2b2286c6` verified that the corrected test client creates a visible socket with the source listener's cookie. Original actor RAM/useful work and owned cleanup passed. This is a fixture mechanism, not recovery qualification |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
@@ -423,7 +425,7 @@ mise exec -- python3 tools/lifecycle_native.py \
 ```
 
 Lifecycle profiles include `lifecycle`, `guard`, `capture`, `pause`, `base`, `base-pause`,
-`delegation`, `namespaces`, `time`, `mountfd`, `admission`, `worker-loss` and the required failing `interruption` gate.
+`delegation`, `namespaces`, `time`, `mountfd`, `overlay`, `admission`, `worker-loss` and the required failing `interruption` gate.
 Each runner checks declared assertions, inputs, process outcome and exact owned cleanup.
 Small native fixtures do not replace full developer-workload qualification.
 New native runs build from a complete frozen Go source context in their own artifact and
@@ -475,6 +477,26 @@ fails, even when `mechanism_passed: true`. `--pause` exercises failed-pause reco
 `--interrupt-child` selects the child's own dump rather than the parent's.
 `--corruption-control` additionally requires its raw-RAM oracle to go red.
 Neither the candidate runners nor their verdicts promote it into the selected lock.
+The separate nested-overlay experiment also has reproducible, explicitly unselected inputs:
+
+```sh
+mise exec -- python3 tests/criu-retained-candidate/build.py \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --nested-overlay --nested-overlay-stable-paths --nested-overlay-shared-root
+mise exec -- python3 tools/lifecycle_native.py \
+  --retained-candidate factorybox-build-criu-retained-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID --suite overlay
+```
+
+The ordered patches preserve the earlier rejected candidates. The `overlay` suite requires
+plain/direct/relative-link source lifecycles, independent layer and RAM mutation, a descendant
+without the original source, pause/resume with snapshot RAM release, and a fork after resume.
+An escaping layer link must refuse restore while its original source remains useful; unresolved
+creation evidence must remain retained for the outer fixture's exact cleanup. Namespace-root
+layer backing and overlapping covering-mount aliases remain unsupported by this candidate.
+These diagnostics do not select Docker's storage driver or qualify the complete consumer.
+
 The developer consumer runner also accepts `--retained-candidate` instead of `--criu-build`
 to qualify the same explicit candidate with the ordinary Docker/IDE/OpenCode workload.
 Add `--suite docker-interruption` for a separate recovery regression against the real
@@ -639,6 +661,17 @@ checkpoint, then failed the first fork. Its retained CRIU restore log reports a 
 path while mounting a nested Docker overlay. The CLI's listener-handoff error is the
 subsequent symptom. The full failure archive and exact driver-only wrapper are retained;
 VFS remains the reference. No Overlay2 speed or footprint claim is selected from this failure.
+Its small native reproducer binds exact source/component hashes in
+`artifacts/overlay2-work/minimal-comparison.json`. The first mapping candidate restores one
+nested overlay, but the extended regression catches unusable `/proc/self/fd/N` option strings
+when forking that fork. The first stable-name alias candidate then fails with `EINVAL`.
+Kernel-only differential `factorybox-overlay-alias-f3fc70b1856d48a2bd36236803776fd1` reproduces
+that failure with separate upper/work bind mounts and passes when both use a shared backing
+root. Original layer contents, failed native logs and complete archives remain.
+The ordered shared-root candidate subsequently passed the complete small overlay suite in
+29.02 seconds of Go execution, including all four cases. This is suite duration, not an
+individual fork latency or developer-workload performance claim. The selected CRIU and
+VFS reference remain unchanged.
 
 The earlier regression `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`
 exceeded the unchanged 390-second Go/420-second outer limits. Seven app, IDE and OpenCode phases
@@ -796,6 +829,10 @@ identical closed-run executables and reclaims 2,460,667,904 allocated bytes afte
 their declared hashes, modes, ownership and closed-run status.
 `factorybox-storage-share-00e6a7f53a7a43efa2d7804d4c3fcff5` shares ten further identical
 closed-run executables, reclaiming 62,029,824 allocated bytes.
+`factorybox-storage-share-01ed7e28db3e4384a0671063ece70384` subsequently shares twelve
+closed executables and reclaims 166,985,728 allocated bytes.
+`factorybox-storage-share-8f60e82956d4465ba38bdef2b426cfe1` shares three more identical
+closed inputs and reclaims 42,893,312 allocated bytes.
 
 Reconciliation `074130fbd8ee4171bf5210a680c71f7f` completed the retained Docker-cure
 failure's cleanup after verifying all 11,050,942,464 raw bytes. Its lossless replacement
@@ -807,6 +844,10 @@ hash and complete bounded decoded stream. It does not execute commands from rece
 recreate raw copies. `artifacts/storage-replacement-work/verification.json` records a full
 verification of that real replacement; three regressions cover discovery, tampering and a
 replacement whose valid encoded hash conceals different decoded bytes.
+The complete Overlay2 consumer failure was also losslessly repacked in
+`factorybox-storage-repack-b74705a5cbdd41e787d3dc0ed8d0c581`: all 4,363,124,736 decoded bytes
+verified, 767,185,252 encoded bytes retained and 667,262,720 bytes reclaimed. Its original path
+has a pinned recovery pointer. Neither archive payload was retired.
 
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another

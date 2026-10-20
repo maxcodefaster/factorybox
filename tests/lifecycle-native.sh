@@ -63,6 +63,9 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
   if test "${FACTORYBOX_NATIVE_MOUNT_FD:-}" = 1; then
     test_pattern='^TestDetachedMountForkNative$'
   fi
+  if test "${FACTORYBOX_NATIVE_OVERLAY:-}" = 1; then
+    test_pattern='^TestNestedOverlayNative$'
+  fi
   if test "${FACTORYBOX_NATIVE_INTERRUPTION:-}" = 1; then
     test_pattern='^TestInterruptedCaptureNative$'
   fi

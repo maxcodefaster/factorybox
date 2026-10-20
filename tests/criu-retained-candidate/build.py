@@ -16,11 +16,32 @@ import sources
 root = reference.ROOT
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--native-base-build", required=True)
+parser.add_argument("--nested-overlay", action="store_true",
+                    help="Add the unselected captured-layer mount-v2 diagnostic patch")
+parser.add_argument("--nested-overlay-stable-paths", action="store_true",
+                    help="Keep original layer names through a private temporary alias root")
+parser.add_argument("--nested-overlay-shared-root", action="store_true",
+                    help="Bind each captured covering filesystem once so upper/work share a mount")
 options = parser.parse_args()
+if options.nested_overlay_stable_paths and not options.nested_overlay:
+    parser.error("--nested-overlay-stable-paths requires --nested-overlay")
+if options.nested_overlay_shared_root and not options.nested_overlay_stable_paths:
+    parser.error("--nested-overlay-shared-root requires --nested-overlay-stable-paths")
 patch_inputs = [
     (root / "upstream/patches/criu-retained-context-candidate.patch", "retained.patch"),
     (root / "upstream/patches/criu-retained-early-hold-candidate.patch", "early-hold.patch"),
 ]
+if options.nested_overlay:
+    patch_inputs.append(
+        (root / "upstream/patches/criu-nested-overlay-candidate.patch", "nested-overlay.patch"))
+if options.nested_overlay_stable_paths:
+    patch_inputs.append(
+        (root / "upstream/patches/criu-nested-overlay-stable-path-candidate.patch",
+         "nested-overlay-stable-path.patch"))
+if options.nested_overlay_shared_root:
+    patch_inputs.append(
+        (root / "upstream/patches/criu-nested-overlay-shared-root-candidate.patch",
+         "nested-overlay-shared-root.patch"))
 lock = json.loads((root / "upstream/lock.json").read_text())
 original = lock["components"]["criu"]
 sources.validate_inputs(original)
@@ -46,7 +67,7 @@ for patch_input, filename in patch_inputs:
 for relative in [
     "criu/cr-dump.c", "criu/parasite-syscall.c", "criu/Makefile.crtools",
     "criu/factorybox-retained.c", "criu/include/factorybox-retained.h",
-]:
+] + (["criu/mount-v2.c"] if options.nested_overlay else []):
     component.setdefault("prepared_files_sha256", {})[relative] = reference.sha(context / relative)
 (archive / "source-lock.json").write_text(json.dumps(candidate, indent=2) + "\n")
 recipe = json.loads((root / "upstream/criu-build.json").read_text())
@@ -90,6 +111,28 @@ result = {
              "Only the Go guard may authorize source release. No production qualification.",
     "passed": False, "cleanup": False, "diagnostic_only": True, "production_qualified": False,
 }
+if options.nested_overlay:
+    result["nested_overlay_candidate"] = True
+    result["scope"] += (
+        " Additional unselected mount-v2 candidate resolves nested overlay layer paths only "
+        "beneath their captured covering mounts and pins them with bounded openat2 descriptors. "
+        "Nested overlay compatibility, confinement and full developer performance remain unqualified."
+    )
+if options.nested_overlay_stable_paths:
+    result["nested_overlay_stable_paths"] = True
+    result["scope"] += (
+        " Ordered follow-up retains original layer option names by mounting through pinned layer "
+        "aliases inside a bounded temporary tmpfs/chroot, then detaches the owned alias root. "
+        "Fork-of-fork and pause/resume remain native gates, not inferred from first restore."
+    )
+if options.nested_overlay_shared_root:
+    result["nested_overlay_shared_root"] = True
+    result["scope"] += (
+        " Ordered shared-root fix binds each non-root captured covering filesystem once, "
+        "preserving the kernel's shared-mount requirement for upper/work. Every layer "
+        "first passes bounded beneath-root/no-magiclink/no-cross-mount lookup. "
+        "Namespace-root and overlapping covering-mount aliases remain unsupported."
+    )
 (archive / "intent.json").write_text(json.dumps(result, indent=2) + "\n")
 print(json.dumps({"building": str(archive)}), flush=True)
 try:

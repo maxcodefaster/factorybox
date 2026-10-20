@@ -1,0 +1,199 @@
+--- a/criu/mount-v2.c
++++ b/criu/mount-v2.c
+@@ -5,6 +5,7 @@
+ #include <fcntl.h>
+ #include <sys/mount.h>
+ #include <sched.h>
++#include <sys/wait.h>
+ 
+ #include "kerndat.h"
+ #include "log.h"
+@@ -277,27 +278,12 @@
+ 	return best;
+ }
+ 
+-static int overlay_append_v2(char *output, size_t *used, const char *text)
+-{
+-	size_t size = strlen(text);
+-	if (size >= 65536 - *used) {
+-		pr_err("Remapped overlay options exceed their size limit\n");
+-		return -1;
+-	}
+-	if (output)
+-		memcpy(output + *used, text, size + 1);
+-	*used += size;
+-	return 0;
+-}
+-
+-/* A NULL output performs only dependency admission, before mountpoint creation.
+- * Layer descriptors stay open across mount(2); /proc/self/fd paths cannot escape
+- * to a saved host path or be redirected by a captured symlink.
++/* A NULL names array performs only dependency admission, before mountpoint
++ * creation. Every layer is pinned beneath its captured covering mount.
+  */
+-static int overlay_options_v2(struct mount_info *mi, char *output, int *fds, unsigned int *nr)
++static int overlay_options_v2(struct mount_info *mi, char **names, int *fds, unsigned int *nr)
+ {
+ 	char *copy, *cursor, *option;
+-	size_t used = 0;
+ 	unsigned int keys = 0;
+ 	int ret = -1;
+ 
+@@ -311,8 +297,6 @@
+ 		const char *key = NULL;
+ 		char *value, *layer;
+ 		unsigned int bit = 0;
+-		if (used && overlay_append_v2(output, &used, ","))
+-			goto out;
+ 		if (!strncmp(option, "lowerdir=", 9)) {
+ 			key = "lowerdir=";
+ 			bit = 1;
+@@ -327,21 +311,16 @@
+ 			if (strchr(option, '\\') || !option[0] ||
+ 			    !strncmp(option, "lowerdir", 8) || !strncmp(option, "datadir", 7))
+ 				goto out;
+-			if (overlay_append_v2(output, &used, option))
+-				goto out;
+ 			continue;
+ 		}
+ 		if (keys & bit)
+ 			goto out;
+ 		keys |= bit;
+-		if (overlay_append_v2(output, &used, key))
+-			goto out;
+ 		value = option + strlen(key);
+ 		if (bit != 1 && strchr(value, ':'))
+ 			goto out;
+ 		while ((layer = strsep(&value, ":"))) {
+ 			struct mount_info *owner;
+-			char fdpath[64];
+ 			int rootfd, fd;
+ 			const char *relative;
+ 			struct open_how how = {
+@@ -357,7 +336,14 @@
+ 				ret = 0;
+ 				goto out;
+ 			}
+-			if (output) {
++			if (names) {
++				unsigned int i;
++				for (i = 0; i < *nr; i++) {
++					if (get_relative_path(layer, names[i]) || get_relative_path(names[i], layer)) {
++						pr_err("Overlapping overlay layer aliases are not admitted\n");
++						goto out;
++					}
++				}
+ 				relative = get_relative_path(layer, owner->ns_mountpoint);
+ 				if (!relative)
+ 					goto out;
+@@ -371,14 +357,13 @@
+ 					goto out;
+ 				}
+ 				fds[*nr] = fd;
+-				snprintf(fdpath, sizeof(fdpath), "/proc/self/fd/%d", fd);
+-			} else {
+-				strcpy(fdpath, "/proc/self/fd/0");
++				names[*nr] = xstrdup(layer);
++				if (!names[*nr]) {
++					close(fd);
++					goto out;
++				}
+ 			}
+ 			(*nr)++;
+-			if (overlay_append_v2(output, &used, fdpath) ||
+-			    (value && overlay_append_v2(output, &used, ":")))
+-				goto out;
+ 		}
+ 	}
+ 	if (!(keys & 1) || ((keys & 6) != 0 && (keys & 6) != 6))
+@@ -392,22 +377,77 @@
+ static int do_overlay_mount_v2(struct mount_info *mi, const char *src, const char *fstype,
+ 			       unsigned long mountflags)
+ {
+-	int fds[128], ret;
+-	unsigned int nr = 0;
+-	char *options = xmalloc(65536);
+-	if (!options)
+-		return -1;
+-	ret = overlay_options_v2(mi, options, fds, &nr);
+-	if (ret == 1) {
+-		ret = mount(src, service_mountpoint(mi), fstype, mountflags, options);
+-		if (ret)
+-			pr_perror("Can't mount overlay with pinned captured layer descriptors");
+-	} else {
++	int fds[128], ret = -1, targetfd = -1, status;
++	char *names[128];
++	char root[] = "/tmp/.criu.overlay.XXXXXX";
++	char path[PATH_MAX], descriptor[64];
++	unsigned int nr = 0, i;
++	bool root_created = false, root_mounted = false;
++	pid_t child, waited;
++
++	if (overlay_options_v2(mi, names, fds, &nr) != 1)
++		goto out;
++	if (!mkdtemp(root))
++		goto out;
++	root_created = true;
++	if (mount("none", root, "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC, "size=4m,mode=700"))
++		goto out;
++	root_mounted = true;
++	/* Construct every alias directory before attaching any layer. No guest
++	 * pathname is used outside this fresh, bounded temporary tmpfs.
++	 */
++	for (i = 0; i < nr; i++) {
++		if (snprintf(path, sizeof(path), "%s%s", root, names[i]) >= sizeof(path) ||
++		    mkdirpat(AT_FDCWD, path, 0700))
++			goto out;
++	}
++	for (i = 0; i < nr; i++) {
++		snprintf(path, sizeof(path), "%s%s", root, names[i]);
++		snprintf(descriptor, sizeof(descriptor), "/proc/self/fd/%d", fds[i]);
++		if (mount(descriptor, path, NULL, MS_BIND, NULL)) {
++			pr_perror("Can't bind pinned overlay layer into its private alias root");
++			goto out;
++		}
++	}
++	targetfd = open(service_mountpoint(mi), O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++	if (targetfd < 0)
++		goto out;
++	/* A short-lived child changes only its own filesystem root. It shares
++	 * the private service mount namespace, so the parent receives the mount.
++	 * Keep original option strings: persisting /proc/self/fd/N would make
++	 * the restored overlay impossible to checkpoint and fork again.
++	 */
++	child = fork();
++	if (child < 0)
++		goto out;
++	if (child == 0) {
++		if (chroot(root) || fchdir(targetfd) ||
++		    mount(src, ".", fstype, mountflags, mi->options)) {
++			pr_perror("Can't mount overlay through pinned captured layer aliases");
++			_exit(1);
++		}
++		_exit(0);
++	}
++	do {
++		waited = waitpid(child, &status, 0);
++	} while (waited < 0 && errno == EINTR);
++	if (waited == child && WIFEXITED(status) && WEXITSTATUS(status) == 0)
++		ret = 0;
++out:
++	if (targetfd >= 0)
++		close(targetfd);
++	if (root_mounted && umount2(root, MNT_DETACH)) {
++		pr_perror("Can't release private overlay layer alias root");
+ 		ret = -1;
+ 	}
+-	while (nr)
++	if (root_created && rmdir(root)) {
++		pr_perror("Can't remove private overlay layer alias root");
++		ret = -1;
++	}
++	while (nr) {
+ 		close(fds[--nr]);
+-	xfree(options);
++		xfree(names[nr]);
++	}
+ 	return ret;
+ }
+ 

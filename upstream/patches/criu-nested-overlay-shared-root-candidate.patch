@@ -1,0 +1,86 @@
+--- a/criu/mount-v2.c
++++ b/criu/mount-v2.c
+@@ -337,12 +337,13 @@
+ 				goto out;
+ 			}
+ 			if (names) {
+-				unsigned int i;
+-				for (i = 0; i < *nr; i++) {
+-					if (get_relative_path(layer, names[i]) || get_relative_path(names[i], layer)) {
+-						pr_err("Overlapping overlay layer aliases are not admitted\n");
+-						goto out;
+-					}
++				/* This candidate covers private managed-volume layers.
++				 * A covering namespace root needs a separate assembly
++				 * contract and is deliberately not admitted here.
++				 */
++				if (owner->ns_mountpoint[0] != '/' || !owner->ns_mountpoint[1]) {
++					pr_err("Overlay layer aliases require a non-root captured mount\n");
++					goto out;
+ 				}
+ 				relative = get_relative_path(layer, owner->ns_mountpoint);
+ 				if (!relative)
+@@ -351,15 +352,16 @@
+ 				if (rootfd < 0)
+ 					goto out;
+ 				fd = sys_openat2(rootfd, relative[0] ? relative : ".", &how, sizeof(how));
+-				close(rootfd);
+ 				if (fd < 0) {
+ 					pr_perror("Can't pin overlay layer beneath captured mount %d", owner->mnt_id);
++					close(rootfd);
+ 					goto out;
+ 				}
+-				fds[*nr] = fd;
+-				names[*nr] = xstrdup(layer);
++				close(fd);
++				fds[*nr] = rootfd;
++				names[*nr] = xstrdup(owner->ns_mountpoint);
+ 				if (!names[*nr]) {
+-					close(fd);
++					close(rootfd);
+ 					goto out;
+ 				}
+ 			}
+@@ -381,7 +383,7 @@
+ 	char *names[128];
+ 	char root[] = "/tmp/.criu.overlay.XXXXXX";
+ 	char path[PATH_MAX], descriptor[64];
+-	unsigned int nr = 0, i;
++	unsigned int nr = 0, i, j;
+ 	bool root_created = false, root_mounted = false;
+ 	pid_t child, waited;
+ 
+@@ -393,15 +395,31 @@
+ 	if (mount("none", root, "tmpfs", MS_NOSUID | MS_NODEV | MS_NOEXEC, "size=4m,mode=700"))
+ 		goto out;
+ 	root_mounted = true;
+-	/* Construct every alias directory before attaching any layer. No guest
+-	 * pathname is used outside this fresh, bounded temporary tmpfs.
++	/* Upper and work must share a mount, not separate bind aliases. Bind
++	 * each unique covering filesystem once, after validating every layer
++	 * beneath its pinned root. No guest pathname is used outside this
++	 * fresh, bounded temporary tmpfs.
+ 	 */
+ 	for (i = 0; i < nr; i++) {
++		for (j = 0; j < i; j++) {
++			if (!strcmp(names[i], names[j]))
++				break;
++			if (get_relative_path(names[i], names[j]) || get_relative_path(names[j], names[i])) {
++				pr_err("Overlapping overlay covering-mount aliases are not admitted\n");
++				goto out;
++			}
++		}
++		if (j < i)
++			continue;
+ 		if (snprintf(path, sizeof(path), "%s%s", root, names[i]) >= sizeof(path) ||
+ 		    mkdirpat(AT_FDCWD, path, 0700))
+ 			goto out;
+ 	}
+ 	for (i = 0; i < nr; i++) {
++		for (j = 0; j < i && strcmp(names[i], names[j]); j++)
++			;
++		if (j < i)
++			continue;
+ 		snprintf(path, sizeof(path), "%s%s", root, names[i]);
+ 		snprintf(descriptor, sizeof(descriptor), "/proc/self/fd/%d", fds[i]);
+ 		if (mount(descriptor, path, NULL, MS_BIND, NULL)) {

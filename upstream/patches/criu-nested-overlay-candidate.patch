@@ -1,0 +1,205 @@
+--- a/criu/mount-v2.c
++++ b/criu/mount-v2.c
+@@ -240,6 +240,177 @@
+ /*
+  * Mounts first mount of superblock
+  */
++/* Resolve saved overlay layer paths only through the captured mount inventory.
++ * The service namespace does not contain the container's absolute paths.
++ */
++static struct mount_info *overlay_layer_mount_v2(struct mount_info *mi, const char *path)
++{
++	struct mount_info *candidate, *best = NULL;
++	size_t best_len = 0;
++
++	if (path[0] != '/' || strchr(path, '\\') || strstr(path, "//") ||
++	    strstr(path, "/../") || strstr(path, "/./") ||
++	    !strcmp(path, "/..") || !strcmp(path, "/.") ||
++	    (strlen(path) >= 3 && !strcmp(path + strlen(path) - 3, "/..")) ||
++	    (strlen(path) >= 2 && !strcmp(path + strlen(path) - 2, "/."))) {
++		pr_err("Overlay layer path is not an admitted absolute path\n");
++		return NULL;
++	}
++	for (candidate = mntinfo; candidate; candidate = candidate->next) {
++		size_t n;
++		if (candidate == mi || candidate->nsid != mi->nsid || !candidate->ns_mountpoint)
++			continue;
++		n = strlen(candidate->ns_mountpoint);
++		if (n == 0 || n < best_len || strncmp(path, candidate->ns_mountpoint, n))
++			continue;
++		if (n > 1 && path[n] && path[n] != '/')
++			continue;
++		if (n == best_len && best) {
++			pr_err("Overlay layer has ambiguous covering mounts\n");
++			return NULL;
++		}
++		best = candidate;
++		best_len = n;
++	}
++	if (!best)
++		pr_err("Overlay layer has no captured covering mount\n");
++	return best;
++}
++
++static int overlay_append_v2(char *output, size_t *used, const char *text)
++{
++	size_t size = strlen(text);
++	if (size >= 65536 - *used) {
++		pr_err("Remapped overlay options exceed their size limit\n");
++		return -1;
++	}
++	if (output)
++		memcpy(output + *used, text, size + 1);
++	*used += size;
++	return 0;
++}
++
++/* A NULL output performs only dependency admission, before mountpoint creation.
++ * Layer descriptors stay open across mount(2); /proc/self/fd paths cannot escape
++ * to a saved host path or be redirected by a captured symlink.
++ */
++static int overlay_options_v2(struct mount_info *mi, char *output, int *fds, unsigned int *nr)
++{
++	char *copy, *cursor, *option;
++	size_t used = 0;
++	unsigned int keys = 0;
++	int ret = -1;
++
++	if (strlen(mi->options) >= 65536)
++		return -1;
++	copy = xstrdup(mi->options);
++	if (!copy)
++		return -1;
++	cursor = copy;
++	while ((option = strsep(&cursor, ","))) {
++		const char *key = NULL;
++		char *value, *layer;
++		unsigned int bit = 0;
++		if (used && overlay_append_v2(output, &used, ","))
++			goto out;
++		if (!strncmp(option, "lowerdir=", 9)) {
++			key = "lowerdir=";
++			bit = 1;
++		} else if (!strncmp(option, "upperdir=", 9)) {
++			key = "upperdir=";
++			bit = 2;
++		} else if (!strncmp(option, "workdir=", 8)) {
++			key = "workdir=";
++			bit = 4;
++		}
++		if (!key) {
++			if (strchr(option, '\\') || !option[0] ||
++			    !strncmp(option, "lowerdir", 8) || !strncmp(option, "datadir", 7))
++				goto out;
++			if (overlay_append_v2(output, &used, option))
++				goto out;
++			continue;
++		}
++		if (keys & bit)
++			goto out;
++		keys |= bit;
++		if (overlay_append_v2(output, &used, key))
++			goto out;
++		value = option + strlen(key);
++		if (bit != 1 && strchr(value, ':'))
++			goto out;
++		while ((layer = strsep(&value, ":"))) {
++			struct mount_info *owner;
++			char fdpath[64];
++			int rootfd, fd;
++			const char *relative;
++			struct open_how how = {
++				.flags = O_PATH | O_DIRECTORY | O_CLOEXEC,
++				.resolve = RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS | RESOLVE_NO_XDEV,
++			};
++			if (!layer[0] || *nr >= 128)
++				goto out;
++			owner = overlay_layer_mount_v2(mi, layer);
++			if (!owner)
++				goto out;
++			if (!owner->mounted) {
++				ret = 0;
++				goto out;
++			}
++			if (output) {
++				relative = get_relative_path(layer, owner->ns_mountpoint);
++				if (!relative)
++					goto out;
++				rootfd = open(owner->plain_mountpoint, O_PATH | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++				if (rootfd < 0)
++					goto out;
++				fd = sys_openat2(rootfd, relative[0] ? relative : ".", &how, sizeof(how));
++				close(rootfd);
++				if (fd < 0) {
++					pr_perror("Can't pin overlay layer beneath captured mount %d", owner->mnt_id);
++					goto out;
++				}
++				fds[*nr] = fd;
++				snprintf(fdpath, sizeof(fdpath), "/proc/self/fd/%d", fd);
++			} else {
++				strcpy(fdpath, "/proc/self/fd/0");
++			}
++			(*nr)++;
++			if (overlay_append_v2(output, &used, fdpath) ||
++			    (value && overlay_append_v2(output, &used, ":")))
++				goto out;
++		}
++	}
++	if (!(keys & 1) || ((keys & 6) != 0 && (keys & 6) != 6))
++		goto out;
++	ret = 1;
++out:
++	xfree(copy);
++	return ret;
++}
++
++static int do_overlay_mount_v2(struct mount_info *mi, const char *src, const char *fstype,
++			       unsigned long mountflags)
++{
++	int fds[128], ret;
++	unsigned int nr = 0;
++	char *options = xmalloc(65536);
++	if (!options)
++		return -1;
++	ret = overlay_options_v2(mi, options, fds, &nr);
++	if (ret == 1) {
++		ret = mount(src, service_mountpoint(mi), fstype, mountflags, options);
++		if (ret)
++			pr_perror("Can't mount overlay with pinned captured layer descriptors");
++	} else {
++		ret = -1;
++	}
++	while (nr)
++		close(fds[--nr]);
++	xfree(options);
++	return ret;
++}
++
+ static int do_new_mount_v2(struct mount_info *mi)
+ {
+ 	unsigned long sflags = mi->sb_flags;
+@@ -248,6 +419,9 @@
+ 	struct fstype *tp = mi->fstype;
+ 	bool remount_ro = (tp->restore && mi->sb_flags & MS_RDONLY);
+ 	mount_fn_t do_mount = (tp->mount) ? tp->mount : do_simple_mount;
++
++	if (tp->code == FSTYPE__OVERLAYFS)
++		do_mount = do_overlay_mount_v2;
+ 
+ 	src = resolve_source(mi);
+ 	if (!src)
+@@ -779,6 +953,14 @@
+ 	if (!can_mount_now_v2(mi)) {
+ 		pr_debug("Postpone mount %d\n", mi->mnt_id);
+ 		return 1;
++	}
++
++	if (mi->fstype->code == FSTYPE__OVERLAYFS && !rst_mnt_is_root(mi) &&
++	    !mi->bind && !mi->need_plugin && !mi->external) {
++		unsigned int nr = 0;
++		ret = overlay_options_v2(mi, NULL, NULL, &nr);
++		if (ret <= 0)
++			return ret < 0 ? -1 : 1;
+ 	}
+ 
+ 	if (detect_is_dir(mi))

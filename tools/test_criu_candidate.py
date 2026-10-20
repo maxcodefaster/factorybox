@@ -73,3 +73,22 @@ class CandidatePatchTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "candidate patch input changed"):
                     criu_candidate.load(name)
                 validate.assert_not_called()
+
+    def test_overlay_followups_require_their_own_frozen_patch(self):
+        for filename in ["nested-overlay.patch", "nested-overlay-stable-path.patch",
+                         "nested-overlay-shared-root.patch"]:
+            with self.subTest(patch=filename), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                name, archive, result = self.fixture(root, True)
+                patch = archive / filename
+                patch.write_bytes(b"frozen additional overlay patch")
+                result["candidate_patch_sha256"][filename] = hashlib.sha256(patch.read_bytes()).hexdigest()
+                (archive / "result.json").write_text(json.dumps(result))
+                with mock.patch.object(criu_candidate.reference, "ROOT", root), \
+                        mock.patch.object(criu_candidate.sources, "tree_sha", return_value="frozen-context"), \
+                        mock.patch.object(criu_candidate.sources, "validate_inputs"), \
+                        mock.patch.object(criu_candidate.sources, "check_source", return_value=1030):
+                    self.assertEqual(criu_candidate.load(name)[0], archive)
+                    patch.write_bytes(b"changed overlay patch")
+                    with self.assertRaisesRegex(ValueError, "candidate patch input changed"):
+                        criu_candidate.load(name)

@@ -61,7 +61,7 @@ def archive_capture(archive, name, owner, result, image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption", "admission", "worker-loss"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss"], default="lifecycle")
     inputs = parser.add_mutually_exclusive_group()
     inputs.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
     inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
@@ -72,7 +72,7 @@ def main():
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
-    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption", "admission", "worker-loss"]
+    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss"]
     if capture_mode and (not (options.criu_build or options.retained_candidate) or options.test):
         parser.error("checkpoint-based suites require a CRIU input and run their complete selected suite")
     if (options.criu_build or options.retained_candidate) and not capture_mode:
@@ -93,6 +93,12 @@ def main():
         "scope": ("Exact owned empty cgroup subtree retirement, foreign child-mount refusal and "
                   "populated-child preservation through Engine.Delete. No Sysbox daemon or process workload."
                   if options.test == "TestNativeEmptyCgroupRetirement" else
+                  "Unselected nested-overlay diagnostic. Plain/direct/relative-symlink cases require "
+                  "independent RAM/layers, fork of fork after original deletion, RAM-releasing pause, "
+                  "resume and a fork of the resumed source. An escaping layer symlink must refuse "
+                  "restore while the original mounted contents/RAM/useful work remain intact. "
+                  "No Docker consumer or production storage-driver selection."
+                  if options.suite == "overlay" else
                   "Actual capture-worker SIGKILL during filesystem copy after successful CRIU. "
                   "Checkpoint and pause must preserve the original running PID/RAM/useful work and "
                   "independently usable prior checkpoint without publishing incomplete backing. "
@@ -156,6 +162,8 @@ def main():
         "immutable_base": options.suite in ["base", "base-pause"],
         "passed": False, "cleanup": False, "production_qualified": False,
     }
+    if options.suite == "overlay":
+        result.update(diagnostic_only=True, driver_selected=False)
     attempted = False
     volume_attempted = False
     failure = None
@@ -260,6 +268,7 @@ def main():
             "--env", "FACTORYBOX_NATIVE_TIME=" + ("1" if options.suite == "time" else "0"),
             "--env", "FACTORYBOX_NATIVE_DELEGATION=" + ("1" if options.suite == "delegation" else "0"),
             "--env", "FACTORYBOX_NATIVE_MOUNT_FD=" + ("1" if options.suite == "mountfd" else "0"),
+            "--env", "FACTORYBOX_NATIVE_OVERLAY=" + ("1" if options.suite == "overlay" else "0"),
             "--env", "FACTORYBOX_NATIVE_INTERRUPTION=" + ("1" if options.suite == "interruption" else "0"),
             "--env", "FACTORYBOX_NATIVE_WORKER_LOSS=" + ("1" if options.suite == "worker-loss" else "0"),
             "--env", "FACTORYBOX_NATIVE_FILESYSTEM_ADMISSION=" + ("1" if options.suite == "admission" else "0"),
@@ -324,6 +333,7 @@ def main():
             (options.suite != "namespaces" or result["passed_subtests"] == 1 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["time", "delegation"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "mountfd" or result["passed_subtests"] == 2 + EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "overlay" or result["passed_subtests"] == 4 + EXPECTED_ADAPTER_SUBTESTS) and
             result.get("components_unchanged", True) and
             result["skipped_tests"] == 0)
         if not result["passed"]:
