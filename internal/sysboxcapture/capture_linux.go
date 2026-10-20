@@ -22,17 +22,18 @@ import (
 )
 
 type Request struct {
-	RuntimeRoot    string
-	RuntimeID      string
-	Owner          string
-	Rootfs         string
-	RuntimeCreated string
-	PID            int
-	Generation     string
-	Criu           string
-	Bundle         string
-	ManagerRoot    string
-	Base           *FilesystemTree
+	RuntimeRoot     string
+	RuntimeID       string
+	Owner           string
+	Rootfs          string
+	RuntimeCreated  string
+	PID             int
+	Generation      string
+	Criu            string
+	Bundle          string
+	ManagerRoot     string
+	Base            *FilesystemTree
+	ProcessCaptured func(Result) error
 }
 
 type Result struct {
@@ -172,6 +173,13 @@ func Capture(request Request) (Result, error) {
 	after, err := os.ReadFile(path)
 	if err != nil || sha(after) != result.SourceStateSHA {
 		return result, fmt.Errorf("capture changed the original Sysbox state: %v", err)
+	}
+	// The process-changing CRIU operation has completed and been waited.
+	// Later work only copies/verifies filesystem backing and owns images.
+	if request.ProcessCaptured != nil {
+		if err := request.ProcessCaptured(result); err != nil {
+			return result, err
+		}
 	}
 	result.Filesystem, err = captureFilesystem(filesystem, request.Generation+"/filesystem")
 	if err != nil {

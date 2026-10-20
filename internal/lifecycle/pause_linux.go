@@ -84,14 +84,21 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 	}
 	if err != nil {
 		var admission *checkpointAdmissionError
+		var captureFailure *checkpointCaptureError
+		rejectedAt, failure := "", ""
 		if errors.As(err, &admission) && admission.recovered {
+			rejectedAt, failure = admission.rejectedAt, admission.Error()
+		} else if errors.As(err, &captureFailure) && captureFailure.recovered {
+			rejectedAt, failure = captureFailure.failedAt, captureFailure.Error()
+		}
+		if rejectedAt != "" {
 			state, stateErr := e.state(ctx, record, lock)
 			if stateErr != nil || state == nil || state.Status != "running" ||
 				state.PID != record.Pause.SourcePID {
 				return View{Record: record, Runtime: state}, errors.Join(err, stateErr,
 					fmt.Errorf("rejected pause lacks its confirmed original running source"))
 			}
-			record.Pause.RejectedAt, record.Pause.Error = admission.rejectedAt, admission.Error()
+			record.Pause.RejectedAt, record.Pause.Error = rejectedAt, failure
 			record.PauseHistory = append(record.PauseHistory, *record.Pause)
 			record.Pause, record.Phase = nil, "running"
 			return View{Record: record, Runtime: state}, errors.Join(err, e.write(record))

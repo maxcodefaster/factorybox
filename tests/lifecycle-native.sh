@@ -65,6 +65,9 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
   if test "${FACTORYBOX_NATIVE_INTERRUPTION:-}" = 1; then
     test_pattern='^TestInterruptedCaptureNative$'
   fi
+  if test "${FACTORYBOX_NATIVE_WORKER_LOSS:-}" = 1; then
+    test_pattern='^TestCaptureWorkerLossNative$'
+  fi
   if test "${FACTORYBOX_NATIVE_FILESYSTEM_ADMISSION:-}" = 1; then
     test_pattern='^TestFilesystemAdmissionNative$'
   fi

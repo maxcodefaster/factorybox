@@ -275,6 +275,11 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(engine.config.Root, relative, "checkpoint.json")); !os.IsNotExist(err) {
 		t.Fatal("interrupted capture published complete backing", err)
 	}
+	for _, name := range []string{"capture-process-complete.json", "capture-abort-intent.json", "guard-capture-aborted.json"} {
+		if _, err := os.Stat(filepath.Join(engine.config.Root, relative, "guard", name)); !os.IsNotExist(err) {
+			t.Fatal("interrupted CRIU gained a process-completion or safe-abort receipt", name, err)
+		}
+	}
 	afterNetwork, networkErr := networkRules()
 	for name, data := range map[string][]byte{
 		"interruption-network-before.txt": beforeNetwork,

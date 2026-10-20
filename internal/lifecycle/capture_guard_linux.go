@@ -30,6 +30,7 @@ type captureGuardConfig struct {
 	Root       string `json:"root"`
 	RecordSHA  string `json:"record_sha256"`
 	StopSource bool   `json:"stop_source,omitempty"`
+	CriuSHA256 string `json:"criu_sha256,omitempty"`
 }
 
 type captureGuardAnchors struct {
@@ -428,6 +429,17 @@ func captureGuardServe() (resultErr error) {
 					map[string]any{"token": config.Token, "capture_in_flight": true, "error": err.Error()}))
 			}
 			unsafe, name, acknowledgement = false, "guard-capture-returned.json", "capture-safe:"
+		case "capture-aborted:" + config.Token:
+			if !unsafe || stopped {
+				return fmt.Errorf("capture abort has no matching live-source transaction")
+			}
+			if err := captureGuardProcessCompleted(config, anchor); err != nil {
+				return err
+			}
+			if _, err := captureGuardAbortIntent(config, anchor); err != nil {
+				return err
+			}
+			unsafe, name, acknowledgement = false, "guard-capture-aborted.json", "capture-aborted-safe:"
 		case "capture-stopped:" + config.Token:
 			if !unsafe || !config.StopSource {
 				return fmt.Errorf("stopped capture has no matching terminating intent")
@@ -561,6 +573,7 @@ func (e *Engine) startCheckpointGuard(source Record, pid int, executable, captur
 		Controller: os.Getpid(), Root: e.config.Root, RecordSHA: sum(sourceData)}
 	if intent != nil {
 		config.StopSource = intent.StopSource
+		config.CriuSHA256 = intent.CriuSHA256
 	}
 	if intent != nil {
 		directory, err := e.root.Open(generation)

@@ -142,11 +142,20 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 	}
 	finished := false
 	var admission *checkpointAdmissionError
+	var captureFailure *checkpointCaptureError
 	defer func() {
 		if !finished {
+			if guard.unsafe {
+				if failure, err := guard.captureAborted(resultErr); err == nil {
+					captureFailure, resultErr = failure, failure
+				}
+			}
 			recoveryErr := guard.finish(true)
 			if admission != nil && recoveryErr == nil {
 				admission.recovered = true
+			}
+			if captureFailure != nil && recoveryErr == nil {
+				captureFailure.recovered = true
 			}
 			resultErr = errors.Join(resultErr, recoveryErr)
 		}
@@ -408,6 +417,9 @@ func (e *Engine) reconcileCheckpoint(ctx context.Context, record Record, id, rel
 		return Checkpoint{}, err
 	}
 	if err := e.reconcileRejectedCheckpoint(record, id, relative); err != nil {
+		return Checkpoint{}, err
+	}
+	if err := e.reconcileAbortedCheckpoint(record, id, relative); err != nil {
 		return Checkpoint{}, err
 	}
 	captured, err := e.readCheckpoint(relative, "capture-result.json")

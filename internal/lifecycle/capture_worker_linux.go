@@ -77,10 +77,13 @@ func captureWorkerServe() (resultErr error) {
 	if err != nil {
 		return err
 	}
-	if err := captureGuardWrite(anchors.evidence, "capture-worker-intent.json",
-		map[string]any{"token": request.Guard.Token, "worker_pid": os.Getpid(),
-			"worker_start": birth, "source_pid": request.Guard.PID,
-			"criu_sha256": request.CriuSHA256, "scope": "ordinary complete retained-source capture"}); err != nil {
+	worker := captureWorkerIntent{Token: request.Guard.Token, PID: os.Getpid(), Start: birth,
+		SourcePID: request.Guard.PID, CriuSHA256: request.CriuSHA256,
+		Scope: "ordinary complete retained-source capture"}
+	if request.Guard.CriuSHA256 != request.CriuSHA256 {
+		return fmt.Errorf("capture worker CRIU identity differs from its guard")
+	}
+	if err := captureGuardWrite(anchors.evidence, "capture-worker-intent.json", worker); err != nil {
 		return err
 	}
 	var captured sysboxcapture.Result
@@ -113,6 +116,20 @@ func captureWorkerServe() (resultErr error) {
 		Generation: filepath.Dir(request.Guard.Evidence), Criu: request.Criu,
 		Bundle: request.Guard.Source.InputBundle, ManagerRoot: request.ManagerRoot,
 		Base: request.Guard.Source.Base,
+		ProcessCaptured: func(result sysboxcapture.Result) error {
+			if result.SourcePID != request.Guard.PID || !result.CompleteWriter || !result.LeaveRunning {
+				return fmt.Errorf("process completion lacks its retained original source")
+			}
+			if err := captureGuardCaptureReturned(request.Guard, anchors); err != nil {
+				return err
+			}
+			if err := network.Rollback(); err != nil {
+				return err
+			}
+			return captureGuardWrite(anchors.evidence, "capture-process-complete.json",
+				captureProcessCompletion{Version: 1, Worker: worker,
+					SourceStart: request.Guard.Start, SourceStateSHA: result.SourceStateSHA})
+		},
 	})
 	if err != nil {
 		// Capture() returns only after its CRIU subprocess has been waited.

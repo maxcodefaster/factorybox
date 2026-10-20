@@ -14,9 +14,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -445,9 +447,15 @@ func cloneFilesystemTreeTo(ctx context.Context, source *os.File, destination str
 	// whiteouts, ownership, links and xattrs; reflinks have independent inodes.
 	command := exec.CommandContext(ctx, "cp", "-a", "--reflink=auto", "--", "/proc/self/fd/3/.", "/proc/self/fd/4/")
 	command.ExtraFiles = []*os.File{source, target}
+	command.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
 	command.WaitDelay = time.Second
-	if output, err := command.CombinedOutput(); err != nil {
-		return expected, fmt.Errorf("clone filesystem backing: %w: %.4096s", err, output)
+	// Linux ties Pdeathsig to the creating OS thread. Keep that thread
+	// alive through Wait, and kill a copy helper if its worker disappears.
+	runtime.LockOSThread()
+	output, copyErr := command.CombinedOutput()
+	runtime.UnlockOSThread()
+	if copyErr != nil {
+		return expected, fmt.Errorf("clone filesystem backing: %w: %.4096s", copyErr, output)
 	}
 	actual, err := fingerprintTree(ctx, target, source, durable)
 	if err != nil {
