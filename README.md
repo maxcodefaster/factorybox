@@ -59,6 +59,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Nested-overlay shared-root candidate | `factorybox-runtime-71387dc3a4c544478999c8b735285313`: nine tests/44 subtests, zero skips, unchanged frozen inputs/components and owned cleanup. Plain/direct/relative-layer-link cases preserve independent RAM/files through descendant fork after source deletion, pause/resume and resumed-source fork; an escaping link refuses restore while its source remains useful. CRIU `factorybox-build-criu-retained-ef33bdea879e417f93ba5fb378f603a8` remains unselected. This small fixture does not qualify Docker or select Overlay2 |
 | Nested-overlay candidate CRIU core | `factorybox-criu-core-d95764528974401693b8a911fd4288b0`: all 18 unchanged C tests passed two dump/restore cycles each; 1,030 upstream test files remain unchanged; exact cleanup passed. This does not replace the full developer or interrupted-Docker gates |
 | Shared-root candidate developer lifecycle | **Failing** in `factorybox-devx-lifecycle-2353068904b44e84a5f526cffa2b02f6`: all eight app, eight OpenCode and nine Theia phases completed, but the unchanged 390-second Go deadline fired while waiting for the final `delete after-resume` process. Outer execution took 418.04 seconds. Frozen inputs/global sysctls and the separate IDE peer passed; all 7,601,127,424 failure-archive bytes verified and owned cleanup passed. This is not a complete developer qualification |
+| Delete observer diagnostic | **Failing**, diagnostic only, in `factorybox-devx-lifecycle-63d5dfe38d514510b5e64543547e41f1`: an archived CLI-only stack observer left every original assertion and deadline unchanged. The outer 420-second deadline expired before the descendant fork became useful; no slow-delete stack was collected. Preparation consumed 206.07 seconds. All 5,722,079,232 failure-archive bytes verified and owned cleanup passed; terminal input/global checks were not completed |
 | Unix client namespace diagnostic | `factorybox-runtime-3c5218a84cdf47269bf70ba96848c418` reproduced an accepted server socket with the external worker's namespace cookie, absent from the source Unix table, without Docker or CRIU. `factorybox-runtime-15cb7afe89f842e4adfe816e2b2286c6` verified that the corrected test client creates a visible socket with the source listener's cookie. Original actor RAM/useful work and owned cleanup passed. This is a fixture mechanism, not recovery qualification |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
@@ -685,6 +686,14 @@ Complete Docker-tree capture/copy/verification took 4.831 seconds versus 21.489.
 `artifacts/overlay2-work/consumer-filesystem-comparison.json` binds those outputs.
 These runs use different unselected CRIU candidates and uncontrolled shared-worker load.
 The 85.17% file-byte reduction is observed; an overall latency improvement is not established.
+The next diagnostic did not reproduce the last deletion within its allotted time. Frozen-rootfs
+unpacking rose to 95.500 seconds and immutable-base/OCI preparation to 110.569 seconds.
+Base source reading/verification took 52.418 seconds, copying 5.795 and target
+reading/verification 49.547; those same stages took 4.178, 1.571 and 4.732 seconds in the
+earlier complete VFS observation. The source still has 41,386 entries and about 1.54 GB.
+This exposes preparation and read/verification variance in addition to the late-deletion
+timeout; it does not establish a delete-specific implementation defect or justify weaker
+integrity checks. No maintained CLI instrumentation or new runtime selection was introduced.
 
 The earlier regression `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`
 exceeded the unchanged 390-second Go/420-second outer limits. Seven app, IDE and OpenCode phases
