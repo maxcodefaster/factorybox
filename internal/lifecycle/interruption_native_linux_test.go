@@ -39,6 +39,7 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		t.Fatal("child interruption requires the two-process fixture")
 	}
 	grantControl := os.Getenv("FACTORYBOX_CRIU_RETAINED_GRANT_CONTROL") == "1"
+	threadChurn := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_THREAD_CHURN") == "1"
 	if grantControl && os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") != "1" {
 		t.Fatal("retained grant controls require the retained-context candidate")
 	}
@@ -161,6 +162,12 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	committed := strings.Repeat("b", 32)
 	if _, err := engine.Checkpoint(ctx, "interrupted", committed); err != nil {
 		t.Fatal("create the committed recovery point before fault injection", err)
+	}
+	if threadChurn {
+		armed, err := readCaptureActor(source.Runtime.PID, "arm-thread-churn")
+		if err != nil || !reflect.DeepEqual(before, armed) {
+			t.Fatal("arming thread churn changed original application payload", err)
+		}
 	}
 	beforeSockets, err := sockets()
 	if err != nil {
@@ -355,6 +362,12 @@ func TestInterruptedCaptureNative(t *testing.T) {
 							// fault boundary. Write diagnostics after the kill so
 							// output I/O cannot delay the injection window.
 							freezerAtKill, freezerObservationErr = captureReadFile(originalGroup, "cgroup.freeze", 64)
+							if threadChurn {
+								if err := os.WriteFile(fmt.Sprintf("/proc/%d/root/state/thread-churn-trigger",
+									source.Runtime.PID), []byte("1"), 0600); err != nil {
+									t.Fatal("trigger only the owned actor after exact tracer stop", err)
+								}
+							}
 							err = unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0)
 							if err == nil {
 								interruptedPID = tracer
@@ -384,6 +397,13 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		t.Fatal("interrupted CRIU published a successful checkpoint")
 	}
 	waited = true
+	for name, data := range map[string][]byte{
+		"interruption-cli.json": stdout.Bytes(), "interruption-cli.stderr": stderr.Bytes(),
+	} {
+		if err := os.WriteFile("/output/"+name, data, 0600); err != nil {
+			t.Fatal("save interrupted command outcome before validating recovery", err)
+		}
+	}
 	if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
 		var arm retainedCaptureArm
 		if err := engine.readCheckpointJSON(relative+"/guard/criu-retained-arm.json", &arm); err != nil ||
@@ -680,5 +700,31 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			t.Fatal("save complete process-tree recovery proof", err)
 		}
 		t.Log("two-process CRIU-loss recovery preserved the exact original child and independent fork parent-child relations")
+	}
+	if threadChurn {
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			data, err := os.ReadFile(fmt.Sprintf("/proc/%d/root/state/thread-churn-ran", source.Runtime.PID))
+			if err == nil {
+				tid, parseErr := strconv.Atoi(string(data))
+				if parseErr != nil || tid <= 1 {
+					t.Fatal("owned thread churn lacks its nonleader identity", parseErr)
+				}
+				evidence, err := json.Marshal(map[string]any{
+					"passed": true, "source_pid": source.Runtime.PID, "retired_guest_tid": tid,
+					"scope": "Owned nonleader thread exit triggered at the actual tracer stop. " +
+						"All original RAM/TCP/source/recovery-fork assertions remain unchanged.",
+				})
+				if err != nil || os.WriteFile("/output/interruption-thread-churn.json",
+					append(evidence, '\n'), 0600) != nil {
+					t.Fatal("save thread-churn boundary proof", err)
+				}
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("thread-churn control never executed its owned nonleader exit", err)
+			}
+			time.Sleep(time.Millisecond)
+		}
 	}
 }

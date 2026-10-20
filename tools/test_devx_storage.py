@@ -6,6 +6,20 @@ import devx_lifecycle
 
 
 class DeveloperStorageTests(unittest.TestCase):
+    def test_docker_fault_refuses_selected_criu_before_resource_admission(self):
+        command = ["devx_lifecycle.py", "--suite", "docker-interruption"]
+        for flag in ["consumer-inputs", "project-images", "native-base-build", "sysbox-build", "criu-build"]:
+            command += ["--" + flag, "unused"]
+        with mock.patch.object(sys, "argv", command), \
+                mock.patch.object(devx_lifecycle, "require_no_retained_worker") as admission, \
+                mock.patch.object(devx_lifecycle.reference, "new_artifact") as artifact, \
+                mock.patch.object(sys, "stderr"):
+            with self.assertRaises(SystemExit) as error:
+                devx_lifecycle.main()
+            self.assertEqual(error.exception.code, 2)
+            admission.assert_not_called()
+            artifact.assert_not_called()
+
     def test_retained_volume_blocks_the_next_run_before_inputs_or_artifacts_are_created(self):
         volume = "factorybox-devx-lifecycle-" + "a" * 32
         command = ["devx_lifecycle.py"]

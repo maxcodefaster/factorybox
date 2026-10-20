@@ -242,7 +242,8 @@ func (fixture *fixture) cleanup(id string) {
 	})
 }
 
-func TestNativeDeveloperLifecycle(t *testing.T) {
+func prepareDeveloperFixture(t *testing.T) (*fixture, lifecycle.View, observedState) {
+	t.Helper()
 	if os.Getenv("FACTORYBOX_DEVX_LIFECYCLE") != "1" {
 		t.Skip("requires its bounded native Sysbox developer fixture")
 	}
@@ -381,9 +382,14 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 	if initial.App.Counter != 0 || initial.App.Marker != "source" {
 		t.Fatal("source did not initialize its fresh RAM and workspace")
 	}
+	return fixture, source, initial
+}
+
+func TestNativeDeveloperLifecycle(t *testing.T) {
+	fixture, source, initial := prepareDeveloperFixture(t)
 	snapshot := strings.Repeat("a", 32)
 	fixture.command("checkpoint", "--snapshot-id", snapshot, "source")
-	start = time.Now()
+	start := time.Now()
 	branch := fixture.view("fork", "--source", "source", "--snapshot-id", snapshot, "branch")
 	fixture.cleanup("branch")
 	cloned := fixture.useful("fork-first-use", branch, start, "")

@@ -1,0 +1,14 @@
+--- a/criu/factorybox-retained.c
++++ b/criu/factorybox-retained.c
+@@ -458,6 +458,11 @@
+ 		if (events[1].revents & POLLIN)
+ 			break;
+ 	}
++	/* Hold the pinned original group immediately on tracer death, before
++	 * waiting for the capture worker to finish rollback and exit. Cure and
++	 * source release still require the original guard's checked grant. */
++	if (frozen(group, 1))
++		_exit(28);
+ 	if (!__atomic_load_n(active_phase, __ATOMIC_ACQUIRE))
+ 		_exit(25);
+ 	/* The failed worker must have completed its hold and network rollback.

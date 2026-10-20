@@ -17,7 +17,10 @@ root = reference.ROOT
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--native-base-build", required=True)
 options = parser.parse_args()
-patch_input = root / "upstream/patches/criu-retained-context-candidate.patch"
+patch_inputs = [
+    (root / "upstream/patches/criu-retained-context-candidate.patch", "retained.patch"),
+    (root / "upstream/patches/criu-retained-early-hold-candidate.patch", "early-hold.patch"),
+]
 lock = json.loads((root / "upstream/lock.json").read_text())
 original = lock["components"]["criu"]
 sources.validate_inputs(original)
@@ -31,14 +34,15 @@ archive.mkdir()
 context = archive / "context"
 shutil.copytree(prepared, context, symlinks=True)
 (context / sources.CACHE_RECORD).unlink(missing_ok=True)
-shutil.copyfile(patch_input, archive / "retained.patch")
-subprocess.run(["patch", "--batch", "--fuzz=0", "-p1", "-i", str(archive / "retained.patch")],
-               cwd=context, check=True, capture_output=True, timeout=15)
 candidate = copy.deepcopy(lock)
 component = candidate["components"]["criu"]
-patch_name = str(patch_input.relative_to(root))
-component["patches"].append(patch_name)
-component["local_inputs_sha256"][patch_name] = reference.sha(archive / "retained.patch")
+for patch_input, filename in patch_inputs:
+    shutil.copyfile(patch_input, archive / filename)
+    subprocess.run(["patch", "--batch", "--fuzz=0", "-p1", "-i", str(archive / filename)],
+                   cwd=context, check=True, capture_output=True, timeout=15)
+    patch_name = str(patch_input.relative_to(root))
+    component["patches"].append(patch_name)
+    component["local_inputs_sha256"][patch_name] = reference.sha(archive / filename)
 for relative in [
     "criu/cr-dump.c", "criu/parasite-syscall.c", "criu/Makefile.crtools",
     "criu/factorybox-retained.c", "criu/include/factorybox-retained.h",
@@ -73,10 +77,14 @@ result = {
     "base_source_lock_sha256": reference.sha(root / "upstream/lock.json"),
     "source_lock_sha256": reference.sha(archive / "source-lock.json"),
     "patch_sha256": reference.sha(archive / "retained.patch"),
+    "candidate_patch_sha256": {filename: reference.sha(archive / filename)
+                               for _, filename in patch_inputs},
     "context_sha256": context_sha, "build_inputs_sha256": reference.sha(archive / "criu-build.json"),
     "native_base_packages_sha256": base["packages_sha256"],
     "unchanged_upstream_test_files": unchanged,
-    "scope": "Unselected process-tree recovery candidate. Retained active-process C context cures only after "
+    "scope": "Unselected process-tree recovery candidate. Immediately holds the pinned original source "
+             "cgroup on tracer death before waiting for capture-worker rollback/exit. "
+             "Retained active-process C context cures only after "
              "the original tracer and worker exit, with the exact original live guard's canonical "
              "grant or an explicitly unauthorized held-source diagnostic after both controllers exit. "
              "Only the Go guard may authorize source release. No production qualification.",

@@ -28,7 +28,8 @@ chmod 0755 "$root/bin/devcontainer"
 if test "${FACTORYBOX_DEVX_OPENCODE:-}" = 1; then
   cp /opencode-probe.cjs "$root/opencode-probe.cjs"
 fi
-/out/sysbox-mgr --disable-shiftfs --data-root /var/lib/sysbox/manager \
+# Factorybox captures complete manager volumes; no outer-rootfs export is needed.
+/out/sysbox-mgr --disable-shiftfs --disable-inner-image-preload --data-root /var/lib/sysbox/manager \
   --log /output/sysbox-mgr.log > /output/sysbox-mgr-stdio.log 2>&1 &
 manager=$!
 /out/sysbox-fs --mountpoint /var/lib/sysbox/fs --log /output/sysbox-fs.log \
@@ -52,7 +53,11 @@ pathlib.Path("/output/preparation.json").write_text(json.dumps({
 }, indent=2) + "\n")
 PY
 status=0
-/devx-lifecycle.test -test.v -test.timeout=390s -test.run '^TestNativeDeveloperLifecycle$' || status=$?
+test_pattern='^TestNativeDeveloperLifecycle$'
+if test "${FACTORYBOX_DEVX_CRIU_FAULT:-}" = root; then
+  test_pattern='^TestNativeDockerCaptureInterruption$'
+fi
+/devx-lifecycle.test -test.v -test.timeout=390s -test.run "$test_pattern" || status=$?
 if test "${FACTORYBOX_DEVX_THEIA:-}" = 1; then
   printf '%s\n' "$status" > /output/theia-lifecycle-complete.partial
   mv /output/theia-lifecycle-complete.partial /output/theia-lifecycle-complete

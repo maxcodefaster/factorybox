@@ -138,11 +138,13 @@ func captureRetainedRecords(config captureGuardConfig, anchors captureGuardAncho
 func captureRetainedTreeCurrent(config captureGuardConfig, anchors captureGuardAnchors, arm retainedCaptureArm, cured bool) error {
 	actual, err := captureGuardThreads(config, anchors)
 	if err != nil || len(actual) != len(arm.Tree) {
-		return fmt.Errorf("retained capture changed its original complete thread set: %v", err)
+		return fmt.Errorf("retained capture changed its original complete thread set: expected=%d actual=%d: %v",
+			len(arm.Tree), len(actual), err)
 	}
 	for _, thread := range arm.Tree {
 		if actual[thread.PID] != thread.Start {
-			return fmt.Errorf("retained capture replaced an original thread")
+			return fmt.Errorf("retained capture replaced original thread %d in process %d: expected=%q actual=%q",
+				thread.PID, thread.Process, thread.Start, actual[thread.PID])
 		}
 		status, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", thread.PID))
 		if err != nil {

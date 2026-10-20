@@ -40,6 +40,7 @@ def collect_observations(output, result):
         ("preparation.json", "preparation"),
         ("theia-observations.json", "theia_observations"),
         ("opencode-observations.json", "opencode_observations"),
+        ("devx-criu-interruption.json", "docker_fault"),
     ]:
         path = output / filename
         if path.exists():
@@ -101,10 +102,15 @@ def main():
     inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
     parser.add_argument("--theia-image", help="Optional exact cached IDE digest for the separate native RPC peer")
     parser.add_argument("--opencode", action="store_true", help="Optional supplied OpenCode 2 consumer; no inference")
-    parser.add_argument("--suite", choices=["lifecycle", "projection"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "projection", "docker-interruption"],
+                        default="lifecycle")
     options = parser.parse_args()
     if options.suite == "projection" and (options.theia_image or options.opencode):
         parser.error("projection is a minimal namespace regression without application consumers")
+    if options.suite == "docker-interruption" and not options.retained_candidate:
+        parser.error("Docker interruption requires the explicitly unselected retained-context candidate")
+    if options.suite == "docker-interruption" and (options.theia_image or options.opencode):
+        parser.error("Docker interruption exercises core recovery without optional IDE/harness consumers")
     require_no_retained_worker()
     consumer_archive, consumers = devx_inputs.load(options.consumer_inputs, rootfs=True)
     project_archive, projects = devx_project_images.load(options.project_images)
@@ -180,6 +186,14 @@ def main():
     if options.suite == "projection":
         result["scope"] = ("Bounded native regression for exact IDE namespace/root selection and "
                            "live bind-mounted read/write. No Sysbox workload, IDE server or lifecycle qualification.")
+    if options.suite == "docker-interruption":
+        result["scope"] = ("Real private Docker vfs, Compose, Dev Containers CLI and Factory Connector. "
+                           "Kills only the pinned CRIU child after the Docker root process's page image begins. "
+                           "Requires authorized cure, original stable process identities, unchanged running "
+                           "containers/app state, a new Docker exec, mutation/capture/fork of the cured source, "
+                           "RAM/filesystem independence and a usable prior immutable checkpoint. "
+                           "The separate ordinary lifecycle suite covers pause/resume, descendants, IDE and harness. "
+                           "No Docker-child dump, helper/guard loss, browser, inference or latency distribution qualification.")
     failure = None
     try:
         context = archive / "context"
@@ -222,6 +236,8 @@ def main():
             command += ["--env", "FACTORYBOX_DEVX_OPENCODE=1"]
         if options.suite == "projection":
             command += ["--env", "FACTORYBOX_DEVX_PROJECTION=1"]
+        if options.suite == "docker-interruption":
+            command += ["--env", "FACTORYBOX_DEVX_CRIU_FAULT=root"]
         mounts = [
             (output, "/output", False), (components, "/component-input", True),
             (archive / "example", "/example", True),
@@ -270,12 +286,18 @@ def main():
         expected = {
             "prepared-start-first-use", "fork-first-use", "source-advance", "branch-advance", "source-independent",
             "fork-of-fork-first-use", "resume-first-use", "fork-of-resumed-first-use"}
+        test_name = "TestNativeDeveloperLifecycle"
+        if options.suite == "docker-interruption":
+            expected = {"prepared-start-first-use", "recovered-source-advance", "fork-after-interruption-first-use",
+                        "recovered-branch-advance", "recovered-source-independent",
+                        "fork-before-interruption-first-use"}
+            test_name = "TestNativeDockerCaptureInterruption"
         observed = [row["phase"] for row in result.get("observations", [])]
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
             result.get("observed_global_sysctls_unchanged", False) and
             len(observed) == len(expected) and set(observed) == expected and
-            "--- PASS: TestNativeDeveloperLifecycle " in text and "--- SKIP:" not in text and
+            f"--- PASS: {test_name} " in text and "--- SKIP:" not in text and
             "--- FAIL:" not in text)
         if options.suite == "projection":
             result["passed"] = (
@@ -283,6 +305,8 @@ def main():
                 result.get("observed_global_sysctls_unchanged", False) and
                 "--- PASS: TestNativeIDEProjectionNamespace " in text and
                 "--- SKIP:" not in text and "--- FAIL:" not in text)
+        if options.suite == "docker-interruption":
+            result["passed"] = result["passed"] and result.get("docker_fault", {}).get("passed") is True
         if peer:
             ide_observations = result.get("theia_observations", [])
             result["theia"] = peer.result

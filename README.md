@@ -31,7 +31,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 83 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 87 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
@@ -47,6 +47,11 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Last completed developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-33d1823f30604cf0924f6378cc404355`: eight app, nine IDE and eight authenticated OpenCode API checks; 363.96 seconds Go, 394.26 seconds outer; unchanged inputs/global sentinels and full cleanup. Includes worker-loss recovery and copy-stage measurements; precedes the separately native-tested alias timing correction |
 | Process-tree candidate developer lifecycle | **Failing** in `factorybox-devx-lifecycle-9e5ae782721743058bd9a18d0b507894`: six app, six IDE and six OpenCode phases completed; pause encountered an open `anon_inode:[fscontext]` mount-transaction descriptor that CRIU cannot dump. Pause remained unresolved. 200.07 seconds Go, 246.86 seconds outer execution, verified failure archive and owned cleanup. This is not a successful performance observation |
 | Developer lifecycle after descriptor admission | **Failing** in `factorybox-devx-lifecycle-d7ed29713e7f4feaacfa7e352c909e52`: all eight app/eight OpenCode phases and nine IDE checks completed, including RAM-releasing pause/resume, fork of resumed state and independent IDE edits. Go reached its original 390-second limit during deletion of `after-resume`; the outer 420-second deadline also expired. The separate IDE peer passed and cleaned up; the worker failure archive was verified and owned resources cleaned. This does not qualify the complete lifecycle |
+| Candidate developer lifecycle with managed-volume backing | `factorybox-devx-lifecycle-ab5fe3cd0ebf41fe9d262e75e5bb9050`: all eight app/eight OpenCode phases and nine IDE checks, unchanged inputs/global sentinels and owned cleanup passed. Same frozen Go/components/consumer inputs as the preceding timeout; only the worker's existing Sysbox `--disable-inner-image-preload` flag changed. Go took 270.43 seconds and outer execution 291.37 seconds. CRIU remains the unselected process-tree candidate |
+| Initial Docker-root fault integration | **Failing** as a complete gate in `factorybox-devx-lifecycle-66939bbac7764ec49f3fde9241d3337a`: root tracer killed after 69,632 actual page-image bytes; authorized cure retained 15 processes/110 threads, original stable process births/app state/running containers and a new successful Docker exec. Seven ordinary app phases then completed. Go reached 390 seconds during the resumed-state fork; outer execution reached 420 seconds. Full failure archive verified and owned cleanup completed. The dedicated recovery regression additionally requires a fresh checkpoint/fork of the cured original; this partial run does not qualify it |
+| Docker recapture after cure | **Failing** in `factorybox-devx-lifecycle-1580441aaa3849c884b7054d10142189`: authorized cure of 15 processes/115 threads, unchanged containers/app state, new Docker exec and original-source mutation passed. The fresh checkpoint failed because CRIU could not enumerate a Docker Unix socket. Inputs/global sentinels unchanged; verified failure archive and owned cleanup |
+| Docker recovery with corrected client namespace | **Failing** in `factorybox-devx-lifecycle-c26bd35b1a214f3dac2ff1ad591fa548`: the original process-tree candidate refused a changed original thread identity before granting cure. No complete cure result was published. Inputs/global sentinels unchanged; verified failure archive and owned cleanup. Earlier isolated/two-process passes do not qualify this real workload |
+| Unix client namespace diagnostic | `factorybox-runtime-3c5218a84cdf47269bf70ba96848c418` reproduced an accepted server socket with the external worker's namespace cookie, absent from the source Unix table, without Docker or CRIU. `factorybox-runtime-15cb7afe89f842e4adfe816e2b2286c6` verified that the corrected test client creates a visible socket with the source listener's cookie. Original actor RAM/useful work and owned cleanup passed. This is a fixture mechanism, not recovery qualification |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
 | Retained Compel context mechanism | `factorybox-compel-recovery-65c298fc4c094c368c60e626f757a0d4`: unretained negative control and 25 recovery cases, including eight freezer, eight three-thread and eight outstanding-RPC repeats; original RAM/FP marker/descriptors, useful work and owned cleanup. Not integrated into the runtime guard or qualified for real page dumping |
@@ -57,7 +62,9 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Two-process checkpoint recovery, child dump | `factorybox-runtime-retained-2dd90dc06c21406e9bdf68712aa42180`: nine tests, 40 subtests, zero skips; same two-process assertions, with CRIU killed at the selected syscall stop after at least 8 MiB of the child's own page image |
 | Two-process failed-pause recovery | `factorybox-runtime-retained-5f8309b38f2540e496b1a91b40f8327d` and `factorybox-runtime-retained-5d5f0dfdd6d54d36b934534c9f6313fb`: parent and child dump interruption respectively, nine tests/40 subtests each, complete 64 MiB private RAM, TCP, retained failed history, failed identity reuse refused and twelve grant controls |
 | Current candidate single-process regression | `factorybox-runtime-retained-46081a69e2964424a335bc0e1257dc76`: nine tests/40 subtests, original 32-MiB actor, twelve grant controls, immutable failure replay and owned cleanup |
-| Current candidate CRIU core | `factorybox-criu-core-ce41c2e4d82b4da5914a7f08a8c85847`: 18 unchanged C tests, two dump/restore cycles each, zero skips, owned cleanup; current process-tree candidate `factorybox-build-criu-retained-e61b26949f3a4fa99171812f8241d0c4` |
+| Original process-tree candidate CRIU core | `factorybox-criu-core-ce41c2e4d82b4da5914a7f08a8c85847`: 18 unchanged C tests, two dump/restore cycles each, zero skips, owned cleanup; process-tree candidate `factorybox-build-criu-retained-e61b26949f3a4fa99171812f8241d0c4` |
+| Early-hold candidate CRIU core | `factorybox-criu-core-5c73df9036394dc29da56de54271a992`: 18 unchanged C tests, two dump/restore cycles each, zero skips and owned cleanup for `factorybox-build-criu-retained-866198cfe78e40d3882aeaec0c94235c`. Adds an ordered unselected patch to hold the pinned source group immediately on tracer death before waiting for worker rollback/exit. Thread identities, cure authorization and source-release checks remain strict; failure recovery is not yet qualified |
+| Thread-churn recovery regression | Original candidate fails in `factorybox-runtime-retained-dacf7d03a7ae414498aac0a425904437`; early-hold candidate passes in `factorybox-runtime-retained-07d5cf8b05ae4bb6b39f3343319efb92`. Exact same frozen Go context/Sysbox components. All nine tests/40 subtests, complete 32-MiB private RAM, original TCP properties/round trip, previous independent fork, triggered nonleader exit and owned cleanup pass with the early hold. `artifacts/docker-interruption-work/thread-churn-comparison.json` binds the results. This does not qualify the Docker case or all interruption timings |
 | Current candidate lifecycle regressions | `factorybox-runtime-b2de68ed2c034956af84484d4b013ec2` and `factorybox-runtime-5096b5a264c042f5953d9fead26ce6da`: prepared-base pause/resume with nine tests/46 subtests and worker-loss recovery with nine tests/43 subtests, zero skips, owned cleanup |
 | Daemon startup | `factorybox-devx-lifecycle-41c1d086fa494fd3810d14261ef26499` hit the unchanged 60-second Sysbox-fs readiness deadline before capture; a subsequent minimal worker with the same binaries/capability bounds started successfully in `factorybox-startup-probe-3c2ff51d8adb42e18b70a1efaa9e614c`. The startup hang's cause remains unresolved |
 | Isolated daemon startup repeats | `factorybox-startup-repeat-688b6049d2424070bccb7ab81685140f` and `factorybox-startup-repeat-7cae3a33d0134e2b93337e51b5f04f33`: 32 real Sysbox-fs starts each, normal and `GOGC=1`, original 60-second deadline, owned cleanup. Neither reproduced the earlier startup hang; no manager or active workload was present |
@@ -91,6 +98,13 @@ is used to hide that platform difference.
 The chosen path uses an ordinary complete retained-source CRIU writer and complete writable
 filesystem backing. An explicitly imported immutable lower may be shared read-only. Each fork
 gets independent writable layers, private manager volumes and runtime identity.
+
+The reference worker starts its pinned manager with `--disable-inner-image-preload`.
+This existing Sysbox setting skips stop-time managed-volume sync-out into the outer
+system-container rootfs; startup still imports preloaded volume contents. Factorybox
+checkpoints independently copy and verify those complete private volumes. Export through
+an outer system-container Docker commit/build would omit this sync-out and is not the
+Factorybox persistence contract. Ordinary upstream suites retain their original settings.
 
 Factorybox freezes the admitted source while capture runs. It does not need task-completion hooks
 from an agent. Capture consistency with arbitrary external writers is unqualified. Dev Containers
@@ -447,6 +461,27 @@ fails, even when `mechanism_passed: true`. `--pause` exercises failed-pause reco
 Neither the candidate runners nor their verdicts promote it into the selected lock.
 The developer consumer runner also accepts `--retained-candidate` instead of `--criu-build`
 to qualify the same explicit candidate with the ordinary Docker/IDE/OpenCode workload.
+Add `--suite docker-interruption` for a separate recovery regression against the real
+Docker root process's page-dump tracer loss. This suite requires the explicit candidate
+and omits optional IDE/harness consumers. It checks authorized cure, original stable process
+identities, unchanged containers/app state, a new Docker exec, mutation and a fresh
+checkpoint/fork of the cured source, independent branch mutation and a usable prior
+checkpoint. The ordinary lifecycle suite retains every pause/resume/descendant assertion.
+The root has
+a small address space; injection requires its own page image to contain at least one
+4096-byte page. This complements the existing 8-MiB actor probes and does not qualify
+Docker-child dump interruption or loss of the recovery helper/guard.
+The failed dedicated gate exposed a test client outside the captured network namespace.
+The corrected client creates its socket inside that namespace before connecting. A separate
+native diagnostic verifies both invisible external-namespace and visible source-namespace
+accepted FDs without Docker or CRIU. No socket is skipped or marked external to pass capture.
+The next full attempt encountered a changed-thread refusal, so recapture remains unqualified.
+
+New candidate builds apply `criu-retained-early-hold-candidate.patch` after the preserved
+original process-tree patch. Frozen older candidates retain their exact patch inputs and
+remain loadable. Add `--thread-churn` to the candidate native runner for an owned nonleader
+thread exit triggered at the actual tracer stop; every original RAM/TCP/source/fork assertion
+remains. This is a timing regression probe, not permission to ignore changed identities.
 
 The outer Systemd Bats suite has separate pinned image acquisition through `tools/bats_images.py`
 and options `--suite systemd --images factorybox-bats-images-EXACT_RUN_ID`. It retains the failing
@@ -517,8 +552,9 @@ workspace, requires `OPENCODE_PASSWORD`, binds to loopback and keeps its databas
 workspace's `.git` directory unless `OPENCODE_DB` is supplied. `FACTORY_OPENCODE_CONFIG` remains
 optional. Model fetching is disabled. The `--opencode` fixture option checks the supplied server's
 authenticated native API across lifecycle phases. Add it to the same command to include the
-optional harness in the Sysbox workload. The last completed combined gate passed in 394.26 seconds with full
-cleanup. Every phase verified the supplied OpenCode 2.0.27 process's namespace PID/version through
+optional harness in the Sysbox workload. The last completed selected-CRIU combined gate passed
+in 394.26 seconds; the process-tree candidate with managed-volume sync-out disabled passed in
+291.37 seconds. Both include full cleanup. Every phase verified the supplied OpenCode 2.0.27 process's namespace PID/version through
 `/api/info`, authenticated session reads and rejection of unauthenticated reads. Probes execute
 inside the sandbox's user, PID, mount and network namespaces. Their own HTTP connections consume
 complete responses and confirm socket closure before the next checkpoint.
@@ -534,7 +570,7 @@ by the core lifecycle.
 
 ## Performance observations
 
-| Phase | Earlier separate Theia | Earlier Theia and OpenCode | Latest Theia and OpenCode |
+| Phase | Earlier separate Theia | Earlier Theia and OpenCode | Latest selected Theia and OpenCode |
 | --- | ---: | ---: | ---: |
 | Frozen rootfs, immutable base and OCI preparation | 42.707 s | 31.885 s | 25.082 s |
 | Prepared start through first useful Connector response | 43.300 s | 57.278 s | 48.387 s |
@@ -567,6 +603,19 @@ selected-component pass. Earlier deletes in the same failed run took 29.922 and 
 final deletion started with less than sixteen seconds left on the Go deadline. These observations
 do not yet distinguish slow deletion from insufficient remaining execution time. No performance
 optimization or deadline increase has been selected from this failed run.
+
+The same frozen Go/component/consumer inputs subsequently passed with Sysbox's existing
+`--disable-inner-image-preload` setting in
+`factorybox-devx-lifecycle-ab5fe3cd0ebf41fe9d262e75e5bb9050`. First deletions of source,
+descendant, resumed fork and branch took 0.831, 0.715, 0.694 and 0.549 seconds, respectively,
+instead of copying private manager volumes back into the rootfs. Full Go lifecycle took
+270.43 seconds, including all assertions and teardown; outer execution took 291.37 seconds.
+First useful fork took 22.499 seconds, descendant fork 18.892, pause 28.327, useful resume
+8.656 and useful fork of resumed state 31.065. The first checkpoint took 36.504 seconds.
+`artifacts/manager-sync-work/comparison.json` binds both results, matching input hashes and
+all CLI timings. Background worker load remains uncontrolled, so these are individual
+observations; only the removed sync-out work is selected, not a uniform latency improvement.
+The CRIU candidate remains unselected.
 
 The earlier regression `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`
 exceeded the unchanged 390-second Go/420-second outer limits. Seven app, IDE and OpenCode phases
@@ -700,6 +749,14 @@ reclaimed 10,705,268,770 bytes without removing decoded failure or executable da
 The original manifests/results/encoding receipts remain unchanged. Each former archive path
 has a `.repacked.json` recovery pointer with the replacement SHA-256 and verified receipt.
 Decode these larger-window archives with `zstd -d --long=31`, as recorded in their receipts.
+
+Subsequent failed developer runs retain their complete decoded archives in
+`factorybox-storage-repack-00a3855811ff4df4b497d5bb339f38b9`,
+`factorybox-storage-repack-551039e5c8ef402a9d0e6b255c3437f6` and
+`factorybox-storage-repack-23028118d2c845c390716edf3e18f04a`.
+The exact verified raw lengths are 12,149,850,112, 4,763,680,768 and 4,644,143,104 bytes,
+respectively. Original receipt paths have recovery pointers; no decoded failure content
+was removed. These repacks reclaimed 4,969,001,141 bytes within the same artifact budget.
 
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another

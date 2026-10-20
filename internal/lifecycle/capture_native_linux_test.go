@@ -178,6 +178,7 @@ func TestCaptureActor(t *testing.T) {
 	defer server.Close()
 	var mutex sync.Mutex
 	var mountContexts []*os.File
+	threadChurnArmed := false
 	for {
 		client, err := server.Accept()
 		if err != nil {
@@ -193,6 +194,59 @@ func TestCaptureActor(t *testing.T) {
 			mutex.Lock()
 			defer mutex.Unlock()
 			switch request {
+			case "arm-thread-churn":
+				if threadChurnArmed {
+					t.Error("owned thread churn is already armed")
+					return
+				}
+				trigger := stateDirectory + "/thread-churn-trigger"
+				if err := os.WriteFile(trigger, []byte("0"), 0600); err != nil {
+					t.Error(err)
+					return
+				}
+				type watcher struct {
+					tid   int
+					start chan bool
+				}
+				ready := make(chan watcher, 2)
+				// At most one watcher can own the original leader thread.
+				// Select a different locked OS thread so its deliberate exit
+				// cannot terminate or replace the actor's process leader.
+				for range 2 {
+					go func() {
+						runtime.LockOSThread()
+						start := make(chan bool, 1)
+						tid := unix.Gettid()
+						ready <- watcher{tid, start}
+						if !<-start {
+							runtime.UnlockOSThread()
+							return
+						}
+						deadline := time.Now().Add(60 * time.Second)
+						for time.Now().Before(deadline) {
+							value, err := os.ReadFile(trigger)
+							if err != nil {
+								t.Error(err)
+								break
+							}
+							if string(value) == "1" {
+								if err := os.WriteFile(stateDirectory+"/thread-churn-ran",
+									[]byte(strconv.Itoa(tid)), 0600); err != nil {
+									t.Error(err)
+								}
+								// Exiting while locked retires this original
+								// nonleader OS thread. The payload is unchanged.
+								return
+							}
+						}
+						t.Error("owned thread-churn trigger was not observed")
+					}()
+				}
+				first, second := <-ready, <-ready
+				useFirst := first.tid != os.Getpid()
+				first.start <- useFirst
+				second.start <- !useFirst
+				threadChurnArmed = true
 			case "open-fscontext", "open-transient-fscontext", "open-many-fscontext":
 				if len(mountContexts) != 0 {
 					t.Error("owned mount context is already open")

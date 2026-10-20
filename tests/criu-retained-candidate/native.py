@@ -26,6 +26,7 @@ parser.add_argument("--pause", action="store_true")
 parser.add_argument("--grant-control", action="store_true")
 parser.add_argument("--multiprocess", action="store_true")
 parser.add_argument("--interrupt-child", action="store_true")
+parser.add_argument("--thread-churn", action="store_true")
 options = parser.parse_args()
 if options.interrupt_child and not options.multiprocess:
     parser.error("--interrupt-child requires --multiprocess")
@@ -107,6 +108,9 @@ if options.multiprocess:
 if options.interrupt_child:
     location = command.index("--entrypoint")
     command[location:location] = ["--env", "FACTORYBOX_NATIVE_INTERRUPTION_CHILD=1"]
+if options.thread_churn:
+    location = command.index("--entrypoint")
+    command[location:location] = ["--env", "FACTORYBOX_NATIVE_INTERRUPTION_THREAD_CHURN=1"]
 result = {
     "owner": owner, "container_name": name, "volume_name": name, "command": command,
     "candidate": candidate_name, "candidate_sha256": criu["binary_sha256"],
@@ -115,6 +119,7 @@ result = {
     "grant_control": options.grant_control,
     "multiprocess": options.multiprocess,
     "interrupt_child": options.interrupt_child,
+    "thread_churn": options.thread_churn,
     "inputs_sha256": inputs, "component_sha256": component_hashes, "source_sha256": source_sha,
     "scope": "Actual CRIU kill during pages dump; only the original independent guard may authorize "
              "process cure and source release. Complete 32-MiB RAM, TCP, previous committed fork "
@@ -160,6 +165,11 @@ try:
                                 result["process_tree"].get("original_and_fork_child_reaped") and
                                 result["process_tree"].get("child_ballast_bytes") == 32 << 20 and
                                 result["process_tree"].get("interrupted_child") == options.interrupt_child)
+    if options.thread_churn:
+        control = output / "interruption-thread-churn.json"
+        result["thread_churn_control"] = json.loads(control.read_text()) if control.exists() else {}
+        result["passed"] = bool(result["passed"] and result["thread_churn_control"].get("passed") and
+                                result["thread_churn_control"].get("retired_guest_tid", 0) > 1)
     proof = output / "interruption-retained-context.json"
     if proof.exists():
         result["diagnostic"] = json.loads(proof.read_text())

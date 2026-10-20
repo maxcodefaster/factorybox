@@ -24,7 +24,8 @@ mkdir /busybox
 tar -xzf /busybox-rootfs.tar.gz -C /busybox
 . /delegate.sh > /output/cgroup-delegation.txt
 if test "${FACTORYBOX_NATIVE_TEST:-}" != TestNativeEmptyCgroupRetirement; then
-/out/sysbox-mgr --disable-shiftfs --data-root /var/lib/sysbox/manager \
+# Factorybox captures complete manager volumes; no outer-rootfs export is needed.
+/out/sysbox-mgr --disable-shiftfs --disable-inner-image-preload --data-root /var/lib/sysbox/manager \
   --log /output/sysbox-mgr.log > /output/sysbox-mgr-stdio.log 2>&1 &
 manager=$!
 /out/sysbox-fs --mountpoint /var/lib/sysbox/fs --log /output/sysbox-fs.log \
