@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,7 +28,16 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION") != "1" {
 		t.Skip("requires the owned real-CRIU interruption fixture")
 	}
+	// The candidate fault probe traces only its exact owned CRIU process.
+	// Keep ptrace requests and waits on one OS thread until that tracer exits.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	pauseMode := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_PAUSE") == "1"
+	multiprocess := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_MULTIPROCESS") == "1"
+	interruptChild := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_CHILD") == "1"
+	if interruptChild && !multiprocess {
+		t.Fatal("child interruption requires the two-process fixture")
+	}
 	grantControl := os.Getenv("FACTORYBOX_CRIU_RETAINED_GRANT_CONTROL") == "1"
 	if grantControl && os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") != "1" {
 		t.Fatal("retained grant controls require the retained-context candidate")
@@ -115,6 +125,38 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			result = append(result, socketState{original, cookie, repair, mark})
 		}
 		return result, nil
+	}
+	var childPID, childFD int
+	var childStart string
+	var childBefore captureActorState
+	if multiprocess {
+		before, err = readCaptureActor(source.Runtime.PID, "make-memory-child")
+		if err != nil || before.NestedPID <= 1 || before.TimeMode != "memory" {
+			t.Fatal("prepare the second captured process", err)
+		}
+		childPID, childStart, childFD = pinRetainedChildNative(t, source.Runtime.PID, before.NestedPID)
+		defer unix.Close(childFD)
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			childBefore, err = readCaptureActorAt(source.Runtime.PID, "/child-state", "get")
+			if err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("second 32-MiB actor did not become ready", err)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		if childBefore.BallastBytes != 32<<20 || childBefore.BallastAddress == 0 {
+			t.Fatal("second process lacks its complete private RAM witness")
+		}
+		evidence, err := json.Marshal(map[string]any{
+			"passed": false, "source_pid": source.Runtime.PID, "child_pid": childPID,
+			"child_start": childStart, "child_nested_pid": before.NestedPID,
+		})
+		if err != nil || os.WriteFile("/output/interruption-process-tree.json", append(evidence, '\n'), 0600) != nil {
+			t.Fatal("save original process-tree fault boundary", err)
+		}
 	}
 	committed := strings.Repeat("b", 32)
 	if _, err := engine.Checkpoint(ctx, "interrupted", committed); err != nil {
@@ -250,6 +292,10 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		Scope      string `json:"scope"`
 	}
 	var interruptedPID int
+	activePID, activeVirtualPID := source.Runtime.PID, 1
+	if interruptChild {
+		activePID, activeVirtualPID = childPID, before.NestedPID
+	}
 	var heldGuard retainedCaptureArm
 	var resumeGuard func()
 	for interruptedPID == 0 {
@@ -258,7 +304,7 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			worker.CriuSHA256 == engine.config.CriuSHA256 {
 			birth, err := processBirth(worker.PID)
 			if err == nil && birth == worker.Start {
-				status, _ := os.ReadFile(fmt.Sprintf("/proc/%d/status", source.Runtime.PID))
+				status, _ := os.ReadFile(fmt.Sprintf("/proc/%d/status", activePID))
 				tracer := 0
 				for _, line := range strings.Split(string(status), "\n") {
 					fields := strings.Fields(line)
@@ -275,6 +321,11 @@ func TestInterruptedCaptureNative(t *testing.T) {
 						}
 					}
 				}
+				if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
+					// Trace CRIU before page dumping starts, then stop it at
+					// the first owned syscall boundary with enough actual pages.
+					pagesWritten = true
+				}
 				if tracer > 1 && pagesWritten {
 					fd, err := unix.PidfdOpen(tracer, 0)
 					if err == nil {
@@ -290,13 +341,13 @@ func TestInterruptedCaptureNative(t *testing.T) {
 						}
 						if statErr == nil && expectedErr == nil && statusErr == nil &&
 							os.SameFile(executable, expected) && ownedParent {
+							var finishTrace func()
+							if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
+								finishTrace = stopRetainedDumpNative(t, tracer, fd,
+									filepath.Join(engine.config.Root, relative, "images"), activePID, activeVirtualPID)
+								defer finishTrace()
+							}
 							if grantControl {
-								// Stop the exact already-tracing CRIU first so
-								// preparing guard controls cannot miss the kill window.
-								if err := unix.PidfdSendSignal(fd, unix.SIGSTOP, nil, 0); err != nil {
-									unix.Close(fd)
-									t.Fatal(err)
-								}
 								heldGuard, resumeGuard = stopRetainedGuardNative(t, engine, relative, command.Process.Pid, tracer)
 								defer resumeGuard()
 							}
@@ -307,6 +358,9 @@ func TestInterruptedCaptureNative(t *testing.T) {
 							err = unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0)
 							if err == nil {
 								interruptedPID = tracer
+							}
+							if finishTrace != nil {
+								finishTrace()
 							}
 						}
 						unix.Close(fd)
@@ -321,7 +375,7 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	t.Logf("interrupted pinned CRIU PID %d after at least 8 MiB of image data while tracing original source PID %d", interruptedPID, source.Runtime.PID)
+	t.Logf("interrupted pinned CRIU PID %d after at least 8 MiB of the active process's page image while tracing original source PID %d, active PID %d", interruptedPID, source.Runtime.PID, activePID)
 	if grantControl {
 		probeRetainedGrantsNative(t, engine, relative, originalGroup, heldGuard)
 		resumeGuard()
@@ -333,8 +387,9 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
 		var arm retainedCaptureArm
 		if err := engine.readCheckpointJSON(relative+"/guard/criu-retained-arm.json", &arm); err != nil ||
-			arm.Version != 2 || arm.Mode != "single_process_retained" ||
+			arm.Version != 3 || arm.Mode != "process_tree_retained" ||
 			arm.SourcePID != source.Runtime.PID || arm.TracerPID != interruptedPID ||
+			arm.ActivePID != activePID || arm.ActiveVirtualPID != activeVirtualPID ||
 			arm.WorkerPID != worker.PID || arm.ControllerPID != command.Process.Pid {
 			t.Fatal("retained-context diagnostic was not armed for its exact interrupted transaction", err, arm)
 		}
@@ -342,6 +397,10 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			t.Fatal("retained-context diagnostic lost the original source process birth", err)
 		}
 		var cure retainedCaptureResult
+		expectedProcesses := 1
+		if multiprocess {
+			expectedProcesses = 2
+		}
 		cureDeadline := time.Now().Add(20 * time.Second)
 		for {
 			err := engine.readCheckpointJSON(relative+"/guard/criu-retained-result.json", &cure)
@@ -353,10 +412,11 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		if !cure.Passed || cure.Version != 2 || cure.SourcePID != arm.SourcePID ||
+		if !cure.Passed || cure.Version != 3 || cure.SourcePID != arm.SourcePID ||
 			cure.SourceStart != arm.SourceStart || cure.HelperPID != arm.HelperPID ||
 			!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held ||
-			cure.Threads <= 0 || cure.Nonce != arm.Nonce {
+			cure.Threads != len(arm.Tree) || cure.ActivePID != arm.ActivePID ||
+			cure.Processes != expectedProcesses || cure.Nonce != arm.Nonce {
 			t.Fatal("retained-context producer did not prove its scoped cure", cure)
 		}
 		if err := engine.validateCgroup(source.Record); err != nil {
@@ -416,6 +476,7 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	eventsAfter, eventsErr := captureReadFile(originalGroup, "cgroup.events", 4096)
 	boundary, marshalErr := json.Marshal(map[string]any{
 		"source_pid": source.Runtime.PID, "criu_pid": interruptedPID,
+		"active_pid":      activePID,
 		"freezer_at_kill": string(freezerAtKill), "freezer_after_wait": string(freezerAfter),
 		"events_after_wait": string(eventsAfter),
 	})
@@ -570,5 +631,54 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			t.Fatal("failed-pause replay changed retained history or original RAM", err, readErr)
 		}
 		t.Log("actual CRIU-loss pause restored running state, retained failure history and refused identity reuse")
+	}
+	if multiprocess {
+		poll := []unix.PollFd{{Fd: int32(childFD), Events: unix.POLLIN}}
+		n, err := unix.Poll(poll, 0)
+		birth, birthErr := processBirth(childPID)
+		if err != nil || n != 0 || birthErr != nil || birth != childStart {
+			t.Fatal("CRIU-loss recovery replaced or lost the original second process", err, birthErr)
+		}
+		memory, err := os.Open(fmt.Sprintf("/proc/%d/mem", childPID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.New()
+		read, hashErr := io.Copy(digest, io.NewSectionReader(memory, int64(childBefore.BallastAddress), int64(childBefore.BallastBytes)))
+		closeErr := memory.Close()
+		if hashErr != nil || closeErr != nil || read != 32<<20 ||
+			fmt.Sprintf("%x", digest.Sum(nil)) != childBefore.BallastSHA {
+			t.Fatal("CRIU-loss recovery changed the original child's complete 32-MiB RAM", hashErr, closeErr, read)
+		}
+		for _, pid := range []int{recovered.Runtime.PID, source.Runtime.PID} {
+			current, err := readCaptureActorAt(pid, "/child-state", "get")
+			if err != nil || !reflect.DeepEqual(current, childBefore) {
+				t.Fatal("original or fork child lost its private RAM state", pid, err)
+			}
+			next, err := readCaptureActorAt(pid, "/child-state", "advance")
+			if err != nil || next.Counter != childBefore.Counter+1 || next.BallastSHA == childBefore.BallastSHA {
+				t.Fatal("original or fork child cannot independently continue useful work", pid, err)
+			}
+		}
+		// Reap the cloned child through the restored parent, then independently
+		// reap the original child. This checks both real parent-child relations.
+		for _, pid := range []int{recovered.Runtime.PID, source.Runtime.PID} {
+			after, err := readCaptureActor(pid, "drop-time-child")
+			if err != nil || after.NestedPID != 0 || after.TimeMode != "" {
+				t.Fatal("recovered process tree cannot signal and reap its own child", pid, err)
+			}
+		}
+		evidence, err := json.Marshal(map[string]any{
+			"passed": true, "source_pid": source.Runtime.PID, "child_pid": childPID,
+			"child_start": childStart, "child_nested_pid": before.NestedPID,
+			"original_child_preserved": true, "original_and_fork_child_reaped": true,
+			"child_ballast_bytes": read, "child_ballast_sha256": childBefore.BallastSHA,
+			"active_pid": activePID, "interrupted_child": interruptChild,
+			"scope": "Two multithreaded Go processes in one Sysbox cgroup, each with 32 MiB of private RAM.",
+		})
+		if err != nil || os.WriteFile("/output/interruption-process-tree.json", append(evidence, '\n'), 0600) != nil {
+			t.Fatal("save complete process-tree recovery proof", err)
+		}
+		t.Log("two-process CRIU-loss recovery preserved the exact original child and independent fork parent-child relations")
 	}
 }

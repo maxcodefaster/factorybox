@@ -76,7 +76,7 @@ result = {
     "context_sha256": context_sha, "build_inputs_sha256": reference.sha(archive / "criu-build.json"),
     "native_base_packages_sha256": base["packages_sha256"],
     "unchanged_upstream_test_files": unchanged,
-    "scope": "Unselected single-process recovery candidate. Retained C context cures only after "
+    "scope": "Unselected process-tree recovery candidate. Retained active-process C context cures only after "
              "the original tracer and worker exit, with the exact original live guard's canonical "
              "grant or an explicitly unauthorized held-source diagnostic after both controllers exit. "
              "Only the Go guard may authorize source release. No production qualification.",

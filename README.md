@@ -45,14 +45,19 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Image ownership and durability | `factorybox-runtime-f8ec18cb222e4feb9e91acccce6abb24`: nine tests and 40 subtests, including one complete-directory barrier, failed-barrier refusal and symlink/hardlink/foreign-mount rejection |
 | Earlier separate-Theia baseline | `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b`: eight app phases and nine IDE checks, unchanged inputs/global sentinels, full cleanup |
 | Last completed developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-33d1823f30604cf0924f6378cc404355`: eight app, nine IDE and eight authenticated OpenCode API checks; 363.96 seconds Go, 394.26 seconds outer; unchanged inputs/global sentinels and full cleanup. Includes worker-loss recovery and copy-stage measurements; precedes the separately native-tested alias timing correction |
+| Process-tree candidate developer lifecycle | **Failing** in `factorybox-devx-lifecycle-9e5ae782721743058bd9a18d0b507894`: six app, six IDE and six OpenCode phases completed; pause encountered an open `anon_inode:[fscontext]` mount-transaction descriptor that CRIU cannot dump. Pause remained unresolved. 200.07 seconds Go, 246.86 seconds outer execution, verified failure archive and owned cleanup. This is not a successful performance observation |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
 | Retained Compel context mechanism | `factorybox-compel-recovery-65c298fc4c094c368c60e626f757a0d4`: unretained negative control and 25 recovery cases, including eight freezer, eight three-thread and eight outstanding-RPC repeats; original RAM/FP marker/descriptors, useful work and owned cleanup. Not integrated into the runtime guard or qualified for real page dumping |
 | Real page-dump retained-context diagnostic | `factorybox-runtime-retained-4b8ae9c08b4042afadd36d69d9d6c433`: an unselected CRIU candidate cured the actual killed tracer's source, removed its injected mapping, matched saved leader registers/signal mask and retained all 32 MiB of private RAM; TCP rollback and the previous committed fork still worked. Source stayed frozen, so the required lifecycle assertion remains failed |
-| Guard-authorized CRIU-loss checkpoint recovery candidate | `factorybox-runtime-retained-bec13cf5f97c4ff3ae08289a8454d48e`: nine tests, 40 subtests, zero skips; actual tracer death, original running PID and complete RAM, TCP and previous fork, immutable failure replay, five changed-proof refusals and twelve physical grant controls. Candidate remains unselected and single-process only |
-| Guard-authorized CRIU-loss pause recovery candidate | `factorybox-runtime-retained-e6a2a2badf1240cb88ccb35811b49a6a`: nine tests, 40 subtests, zero skips, twelve physical grant controls, retained failed-pause history, failed identity reuse refused, original RAM/TCP/useful work and owned cleanup |
-| Candidate CRIU core | `factorybox-criu-core-6d67acd11c664e54ae21ff89392a81f2`: 18 unchanged C tests, two dump/restore cycles each, zero skips, owned cleanup; candidate `factorybox-build-criu-retained-f28ecd5390d346c69518d5f9cce5636d` |
-| Candidate lifecycle regressions | `factorybox-runtime-950374ecc1354bb48c38744a2e3885d0` and `factorybox-runtime-d3d3abad1d01461694d36e9bf862555a`: prepared-base pause/resume with nine tests/46 subtests and worker-loss recovery with nine tests/43 subtests, zero skips, owned cleanup |
+| Earlier single-process checkpoint recovery candidate | `factorybox-runtime-retained-bec13cf5f97c4ff3ae08289a8454d48e`: nine tests, 40 subtests, zero skips; actual tracer death, original running PID and complete RAM, TCP and previous fork, immutable failure replay, five changed-proof refusals and twelve physical grant controls |
+| Earlier single-process pause recovery candidate | `factorybox-runtime-retained-e6a2a2badf1240cb88ccb35811b49a6a`: nine tests, 40 subtests, zero skips, twelve physical grant controls, retained failed-pause history, failed identity reuse refused, original RAM/TCP/useful work and owned cleanup |
+| Two-process checkpoint recovery, parent dump | `factorybox-runtime-retained-aecb5633952e4a949c6143f2e9a24b39`: nine tests, 40 subtests, zero skips; exact parent and child preserved, 32 MiB private RAM each, TCP, earlier independent fork, twelve grant controls and immutable failure replay. Original and cloned children can each work and be reaped by their own parent |
+| Two-process checkpoint recovery, child dump | `factorybox-runtime-retained-2dd90dc06c21406e9bdf68712aa42180`: nine tests, 40 subtests, zero skips; same two-process assertions, with CRIU killed at the selected syscall stop after at least 8 MiB of the child's own page image |
+| Two-process failed-pause recovery | `factorybox-runtime-retained-5f8309b38f2540e496b1a91b40f8327d` and `factorybox-runtime-retained-5d5f0dfdd6d54d36b934534c9f6313fb`: parent and child dump interruption respectively, nine tests/40 subtests each, complete 64 MiB private RAM, TCP, retained failed history, failed identity reuse refused and twelve grant controls |
+| Current candidate single-process regression | `factorybox-runtime-retained-46081a69e2964424a335bc0e1257dc76`: nine tests/40 subtests, original 32-MiB actor, twelve grant controls, immutable failure replay and owned cleanup |
+| Current candidate CRIU core | `factorybox-criu-core-ce41c2e4d82b4da5914a7f08a8c85847`: 18 unchanged C tests, two dump/restore cycles each, zero skips, owned cleanup; current process-tree candidate `factorybox-build-criu-retained-e61b26949f3a4fa99171812f8241d0c4` |
+| Current candidate lifecycle regressions | `factorybox-runtime-b2de68ed2c034956af84484d4b013ec2` and `factorybox-runtime-5096b5a264c042f5953d9fead26ce6da`: prepared-base pause/resume with nine tests/46 subtests and worker-loss recovery with nine tests/43 subtests, zero skips, owned cleanup |
 | Daemon startup | `factorybox-devx-lifecycle-41c1d086fa494fd3810d14261ef26499` hit the unchanged 60-second Sysbox-fs readiness deadline before capture; a subsequent minimal worker with the same binaries/capability bounds started successfully in `factorybox-startup-probe-3c2ff51d8adb42e18b70a1efaa9e614c`. The startup hang's cause remains unresolved |
 | Isolated daemon startup repeats | `factorybox-startup-repeat-688b6049d2424070bccb7ab81685140f` and `factorybox-startup-repeat-7cae3a33d0134e2b93337e51b5f04f33`: 32 real Sysbox-fs starts each, normal and `GOGC=1`, original 60-second deadline, owned cleanup. Neither reproduced the earlier startup hang; no manager or active workload was present |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
@@ -270,19 +275,31 @@ handoff between the capture worker and the independent guard. The required inter
 gate above remains failing.
 
 The unselected `upstream/patches/criu-retained-context-candidate.patch` applies this
-mechanism inside the actual CRIU page dump. It admits one process with at most 64 threads
-in the original cgroup tree, including Sysbox's `init.scope`, and checks cgroup mount identities
-while enumerating threads. Its child closes inherited RPC descriptors and waits for the exact
-original tracer and worker to exit. The original independent guard can then authorize cure
+mechanism inside the actual CRIU page dump. Version three records the complete living source
+tree, with an implementation bound of 512 threads, from the original cgroup mount, including
+Sysbox's `init.scope`. Every TID/TGID must match CRIU's captured tree. The record binds each
+thread's birth and identifies the process currently being dumped. Native recovery qualification
+currently covers one or two multithreaded Go processes; the bound is not a 512-thread qualification.
+CRIU creates one retained helper per active process. It replaces the current arm atomically
+while its writer is alive and uses a separate log for each process. The final arm remains
+immutable after writer death.
+
+The retained child closes inherited RPC descriptors and waits for the exact original tracer
+and worker to exit. The original independent guard can then authorize cure
 using the capture identity, original controller/guard identities and a random 256-bit nonce.
 The C helper accepts one complete canonical grant from a private root-owned file and always
-leaves the source frozen after cure. If both controllers have exited, its older diagnostic
+leaves the source frozen after cure. It reattaches every original thread, keeps all other
+processes stopped while executing the active process's existing Compel cure, verifies the
+unchanged complete tree and rejects any remaining injected mapping in any process.
+If both controllers have exited, its older diagnostic
 fallback can cure while held, but records `guard_authorized: false`; that result cannot
 authorize release. This patch is deliberately absent from `upstream/lock.json`.
 
 The Go guard first verifies the held, untraced original source, dead writers, original live
 controller, checked network rollback, unchanged raw Sysbox state and the helper's pinned CRIU
-executable, birth and pidfd. After the C cure, it rechecks the original source and publishes a
+executable, birth and pidfd. It independently verifies the complete thread set, TGIDs and births
+before authorizing cure, then verifies them again and checks all process mappings after cure.
+After the C cure, it rechecks the original source and publishes a
 distinct `capture-process-restored.json`, binding the arm, request, result and network hashes.
 It does not publish successful capture completion or a checkpoint. Normal failed-capture
 acknowledgement then permits the controller to release the original source. Failed pause
@@ -314,8 +331,30 @@ grants left the exact live helper idle and the source held; a valid original-gua
 subsequently recovered that same source. The controls cover nonce, controller, guard,
 version, token, trailing data, duplicate keys, a partial record, permissions, hardlinks
 and symlinks. All 32 MiB of original RAM, original TCP state, useful work and the preceding
-independent fork passed. Multi-process Docker/Dev Container interruption recovery, other
-capture windows and worker/guard loss during the cure remain unqualified.
+independent fork passed.
+
+The first two-process probe, `factorybox-runtime-retained-4f162bc7d61445c5a595dcdd665ba585`,
+failed because the preceding candidate intentionally admitted only one process. The initial
+tree extension passed with a sleep child in
+`factorybox-runtime-retained-a516b5e44b234460b2559ceb4310d236`. A stronger probe then found a
+per-process helper log collision in `factorybox-runtime-retained-bfb22a2faf764cc0a393175a18b37151`;
+the child helper never armed. Per-process logs fixed that failure.
+The two-Go-process proofs above read and hash each original process's actual 32 MiB through
+`/proc/PID/mem`, check original PID/birth retention and TCP, and use the previous committed
+fork to prove independent child memory and parent-child signal/reap behavior.
+
+The missed parent fault in `factorybox-runtime-retained-108385e5281849aca4fa2109c230e540`
+is retained as a failed test observation. The test now traces only its exact owned CRIU,
+stops it at a syscall boundary after at least 8 MiB of the selected process's own page image,
+then kills and reaps that exact tracer. It does not add a production pause hook or relax the
+original page-data/running-source assertions. Real Docker/Dev Container interruption recovery,
+other capture windows and worker/guard loss during the cure remain unqualified.
+
+The subsequent full developer run found an additional ordinary failure boundary: a live
+mount-transaction `fscontext` descriptor rejected during pause. The operation remained
+unresolved after CRIU's normal failure. Its complete failure archive is retained in
+`factorybox-devx-lifecycle-9e5ae782721743058bd9a18d0b507894`. Handling or rejecting that
+kernel state before capture, with a proved original-source recovery outcome, remains required.
 
 ## Execute native gates
 
@@ -378,8 +417,12 @@ The native candidate experiment requires both the original running-source assert
 its direct RAM/TCP diagnostic. It retains `passed: false` and exits unsuccessfully if either
 fails, even when `mechanism_passed: true`. `--pause` exercises failed-pause recovery;
 `--grant-control` checks the live helper's grant refusals before valid recovery.
+`--multiprocess` adds a second multithreaded Go actor with another 32 MiB of private RAM;
+`--interrupt-child` selects the child's own dump rather than the parent's.
 `--corruption-control` additionally requires its raw-RAM oracle to go red.
 Neither the candidate runners nor their verdicts promote it into the selected lock.
+The developer consumer runner also accepts `--retained-candidate` instead of `--criu-build`
+to qualify the same explicit candidate with the ordinary Docker/IDE/OpenCode workload.
 
 The outer Systemd Bats suite has separate pinned image acquisition through `tools/bats_images.py`
 and options `--suite systemd --images factorybox-bats-images-EXACT_RUN_ID`. It retains the failing
@@ -591,10 +634,21 @@ Its successor native fault proof passed. The newer complete developer-failure ar
 SHA-256 and retired only that superseded 5.72-GiB payload. Startup logs, the unresolved actual-CRIU
 interruption evidence, source/results, IO comparisons and encoding/retirement receipts remain.
 
+Retirements `factorybox-storage-retirement-9d9239931312448b9482d7d3eaced250` and
+`factorybox-storage-retirement-60f3a729caec445c853d4588b0116bd5` reclaimed another
+1,055,227,904 allocated bytes from 21 superseded candidate payloads after the current
+one/two-process and lifecycle replacements passed. Each original archive was completely
+decoded and verified again. Separate verified compressed indexes retain small-file contents,
+all member metadata and hashes of omitted large members. Sources, binaries, results, logs,
+original encoding receipts, selected inputs, current proofs and unresolved failures remain.
+The new developer `fscontext` failure archive consumes part of the fixed 32-GiB budget;
+the 8-GiB next-run reserve is enforced unchanged.
+
 ## Remaining release requirements
 
 Production qualification requires complete bounded failure recovery beyond the candidate's
-single-process page-dump proof, recovery on the selected path and resolution of the observed
+one/two-process page-dump proofs, including real Docker/Dev Container trees, recovery on the
+selected path, bounded handling/rejection of live mount-transaction descriptors and resolution of the observed
 daemon-startup hang; resolution of required upstream failures/skips on supported
 workers; continued full developer qualification within the existing deadlines after behavioral
 changes; and native qualification of every claimed deployment target. The latest complete pass

@@ -13,6 +13,7 @@ import uuid
 
 import devx_inputs
 import devx_project_images
+import criu_candidate
 import native_base
 import reference
 import reference_lifecycle
@@ -95,7 +96,9 @@ def main():
     parser.add_argument("--project-images", required=True)
     parser.add_argument("--native-base-build", required=True)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--criu-build", required=True)
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--criu-build")
+    inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
     parser.add_argument("--theia-image", help="Optional exact cached IDE digest for the separate native RPC peer")
     parser.add_argument("--opencode", action="store_true", help="Optional supplied OpenCode 2 consumer; no inference")
     parser.add_argument("--suite", choices=["lifecycle", "projection"], default="lifecycle")
@@ -108,8 +111,11 @@ def main():
     image, _ = native_base.load(options.native_base_build)
     sysbox_archive, sysbox = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
-    criu_archive, criu = reference_lifecycle.component_build(
-        options.criu_build, "factorybox-build-criu-")
+    if options.retained_candidate:
+        criu_archive, criu, _, _ = criu_candidate.load(options.retained_candidate)
+    else:
+        criu_archive, criu = reference_lifecycle.component_build(
+            options.criu_build, "factorybox-build-criu-")
     ide_image = devx_inputs.inspect_image(options.theia_image) if options.theia_image else None
     if ide_image:
         reference.verify()
@@ -149,7 +155,8 @@ def main():
         "opencode": options.opencode,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "consumer_inputs": options.consumer_inputs, "project_images": options.project_images,
-        "sysbox_build": options.sysbox_build, "criu_build": options.criu_build,
+        "sysbox_build": options.sysbox_build, "criu_build": options.criu_build or options.retained_candidate,
+        "retained_candidate": bool(options.retained_candidate),
         "native_base_build": options.native_base_build, "native_image": image,
         "runtime_rootfs_sha256": consumers["rootfs_tar_sha256"],
         "project_images_sha256": projects["archive_sha256"],

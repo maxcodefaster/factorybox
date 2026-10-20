@@ -3,11 +3,13 @@
 package lifecycle
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,11 +17,156 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func retainedPagesWrittenNative(images string, virtualPID int) bool {
+	// Read the pinned CRIU pagemap_head, then inspect that process's own page
+	// image. An earlier parent's completed pages must not trigger a child kill.
+	file, err := os.Open(filepath.Join(images, fmt.Sprintf("pagemap-%d.img", virtualPID)))
+	if err != nil {
+		return false
+	}
+	var prefix [64]byte
+	n, _ := file.ReadAt(prefix[:], 0)
+	file.Close()
+	if n < 14 || binary.LittleEndian.Uint32(prefix[:4]) != 0x54564319 ||
+		binary.LittleEndian.Uint32(prefix[4:8]) != 0x56084025 {
+		return false
+	}
+	size := int(binary.LittleEndian.Uint32(prefix[8:12]))
+	if size < 2 || size > 16 || n < 12+size || prefix[12] != 8 {
+		return false
+	}
+	id, length := binary.Uvarint(prefix[13 : 12+size])
+	if length <= 0 || length+1 != size || id == 0 {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(images, fmt.Sprintf("pages-%d.img", id)))
+	return err == nil && info.Size() >= 8<<20
+}
+
+func retainedTraceWaitNative(pid int, deadline time.Time) (unix.WaitStatus, error) {
+	for time.Now().Before(deadline) {
+		var status unix.WaitStatus
+		result, err := unix.Wait4(pid, &status, unix.WALL|unix.WNOHANG, nil)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return status, err
+		}
+		if result == pid {
+			return status, nil
+		}
+		time.Sleep(100 * time.Microsecond)
+	}
+	return 0, fmt.Errorf("exact CRIU trace event exceeded its test deadline")
+}
+
+func stopRetainedDumpNative(t *testing.T, pid, pidfd int, images string, activePID, virtualPID int) func() {
+	t.Helper()
+	pinned, err := unix.Dup(pidfd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.PtraceSeize(pid); err != nil {
+		unix.Close(pinned)
+		t.Fatal("seize only the pinned owned CRIU for exact fault injection", err)
+	}
+	active := true
+	finish := func() {
+		if active {
+			_ = unix.PidfdSendSignal(pinned, unix.SIGKILL, nil, 0)
+			status, err := retainedTraceWaitNative(pid, time.Now().Add(2*time.Second))
+			if err != nil || (!status.Exited() && !status.Signaled()) {
+				t.Error("reap only the pinned CRIU trace relationship", err, status)
+			}
+			unix.Close(pinned)
+			active = false
+		}
+	}
+	held := false
+	defer func() {
+		if !held {
+			finish()
+		}
+	}()
+	if err := unix.PtraceInterrupt(pid); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	status, err := retainedTraceWaitNative(pid, deadline)
+	if err != nil || !status.Stopped() {
+		t.Fatal("owned CRIU did not enter the initial test trace stop", err, status)
+	}
+	if err := unix.PtraceSetOptions(pid, unix.PTRACE_O_TRACESYSGOOD); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		var arm retainedCaptureArm
+		data, err := os.ReadFile(filepath.Join(filepath.Dir(images), "guard/criu-retained-arm.json"))
+		armed := err == nil && json.Unmarshal(data, &arm) == nil &&
+			arm.TracerPID == pid && arm.ActivePID == activePID && arm.ActiveVirtualPID == virtualPID
+		if armed && retainedPagesWrittenNative(images, virtualPID) {
+			held = true
+			return finish
+		}
+		signal := int(status.StopSignal())
+		if signal == int(unix.SIGTRAP) || signal == int(unix.SIGTRAP)|0x80 {
+			signal = 0
+		}
+		if err := unix.PtraceSyscall(pid, signal); err != nil {
+			t.Fatal(err)
+		}
+		status, err = retainedTraceWaitNative(pid, deadline)
+		if err != nil || !status.Stopped() {
+			t.Fatal("owned CRIU exited before its process page-image fault boundary", err, status)
+		}
+	}
+}
+
+func pinRetainedChildNative(t *testing.T, parent, nested int) (int, string, int) {
+	t.Helper()
+	paths, err := filepath.Glob(fmt.Sprintf("/proc/%d/task/*/children", parent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		children, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, value := range strings.Fields(string(children)) {
+			pid, err := strconv.Atoi(value)
+			if err != nil || pid <= 1 {
+				t.Fatal("owned process tree contains an invalid child identity", err)
+			}
+			fd, err := unix.PidfdOpen(pid, 0)
+			if err != nil {
+				continue
+			}
+			status, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
+			matched := false
+			for _, line := range strings.Split(string(status), "\n") {
+				fields := strings.Fields(line)
+				if len(fields) > 1 && fields[0] == "NSpid:" {
+					matched = fields[len(fields)-1] == strconv.Itoa(nested)
+				}
+			}
+			birth, birthErr := processBirth(pid)
+			if err == nil && matched && birthErr == nil {
+				return pid, birth, fd
+			}
+			unix.Close(fd)
+		}
+	}
+	t.Fatal("cannot pin the original owned process tree child")
+	return 0, "", -1
+}
+
 func stopRetainedGuardNative(t *testing.T, engine *Engine, relative string, controller, tracer int) (retainedCaptureArm, func()) {
 	t.Helper()
 	var arm retainedCaptureArm
 	if err := engine.readCheckpointJSON(relative+"/guard/criu-retained-arm.json", &arm); err != nil ||
-		arm.Version != 2 || arm.ControllerPID != controller || arm.TracerPID != tracer {
+		arm.Version != 3 || arm.ControllerPID != controller || arm.TracerPID != tracer {
 		t.Fatal("grant control lacks its exact original retained context", err)
 	}
 	fd, err := unix.PidfdOpen(arm.GuardPID, 0)
@@ -105,7 +252,7 @@ func probeRetainedGrantsNative(t *testing.T, engine *Engine, relative string, gr
 		if err != nil || events["populated"] != 1 || events["frozen"] != 1 {
 			t.Fatal("refused grant changed the original source hold", name, err)
 		}
-		maps, err := os.ReadFile(fmt.Sprintf("/proc/%d/maps", arm.SourcePID))
+		maps, err := os.ReadFile(fmt.Sprintf("/proc/%d/maps", arm.ActivePID))
 		if err != nil || !strings.Contains(string(maps), "CRIUMFD") {
 			t.Fatal("retained helper cured the original source under a refused grant", name, err)
 		}

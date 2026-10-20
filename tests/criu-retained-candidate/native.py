@@ -24,7 +24,11 @@ parser.add_argument("--sysbox-build", required=True)
 parser.add_argument("--corruption-control", action="store_true")
 parser.add_argument("--pause", action="store_true")
 parser.add_argument("--grant-control", action="store_true")
+parser.add_argument("--multiprocess", action="store_true")
+parser.add_argument("--interrupt-child", action="store_true")
 options = parser.parse_args()
+if options.interrupt_child and not options.multiprocess:
+    parser.error("--interrupt-child requires --multiprocess")
 candidate_name = options.candidate
 corruption_control = options.corruption_control
 candidate, criu, _, _ = criu_candidate.load(candidate_name)
@@ -97,16 +101,24 @@ if options.pause:
 if options.grant_control:
     location = command.index("--entrypoint")
     command[location:location] = ["--env", "FACTORYBOX_CRIU_RETAINED_GRANT_CONTROL=1"]
+if options.multiprocess:
+    location = command.index("--entrypoint")
+    command[location:location] = ["--env", "FACTORYBOX_NATIVE_INTERRUPTION_MULTIPROCESS=1"]
+if options.interrupt_child:
+    location = command.index("--entrypoint")
+    command[location:location] = ["--env", "FACTORYBOX_NATIVE_INTERRUPTION_CHILD=1"]
 result = {
     "owner": owner, "container_name": name, "volume_name": name, "command": command,
     "candidate": candidate_name, "candidate_sha256": criu["binary_sha256"],
     "corruption_control": corruption_control,
     "pause": options.pause,
     "grant_control": options.grant_control,
+    "multiprocess": options.multiprocess,
+    "interrupt_child": options.interrupt_child,
     "inputs_sha256": inputs, "component_sha256": component_hashes, "source_sha256": source_sha,
     "scope": "Actual CRIU kill during pages dump; only the original independent guard may authorize "
              "process cure and source release. Complete 32-MiB RAM, TCP, previous committed fork "
-             "and original running-source assertions remain required. Single-process candidate only.",
+             "and original running-source assertions remain required. Process-tree candidate.",
     "passed": False, "mechanism_passed": False, "cleanup": False, "production_qualified": False,
 }
 (archive / "intent.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -140,6 +152,14 @@ try:
                                 result["grant_controls"].get("refused") ==
                                 ["absent", "nonce", "guard", "controller", "version", "token", "trailing",
                                  "duplicate", "partial", "mode", "hardlink", "symlink"])
+    if options.multiprocess:
+        control = output / "interruption-process-tree.json"
+        result["process_tree"] = json.loads(control.read_text()) if control.exists() else {}
+        result["passed"] = bool(result["passed"] and result["process_tree"].get("passed") and
+                                result["process_tree"].get("original_child_preserved") and
+                                result["process_tree"].get("original_and_fork_child_reaped") and
+                                result["process_tree"].get("child_ballast_bytes") == 32 << 20 and
+                                result["process_tree"].get("interrupted_child") == options.interrupt_child)
     proof = output / "interruption-retained-context.json"
     if proof.exists():
         result["diagnostic"] = json.loads(proof.read_text())

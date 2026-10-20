@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,21 +16,31 @@ import (
 )
 
 type retainedCaptureArm struct {
-	Version         int    `json:"version"`
-	Mode            string `json:"mode"`
-	SourcePID       int    `json:"source_pid"`
-	SourceStart     string `json:"source_start"`
-	HelperPID       int    `json:"helper_pid"`
-	HelperStart     string `json:"helper_start"`
-	TracerPID       int    `json:"tracer_pid"`
-	TracerStart     string `json:"tracer_start"`
-	WorkerPID       int    `json:"worker_pid"`
-	WorkerStart     string `json:"worker_start"`
-	ControllerPID   int    `json:"controller_pid"`
-	ControllerStart string `json:"controller_start"`
-	GuardPID        int    `json:"guard_pid"`
-	GuardStart      string `json:"guard_start"`
-	Nonce           string `json:"nonce"`
+	Version          int                     `json:"version"`
+	Mode             string                  `json:"mode"`
+	SourcePID        int                     `json:"source_pid"`
+	SourceStart      string                  `json:"source_start"`
+	HelperPID        int                     `json:"helper_pid"`
+	HelperStart      string                  `json:"helper_start"`
+	TracerPID        int                     `json:"tracer_pid"`
+	TracerStart      string                  `json:"tracer_start"`
+	WorkerPID        int                     `json:"worker_pid"`
+	WorkerStart      string                  `json:"worker_start"`
+	ControllerPID    int                     `json:"controller_pid"`
+	ControllerStart  string                  `json:"controller_start"`
+	GuardPID         int                     `json:"guard_pid"`
+	GuardStart       string                  `json:"guard_start"`
+	Nonce            string                  `json:"nonce"`
+	ActivePID        int                     `json:"active_pid"`
+	ActiveStart      string                  `json:"active_start"`
+	ActiveVirtualPID int                     `json:"active_vpid"`
+	Tree             []retainedCaptureThread `json:"tree"`
+}
+
+type retainedCaptureThread struct {
+	PID     int    `json:"tid"`
+	Process int    `json:"tgid"`
+	Start   string `json:"start"`
 }
 
 type retainedCaptureRequest struct {
@@ -53,6 +64,8 @@ type retainedCaptureResult struct {
 	Held        bool   `json:"source_held"`
 	Authorized  bool   `json:"guard_authorized"`
 	Nonce       string `json:"nonce"`
+	ActivePID   int    `json:"active_pid"`
+	Processes   int    `json:"processes"`
 }
 
 type captureProcessRestoration struct {
@@ -75,7 +88,7 @@ func captureRetainedRecords(config captureGuardConfig, anchors captureGuardAncho
 	if err := captureCompletionRead(anchors.evidence, "capture-worker-intent.json", &worker); err != nil {
 		return arm, worker, err
 	}
-	if arm.Version != 2 || arm.Mode != "single_process_retained" ||
+	if arm.Version != 3 || arm.Mode != "process_tree_retained" ||
 		arm.SourcePID != config.PID || arm.SourceStart != config.Start ||
 		arm.WorkerPID != worker.PID || arm.WorkerStart != worker.Start ||
 		arm.ControllerPID != config.Controller || arm.ControllerStart == "" ||
@@ -85,6 +98,9 @@ func captureRetainedRecords(config captureGuardConfig, anchors captureGuardAncho
 		worker.CriuSHA256 != config.CriuSHA256 || worker.Scope != "ordinary complete retained-source capture" {
 		return arm, worker, fmt.Errorf("retained context differs from the original capture transaction")
 	}
+	if len(arm.Tree) == 0 || len(arm.Tree) > 512 {
+		return arm, worker, fmt.Errorf("retained capture tree exceeds its thread bound")
+	}
 	seen := map[int]bool{}
 	for _, pid := range []int{arm.SourcePID, arm.WorkerPID, arm.ControllerPID, arm.HelperPID, arm.TracerPID, arm.GuardPID} {
 		if pid <= 1 || seen[pid] {
@@ -92,12 +108,69 @@ func captureRetainedRecords(config captureGuardConfig, anchors captureGuardAncho
 		}
 		seen[pid] = true
 	}
+	tree := map[int]retainedCaptureThread{}
+	previous := 0
+	for _, thread := range arm.Tree {
+		if thread.PID <= previous || thread.Process <= 1 || thread.Start == "" ||
+			(seen[thread.PID] && thread.PID != arm.SourcePID) {
+			return arm, worker, fmt.Errorf("retained capture tree has overlapping or unordered identities")
+		}
+		tree[thread.PID], previous = thread, thread.PID
+	}
+	if tree[arm.SourcePID].Start != config.Start || tree[arm.SourcePID].Process != arm.SourcePID ||
+		tree[arm.ActivePID].Start != arm.ActiveStart || arm.ActiveStart == "" || arm.ActiveVirtualPID <= 0 ||
+		tree[arm.ActivePID].Process != arm.ActivePID {
+		return arm, worker, fmt.Errorf("retained capture lost its original root or active process")
+	}
+	for _, thread := range arm.Tree {
+		if tree[thread.Process].Process != thread.Process {
+			return arm, worker, fmt.Errorf("retained capture tree lacks an original process leader")
+		}
+	}
 	for pid, start := range map[int]string{worker.PID: worker.Start, arm.TracerPID: arm.TracerStart} {
 		if birth, err := processBirth(pid); err == nil && birth == start {
 			return arm, worker, fmt.Errorf("retained context still has its original active writer")
 		}
 	}
 	return arm, worker, nil
+}
+
+func captureRetainedTreeCurrent(config captureGuardConfig, anchors captureGuardAnchors, arm retainedCaptureArm, cured bool) error {
+	actual, err := captureGuardThreads(config, anchors)
+	if err != nil || len(actual) != len(arm.Tree) {
+		return fmt.Errorf("retained capture changed its original complete thread set: %v", err)
+	}
+	for _, thread := range arm.Tree {
+		if actual[thread.PID] != thread.Start {
+			return fmt.Errorf("retained capture replaced an original thread")
+		}
+		status, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", thread.PID))
+		if err != nil {
+			return err
+		}
+		matched := false
+		for _, line := range strings.Split(string(status), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 2 && fields[0] == "Tgid:" {
+				matched = fields[1] == fmt.Sprint(thread.Process)
+			}
+		}
+		if !matched {
+			return fmt.Errorf("retained capture changed an original thread's process")
+		}
+		if cured && thread.PID == thread.Process {
+			file, err := os.Open(fmt.Sprintf("/proc/%d/maps", thread.Process))
+			if err != nil {
+				return err
+			}
+			data, readErr := io.ReadAll(io.LimitReader(file, (8<<20)+1))
+			closeErr := file.Close()
+			if readErr != nil || closeErr != nil || len(data) > 8<<20 || bytes.Contains(data, []byte("CRIUMFD")) {
+				return fmt.Errorf("retained process cure left injected or unreadable mappings: %v", errors.Join(readErr, closeErr))
+			}
+		}
+	}
+	return nil
 }
 
 func captureRetainedState(config captureGuardConfig, anchors captureGuardAnchors) ([]byte, error) {
@@ -143,9 +216,16 @@ func captureRetainedResult(config captureGuardConfig, anchors captureGuardAnchor
 	if err := captureCompletionRead(anchors.evidence, "criu-retained-result.json", &result); err != nil {
 		return err
 	}
-	if result.Version != 2 || !result.Passed || result.SourcePID != config.PID ||
+	processes := 0
+	for _, thread := range arm.Tree {
+		if thread.PID == thread.Process {
+			processes++
+		}
+	}
+	if result.Version != 3 || !result.Passed || result.SourcePID != config.PID ||
 		result.SourceStart != config.Start || result.HelperPID != arm.HelperPID ||
-		result.Threads <= 0 || result.Threads > 64 || !result.Registers || !result.SignalMask ||
+		result.Threads != len(arm.Tree) || result.Processes != processes || result.ActivePID != arm.ActivePID ||
+		!result.Registers || !result.SignalMask ||
 		result.Maps != 0 || !result.Held || !result.Authorized || result.Nonce != arm.Nonce {
 		return fmt.Errorf("retained context did not prove its authorized complete process cure")
 	}
@@ -169,6 +249,9 @@ func captureGuardCureRetained(config captureGuardConfig, anchors captureGuardAnc
 	controllerBirth, err := processBirth(config.Controller)
 	if err != nil || controllerBirth != arm.ControllerStart {
 		return fmt.Errorf("retained context lost its original active controller")
+	}
+	if err := captureRetainedTreeCurrent(config, anchors, arm, false); err != nil {
+		return err
 	}
 	var network struct {
 		Token        string            `json:"token"`
@@ -238,6 +321,9 @@ func captureGuardCureRetained(config captureGuardConfig, anchors captureGuardAnc
 		time.Sleep(5 * time.Millisecond)
 	}
 	if err := captureGuardCaptureReturned(config, anchors); err != nil {
+		return err
+	}
+	if err := captureRetainedTreeCurrent(config, anchors, arm, true); err != nil {
 		return err
 	}
 	if _, err := captureRetainedState(config, anchors); err != nil {

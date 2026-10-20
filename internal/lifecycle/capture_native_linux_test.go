@@ -66,6 +66,10 @@ func TestCaptureActor(t *testing.T) {
 	if os.Getenv("FACTORYBOX_CAPTURE_ACTOR") != "1" {
 		t.Skip("native capture workload only")
 	}
+	stateDirectory := "/state"
+	if os.Getenv("FACTORYBOX_CAPTURE_ACTOR_CHILD") == "1" {
+		stateDirectory = "/child-state"
+	}
 	state := captureActorState{Payload: make([]byte, 8192)}
 	var futureStop, futureDone chan struct{}
 	futureTID := 0
@@ -89,22 +93,22 @@ func TestCaptureActor(t *testing.T) {
 			state.BallastAddress = uint64(uintptr(unsafe.Pointer(&ballast[0])))
 		}
 	}
-	if err := os.Mkdir("/state", 0700); err != nil {
+	if err := os.Mkdir(stateDirectory, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("/state/marker", []byte("retained-source-file\n"), 0600); err != nil {
+	if err := os.WriteFile(stateDirectory+"/marker", []byte("retained-source-file\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Link("/state/marker", "/state/marker-hardlink"); err != nil {
+	if err := os.Link(stateDirectory+"/marker", stateDirectory+"/marker-hardlink"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("marker", "/state/marker-link"); err != nil {
+	if err := os.Symlink("marker", stateDirectory+"/marker-link"); err != nil {
 		t.Fatal(err)
 	}
-	if err := unix.Setxattr("/state/marker", "user.factorybox", []byte("captured-xattr"), 0); err != nil {
+	if err := unix.Setxattr(stateDirectory+"/marker", "user.factorybox", []byte("captured-xattr"), 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := unix.Mkfifo("/state/fifo", 0600); err != nil {
+	if err := unix.Mkfifo(stateDirectory+"/fifo", 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("/var/lib/docker/capture-marker", []byte("private-daemon-before\n"), 0600); err != nil {
@@ -165,7 +169,7 @@ func TestCaptureActor(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	server, err := net.Listen("unix", "/state/control.sock")
+	server, err := net.Listen("unix", stateDirectory+"/control.sock")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,17 +238,23 @@ func TestCaptureActor(t *testing.T) {
 					t.Error(err)
 					return
 				}
-			case "make-shared-child":
+			case "make-shared-child", "make-memory-child":
 				if state.NestedPID != 0 {
 					t.Error("owned child already exists")
 					return
 				}
 				child := exec.Command("/bin/sleep", "300")
+				mode := "shared"
+				if request == "make-memory-child" {
+					child = exec.Command(os.Args[0], "-test.run=^TestCaptureActor$", "-test.timeout=0")
+					child.Env = append(os.Environ(), "FACTORYBOX_CAPTURE_ACTOR_CHILD=1")
+					mode = "memory"
+				}
 				if err := child.Start(); err != nil {
 					t.Error(err)
 					return
 				}
-				state.NestedPID, state.TimeMode = child.Process.Pid, "shared"
+				state.NestedPID, state.TimeMode = child.Process.Pid, mode
 				if err := child.Process.Release(); err != nil {
 					t.Error(err)
 					return
@@ -290,7 +300,7 @@ func TestCaptureActor(t *testing.T) {
 					digest := sha256.Sum256(ballast)
 					state.BallastSHA = fmt.Sprintf("%x", digest)
 				}
-				if err := os.WriteFile("/state/marker", []byte("source-after\n"), 0600); err != nil {
+				if err := os.WriteFile(stateDirectory+"/marker", []byte("source-after\n"), 0600); err != nil {
 					t.Error(err)
 				}
 				if err := os.WriteFile("/var/lib/docker/capture-marker", []byte("private-daemon-after\n"), 0600); err != nil {
@@ -328,8 +338,12 @@ func TestCaptureActor(t *testing.T) {
 }
 
 func readCaptureActor(pid int, request string) (captureActorState, error) {
+	return readCaptureActorAt(pid, "/state", request)
+}
+
+func readCaptureActorAt(pid int, directory, request string) (captureActorState, error) {
 	var state captureActorState
-	client, err := net.DialTimeout("unix", fmt.Sprintf("/proc/%d/root/state/control.sock", pid), time.Second)
+	client, err := net.DialTimeout("unix", fmt.Sprintf("/proc/%d/root%s/control.sock", pid, directory), time.Second)
 	if err != nil {
 		return state, err
 	}
