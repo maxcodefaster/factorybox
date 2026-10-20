@@ -38,7 +38,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Current runc integration | `factorybox-upstream-9e3324f1d97e4130a6d6ea6040d62b5a`: 47 passes, twelve original upstream skips |
 | Unchanged fs/mgr/IPC/library modules | Retain the combined pass in `factorybox-upstream-eafc65ac3e6f46fcb89b97480cf224d8`; the manager's four shiftfs cases skip on this worker |
 | Current CRIU core | `factorybox-criu-core-ea025fce7b7f4939b70aeec382d5bdfe`: 18 unchanged C tests, two dump/restore cycles each, zero skips |
-| Prepared-base pause/resume | `factorybox-runtime-d3be875bda4f47f59b97b678ff9b1b48`: nine tests, 46 subtests, zero skips, owned cleanup; includes clearing inherited immutable-alias copy timings |
+| Prepared-base pause/resume | `factorybox-runtime-9db8a739e50c41199651537a8fd5cb6d`: nine tests, 46 subtests, zero skips, owned cleanup; selected CRIU remains unchanged after adding the held-source diagnostic oracle |
 | Capture guard failure/disarm | `factorybox-runtime-4074fd3edb804dc199e870a19cd6dbaf`: all twelve original cases, owned cleanup |
 | Worker loss after completed CRIU | `factorybox-runtime-7d521d7c8ea54a3db9f086b88c0bf3a3`: nine tests, 43 subtests, zero skips; checkpoint/pause source recovery, copy-child death, live/forged receipt refusal and lost failed-pause publication recovery |
 | Filesystem preflight rejection | `factorybox-runtime-f8ec18cb222e4feb9e91acccce6abb24`: checkpoint/pause and immutable replay preserve the original running PID, RAM and useful work; forged rejection kind refused |
@@ -48,6 +48,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
 | Retained Compel context mechanism | `factorybox-compel-recovery-65c298fc4c094c368c60e626f757a0d4`: unretained negative control and 25 recovery cases, including eight freezer, eight three-thread and eight outstanding-RPC repeats; original RAM/FP marker/descriptors, useful work and owned cleanup. Not integrated into the runtime guard or qualified for real page dumping |
+| Real page-dump retained-context diagnostic | `factorybox-runtime-retained-4b8ae9c08b4042afadd36d69d9d6c433`: an unselected CRIU candidate cured the actual killed tracer's source, removed its injected mapping, matched saved leader registers/signal mask and retained all 32 MiB of private RAM; TCP rollback and the previous committed fork still worked. Source stayed frozen, so the required lifecycle assertion remains failed |
 | Daemon startup | `factorybox-devx-lifecycle-41c1d086fa494fd3810d14261ef26499` hit the unchanged 60-second Sysbox-fs readiness deadline before capture; a subsequent minimal worker with the same binaries/capability bounds started successfully in `factorybox-startup-probe-3c2ff51d8adb42e18b70a1efaa9e614c`. The startup hang's cause remains unresolved |
 | Isolated daemon startup repeats | `factorybox-startup-repeat-688b6049d2424070bccb7ab81685140f` and `factorybox-startup-repeat-7cae3a33d0134e2b93337e51b5f04f33`: 32 real Sysbox-fs starts each, normal and `GOGC=1`, original 60-second deadline, owned cleanup. Neither reproduced the earlier startup hang; no manager or active workload was present |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
@@ -263,6 +264,25 @@ this does not qualify real page dumping, TCP rollback, a multi-process Sysbox wo
 handoff between the capture worker and the independent guard. The required interruption
 gate above remains failing.
 
+The unselected `upstream/patches/criu-retained-context-candidate.patch` then applies this
+mechanism inside the actual CRIU page dump. It admits one process in the original cgroup
+tree, including Sysbox's `init.scope`, and checks cgroup mount identities while enumerating
+threads. Its child closes inherited RPC descriptors and waits for the exact original tracer,
+worker, controller and independent guard to exit before curing. It never releases the source
+for application work. This patch is deliberately absent from `upstream/lock.json`; the
+ordinary runtime continues to use its selected pinned CRIU.
+
+The real diagnostic passed in `factorybox-runtime-retained-916cb3bea5284fa1b5fde391cb4e1711`
+and `factorybox-runtime-retained-d52fc7fa30f64d7099f0647f0c24b958`, then with the tracked
+experiment commands in `factorybox-runtime-retained-4b8ae9c08b4042afadd36d69d9d6c433`.
+Its independent observer
+reads and hashes the actual actor mmap through the original process while it remains held.
+The negative control `factorybox-runtime-retained-ccc8bf720abf4312a1b321c6c277b29b` deliberately
+changes one byte without refreshing the actor's cached hash; the read-only diagnostic rejects
+that stale claim after reading all 32 MiB. Both controls preserve the existing running-source
+assertion. A trusted handoff to the still-live independent guard, multi-process workloads and
+the other failure boundaries remain unqualified.
+
 ## Execute native gates
 
 Commands take exact successful local input artifact names. The reference remains immutable:
@@ -301,6 +321,21 @@ mise exec -- python3 tools/criu_core.py \
 mise exec -- python3 tools/compel_recovery.py \
   --native-base-build factorybox-build-native-base-EXACT_RUN_ID
 ```
+
+The actual retained-context candidate has separate, explicitly unselected experiment commands:
+
+```sh
+mise exec -- python3 tests/criu-retained-candidate/build.py \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+mise exec -- python3 tests/criu-retained-candidate/native.py \
+  --candidate factorybox-build-criu-retained-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID
+```
+
+The native experiment retains `passed: false` and exits unsuccessfully while the source
+remains held, even when `mechanism_passed: true`. `--corruption-control` additionally requires
+its raw-RAM oracle to go red. Neither verdict promotes a candidate into the selected lock.
 
 The outer Systemd Bats suite has separate pinned image acquisition through `tools/bats_images.py`
 and options `--suite systemd --images factorybox-bats-images-EXACT_RUN_ID`. It retains the failing

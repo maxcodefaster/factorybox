@@ -20,22 +20,24 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
 
 type captureActorState struct {
-	Payload      []byte `json:"payload"`
-	Counter      int    `json:"counter"`
-	BallastSHA   string `json:"ballast_sha,omitempty"`
-	BallastBytes int    `json:"ballast_bytes,omitempty"`
-	NestedPID    int    `json:"nested_pid,omitempty"`
-	TimeMode     string `json:"time_mode,omitempty"`
-	CgroupLimit  string `json:"cgroup_limit,omitempty"`
-	TCPClient    int    `json:"tcp_client,omitempty"`
-	TCPServer    int    `json:"tcp_server,omitempty"`
-	TCPListener  int    `json:"tcp_listener,omitempty"`
+	Payload        []byte `json:"payload"`
+	Counter        int    `json:"counter"`
+	BallastSHA     string `json:"ballast_sha,omitempty"`
+	BallastBytes   int    `json:"ballast_bytes,omitempty"`
+	BallastAddress uint64 `json:"ballast_address,omitempty"`
+	NestedPID      int    `json:"nested_pid,omitempty"`
+	TimeMode       string `json:"time_mode,omitempty"`
+	CgroupLimit    string `json:"cgroup_limit,omitempty"`
+	TCPClient      int    `json:"tcp_client,omitempty"`
+	TCPServer      int    `json:"tcp_server,omitempty"`
+	TCPListener    int    `json:"tcp_listener,omitempty"`
 }
 
 func TestCaptureTimeNamespaceLauncher(t *testing.T) {
@@ -83,6 +85,9 @@ func TestCaptureActor(t *testing.T) {
 		}
 		digest := sha256.Sum256(ballast)
 		state.BallastSHA, state.BallastBytes = fmt.Sprintf("%x", digest), len(ballast)
+		if os.Getenv("FACTORYBOX_CAPTURE_BALLAST_ADDRESS") == "1" {
+			state.BallastAddress = uint64(uintptr(unsafe.Pointer(&ballast[0])))
+		}
 	}
 	if err := os.Mkdir("/state", 0700); err != nil {
 		t.Fatal(err)

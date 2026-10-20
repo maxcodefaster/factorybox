@@ -1,0 +1,602 @@
+--- a/criu/Makefile.crtools
++++ b/criu/Makefile.crtools
+@@ -14,6 +14,7 @@
+ obj-y			+= cr-check.o
+ obj-y			+= cr-dedup.o
+ obj-y			+= cr-dump.o
++obj-y			+= factorybox-retained.o
+ obj-y			+= cr-errno.o
+ obj-y			+= cr-restore.o
+ obj-y			+= cr-service.o
+--- a/criu/cr-dump.c
++++ b/criu/cr-dump.c
+@@ -47,6 +47,7 @@
+ #include "proc_parse.h"
+ #include "parasite.h"
+ #include "parasite-syscall.h"
++#include "factorybox-retained.h"
+ #include "compel/ptrace.h"
+ #include "files.h"
+ #include "files-reg.h"
+@@ -1739,6 +1740,8 @@
+ 	mdc.stat = &pps_buf;
+ 	mdc.parent_ie = parent_ie;
+ 
++	if (factorybox_retained_begin(parasite_ctl, pid))
++		goto err_cure;
+ 	ret = parasite_dump_pages_seized(item, &vmas, &mdc, parasite_ctl);
+ 	if (ret)
+ 		goto err_cure;
+@@ -1773,6 +1776,7 @@
+ 		goto err_cure;
+ 	}
+ 
++	factorybox_retained_disable();
+ 	ret = compel_stop_daemon(parasite_ctl);
+ 	if (ret) {
+ 		pr_err("Can't stop daemon in parasite (pid: %d)\n", pid);
+@@ -1796,6 +1800,7 @@
+ 		ret = compel_cure_remote(parasite_ctl);
+ 	else
+ 		ret = compel_cure(parasite_ctl);
++	factorybox_retained_end();
+ 	if (ret) {
+ 		pr_err("Can't cure (pid: %d) from parasite\n", pid);
+ 		goto err;
+@@ -1822,9 +1827,11 @@
+ 	return exit_code;
+ 
+ err_cure:
++	factorybox_retained_disable();
+ 	if (cow_capture_retire(parasite_ctl, pid))
+ 		pr_err("Can't retire CoW helper during dump rollback\n");
+ 	ret = compel_cure(parasite_ctl);
++	factorybox_retained_end();
+ 	if (ret)
+ 		pr_err("Can't cure (pid: %d) from parasite\n", pid);
+ 	goto err;
+--- /dev/null
++++ b/criu/factorybox-retained.c
+@@ -0,0 +1,512 @@
++/* Diagnostic retained-context producer. Never releases a sandbox for use.
++ * Admission currently covers a single-process Factorybox cgroup only. */
++#include <dirent.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <inttypes.h>
++#include <linux/magic.h>
++#include <poll.h>
++#include <signal.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/mman.h>
++#include <sys/ptrace.h>
++#include <sys/stat.h>
++#include <sys/statfs.h>
++#include <sys/socket.h>
++#include <sys/syscall.h>
++#include <sys/wait.h>
++#include <unistd.h>
++
++#include "cr_options.h"
++#include "criu-log.h"
++#include "types.h"
++#include "factorybox-retained.h"
++#include "infect.h"
++#include "infect-rpc.h"
++#include "pstree.h"
++#include "servicefd.h"
++#include "../compel/include/infect-priv.h"
++#include "../compel/include/ptrace.h"
++#include <compel/ptrace.h>
++
++static volatile sig_atomic_t child_pid;
++static int lifetime_write = -1;
++static int *active_phase;
++static int emergency_freezer = -1;
++
++static unsigned long long process_field(int pid, int wanted)
++{
++	char path[64], data[4096], *end, *value, *next;
++	FILE *file;
++	int field;
++	snprintf(path, sizeof(path), "/proc/%d/stat", pid);
++	file = fopen(path, "r");
++	if (!file)
++		return 0;
++	if (!fgets(data, sizeof(data), file)) {
++		fclose(file);
++		return 0;
++	}
++	fclose(file);
++	end = strrchr(data, ')');
++	if (!end)
++		return 0;
++	value = strtok_r(end + 2, " ", &next);
++	for (field = 3; value && field < wanted; field++)
++		value = strtok_r(NULL, " ", &next);
++	return value ? strtoull(value, NULL, 10) : 0;
++}
++
++static int private_number(int directory, const char *name, const char *key)
++{
++	char data[4096] = {0}, needle[128], *value;
++	struct stat stat;
++	int fd = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
++	ssize_t count;
++	if (fd < 0)
++		return -1;
++	if (fstat(fd, &stat) || !S_ISREG(stat.st_mode) || stat.st_uid ||
++	    (stat.st_mode & 0777) != 0600 || stat.st_nlink != 1 || stat.st_size >= (off_t)sizeof(data)) {
++		close(fd);
++		return -1;
++	}
++	count = read(fd, data, sizeof(data) - 1);
++	close(fd);
++	if (count < 0)
++		return -1;
++	snprintf(needle, sizeof(needle), "\"%s\":", key);
++	value = strstr(data, needle);
++	return value ? atoi(value + strlen(needle)) : -1;
++}
++
++static int metadata(int directory, const char *name, const char *data)
++{
++	int fd = openat(directory, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
++	size_t length = strlen(data);
++	int failed;
++	if (fd < 0)
++		return -1;
++	failed = write(fd, data, length) != (ssize_t)length || fsync(fd);
++	if (close(fd))
++		failed = 1;
++	if (fsync(directory))
++		failed = 1;
++	return failed ? -1 : 0;
++}
++
++static int frozen(int group, int want)
++{
++	int fd, attempt;
++	char value = want ? '1' : '0';
++	fd = openat(group, "cgroup.freeze", O_WRONLY | O_NOFOLLOW | O_CLOEXEC);
++	if (fd < 0)
++		return -1;
++	if (write(fd, &value, 1) != 1) {
++		close(fd);
++		return -1;
++	}
++	close(fd);
++	for (attempt = 0; attempt < 500; attempt++) {
++		char data[4096] = {0};
++		ssize_t count;
++		fd = openat(group, "cgroup.events", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
++		if (fd < 0)
++			return -1;
++		count = read(fd, data, sizeof(data) - 1);
++		close(fd);
++		if (count < 0)
++			return -1;
++		if (strstr(data, "populated 1\n") && strstr(data, want ? "frozen 1\n" : "frozen 0\n"))
++			return 0;
++		usleep(1000);
++	}
++	return -1;
++}
++
++static void expired(int signal)
++{
++	(void)signal;
++	if (emergency_freezer >= 0 && write(emergency_freezer, "1", 1) != 1)
++		_exit(125);
++	_exit(124);
++}
++
++static int read_source_tree(int group, int source, int *tids, size_t capacity, int depth,
++			    int *count, int *directories, uint64_t mount)
++{
++	char data[4096] = {0}, *value, *next;
++	int fd;
++	ssize_t bytes;
++	DIR *entries;
++	struct dirent *entry;
++	struct statx identity;
++	struct statfs filesystem;
++	if (depth > 32 || ++*directories > 4096 ||
++	    fstatfs(group, &filesystem) || filesystem.f_type != CGROUP2_SUPER_MAGIC ||
++	    statx(group, "", AT_EMPTY_PATH, STATX_MNT_ID, &identity) ||
++	    !(identity.stx_mask & STATX_MNT_ID) || identity.stx_mnt_id != mount)
++		return -1;
++	fd = openat(group, "cgroup.threads", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
++	if (fd < 0)
++		return -1;
++	bytes = read(fd, data, sizeof(data) - 1);
++	close(fd);
++	if (bytes < 0 || bytes == (ssize_t)sizeof(data) - 1)
++		return -1;
++	value = strtok_r(data, " \n", &next);
++	while (value) {
++		char path[64], line[256];
++		int tgid = 0, tid = atoi(value);
++		FILE *status;
++		if (tid <= 1 || *count == (int)capacity) {
++			pr_info("[FBX-RECOVERY] invalid or excessive tid=%d count=%d\n", tid, *count);
++			return -1;
++		}
++		snprintf(path, sizeof(path), "/proc/%d/status", tid);
++		status = fopen(path, "r");
++		if (!status)
++			return -1;
++		while (fgets(line, sizeof(line), status))
++			if (sscanf(line, "Tgid: %d", &tgid) == 1)
++				break;
++		fclose(status);
++		if (tgid != source) {
++			pr_info("[FBX-RECOVERY] tid=%d belongs to tgid=%d, expected=%d\n", tid, tgid, source);
++			return -1;
++		}
++		tids[(*count)++] = tid;
++		value = strtok_r(NULL, " \n", &next);
++	}
++	entries = fdopendir(openat(group, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC));
++	if (!entries)
++		return -1;
++	while ((entry = readdir(entries))) {
++		struct stat child;
++		int next_group, failed;
++		if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
++			continue;
++		if (fstatat(group, entry->d_name, &child, AT_SYMLINK_NOFOLLOW)) {
++			closedir(entries);
++			return -1;
++		}
++		if (!S_ISDIR(child.st_mode))
++			continue;
++		next_group = openat(group, entry->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++		if (next_group < 0) {
++			closedir(entries);
++			return -1;
++		}
++		failed = read_source_tree(next_group, source, tids, capacity, depth + 1, count, directories, mount);
++		close(next_group);
++		if (failed) {
++			closedir(entries);
++			return -1;
++		}
++	}
++	closedir(entries);
++	return 0;
++}
++
++static int source_threads(int group, int source, int *tids, size_t capacity)
++{
++	struct statx identity;
++	int count = 0, directories = 0;
++	if (statx(group, "", AT_EMPTY_PATH, STATX_MNT_ID, &identity) ||
++	    !(identity.stx_mask & STATX_MNT_ID) || !identity.stx_mnt_id ||
++	    read_source_tree(group, source, tids, capacity, 0, &count, &directories, identity.stx_mnt_id))
++		return -1;
++	return count;
++}
++
++static int dead(int pidfd, int milliseconds)
++{
++	struct pollfd event = {.fd = pidfd, .events = POLLIN};
++	return poll(&event, 1, milliseconds) == 1 && (event.revents & POLLIN);
++}
++
++static int injected_maps(int pid)
++{
++	char path[64], line[4096];
++	FILE *file;
++	int count = 0;
++	snprintf(path, sizeof(path), "/proc/%d/maps", pid);
++	file = fopen(path, "r");
++	if (!file)
++		return -1;
++	while (fgets(line, sizeof(line), file))
++		if (strstr(line, "CRIUMFD"))
++			count++;
++	fclose(file);
++	return count;
++}
++
++static void retain_fds(int *keep, size_t count)
++{
++	DIR *list = opendir("/proc/self/fd");
++	struct dirent *entry;
++	if (!list)
++		_exit(20);
++	while ((entry = readdir(list))) {
++		int fd, retain = 0;
++		size_t index;
++		if (entry->d_name[0] == '.')
++			continue;
++		fd = atoi(entry->d_name);
++		if (fd == dirfd(list))
++			continue;
++		for (index = 0; index < count; index++)
++			retain |= keep[index] == fd;
++		if (!retain)
++			close(fd);
++	}
++	closedir(list);
++}
++
++static void recover(struct parasite_ctl *ctl, int group, int evidence, int life,
++		    int ready, int *parents, int source, unsigned long long source_start)
++{
++	char record[1024], command;
++	int log, original_log = log_get_fd(), tids[64], count = 0, result = -1, index;
++	int keep[] = {group, evidence, life, ready, parents[0], parents[1], parents[2], parents[3],
++		      parents[4], compel_rpc_sock(ctl), original_log, 1, 2};
++	struct sigaction action = {.sa_handler = SIG_DFL};
++	struct pollfd events[2] = {{.fd = life, .events = POLLIN}, {.fd = parents[0], .events = POLLIN}};
++	user_regs_struct_t expected = ctl->orig.regs, actual;
++	k_rtsigset_t expected_mask = ctl->orig.sigmask, actual_mask;
++	int maps = -1, registers_match = 0, mask_match = 0;
++	sigemptyset(&action.sa_mask);
++	if (sigaction(SIGCHLD, &action, NULL))
++		_exit(21);
++	log = openat(evidence, "criu-retained.log", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
++	if (log < 0 || original_log < 0 || dup2(log, original_log) < 0 ||
++	    dup2(log, STDOUT_FILENO) < 0 || dup2(log, STDERR_FILENO) < 0)
++		_exit(22);
++	retain_fds(keep, sizeof(keep) / sizeof(keep[0]));
++	snprintf(record, sizeof(record),
++		 "{\"version\":1,\"mode\":\"single_process_diagnostic\",\"source_pid\":%d,"
++		 "\"source_start\":\"%llu\",\"helper_pid\":%d,\"tracer_pid\":%d,"
++		 "\"worker_pid\":%d,\"controller_pid\":%d}\n",
++		 source, source_start, getpid(), getppid(),
++		 (int)process_field(getppid(), 4), (int)process_field(process_field(getppid(), 4), 4));
++	if (metadata(evidence, "criu-retained-arm.json", record) || write(ready, "R", 1) != 1)
++		_exit(23);
++	close(ready);
++	/* All inherited RPC/stdout descriptors were closed above, so the
++	 * original tracer's death cannot leave the Go worker blocked. */
++	for (;;) {
++		int ready = poll(events, 2, 15000);
++		if (ready <= 0)
++			_exit(24);
++		if (events[0].revents & POLLIN) {
++			if (read(life, &command, 1) == 1 && command == 'C')
++				_exit(0);
++		}
++		if (events[1].revents & POLLIN)
++			break;
++	}
++	if (!__atomic_load_n(active_phase, __ATOMIC_ACQUIRE))
++		_exit(25);
++	/* Only diagnose after all old writers, including the independent Go
++	 * guard, have exited. No competing freezer writer may race this cure. */
++	for (index = 1; index < 4; index++)
++		if (!dead(parents[index], 10000))
++			_exit(26);
++	if (dead(parents[4], 0) || process_field(source, 22) != source_start)
++		_exit(27);
++	emergency_freezer = openat(group, "cgroup.freeze", O_WRONLY | O_NOFOLLOW | O_CLOEXEC);
++	action.sa_handler = expired;
++	if (emergency_freezer < 0 || sigaction(SIGALRM, &action, NULL))
++		_exit(28);
++	alarm(10);
++	if (frozen(group, 1))
++		goto finish;
++	count = source_threads(group, source, tids, sizeof(tids) / sizeof(tids[0]));
++	if (count <= 0)
++		goto finish;
++	for (index = 0; index < count; index++) {
++		if (ptrace(PTRACE_SEIZE, tids[index], NULL, PTRACE_O_TRACESYSGOOD) ||
++		    (tids[index] != source && ptrace(PTRACE_INTERRUPT, tids[index], NULL, NULL)))
++			goto finish;
++	}
++	if (frozen(group, 0))
++		goto finish;
++	for (index = 0; index < count; index++) {
++		int status;
++		if (tids[index] != source &&
++		    (waitpid(tids[index], &status, __WALL) != tids[index] || !WIFSTOPPED(status)))
++			goto finish;
++	}
++	if (compel_cure(ctl))
++		goto finish;
++	registers_match = !ptrace_get_regs(source, &actual) && !memcmp(&actual, &expected, sizeof(expected));
++	mask_match = !ptrace(PTRACE_GETSIGMASK, source, sizeof(actual_mask), &actual_mask) &&
++		     !memcmp(&actual_mask, &expected_mask, sizeof(expected_mask));
++	maps = injected_maps(source);
++	if (!registers_match || !mask_match || maps != 0 || frozen(group, 1))
++		goto finish;
++	for (index = 0; index < count; index++)
++		if (compel_resume_task(tids[index], COMPEL_TASK_ALIVE, COMPEL_TASK_ALIVE))
++			goto finish;
++	result = 0;
++finish:
++	if (frozen(group, 1))
++		result = -1;
++	alarm(0);
++	snprintf(record, sizeof(record),
++		 "{\"version\":1,\"passed\":%s,\"source_pid\":%d,\"source_start\":\"%llu\","
++		 "\"helper_pid\":%d,\"threads\":%d,\"registers_match\":%s,"
++		 "\"signal_mask_match\":%s,\"injected_maps_after\":%d,\"source_held\":true}\n",
++		 result == 0 ? "true" : "false", source, source_start, getpid(), count,
++		 registers_match ? "true" : "false", mask_match ? "true" : "false", maps);
++	metadata(evidence, "criu-retained-result.json", record);
++	_exit(result == 0 ? 0 : 1);
++}
++
++int factorybox_retained_begin(struct parasite_ctl *ctl, int pid)
++{
++	int group = -1, evidence = -1, life[2], ready[2], parents[5], tids[64], count, worker, controller, guard;
++	int index, child;
++	struct stat info;
++	struct statfs filesystem;
++	sigset_t blocked, previous;
++	const char *scope = getenv("SYSBOX_FORK_COLLECT_SCOPE");
++	const char *reason = "scope";
++	pr_info("[FBX-RECOVERY] consider pid=%d root=%d state=%d scope=%s freezer=%s\n",
++		pid, root_item->pid->real, root_item->pid->state, scope ? scope : "(null)",
++		opts.freeze_cgroup ? opts.freeze_cgroup : "(null)");
++	if (!scope || strcmp(scope, "1") || !opts.freeze_cgroup ||
++	    strncmp(opts.freeze_cgroup, "/sys/fs/cgroup/fbx-", 19) ||
++	    pid != root_item->pid->real || root_item->pid->state != TASK_ALIVE)
++		return 0;
++	group = open(opts.freeze_cgroup, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++	reason = "cgroup filesystem";
++	if (group < 0 || fstatfs(group, &filesystem) || filesystem.f_type != CGROUP2_SUPER_MAGIC)
++		goto skip;
++	count = source_threads(group, pid, tids, sizeof(tids) / sizeof(tids[0]));
++	reason = "single-process thread shape";
++	if (count <= 0)
++		goto skip;
++	evidence = openat(get_service_fd(IMG_FD_OFF), "../guard",
++			  O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++	reason = "private evidence directory";
++	if (evidence < 0 || fstat(evidence, &info) || info.st_uid || (info.st_mode & 0777) != 0700)
++		goto skip;
++	worker = getppid();
++	controller = process_field(worker, 4);
++	guard = private_number(evidence, "guard-armed.json", "helper_pid");
++	reason = "original worker/controller/guard";
++	if (worker <= 1 || controller <= 1 || guard <= 1)
++		goto skip;
++	parents[0] = syscall(SYS_pidfd_open, getpid(), 0);
++	parents[1] = syscall(SYS_pidfd_open, worker, 0);
++	parents[2] = syscall(SYS_pidfd_open, controller, 0);
++	parents[3] = syscall(SYS_pidfd_open, guard, 0);
++	parents[4] = syscall(SYS_pidfd_open, pid, 0);
++	for (index = 0; index < 5; index++)
++		if (parents[index] < 0)
++			goto close_parents;
++	active_phase = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
++	if (active_phase == MAP_FAILED) {
++		active_phase = NULL;
++		goto close_parents;
++	}
++	__atomic_store_n(active_phase, 1, __ATOMIC_RELEASE);
++	if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, life))
++		goto close_map;
++	if (pipe2(ready, O_CLOEXEC))
++		goto close_pipe;
++	sigemptyset(&blocked);
++	sigaddset(&blocked, SIGCHLD);
++	if (sigprocmask(SIG_BLOCK, &blocked, &previous))
++		goto close_ready;
++	child = fork();
++	if (child == 0) {
++		close(life[1]);
++		close(ready[0]);
++		sigprocmask(SIG_SETMASK, &previous, NULL);
++		recover(ctl, group, evidence, life[0], ready[1], parents, pid, process_field(pid, 22));
++		_exit(29);
++	}
++	child_pid = child > 0 ? child : 0;
++	close(life[0]);
++	close(ready[1]);
++	if (child > 0) {
++		char acknowledgement;
++		struct pollfd armed = {.fd = ready[0], .events = POLLIN};
++		if (poll(&armed, 1, 2000) != 1 || read(ready[0], &acknowledgement, 1) != 1 ||
++		    acknowledgement != 'R') {
++			int status;
++			pr_warn("[FBX-RECOVERY] child did not acknowledge its armed context\n");
++			kill(child, SIGKILL);
++			waitpid(child, &status, 0);
++			child_pid = 0;
++			close(ready[0]);
++			close(life[1]);
++			sigprocmask(SIG_SETMASK, &previous, NULL);
++			goto close_map;
++		}
++		close(ready[0]);
++		sigprocmask(SIG_SETMASK, &previous, NULL);
++		lifetime_write = life[1];
++		for (index = 0; index < 5; index++)
++			close(parents[index]);
++		close(group);
++		close(evidence);
++		return 0;
++	}
++	close(ready[0]);
++	sigprocmask(SIG_SETMASK, &previous, NULL);
++	close(life[1]);
++close_map:
++	munmap(active_phase, 4096);
++	active_phase = NULL;
++	goto close_parents;
++close_ready:
++	close(ready[0]);
++	close(ready[1]);
++close_pipe:
++	close(life[0]);
++	close(life[1]);
++	goto close_map;
++close_parents:
++	for (index = 0; index < 5; index++)
++		if (parents[index] >= 0)
++			close(parents[index]);
++skip:
++	pr_info("[FBX-RECOVERY] skipped %s errno=%d\n", reason, errno);
++	if (group >= 0)
++		close(group);
++	if (evidence >= 0)
++		close(evidence);
++	return 0;
++}
++
++void factorybox_retained_disable(void)
++{
++	if (active_phase)
++		__atomic_store_n(active_phase, 0, __ATOMIC_RELEASE);
++}
++
++int factorybox_retained_child(int pid)
++{
++	return child_pid > 1 && pid == child_pid;
++}
++
++void factorybox_retained_end(void)
++{
++	int status;
++	if (child_pid > 1) {
++		if (send(lifetime_write, "C", 1, MSG_NOSIGNAL) != 1)
++			pr_warn("Retained-context diagnostic child already stopped\n");
++		close(lifetime_write);
++		waitpid(child_pid, &status, 0);
++		child_pid = 0;
++		lifetime_write = -1;
++	}
++	if (active_phase) {
++		munmap(active_phase, 4096);
++		active_phase = NULL;
++	}
++}
+--- /dev/null
++++ b/criu/include/factorybox-retained.h
+@@ -0,0 +1,8 @@
++#ifndef FACTORYBOX_RETAINED_H
++#define FACTORYBOX_RETAINED_H
++struct parasite_ctl;
++int factorybox_retained_begin(struct parasite_ctl *ctl, int pid);
++void factorybox_retained_disable(void);
++void factorybox_retained_end(void);
++int factorybox_retained_child(int pid);
++#endif
+--- a/criu/parasite-syscall.c
++++ b/criu/parasite-syscall.c
+@@ -16,6 +16,7 @@
+ 
+ #include "imgset.h"
+ #include "parasite-syscall.h"
++#include "factorybox-retained.h"
+ #include "cow-capture.h"
+ #include "parasite.h"
+ #include "crtools.h"
+@@ -107,6 +108,8 @@
+ {
+ 	int pid, status;
+ 
++	if (factorybox_retained_child(siginfo->si_pid))
++		return;
+ 	pid = waitpid(-1, &status, WNOHANG);
+ 	if (pid <= 0)
+ 		return;

@@ -5,9 +5,11 @@ package lifecycle
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,7 +27,11 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION") != "1" {
 		t.Skip("requires the owned real-CRIU interruption fixture")
 	}
-	engine, bundle := nativeEngine(t, "/bin/env FACTORYBOX_CAPTURE_ACTOR=1 FACTORYBOX_CAPTURE_BALLAST=1 /bin/capture-actor -test.run=^TestCaptureActor$ -test.timeout=0")
+	actor := "/bin/env FACTORYBOX_CAPTURE_ACTOR=1 FACTORYBOX_CAPTURE_BALLAST=1 "
+	if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
+		actor += "FACTORYBOX_CAPTURE_BALLAST_ADDRESS=1 "
+	}
+	engine, bundle := nativeEngine(t, actor+"/bin/capture-actor -test.run=^TestCaptureActor$ -test.timeout=0")
 	binary, err := os.ReadFile(os.Args[0])
 	if err != nil {
 		t.Fatal(err)
@@ -197,6 +203,15 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("FACTORYBOX_CRIU_RETAINED_CORRUPTION_CONTROL") == "1" {
+		if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") != "1" {
+			t.Fatal("raw-RAM corruption control requires the held-source diagnostic")
+		}
+		stale, err := readCaptureActor(source.Runtime.PID, "flip-ballast-without-refresh")
+		if err != nil || stale.BallastSHA != before.BallastSHA {
+			t.Fatal("raw-RAM control did not retain its deliberately stale application digest", err)
+		}
+	}
 	snapshot := strings.Repeat("c", 32)
 	relative, _ := checkpointPath("interrupted", snapshot)
 	command := exec.Command("/factorybox", "--root", engine.config.Root,
@@ -290,6 +305,90 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		t.Fatal("interrupted CRIU published a successful checkpoint")
 	}
 	waited = true
+	if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
+		var arm struct {
+			Version       int    `json:"version"`
+			Mode          string `json:"mode"`
+			SourcePID     int    `json:"source_pid"`
+			SourceStart   string `json:"source_start"`
+			HelperPID     int    `json:"helper_pid"`
+			TracerPID     int    `json:"tracer_pid"`
+			WorkerPID     int    `json:"worker_pid"`
+			ControllerPID int    `json:"controller_pid"`
+		}
+		if err := engine.readCheckpointJSON(relative+"/guard/criu-retained-arm.json", &arm); err != nil ||
+			arm.Version != 1 || arm.Mode != "single_process_diagnostic" ||
+			arm.SourcePID != source.Runtime.PID || arm.TracerPID != interruptedPID ||
+			arm.WorkerPID != worker.PID || arm.ControllerPID != command.Process.Pid {
+			t.Fatal("retained-context diagnostic was not armed for its exact interrupted transaction", err, arm)
+		}
+		if birth, err := processBirth(source.Runtime.PID); err != nil || birth != arm.SourceStart {
+			t.Fatal("retained-context diagnostic lost the original source process birth", err)
+		}
+		var cure struct {
+			Version     int    `json:"version"`
+			Passed      bool   `json:"passed"`
+			SourcePID   int    `json:"source_pid"`
+			SourceStart string `json:"source_start"`
+			HelperPID   int    `json:"helper_pid"`
+			Threads     int    `json:"threads"`
+			Registers   bool   `json:"registers_match"`
+			SignalMask  bool   `json:"signal_mask_match"`
+			Maps        int    `json:"injected_maps_after"`
+			Held        bool   `json:"source_held"`
+		}
+		cureDeadline := time.Now().Add(20 * time.Second)
+		for {
+			err := engine.readCheckpointJSON(relative+"/guard/criu-retained-result.json", &cure)
+			if err == nil {
+				break
+			}
+			if time.Now().After(cureDeadline) {
+				t.Fatal("retained-context diagnostic did not finish while preserving the source hold", err)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if !cure.Passed || cure.Version != 1 || cure.SourcePID != arm.SourcePID ||
+			cure.SourceStart != arm.SourceStart || cure.HelperPID != arm.HelperPID ||
+			!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held || cure.Threads <= 0 {
+			t.Fatal("retained-context producer did not prove its scoped cure", cure)
+		}
+		if err := engine.validateCgroup(source.Record); err != nil {
+			t.Fatal(err)
+		}
+		events, err := captureGuardEvents(originalGroup)
+		if err != nil || events["frozen"] != 1 || events["populated"] != 1 ||
+			before.BallastBytes != 32<<20 || before.BallastAddress == 0 || before.BallastAddress > 1<<62 {
+			t.Fatal("diagnostic cure did not retain its original frozen source and complete RAM bounds", events, err)
+		}
+		maps, err := os.ReadFile(fmt.Sprintf("/proc/%d/maps", source.Runtime.PID))
+		if err != nil || bytes.Contains(maps, []byte("CRIUMFD")) {
+			t.Fatal("diagnostic cure left its injected mapping", err)
+		}
+		memory, err := os.Open(fmt.Sprintf("/proc/%d/mem", source.Runtime.PID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := sha256.New()
+		read, hashErr := io.Copy(digest, io.NewSectionReader(memory, int64(before.BallastAddress), int64(before.BallastBytes)))
+		closeErr := memory.Close()
+		if hashErr != nil || closeErr != nil || read != int64(before.BallastBytes) ||
+			fmt.Sprintf("%x", digest.Sum(nil)) != before.BallastSHA {
+			t.Fatal("read-only diagnostic found changed original 32-MiB RAM", hashErr, closeErr, read)
+		}
+		encoded, err := json.Marshal(map[string]any{
+			"passed": true, "source_pid": source.Runtime.PID, "source_held": true,
+			"ballast_bytes": read, "ballast_sha256": fmt.Sprintf("%x", digest.Sum(nil)),
+			"cure": cure, "scope": "Real page dump and retained C cure; no diagnostic thaw or production release authority.",
+		})
+		if err != nil {
+			t.Fatal("encode exact held-source diagnostic", err)
+		}
+		if err := os.WriteFile("/output/interruption-retained-context.json", append(encoded, '\n'), 0600); err != nil {
+			t.Fatal("save exact held-source diagnostic", err)
+		}
+		t.Log("retained CRIU context removed its injected mapping and preserved all original 32-MiB RAM while the source stayed held")
+	}
 	freezerAfter, freezeErr := captureReadFile(originalGroup, "cgroup.freeze", 64)
 	eventsAfter, eventsErr := captureReadFile(originalGroup, "cgroup.events", 4096)
 	boundary, marshalErr := json.Marshal(map[string]any{
