@@ -861,6 +861,25 @@ The complete Overlay2 consumer failure was also losslessly repacked in
 `factorybox-storage-repack-b74705a5cbdd41e787d3dc0ed8d0c581`: all 4,363,124,736 decoded bytes
 verified, 767,185,252 encoded bytes retained and 667,262,720 bytes reclaimed. Its original path
 has a pinned recovery pointer. Neither archive payload was retired.
+The later shared-root deadline failure retains all 7,601,127,424 original bytes in
+`factorybox-storage-repack-308b63ec36d84b8d9f3a25d575fa9503`, occupying 799,020,194 bytes
+after complete verification. This reclaimed 1,534,978,181 bytes from its prior encoding.
+The original failed result and encoding receipt remain unchanged.
+
+Source sharing `factorybox-storage-share-65400a46197c43ebbdda3b8decc93f0f` verifies all
+fifteen closed candidate source-tree hashes. Its `relative-identity-result.json` additionally
+checks that different paths within one context retain distinct inodes; identical files share
+only across contexts at the same relative path. Frozen file modes, ownership, mtimes and contents
+remain. Further closed executable sharing is recorded in
+`factorybox-storage-share-b357d1d83dd6498ea7ff6ef921f2efad`.
+
+Retirement `factorybox-storage-retirement-d00fb19e41a04902a08f283db7a5fcd2` removes three
+superseded successful payloads, reclaiming about 223 MB after preserving complete member
+metadata, small-file contents and large-member hashes. The replacement base/pause proof has
+identical test/component bytes and 9/46 checks. The selected worker-loss proof retains all
+earlier scenario names, adds forged-completion refusal, and also supersedes an unused older
+candidate's identical 9/43 test. Existing source records, executables, results, logs, original encoding receipts,
+current selected proofs and every current failure remain.
 
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another
