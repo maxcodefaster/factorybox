@@ -587,6 +587,13 @@ the current implementation took 11.994 and 13.245 seconds. A 256-KiB read-buffer
 11.702 seconds and was not promoted. Retaining an additional 384 MiB of anonymous RAM took
 9.809 seconds and did not reproduce the live workload's slowdown. These observations do not
 establish a causal code regression, a buffer improvement or a full-workload speedup.
+Four subsequent interleaved diagnostics in `artifacts/hashparallel-work/comparison.json`
+compared the original serial fingerprint with three bounded file-reading/hash workers.
+Serial complete copies took 22.500 and 10.019 seconds; parallel copies took 11.749 and
+11.382 seconds. All four retained the exact full tree hash and counters and cleaned up.
+The first serial run failed the unchanged 20-second diagnostic budget; the other three
+passed all 50 checks with zero skips. The second serial control was faster than either
+parallel run, so the parallel candidate was not promoted.
 Writable-tree capture records separate `source_read_us`, `copy_us` and `target_read_us`
 observations. The latest full run's first Docker tree took 4.164 seconds to read/verify the
 source, 0.886 seconds to copy and 2.854 seconds to verify the independent target.
