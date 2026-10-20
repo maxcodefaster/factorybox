@@ -978,6 +978,15 @@ original sources/binaries/logs and the failing startup/thread observations remai
 This retirement saves 544,839,889 file bytes. Sharing twelve further identical closed-run
 executables in `factorybox-storage-share-bff2369ce1064b7ebb6d3b2bf3cfab59` reclaims another
 139,640,832 allocated bytes without changing their contents.
+The missed-injection attempt retains all 3,605,004,288 raw bytes in
+`factorybox-storage-repack-11250c7452be44479c1d68f9c7e0a341`; its fully verified
+401,954,986-byte replacement saves 844,136,407 bytes and has the original pinned recovery pointer.
+Source sharing `factorybox-storage-share-265bbd5f48f84ddf94c320e6e7528410` verifies all
+23 completed Sysbox source manifests before and after sharing 14,206 identical files only
+at the same relative paths, preserving modes/owners/mtimes. It reclaims 112,594,944 allocated
+bytes without changing within-context source identities between different paths. Closed
+diagnostic executable compaction retains exact decoded bytes with standard encoding receipts;
+no current failure, frozen component or selected input is discarded.
 
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another
