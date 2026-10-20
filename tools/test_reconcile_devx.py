@@ -212,6 +212,66 @@ class ReconcileTests(unittest.TestCase):
             self.invoke(stderr="permission denied")
 
 
+class IdeReconcileTests(unittest.TestCase):
+    def test_failed_ide_cleanup_archives_and_removes_only_its_exact_resources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            owner = "a" * 32
+            run = "factorybox-devx-lifecycle-" + owner
+            archive = root / "artifacts" / run
+            (archive / "theia").mkdir(parents=True)
+            volume = run + "-ide-work"
+            original = {"owner": owner, "passed": False, "cleanup": True,
+                        "native_base_build": "frozen", "theia": {
+                            "owner": owner, "cleanup": False, "container_name": run + "-ide",
+                            "setup_name": run + "-ide-setup", "volume_name": volume,
+                            "cleanup_error": "owned container removal timed out"}}
+            original_bytes = json.dumps(original).encode()
+            (archive / "result.json").write_bytes(original_bytes)
+            observed = [{"Name": volume, "Labels": {"com.factorybox.run": owner}}]
+            with mock.patch.object(reconcile_devx.reference, "ROOT", root), \
+                    mock.patch.object(reconcile_devx.reference, "docker",
+                                      return_value=json.dumps(observed)), \
+                    mock.patch.object(reconcile_devx.reference, "owned_delete") as remove, \
+                    mock.patch.object(reconcile_devx.native_base, "load", return_value=("image", {})), \
+                    mock.patch.object(reconcile_devx.upstream_bats, "archive_stopped_volumes") as retain, \
+                    mock.patch.object(sys, "argv", ["reconcile_devx", run, "--ide"]), \
+                    mock.patch("builtins.print"):
+                reconcile_devx.main()
+            self.assertEqual(remove.call_args_list, [
+                mock.call("container", run + "-ide-setup", owner),
+                mock.call("container", run + "-ide", owner),
+                mock.call("container", run + "-ide-archive-0", owner),
+                mock.call("volume", volume, owner),
+            ])
+            args = retain.call_args.args
+            self.assertEqual(args[1:5], (run + "-ide", owner, [volume], "image"))
+            self.assertEqual((archive / "result.json").read_bytes(), original_bytes)
+            receipts = list((archive / "theia/reconciliations").glob("*/result.json"))
+            self.assertEqual(len(receipts), 1)
+            result = json.loads(receipts[0].read_text())
+            self.assertTrue(result["cleanup"])
+            self.assertEqual(result["resource"], "ide")
+
+    def test_foreign_ide_identity_is_refused_before_resource_actions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            owner = "a" * 32
+            run = "factorybox-devx-lifecycle-" + owner
+            archive = root / "artifacts" / run
+            archive.mkdir(parents=True)
+            (archive / "result.json").write_text(json.dumps({
+                "owner": owner, "passed": False, "cleanup": True,
+                "theia": {"owner": "foreign", "cleanup": False, "volume_name": run + "-ide-work"}}))
+            with mock.patch.object(reconcile_devx.reference, "ROOT", root), \
+                    mock.patch.object(reconcile_devx.reference, "owned_delete") as remove, \
+                    mock.patch.object(sys, "argv", ["reconcile_devx", run, "--ide"]), \
+                    mock.patch("builtins.print"):
+                with self.assertRaisesRegex(ValueError, "matching unresolved IDE"):
+                    reconcile_devx.main()
+                remove.assert_not_called()
+
+
 def storage_hash(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

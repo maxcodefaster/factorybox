@@ -13,7 +13,8 @@ import reference_lifecycle
 import upstream_bats
 
 
-def verified_previous_archive(archive, run, owner):
+def verified_previous_archive(archive, run, owner, volume=None):
+    volume = volume or run
     for path in sorted((archive / "reconciliations").glob("*/result.json")):
         if (not re.fullmatch(r"[0-9a-f]{32}", path.parent.name) or
                 path.parent.is_symlink() or path.is_symlink()):
@@ -22,9 +23,9 @@ def verified_previous_archive(archive, run, owner):
         if saved.get("run") != run or saved.get("owner") != owner:
             continue
         archives = saved.get("failed_volume_archives", {})
-        if set(archives) != {run}:
+        if set(archives) != {volume}:
             continue
-        row = archives[run]
+        row = archives[volume]
         if (row.get("file") != "failed-volume-0.tar" or
                 not re.fullmatch(r"[0-9a-f]{64}", row.get("sha256", "")) or
                 type(row.get("bytes")) is not int or row["bytes"] <= 0):
@@ -65,37 +66,52 @@ def volume_present(run, owner):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run")
+    parser.add_argument("--ide", action="store_true",
+                        help="Reconcile only this failed run's owned Theia workspace")
     options = parser.parse_args()
     if not re.fullmatch(r"factorybox-devx-lifecycle-[0-9a-f]{32}", options.run):
         raise ValueError("requires one exact developer lifecycle run")
     archive = reference.ROOT / "artifacts" / options.run
     original = json.loads((archive / "result.json").read_text())
     owner = original["owner"]
-    if (options.run != "factorybox-devx-lifecycle-" + owner or
-            original.get("passed") or original.get("cleanup") or
-            original.get("retained_volumes") != [options.run]):
+    if options.run != "factorybox-devx-lifecycle-" + owner or original.get("passed"):
+        raise ValueError("run has no matching unresolved retained volume")
+    resource_name, volume, saved_root = options.run, options.run, archive
+    if options.ide:
+        peer = original.get("theia", {})
+        resource_name, volume = options.run + "-ide", options.run + "-ide-work"
+        if (peer.get("owner") != owner or peer.get("cleanup") is not False or
+                peer.get("container_name") != resource_name or peer.get("volume_name") != volume or
+                peer.get("setup_name") != options.run + "-ide-setup"):
+            raise ValueError("run has no matching unresolved IDE resources")
+        saved_root = archive / "theia"
+        reference.owned_delete("container", options.run + "-ide-setup", owner)
+    elif (original.get("cleanup") or original.get("retained_volumes") != [options.run]):
         raise ValueError("run has no matching unresolved retained volume")
     # This also refuses a foreign object if the old name was reused.
-    reference.owned_delete("container", options.run, owner)
-    reference.owned_delete("container", options.run + "-archive-0", owner)
-    output = archive / "reconciliations" / uuid.uuid4().hex
+    reference.owned_delete("container", resource_name, owner)
+    reference.owned_delete("container", resource_name + "-archive-0", owner)
+    output = saved_root / "reconciliations" / uuid.uuid4().hex
     output.mkdir(parents=True)
     result = {
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "run": options.run, "owner": owner, "cleanup": False, "passed": False,
+        "resource": "ide" if options.ide else "worker", "volume_name": volume,
+        "original_result_sha256": reference.sha(archive / "result.json"),
         "scope": "Independent cleanup observation. Original failed lifecycle result remains unchanged.",
     }
     print(json.dumps({"archiving": str(output)}), flush=True)
     try:
-        if volume_present(options.run, owner):
+        if volume_present(volume, owner):
             image, _ = native_base.load(original["native_base_build"])
-            upstream_bats.archive_stopped_volumes(output, options.run, owner, [options.run], image,
+            upstream_bats.archive_stopped_volumes(output, resource_name, owner, [volume], image,
                                                  result, timeout=600, compressed=True)
-            reference.owned_delete("volume", options.run, owner)
+            reference.owned_delete("volume", volume, owner)
         else:
             # Docker may complete removal after its caller times out. Absence
             # alone cannot prove cleanup: require the preceding complete data.
-            result["archive_reused_from"] = verified_previous_archive(archive, options.run, owner)
+            result["archive_reused_from"] = verified_previous_archive(
+                saved_root, options.run, owner, volume)
         result["cleanup"], result["passed"] = True, True
     except Exception as error:
         result["error"] = str(error)

@@ -31,7 +31,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 91 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 97 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
@@ -59,7 +59,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Nested-overlay shared-root candidate | `factorybox-runtime-71387dc3a4c544478999c8b735285313`: nine tests/44 subtests, zero skips, unchanged frozen inputs/components and owned cleanup. Plain/direct/relative-layer-link cases preserve independent RAM/files through descendant fork after source deletion, pause/resume and resumed-source fork; an escaping link refuses restore while its source remains useful. CRIU `factorybox-build-criu-retained-ef33bdea879e417f93ba5fb378f603a8` remains unselected. This small fixture does not qualify Docker or select Overlay2 |
 | Nested-overlay candidate CRIU core | `factorybox-criu-core-d95764528974401693b8a911fd4288b0`: all 18 unchanged C tests passed two dump/restore cycles each; 1,030 upstream test files remain unchanged; exact cleanup passed. This does not replace the full developer or interrupted-Docker gates |
 | Shared-root candidate developer lifecycle | **Failing** in `factorybox-devx-lifecycle-2353068904b44e84a5f526cffa2b02f6`: all eight app, eight OpenCode and nine Theia phases completed, but the unchanged 390-second Go deadline fired while waiting for the final `delete after-resume` process. Outer execution took 418.04 seconds. Frozen inputs/global sysctls and the separate IDE peer passed; all 7,601,127,424 failure-archive bytes verified and owned cleanup passed. This is not a complete developer qualification |
-| Delete observer diagnostic | **Failing**, diagnostic only, in `factorybox-devx-lifecycle-63d5dfe38d514510b5e64543547e41f1`: an archived CLI-only stack observer left every original assertion and deadline unchanged. The outer 420-second deadline expired before the descendant fork became useful; no slow-delete stack was collected. Preparation consumed 206.07 seconds. All 5,722,079,232 failure-archive bytes verified and owned cleanup passed; terminal input/global checks were not completed |
+| Delete observer diagnostic | **Failing**, diagnostic only, in `factorybox-devx-lifecycle-63d5dfe38d514510b5e64543547e41f1`: an archived CLI-only stack observer left every original assertion and deadline unchanged. The outer 420-second deadline expired before the descendant fork became useful; no slow-delete stack was collected. Preparation consumed 206.07 seconds. All 5,722,079,232 worker-archive bytes verified. Initial worker cleanup passed, but IDE removal timed out; separate reconciliation now confirms the IDE cleanup. Terminal input/global checks were not completed |
 | Unix client namespace diagnostic | `factorybox-runtime-3c5218a84cdf47269bf70ba96848c418` reproduced an accepted server socket with the external worker's namespace cookie, absent from the source Unix table, without Docker or CRIU. `factorybox-runtime-15cb7afe89f842e4adfe816e2b2286c6` verified that the corrected test client creates a visible socket with the source listener's cookie. Original actor RAM/useful work and owned cleanup passed. This is a fixture mechanism, not recovery qualification |
 | Earlier developer timeout | `factorybox-devx-lifecycle-b444028260b14d709e536b5d519016e4`: seven app/IDE/OpenCode phases; reached the 390-second Go/420-second outer limits. Remains a failed observation. Logs/counters retained; its verified payload was retired after the complete replacement passed |
 | Interrupted CRIU process recovery | **Failing** in `factorybox-runtime-3fab270ea5f641369da8fa3ff8a60e0d`: the source remains held after the verified CRIU child is killed; no process-completion or safe-abort receipt is issued. The original pinned cgroup's freezer reads `0` at the actual kill and `1` after the failed worker returns |
@@ -757,10 +757,20 @@ run remains failed; a later complete pass does not establish a latency distribut
 At admission, new builds/runs require 8 GiB of headroom inside a 32-GiB artifact budget and
 12 GiB of additional host free space. Developer runs refuse to start while a preceding volume is retained.
 Fixtures share verified immutable component outputs through hardlinks and mount them read-only.
+Developer results distinguish `worker_cleanup` from complete `cleanup`; the latter also requires
+the optional IDE's cleanup. A retained `-ide-work` volume blocks the next developer run.
+`reconcile_devx.py --ide` checks the exact derived IDE names and owner before archiving/removing
+that workspace. It leaves original failed results unchanged and records its own observation.
+For the older delete-observer failure, `theia/reconciliations/5d5e8a5ebbf44164a3ba520a32eb4bdd`
+verified all 1,048,576 IDE bytes before removal. Repeat observation
+`ba77ba80aff84d5cb8546365b84340c5` verified the archive again without recreating a volume.
+The original parent `cleanup: true` described its worker only, while its nested IDE result
+correctly retained `cleanup: false`; the parent reporting and admission regressions are fixed.
 
 ```sh
 mise exec -- python3 tools/artifact_storage.py status
 mise exec -- python3 tools/reconcile_devx.py factorybox-devx-lifecycle-EXACT_RUN_ID
+mise exec -- python3 tools/reconcile_devx.py factorybox-devx-lifecycle-EXACT_RUN_ID --ide
 mise exec -- python3 tools/artifact_storage.py compact \
   /absolute/path/to/artifacts/closed-run/output/capture-source.tar
 ```
@@ -889,6 +899,17 @@ identical test/component bytes and 9/46 checks. The selected worker-loss proof r
 earlier scenario names, adds forged-completion refusal, and also supersedes an unused older
 candidate's identical 9/43 test. Existing source records, executables, results, logs, original encoding receipts,
 current selected proofs and every current failure remain.
+Retirement `factorybox-storage-retirement-586931eeb9f04b2d8aa7fec6179e0638` reclaims about
+913 MB from five resolved component-bootstrap/project-image failures and two resolved
+post-CRIU copy-worker-loss failures. Their complete successful successors are respectively
+`factorybox-devx-compose-dd27b3f3f6ab461a8e4ec22b3c9c3f23` with the current consumer inputs
+and project images, and the selected 9/43 worker-loss proof. Complete member metadata,
+small-file contents and large-file hashes remain; current developer/tracer failures and
+selected inputs are untouched.
+
+The delete-observer worker archive retains all 5,722,079,232 original bytes in
+`factorybox-storage-repack-04f9874f32b0444cad877ab90405c5c9`; its former encoding has a
+pinned recovery pointer. This lossless repack reclaimed 1,042,927,425 bytes.
 
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another

@@ -28,7 +28,7 @@ def require_no_retained_worker():
     names = reference.docker([
         "volume", "ls", "--filter", "label=com.factorybox.run", "--format", "{{.Name}}"])
     retained = [name for name in names.splitlines()
-                if re.fullmatch(r"factorybox-devx-lifecycle-[0-9a-f]{32}", name)]
+                if re.fullmatch(r"factorybox-devx-lifecycle-[0-9a-f]{32}(?:-ide-work)?", name)]
     if retained:
         raise ValueError("reconcile the existing developer volume before starting another run: " +
                          ", ".join(sorted(retained)))
@@ -89,6 +89,42 @@ def run_with_theia(command, stdout, stderr, peer, output, *, timeout=420):
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
+
+
+def cleanup_resources(archive, name, owner, image, result, peer,
+                      attempted, volume_attempted, failure):
+    preserve = False
+    if peer:
+        try:
+            peer.close(bool(failure))
+        except Exception as error:
+            result["peer_cleanup_error"] = str(error)
+            failure = failure or error
+        result["theia"] = peer.result
+    if attempted and failure:
+        try:
+            upstream_bats.archive_failure(archive, name, owner, [name], image, result,
+                                         timeout=600, compressed=True)
+        except Exception as error:
+            preserve = True
+            result["archive_error"] = str(error)
+            result["retained_volumes"] = [name]
+    result["worker_cleanup"] = False
+    try:
+        if attempted:
+            reference.owned_delete("container", name, owner)
+        if volume_attempted and not preserve:
+            reference.owned_delete("volume", name, owner)
+        result["worker_cleanup"] = not preserve
+    except Exception as error:
+        result["cleanup_error"] = str(error)
+        failure = failure or error
+    result["cleanup"] = result["worker_cleanup"] and (
+        peer is None or peer.result.get("cleanup") is True)
+    if not result["cleanup"]:
+        failure = failure or ValueError("developer resource cleanup remains incomplete")
+    result["passed"] = result["passed"] and result["cleanup"] and failure is None
+    return failure
 
 
 def main():
@@ -333,28 +369,8 @@ def main():
         except Exception as observation_error:
             result["observation_error"] = str(observation_error)
     finally:
-        preserve = False
-        if peer:
-            peer.close(bool(failure))
-            result["theia"] = peer.result
-        if attempted and failure:
-            try:
-                upstream_bats.archive_failure(archive, name, owner, [name], image, result,
-                                             timeout=600, compressed=True)
-            except Exception as error:
-                preserve = True
-                result["archive_error"] = str(error)
-                result["retained_volumes"] = [name]
-        try:
-            if attempted:
-                reference.owned_delete("container", name, owner)
-            if volume_attempted and not preserve:
-                reference.owned_delete("volume", name, owner)
-            result["cleanup"] = not preserve
-        except Exception as error:
-            result["cleanup_error"] = str(error)
-            failure = failure or error
-        result["passed"] = result["passed"] and result["cleanup"]
+        failure = cleanup_resources(archive, name, owner, image, result, peer,
+                                    attempted, volume_attempted, failure)
         reference_lifecycle.write_json(archive / "result.json", result)
         print(json.dumps({"evidence": str(archive), **result}), flush=True)
         reference.artifact_storage.compact_closed_run(archive, ROOT)
