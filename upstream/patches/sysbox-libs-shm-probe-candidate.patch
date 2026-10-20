@@ -1,0 +1,350 @@
+diff --git a/linuxUtils/linux.go b/linuxUtils/linux.go
+--- a/linuxUtils/linux.go
++++ b/linuxUtils/linux.go
+@@ -24,17 +24,14 @@
+ 	"os"
+ 	"os/exec"
+ 	"path/filepath"
+-	"runtime"
+ 	"strconv"
+ 	"strings"
+ 	"syscall"
+ 	"time"
+ 
+ 	specs "github.com/opencontainers/runtime-spec/specs-go"
+-	"github.com/sirupsen/logrus"
+ 	"github.com/spf13/afero"
+ 	"golang.org/x/sys/unix"
+-	setxid "gopkg.in/hlandau/service.v1/daemon/setuid"
+ )
+ 
+ // Afero FS for unit-testing purposes.
+@@ -395,92 +392,5 @@
+ // 50ec499b9a43) but other distros (e.g., Ubuntu) may have backported to earlier
+ // versions so just checking for the kernel version is not sufficient.
+ func ShmSysctlUserNamespaced() (bool, error) {
+-	logrus.Debugf("Running /proc/sys/kernel/shm* sysctl namespacing check on host.")
+-
+-	currCwd, err := os.Getwd()
+-	if err != nil {
+-		return false, err
+-	}
+-
+-	// This is the function that will check if /proc/sys/kernel/shm* sysctls are
+-	// namespaced and can be written to.
+-	execFunc := func() {
+-		logrus.Debugf("- shm ns check: execFunc: lock OS thread")
+-		runtime.LockOSThread()
+-		defer runtime.UnlockOSThread()
+-
+-		// Make ourselves root within the user ns
+-		logrus.Debugf("- shm ns check: execFunc: setresuid")
+-		if err := setxid.Setresuid(0, 0, 0); err != nil {
+-			logrus.Debugf("- shiftfs check: execFunc: failed: %v", err)
+-			os.Exit(1)
+-		}
+-		logrus.Debugf("- shm ns check: execFunc: setresgid")
+-		if err := setxid.Setresgid(0, 0, 0); err != nil {
+-			logrus.Debugf("- shm ns check: execFunc: failed: %v", err)
+-			os.Exit(1)
+-		}
+-
+-		// Try opening the /proc/sys/kernel/shm* files for read-write access;
+-		// failure to do so means the sysctl is not accesible from a user-ns.
+-		sysctls := []string{
+-			"/proc/sys/kernel/shmmni",
+-			"/proc/sys/kernel/shmmax",
+-			"/proc/sys/kernel/shmall",
+-		}
+-		for _, sysctl := range sysctls {
+-			f, err := os.OpenFile(sysctl, os.O_RDWR, 0o644)
+-			if err != nil {
+-				if errors.Is(err, syscall.EPERM) {
+-					logrus.Debugf("- shm ns check: execFunc: sysctl %s is not writeable from user-ns (EPERM)", sysctl)
+-				} else {
+-					logrus.Debugf("- shm ns check: execFunc: failed to open %s for writes: %v", sysctl, err)
+-				}
+-				os.Exit(2)
+-			}
+-			f.Close()
+-		}
+-
+-		logrus.Debugf("- shm ns check: execFunc: success")
+-		os.Exit(0)
+-	}
+-
+-	// Fork the child process into a new user-ns and ipc namespaces and run the
+-	// test func.
+-	idmap := &specs.LinuxIDMapping{
+-		ContainerID: 0,
+-		HostID:      uint32(165536),
+-		Size:        65536,
+-	}
+-
+-	pid, _, err := CreateUsernsProcess(idmap, execFunc, currCwd, true, true)
+-	if err != nil {
+-		return false, err
+-	}
+-
+-	logrus.Debugf("- shm ns check: spawning child process (%d) into user-ns and ipc ns", pid)
+-
+-	// Wait for the child process to exit
+-	var wstatus syscall.WaitStatus
+-	var rusage syscall.Rusage
+-
+-	_, err = syscall.Wait4(pid, &wstatus, 0, &rusage)
+-	if err != nil {
+-		return false, err
+-	}
+-
+-	if !wstatus.Exited() {
+-		logrus.Debugf("- shm ns check: child process (%d) did not exit normally", pid)
+-		return false, fmt.Errorf("child process did not exit normally")
+-	}
+-
+-	exitStatus := wstatus.ExitStatus()
+-
+-	if exitStatus != 0 {
+-		logrus.Debugf("- shm ns check: child process failed (exit status = %d)", exitStatus)
+-		return false, nil
+-	}
+-
+-	logrus.Debugf("- shm ns check: passed")
+-	return true, nil
+-}
++	return shmSysctlUserNamespaced()
++}
+diff --git a/linuxUtils/shm_probe_linux.go b/linuxUtils/shm_probe_linux.go
+--- /dev/null
++++ b/linuxUtils/shm_probe_linux.go
+@@ -0,0 +1,136 @@
++//go:build linux
++
++package linuxUtils
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"os"
++	"os/exec"
++	"runtime"
++	"strconv"
++	"strings"
++	"syscall"
++	"time"
++
++	"golang.org/x/sys/unix"
++)
++
++const (
++	shmProbeArgument = "--sysbox-internal-shm-userns-probe"
++	shmProbeEnv      = "_SYSBOX_INTERNAL_SHM_USERNS_PROBE"
++	shmProbeHostID   = 165536
++	shmProbeMapSize  = 65536
++)
++
++// A fresh executable has its own Go runtime and libc thread state. Never call
++// Go or setxid callbacks in the child of CreateUsernsProcess's raw clone.
++func init() {
++	if len(os.Args) == 2 && os.Args[1] == shmProbeArgument && os.Getenv(shmProbeEnv) == "1" {
++		os.Exit(runShmProbe())
++	}
++}
++
++func shmProbeCommand(ctx context.Context) (*exec.Cmd, func(), error) {
++	files := []*os.File{}
++	closeFiles := func() {
++		for _, file := range files {
++			file.Close()
++		}
++	}
++	for _, namespace := range []string{"user", "ipc", "mnt"} {
++		file, err := os.Open("/proc/self/ns/" + namespace)
++		if err != nil {
++			closeFiles()
++			return nil, func() {}, err
++		}
++		files = append(files, file)
++	}
++	command := exec.CommandContext(ctx, "/proc/self/exe", shmProbeArgument)
++	command.Env = append(os.Environ(), shmProbeEnv+"=1")
++	command.ExtraFiles = files
++	command.SysProcAttr = &syscall.SysProcAttr{
++		Cloneflags:                 unix.CLONE_NEWUSER | unix.CLONE_NEWIPC | unix.CLONE_NEWNS,
++		UidMappings:                []syscall.SysProcIDMap{{ContainerID: 0, HostID: shmProbeHostID, Size: shmProbeMapSize}},
++		GidMappings:                []syscall.SysProcIDMap{{ContainerID: 0, HostID: shmProbeHostID, Size: shmProbeMapSize}},
++		GidMappingsEnableSetgroups: false,
++		Credential:                 &syscall.Credential{Uid: 0, Gid: 0, NoSetGroups: true},
++		Pdeathsig:                  unix.SIGKILL,
++	}
++	command.WaitDelay = time.Second
++	return command, closeFiles, nil
++}
++
++func shmSysctlUserNamespaced() (bool, error) {
++	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel()
++	command, closeFiles, err := shmProbeCommand(ctx)
++	if err != nil {
++		return false, err
++	}
++	defer closeFiles()
++	// Pdeathsig follows the creating OS thread. Retain it through Wait.
++	runtime.LockOSThread()
++	err = command.Run()
++	runtime.UnlockOSThread()
++	if ctx.Err() != nil {
++		return false, fmt.Errorf("shm namespace probe: %w", ctx.Err())
++	}
++	if err == nil {
++		return true, nil
++	}
++	var exit *exec.ExitError
++	if errors.As(err, &exit) && exit.ExitCode() == 2 {
++		return false, nil
++	}
++	return false, fmt.Errorf("shm namespace probe: %w", err)
++}
++
++func runShmProbe() int {
++	if os.Getuid() != 0 || os.Geteuid() != 0 || os.Getgid() != 0 || os.Getegid() != 0 {
++		return 1
++	}
++	for _, name := range []string{"uid_map", "gid_map"} {
++		data, err := os.ReadFile("/proc/self/" + name)
++		if err != nil {
++			return 1
++		}
++		fields := strings.Fields(string(data))
++		if len(fields) != 3 {
++			return 1
++		}
++		for index, expected := range []int{0, shmProbeHostID, shmProbeMapSize} {
++			value, err := strconv.Atoi(fields[index])
++			if err != nil || value != expected {
++				return 1
++			}
++		}
++	}
++	for index, namespace := range []string{"user", "ipc", "mnt"} {
++		inherited := os.NewFile(uintptr(3+index), "parent "+namespace+" namespace")
++		before, err := inherited.Stat()
++		var filesystem unix.Statfs_t
++		fsErr := unix.Fstatfs(int(inherited.Fd()), &filesystem)
++		inherited.Close()
++		current, statErr := os.Stat("/proc/self/ns/" + namespace)
++		if err != nil || fsErr != nil || filesystem.Type != unix.NSFS_MAGIC ||
++			statErr != nil || os.SameFile(before, current) {
++			return 1
++		}
++	}
++	// Preserve the upstream empirical test. Opening is sufficient: no sysctl
++	// value is read, rewritten or temporarily changed by this helper.
++	for _, path := range []string{
++		"/proc/sys/kernel/shmmni", "/proc/sys/kernel/shmmax", "/proc/sys/kernel/shmall",
++	} {
++		file, err := os.OpenFile(path, os.O_RDWR, 0)
++		if err != nil {
++			return 2
++		}
++		if err := file.Close(); err != nil {
++			return 1
++		}
++	}
++	return 0
++}
+diff --git a/linuxUtils/shm_probe_linux_test.go b/linuxUtils/shm_probe_linux_test.go
+--- /dev/null
++++ b/linuxUtils/shm_probe_linux_test.go
+@@ -0,0 +1,55 @@
++//go:build linux
++
++package linuxUtils
++
++import (
++	"context"
++	"errors"
++	"os"
++	"os/exec"
++	"runtime"
++	"testing"
++	"time"
++
++	"golang.org/x/sys/unix"
++)
++
++func TestShmProbeRefusesUnmappedProcess(t *testing.T) {
++	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel()
++	command := exec.CommandContext(ctx, "/proc/self/exe", shmProbeArgument)
++	command.Env = append(os.Environ(), shmProbeEnv+"=1")
++	err := command.Run()
++	var exit *exec.ExitError
++	if !errors.As(err, &exit) || exit.ExitCode() != 1 || ctx.Err() != nil {
++		t.Fatal("unmapped helper invocation did not refuse promptly", err)
++	}
++}
++
++func TestShmProbeRefusesSharedNamespaces(t *testing.T) {
++	if os.Getenv("FACTORYBOX_NATIVE_SHM_PROBE") != "1" {
++		t.Skip("requires the owned Linux namespace fixture")
++	}
++	for _, namespace := range []struct {
++		name string
++		flag uintptr
++	}{{"ipc", unix.CLONE_NEWIPC}, {"mount", unix.CLONE_NEWNS}} {
++		t.Run(namespace.name, func(t *testing.T) {
++			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++			defer cancel()
++			command, closeFiles, err := shmProbeCommand(ctx)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer closeFiles()
++			command.SysProcAttr.Cloneflags &^= namespace.flag
++			runtime.LockOSThread()
++			err = command.Run()
++			runtime.UnlockOSThread()
++			var exit *exec.ExitError
++			if !errors.As(err, &exit) || exit.ExitCode() != 1 || ctx.Err() != nil {
++				t.Fatal("helper accepted a shared parent namespace or did not exit promptly", err)
++			}
++		})
++	}
++}
+diff --git a/linuxUtils/factorybox_shm_probe_linux_test.go b/linuxUtils/factorybox_shm_probe_linux_test.go
+--- /dev/null
++++ b/linuxUtils/factorybox_shm_probe_linux_test.go
+@@ -0,0 +1,31 @@
++//go:build linux
++
++package linuxUtils
++
++import (
++	"os"
++	"runtime"
++	"testing"
++)
++
++// This is the actual public startup probe, compiled with the native libc.
++// Repeating it exposes a child which inherited the parent's setxid thread state.
++func TestFactoryboxShmProbeNative(t *testing.T) {
++	if os.Getenv("FACTORYBOX_NATIVE_SHM_PROBE") != "1" {
++		t.Skip("requires the owned Linux namespace fixture")
++	}
++	runtime.GOMAXPROCS(2)
++	var first bool
++	for index := 0; index < 32; index++ {
++		supported, err := ShmSysctlUserNamespaced()
++		if err != nil {
++			t.Fatalf("probe %d failed: %v", index, err)
++		}
++		if index == 0 {
++			first = supported
++		} else if supported != first {
++			t.Fatal("same private namespace probe changed its support result")
++		}
++		t.Logf("probe %d completed, supported=%t", index, supported)
++	}
++}

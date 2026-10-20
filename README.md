@@ -76,9 +76,13 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Early-hold candidate CRIU core | `factorybox-criu-core-5c73df9036394dc29da56de54271a992`: 18 unchanged C tests, two dump/restore cycles each, zero skips and owned cleanup for `factorybox-build-criu-retained-866198cfe78e40d3882aeaec0c94235c`. Adds an ordered unselected patch to hold the pinned source group immediately on tracer death before waiting for worker rollback/exit. Thread identities, cure authorization and source-release checks remain strict; failure recovery is not yet qualified |
 | Thread-churn recovery regression | Original candidate fails in `factorybox-runtime-retained-dacf7d03a7ae414498aac0a425904437`; early-hold candidate passes in `factorybox-runtime-retained-07d5cf8b05ae4bb6b39f3343319efb92`. Exact same frozen Go context/Sysbox components. All nine tests/40 subtests, complete 32-MiB private RAM, original TCP properties/round trip, previous independent fork, triggered nonleader exit and owned cleanup pass with the early hold. `artifacts/docker-interruption-work/thread-churn-comparison.json` binds the results. This does not qualify the Docker case or all interruption timings |
 | Current candidate lifecycle regressions | `factorybox-runtime-b2de68ed2c034956af84484d4b013ec2` and `factorybox-runtime-5096b5a264c042f5953d9fead26ce6da`: prepared-base pause/resume with nine tests/46 subtests and worker-loss recovery with nine tests/43 subtests, zero skips, owned cleanup |
-| Daemon startup | `factorybox-devx-lifecycle-41c1d086fa494fd3810d14261ef26499` hit the unchanged 60-second Sysbox-fs readiness deadline before capture; a subsequent minimal worker with the same binaries/capability bounds started successfully in `factorybox-startup-probe-3c2ff51d8adb42e18b70a1efaa9e614c`. The startup hang's cause remains unresolved |
+| Daemon startup | `factorybox-devx-lifecycle-41c1d086fa494fd3810d14261ef26499` hit the unchanged 60-second Sysbox-fs readiness deadline before capture; a subsequent minimal worker with the same binaries/capability bounds started successfully in `factorybox-startup-probe-3c2ff51d8adb42e18b70a1efaa9e614c`. The later manager/FS reproducer locates the SHM helper deadlock; its separately tested fix remains unselected |
 | Isolated daemon startup repeats | `factorybox-startup-repeat-688b6049d2424070bccb7ab81685140f` and `factorybox-startup-repeat-7cae3a33d0134e2b93337e51b5f04f33`: 32 real Sysbox-fs starts each, normal and `GOGC=1`, original 60-second deadline, owned cleanup. Neither reproduced the earlier startup hang; no manager or active workload was present |
 | Manager/filesystem startup reproducer | **Failing**, diagnostic only, in `factorybox-startup-manager-da3ab5045441469f9bfee89ed54b59e0`: seven starts reached readiness in 0.215 to 1.594 seconds; the eighth missed the original 60-second limit. The captured Go stack waits in `linuxUtils.ShmSysctlUserNamespaced()` on its helper, whose sole thread is blocked on a futex inside libc's `setxid_mark_thread`. Same selected daemon bytes, writable worker, actual `--log` flags and capability/resource limits; no application or rootfs unpacking. Inputs unchanged and owned cleanup passed. The helper failure is reproduced; no runtime fix is selected |
+| Direct SHM startup regression | Baseline `factorybox-shm-probe-1ff01412903740e6986105ffa124e86d` reports sixteen successful probes, then inconsistently reports missing kernel support. Candidate `factorybox-shm-probe-8d177aa7887445a9baa0c08f9e1825ab` passes all 32 with support enabled, the unchanged five-case upstream distro test and refusal of unmapped/shared-IPC/shared-mount helper invocations. Original global sentinels and parent IPC SHM values remain unchanged; exact cleanup passes |
+| Re-executed SHM helper startup candidate | `factorybox-startup-manager-9257f527a89e4b84a88a20c85736a3d7`: all sixteen real manager/FS starts pass within 0.053 to 0.459 seconds using the original 60-second bound. Sysbox-fs `factorybox-build-shm-56a79120673e44e0b6bc9ec2e627c51e` is rebuilt; manager bytes are unchanged. Frozen inputs and owned cleanup pass. This is startup evidence for an unselected candidate, not a fork/resume latency distribution |
+| SHM fixture consolidation and rebuild | The repository build command produces byte-identical FS/test executables in `factorybox-build-shm-80622be049604875b974e100dd8ffc0f`; original upstream test files remain unchanged. Repository runners pass another 32 supported probes in `factorybox-shm-probe-8aab46e9889d44e998643d840f2da805` and sixteen actual daemon starts in `factorybox-startup-manager-d6262342364144f4afbbaf8770fc6650`, within 0.073 to 1.156 seconds. Inputs and owned cleanup pass. These repeated fixture checks do not qualify the complete developer/failure lifecycle |
+| SHM-candidate Docker recovery | **Failing** as a complete gate in `factorybox-devx-lifecycle-759c03a993434903849e731bf4789352`: real startup, first useful app, prior checkpoint and root-tracer recovery of 13 processes/106 threads pass, including original containers/app state, new Docker exec and source mutation. The subsequent fresh checkpoint fails with `Can't lookup mount=83 for fd=18 path=/runc`; current-state and prior-state forks are not reached. Go takes 227.48 seconds and outer execution 269.12. Inputs/global sentinels remain unchanged; all 3,807,379,456 failure-archive bytes verify and owned cleanup passes. The unselected composition changes only FS; runc/manager bytes remain pinned |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
@@ -943,6 +947,19 @@ The delete-observer worker archive retains all 5,722,079,232 original bytes in
 `factorybox-storage-repack-04f9874f32b0444cad877ab90405c5c9`; its former encoding has a
 pinned recovery pointer. This lossless repack reclaimed 1,042,927,425 bytes.
 
+The newer unresolved `/runc` checkpoint failure retains all 3,807,379,456 decoded bytes in
+`factorybox-storage-repack-7736fedc94144bceb101431ce4bc81b4`, with a pinned recovery pointer
+and complete decompression verification. Its 617,407,152-byte replacement saves 694,729,155 bytes.
+Retirement `factorybox-storage-retirement-b49fb02d9d37454f9f8fdf78a918a304` removes only the
+superseded pre-application startup payload from `factorybox-devx-lifecycle-833336aec74042219ccedee937053ab4`.
+The exact replacement passes 32 SHM probes, sixteen daemon starts and real startup/useful work
+in the later Docker attempt. Complete member metadata, small-file contents, large-file hashes,
+original sources/binaries/logs and the failing startup/thread observations remain. The current
+`/runc` failure is preserved and the complete developer recovery gate is still failed.
+This retirement saves 544,839,889 file bytes. Sharing twelve further identical closed-run
+executables in `factorybox-storage-share-bff2369ce1064b7ebb6d3b2bf3cfab59` reclaims another
+139,640,832 allocated bytes without changing their contents.
+
 Retirements `factorybox-storage-retirement-7b454edbd53b4de1ad522314e6f564a5` and
 `factorybox-storage-retirement-4f2e21e42c024886a8071d922b2cf527` reclaimed another
 367,439,872 allocated bytes from four older successful lifecycle payloads, using later
@@ -972,3 +989,44 @@ agent-turn semantics and resumed tool execution remain outside that proof.
 
 Kubernetes scheduling and worker lifecycle management remain separate integration work.
 Factory production integration and public publishing have not been performed.
+## Sysbox SHM startup candidate
+
+The selected Sysbox-fs can hang in an empirical SHM namespace check. Its raw-clone child
+executes Go and libc setxid code with inherited thread state. The separate
+`upstream/patches/sysbox-libs-shm-probe-candidate.patch` replaces only this check with a
+three-second self-executed helper. Standard process creation sets the same UID/GID mappings
+and private user/IPC/mount namespaces before the new executable starts. Inherited namespace
+handles let the helper reject shared namespaces before opening the original three sysctl
+files. It never writes their values. Unexpected helper failures remain errors.
+
+The patch adds regressions and leaves every existing upstream assertion unchanged.
+`tests/sysbox-shm-candidate` freezes a patch application against a supplied component build,
+compiles on that build's retained native builder, runs the complete affected `linuxUtils`
+test package including 32 real probes and checks sixteen actual daemon starts. Native builds
+and workers retain the 3-CPU/3-GiB ceilings; the startup deadline remains sixty seconds.
+The reference source lock and selected binaries do not include this patch.
+
+```sh
+mise exec -- python3 tests/sysbox-shm-candidate/build.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --builder-run factorybox-upstream-EXACT_RUN_ID
+# Add --baseline to compile the common regression against the unchanged function.
+mise exec -- python3 tests/sysbox-shm-candidate/native.py \
+  --build factorybox-build-shm-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+mise exec -- python3 tests/sysbox-shm-candidate/startup.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --shm-build factorybox-build-shm-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID
+mise exec -- python3 tests/sysbox-shm-candidate/compose.py \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --shm-build factorybox-build-shm-EXACT_RUN_ID \
+  --regression-run factorybox-shm-probe-EXACT_RUN_ID \
+  --startup-run factorybox-startup-manager-EXACT_RUN_ID
+```
+
+The optional composition reuses the supplied runc/manager bytes and substitutes only this
+FS executable. Its base lock, supplemental patch, per-component inputs and native proof hashes
+are recorded separately. This explicitly unselected composition is not a homogeneous full
+Sysbox rebuild. Full developer/failure gates and the required upstream suites remain necessary
+before choosing new reference components.
