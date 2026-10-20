@@ -57,7 +57,7 @@
  	goto err;
 --- /dev/null
 +++ b/criu/factorybox-retained.c
-@@ -0,0 +1,512 @@
+@@ -0,0 +1,597 @@
 +/* Diagnostic retained-context producer. Never releases a sandbox for use.
 + * Admission currently covers a single-process Factorybox cgroup only. */
 +#include <dirent.h>
@@ -75,6 +75,7 @@
 +#include <sys/stat.h>
 +#include <sys/statfs.h>
 +#include <sys/socket.h>
++#include <sys/random.h>
 +#include <sys/syscall.h>
 +#include <sys/wait.h>
 +#include <unistd.h>
@@ -95,6 +96,10 @@
 +static int lifetime_write = -1;
 +static int *active_phase;
 +static int emergency_freezer = -1;
++static int original_pids[4];
++static unsigned long long original_starts[4];
++static char recovery_nonce[65];
++static char capture_token[33];
 +
 +static unsigned long long process_field(int pid, int wanted)
 +{
@@ -119,41 +124,91 @@
 +	return value ? strtoull(value, NULL, 10) : 0;
 +}
 +
-+static int private_number(int directory, const char *name, const char *key)
++static ssize_t private_record(int directory, const char *name, char *data, size_t capacity)
 +{
-+	char data[4096] = {0}, needle[128], *value;
 +	struct stat stat;
-+	int fd = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
++	int fd = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
 +	ssize_t count;
 +	if (fd < 0)
 +		return -1;
 +	if (fstat(fd, &stat) || !S_ISREG(stat.st_mode) || stat.st_uid ||
-+	    (stat.st_mode & 0777) != 0600 || stat.st_nlink != 1 || stat.st_size >= (off_t)sizeof(data)) {
++	    (stat.st_mode & 0777) != 0600 || stat.st_nlink != 1 ||
++	    stat.st_size <= 0 || stat.st_size >= (off_t)capacity) {
 +		close(fd);
 +		return -1;
 +	}
-+	count = read(fd, data, sizeof(data) - 1);
++	do {
++		count = read(fd, data, capacity - 1);
++	} while (count < 0 && errno == EINTR);
 +	close(fd);
-+	if (count < 0)
++	if (count != stat.st_size)
++		return -1;
++	data[count] = '\0';
++	return count;
++}
++
++static int private_number(int directory, const char *name, const char *key)
++{
++	char data[4096], needle[128], *value;
++	if (private_record(directory, name, data, sizeof(data)) < 0)
 +		return -1;
 +	snprintf(needle, sizeof(needle), "\"%s\":", key);
 +	value = strstr(data, needle);
 +	return value ? atoi(value + strlen(needle)) : -1;
 +}
 +
++static int original_token(int directory)
++{
++	char data[4096], *value;
++	const char *needle = "\"token\":\"";
++	if (private_record(directory, "guard-armed.json", data, sizeof(data)) < 0)
++		return -1;
++	value = strstr(data, needle);
++	if (!value)
++		return -1;
++	value += strlen(needle);
++	if (strspn(value, "0123456789abcdef") != 32 || value[32] != '"')
++		return -1;
++	memcpy(capture_token, value, 32);
++	capture_token[32] = '\0';
++	return 0;
++}
++
 +static int metadata(int directory, const char *name, const char *data)
 +{
-+	int fd = openat(directory, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
++	char temporary[192];
++	int fd;
 +	size_t length = strlen(data);
 +	int failed;
++	snprintf(temporary, sizeof(temporary), ".%s.writing.%d", name, getpid());
++	fd = openat(directory, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
 +	if (fd < 0)
 +		return -1;
 +	failed = write(fd, data, length) != (ssize_t)length || fsync(fd);
 +	if (close(fd))
 +		failed = 1;
++	if (!failed && syscall(SYS_renameat2, directory, temporary, directory, name, 1))
++		failed = 1;
++	if (failed)
++		unlinkat(directory, temporary, 0);
 +	if (fsync(directory))
 +		failed = 1;
 +	return failed ? -1 : 0;
++}
++
++static int granted(int directory)
++{
++	char data[4096], expected[384];
++	ssize_t count = private_record(directory, "criu-retained-request.json", data, sizeof(data));
++	/* Version one is exactly the canonical retainedCaptureRequest emitted by
++	 * the original Go guard. Compare one complete read, including token and
++	 * newline, so partial files, duplicate keys and trailing data cannot grant. */
++	int length = snprintf(expected, sizeof(expected),
++			      "{\"version\":1,\"token\":\"%s\",\"controller_pid\":%d,"
++			      "\"guard_pid\":%d,\"nonce\":\"%s\"}\n",
++			      capture_token, original_pids[2], original_pids[3], recovery_nonce);
++	return count == length && length > 0 && length < (int)sizeof(expected) &&
++	       !memcmp(data, expected, length);
 +}
 +
 +static int frozen(int group, int want)
@@ -335,7 +390,7 @@
 +	struct pollfd events[2] = {{.fd = life, .events = POLLIN}, {.fd = parents[0], .events = POLLIN}};
 +	user_regs_struct_t expected = ctl->orig.regs, actual;
 +	k_rtsigset_t expected_mask = ctl->orig.sigmask, actual_mask;
-+	int maps = -1, registers_match = 0, mask_match = 0;
++	int maps = -1, registers_match = 0, mask_match = 0, authorized = 0;
 +	sigemptyset(&action.sa_mask);
 +	if (sigaction(SIGCHLD, &action, NULL))
 +		_exit(21);
@@ -345,11 +400,14 @@
 +		_exit(22);
 +	retain_fds(keep, sizeof(keep) / sizeof(keep[0]));
 +	snprintf(record, sizeof(record),
-+		 "{\"version\":1,\"mode\":\"single_process_diagnostic\",\"source_pid\":%d,"
-+		 "\"source_start\":\"%llu\",\"helper_pid\":%d,\"tracer_pid\":%d,"
-+		 "\"worker_pid\":%d,\"controller_pid\":%d}\n",
-+		 source, source_start, getpid(), getppid(),
-+		 (int)process_field(getppid(), 4), (int)process_field(process_field(getppid(), 4), 4));
++		 "{\"version\":2,\"mode\":\"single_process_retained\",\"source_pid\":%d,"
++		 "\"source_start\":\"%llu\",\"helper_pid\":%d,\"helper_start\":\"%llu\","
++		 "\"tracer_pid\":%d,\"tracer_start\":\"%llu\",\"worker_pid\":%d,\"worker_start\":\"%llu\","
++		 "\"controller_pid\":%d,\"controller_start\":\"%llu\",\"guard_pid\":%d,"
++		 "\"guard_start\":\"%llu\",\"nonce\":\"%s\"}\n",
++		 source, source_start, getpid(), process_field(getpid(), 22),
++		 original_pids[0], original_starts[0], original_pids[1], original_starts[1],
++		 original_pids[2], original_starts[2], original_pids[3], original_starts[3], recovery_nonce);
 +	if (metadata(evidence, "criu-retained-arm.json", record) || write(ready, "R", 1) != 1)
 +		_exit(23);
 +	close(ready);
@@ -368,11 +426,22 @@
 +	}
 +	if (!__atomic_load_n(active_phase, __ATOMIC_ACQUIRE))
 +		_exit(25);
-+	/* Only diagnose after all old writers, including the independent Go
-+	 * guard, have exited. No competing freezer writer may race this cure. */
-+	for (index = 1; index < 4; index++)
-+		if (!dead(parents[index], 10000))
-+			_exit(26);
++	/* The failed worker must have completed its hold and network rollback.
++	 * A live original guard may then grant this exact retained nonce.
++	 * Older diagnostic callers still require both controllers to exit. */
++	if (!dead(parents[1], 10000))
++		_exit(26);
++	for (index = 0; index < 2000; index++) {
++		if (!dead(parents[3], 0) && granted(evidence)) {
++			authorized = 1;
++			break;
++		}
++		if (dead(parents[2], 0) && dead(parents[3], 0))
++			break;
++		usleep(5000);
++	}
++	if (index == 2000)
++		_exit(26);
 +	if (dead(parents[4], 0) || process_field(source, 22) != source_start)
 +		_exit(27);
 +	emergency_freezer = openat(group, "cgroup.freeze", O_WRONLY | O_NOFOLLOW | O_CLOEXEC);
@@ -415,11 +484,13 @@
 +		result = -1;
 +	alarm(0);
 +	snprintf(record, sizeof(record),
-+		 "{\"version\":1,\"passed\":%s,\"source_pid\":%d,\"source_start\":\"%llu\","
++		 "{\"version\":2,\"passed\":%s,\"source_pid\":%d,\"source_start\":\"%llu\","
 +		 "\"helper_pid\":%d,\"threads\":%d,\"registers_match\":%s,"
-+		 "\"signal_mask_match\":%s,\"injected_maps_after\":%d,\"source_held\":true}\n",
++		 "\"signal_mask_match\":%s,\"injected_maps_after\":%d,\"source_held\":true,"
++		 "\"guard_authorized\":%s,\"nonce\":\"%s\"}\n",
 +		 result == 0 ? "true" : "false", source, source_start, getpid(), count,
-+		 registers_match ? "true" : "false", mask_match ? "true" : "false", maps);
++		 registers_match ? "true" : "false", mask_match ? "true" : "false", maps,
++		 authorized ? "true" : "false", recovery_nonce);
 +	metadata(evidence, "criu-retained-result.json", record);
 +	_exit(result == 0 ? 0 : 1);
 +}
@@ -428,6 +499,7 @@
 +{
 +	int group = -1, evidence = -1, life[2], ready[2], parents[5], tids[64], count, worker, controller, guard;
 +	int index, child;
++	unsigned char random_nonce[32];
 +	struct stat info;
 +	struct statfs filesystem;
 +	sigset_t blocked, previous;
@@ -457,8 +529,21 @@
 +	controller = process_field(worker, 4);
 +	guard = private_number(evidence, "guard-armed.json", "helper_pid");
 +	reason = "original worker/controller/guard";
-+	if (worker <= 1 || controller <= 1 || guard <= 1)
++	if (worker <= 1 || controller <= 1 || guard <= 1 || original_token(evidence))
 +		goto skip;
++	original_pids[0] = getpid();
++	original_pids[1] = worker;
++	original_pids[2] = controller;
++	original_pids[3] = guard;
++	for (index = 0; index < 4; index++) {
++		original_starts[index] = process_field(original_pids[index], 22);
++		if (!original_starts[index])
++			goto skip;
++	}
++	if (getrandom(random_nonce, sizeof(random_nonce), 0) != sizeof(random_nonce))
++		goto skip;
++	for (index = 0; index < 32; index++)
++		snprintf(recovery_nonce + index * 2, 3, "%02x", random_nonce[index]);
 +	parents[0] = syscall(SYS_pidfd_open, getpid(), 0);
 +	parents[1] = syscall(SYS_pidfd_open, worker, 0);
 +	parents[2] = syscall(SYS_pidfd_open, controller, 0);

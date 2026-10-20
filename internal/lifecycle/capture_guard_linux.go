@@ -31,6 +31,7 @@ type captureGuardConfig struct {
 	RecordSHA  string `json:"record_sha256"`
 	StopSource bool   `json:"stop_source,omitempty"`
 	CriuSHA256 string `json:"criu_sha256,omitempty"`
+	Criu       string `json:"criu,omitempty"`
 }
 
 type captureGuardAnchors struct {
@@ -440,6 +441,14 @@ func captureGuardServe() (resultErr error) {
 				return err
 			}
 			unsafe, name, acknowledgement = false, "guard-capture-aborted.json", "capture-aborted-safe:"
+		case "capture-cure:" + config.Token:
+			if !unsafe || stopped {
+				return fmt.Errorf("retained cure has no matching live-source capture")
+			}
+			if err := captureGuardCureRetained(config, anchor); err != nil {
+				return err
+			}
+			name, acknowledgement = "guard-capture-cured.json", "source-cured:"
 		case "capture-stopped:" + config.Token:
 			if !unsafe || !config.StopSource {
 				return fmt.Errorf("stopped capture has no matching terminating intent")
@@ -574,6 +583,7 @@ func (e *Engine) startCheckpointGuard(source Record, pid int, executable, captur
 	if intent != nil {
 		config.StopSource = intent.StopSource
 		config.CriuSHA256 = intent.CriuSHA256
+		config.Criu = e.config.Criu
 	}
 	if intent != nil {
 		directory, err := e.root.Open(generation)

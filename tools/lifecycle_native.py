@@ -10,6 +10,7 @@ import subprocess
 import uuid
 
 import native_base
+import criu_candidate
 import reference
 import reference_lifecycle
 import upstream_unit
@@ -61,7 +62,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
     parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption", "admission", "worker-loss"], default="lifecycle")
-    parser.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
+    inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for checkpoint-based suites")
     parser.add_argument("--test", help="One exact native diagnostic test")
     options = parser.parse_args()
@@ -70,10 +73,10 @@ def main():
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
     capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption", "admission", "worker-loss"]
-    if capture_mode and (not options.criu_build or options.test):
-        parser.error("checkpoint-based suites require --criu-build and run their complete selected suite")
-    if options.criu_build and not capture_mode:
-        parser.error("--criu-build is only used by checkpoint-based suites")
+    if capture_mode and (not (options.criu_build or options.retained_candidate) or options.test):
+        parser.error("checkpoint-based suites require a CRIU input and run their complete selected suite")
+    if (options.criu_build or options.retained_candidate) and not capture_mode:
+        parser.error("CRIU inputs are only used by checkpoint-based suites")
     component_inputs = capture_mode or bool(options.native_base_build)
     build, components = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
@@ -86,6 +89,7 @@ def main():
         "schema": 1, "owner": owner, "container_name": name, "volume_name": name,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "component_build": options.sysbox_build, "test": options.test, "suite": options.suite,
+        "retained_candidate": bool(options.retained_candidate),
         "scope": ("Exact owned empty cgroup subtree retirement, foreign child-mount refusal and "
                   "populated-child preservation through Engine.Delete. No Sysbox daemon or process workload."
                   if options.test == "TestNativeEmptyCgroupRetirement" else
@@ -201,13 +205,16 @@ def main():
                 reference.artifact_storage.share_frozen_input(
                     source, inputs / component, ROOT, components["binary_sha256"][component])
             if capture_mode:
-                criu_build, criu = reference_lifecycle.component_build(
-                    options.criu_build, "factorybox-build-criu-")
+                if options.retained_candidate:
+                    criu_build, criu, _, _ = criu_candidate.load(options.retained_candidate)
+                else:
+                    criu_build, criu = reference_lifecycle.component_build(
+                        options.criu_build, "factorybox-build-criu-")
                 if reference.sha(criu_build / "criu") != criu["binary_sha256"]:
                     raise ValueError("rebuilt CRIU executable changed")
                 reference.artifact_storage.share_frozen_input(
                     criu_build / "criu", inputs / "criu", ROOT, criu["binary_sha256"])
-                result["criu_build"] = options.criu_build
+                result["criu_build"] = options.criu_build or options.retained_candidate
             result["component_sha256"] = {p.name: reference.sha(p) for p in inputs.iterdir()}
             if options.native_base_build:
                 image, base_result = native_base.load(options.native_base_build)

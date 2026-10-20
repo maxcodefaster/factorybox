@@ -92,7 +92,14 @@ func captureGuardProcessReceipt(config captureGuardConfig, anchors captureGuardA
 	}
 	var completion captureProcessCompletion
 	if err := captureCompletionRead(anchors.evidence, "capture-process-complete.json", &completion); err != nil {
-		return err
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		var restoredErr error
+		completion, restoredErr = captureGuardRestoredReceipt(config, anchors)
+		if restoredErr != nil {
+			return restoredErr
+		}
 	}
 	var worker captureWorkerIntent
 	if err := captureCompletionRead(anchors.evidence, "capture-worker-intent.json", &worker); err != nil {
@@ -146,7 +153,23 @@ func (guard *captureGuard) captureAborted(cause error) (*checkpointCaptureError,
 		return nil, err
 	}
 	if err := captureGuardProcessCompleted(guard.config, guard.anchor); err != nil {
-		return nil, err
+		if _, completeErr := captureCompletionBytes(guard.anchor.evidence, "capture-process-complete.json", 64<<10); !errors.Is(completeErr, os.ErrNotExist) {
+			return nil, err
+		}
+		var arm retainedCaptureArm
+		if readErr := captureCompletionRead(guard.anchor.evidence, "criu-retained-arm.json", &arm); readErr != nil {
+			return nil, err
+		}
+		if _, err := guard.socket.Write([]byte("capture-cure:" + guard.config.Token)); err != nil {
+			return nil, err
+		}
+		packet, err := captureGuardRead(int(guard.socket.Fd()), 14000)
+		if err != nil || string(packet) != "source-cured:"+guard.config.Token {
+			return nil, fmt.Errorf("retained source cure was not acknowledged: %v", err)
+		}
+		if err := captureGuardProcessCompleted(guard.config, guard.anchor); err != nil {
+			return nil, err
+		}
 	}
 	intent := captureAbortIntent{Version: 1, Token: guard.config.Token, FailedAt: now(), Error: cause.Error()}
 	if err := captureGuardWrite(guard.anchor.evidence, "capture-abort-intent.json", intent); err != nil {
@@ -255,7 +278,7 @@ type checkpointCaptureError struct {
 }
 
 func (err *checkpointCaptureError) Error() string {
-	return fmt.Sprintf("incomplete backing after completed process capture: %v", err.cause)
+	return fmt.Sprintf("incomplete checkpoint after source process recovery: %v", err.cause)
 }
 
 func (err *checkpointCaptureError) Unwrap() error { return err.cause }

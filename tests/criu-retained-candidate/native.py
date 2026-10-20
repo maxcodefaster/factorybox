@@ -3,7 +3,6 @@ import argparse
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -11,6 +10,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import lifecycle_native
+import criu_candidate
 import native_base
 import reference
 import reference_lifecycle
@@ -22,21 +22,12 @@ parser.add_argument("--candidate", required=True)
 parser.add_argument("--native-base-build", required=True)
 parser.add_argument("--sysbox-build", required=True)
 parser.add_argument("--corruption-control", action="store_true")
+parser.add_argument("--pause", action="store_true")
+parser.add_argument("--grant-control", action="store_true")
 options = parser.parse_args()
 candidate_name = options.candidate
 corruption_control = options.corruption_control
-assert re.fullmatch(r"factorybox-build-criu-retained-[0-9a-f]{32}", candidate_name)
-candidate = root / "artifacts" / candidate_name
-criu = json.loads((candidate / "result.json").read_text())
-assert criu["passed"] and criu["cleanup"] and criu["diagnostic_only"]
-assert reference.sha(candidate / "criu") == criu["binary_sha256"]
-assert reference.sha(candidate / "source-lock.json") == criu["source_lock_sha256"]
-assert reference.sha(candidate / "retained.patch") == criu["patch_sha256"]
-assert sources.tree_sha(candidate / "context") == criu["context_sha256"]
-candidate_lock = json.loads((candidate / "source-lock.json").read_text())
-component = candidate_lock["components"]["criu"]
-sources.validate_inputs(component)
-sources.check_source(candidate / "context", root / ".cache/downloads" / component["archive"], component)
+candidate, criu, _, _ = criu_candidate.load(candidate_name)
 base_name = options.native_base_build
 image, base = native_base.load(base_name)
 sysbox_name = options.sysbox_build
@@ -100,13 +91,22 @@ command += ["--entrypoint", "/bin/bash", image, "/native.sh"]
 if corruption_control:
     location = command.index("--entrypoint")
     command[location:location] = ["--env", "FACTORYBOX_CRIU_RETAINED_CORRUPTION_CONTROL=1"]
+if options.pause:
+    location = command.index("--entrypoint")
+    command[location:location] = ["--env", "FACTORYBOX_NATIVE_INTERRUPTION_PAUSE=1"]
+if options.grant_control:
+    location = command.index("--entrypoint")
+    command[location:location] = ["--env", "FACTORYBOX_CRIU_RETAINED_GRANT_CONTROL=1"]
 result = {
     "owner": owner, "container_name": name, "volume_name": name, "command": command,
     "candidate": candidate_name, "candidate_sha256": criu["binary_sha256"],
     "corruption_control": corruption_control,
+    "pause": options.pause,
+    "grant_control": options.grant_control,
     "inputs_sha256": inputs, "component_sha256": component_hashes, "source_sha256": source_sha,
-    "scope": "Actual CRIU kill during pages dump; retained source must remain held. "
-             "Diagnostic cure/raw-RAM/TCP checks do not replace the still-required running-source assertion.",
+    "scope": "Actual CRIU kill during pages dump; only the original independent guard may authorize "
+             "process cure and source release. Complete 32-MiB RAM, TCP, previous committed fork "
+             "and original running-source assertions remain required. Single-process candidate only.",
     "passed": False, "mechanism_passed": False, "cleanup": False, "production_qualified": False,
 }
 (archive / "intent.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -127,7 +127,19 @@ try:
         all(reference.sha(archive / p) == digest for p, digest in inputs.items()) and
         all(reference.sha(components / p) == digest for p, digest in component_hashes.items()) and
         sources.tree_sha(context) == source_sha)
-    result["passed"] = done.returncode == 0 and result["inputs_unchanged"]
+    result["passed"] = (
+        done.returncode == 0 and result["inputs_unchanged"] and
+        not result["container_state"]["OOMKilled"] and
+        result["passed_tests"] == 9 and result["passed_subtests"] == 40 and
+        "--- PASS: TestInterruptedCaptureNative " in text and
+        "--- SKIP:" not in text and "--- FAIL:" not in text)
+    if options.grant_control:
+        control = output / "interruption-grant-controls.json"
+        result["grant_controls"] = json.loads(control.read_text()) if control.exists() else {}
+        result["passed"] = bool(result["passed"] and result["grant_controls"].get("passed") and
+                                result["grant_controls"].get("refused") ==
+                                ["absent", "nonce", "guard", "controller", "version", "token", "trailing",
+                                 "duplicate", "partial", "mode", "hardlink", "symlink"])
     proof = output / "interruption-retained-context.json"
     if proof.exists():
         result["diagnostic"] = json.loads(proof.read_text())
@@ -139,7 +151,8 @@ try:
             "rolled-back original TCP sockets are not bidirectionally usable" not in text)
         result["mechanism_passed"] = (
             result["diagnostic"]["passed"] and result["network_unchanged"] and result["inputs_unchanged"] and
-            result["passed_tests"] == 8 and result["passed_subtests"] == 40 and
+            result["passed_tests"] == (9 if done.returncode == 0 else 8) and
+            result["passed_subtests"] == 40 and
             "previous committed checkpoint remained independently usable after actual CRIU interruption" in text and
             not result["container_state"]["OOMKilled"])
 except Exception as error:

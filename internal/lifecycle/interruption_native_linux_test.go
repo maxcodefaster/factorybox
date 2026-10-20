@@ -27,6 +27,11 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION") != "1" {
 		t.Skip("requires the owned real-CRIU interruption fixture")
 	}
+	pauseMode := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_PAUSE") == "1"
+	grantControl := os.Getenv("FACTORYBOX_CRIU_RETAINED_GRANT_CONTROL") == "1"
+	if grantControl && os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") != "1" {
+		t.Fatal("retained grant controls require the retained-context candidate")
+	}
 	actor := "/bin/env FACTORYBOX_CAPTURE_ACTOR=1 FACTORYBOX_CAPTURE_BALLAST=1 "
 	if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
 		actor += "FACTORYBOX_CAPTURE_BALLAST_ADDRESS=1 "
@@ -214,11 +219,15 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	}
 	snapshot := strings.Repeat("c", 32)
 	relative, _ := checkpointPath("interrupted", snapshot)
+	operation := "checkpoint"
+	if pauseMode {
+		operation = "pause"
+	}
 	command := exec.Command("/factorybox", "--root", engine.config.Root,
 		"--runtime", engine.config.Runtime, "--runtime-sha256", engine.config.RuntimeSHA256,
 		"--criu", engine.config.Criu, "--criu-sha256", engine.config.CriuSHA256,
 		"--manager-root", engine.config.ManagerRoot,
-		"checkpoint", "--snapshot-id", snapshot, "interrupted")
+		operation, "--snapshot-id", snapshot, "interrupted")
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Start(); err != nil {
@@ -241,6 +250,8 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		Scope      string `json:"scope"`
 	}
 	var interruptedPID int
+	var heldGuard retainedCaptureArm
+	var resumeGuard func()
 	for interruptedPID == 0 {
 		if err := engine.readCheckpointJSON(relative+"/guard/capture-worker-intent.json", &worker); err == nil &&
 			worker.Token == snapshot && worker.SourcePID == source.Runtime.PID &&
@@ -279,6 +290,16 @@ func TestInterruptedCaptureNative(t *testing.T) {
 						}
 						if statErr == nil && expectedErr == nil && statusErr == nil &&
 							os.SameFile(executable, expected) && ownedParent {
+							if grantControl {
+								// Stop the exact already-tracing CRIU first so
+								// preparing guard controls cannot miss the kill window.
+								if err := unix.PidfdSendSignal(fd, unix.SIGSTOP, nil, 0); err != nil {
+									unix.Close(fd)
+									t.Fatal(err)
+								}
+								heldGuard, resumeGuard = stopRetainedGuardNative(t, engine, relative, command.Process.Pid, tracer)
+								defer resumeGuard()
+							}
 							// Read only the pinned original freezer at the actual
 							// fault boundary. Write diagnostics after the kill so
 							// output I/O cannot delay the injection window.
@@ -301,23 +322,18 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		}
 	}
 	t.Logf("interrupted pinned CRIU PID %d after at least 8 MiB of image data while tracing original source PID %d", interruptedPID, source.Runtime.PID)
+	if grantControl {
+		probeRetainedGrantsNative(t, engine, relative, originalGroup, heldGuard)
+		resumeGuard()
+	}
 	if err := command.Wait(); err == nil {
 		t.Fatal("interrupted CRIU published a successful checkpoint")
 	}
 	waited = true
 	if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
-		var arm struct {
-			Version       int    `json:"version"`
-			Mode          string `json:"mode"`
-			SourcePID     int    `json:"source_pid"`
-			SourceStart   string `json:"source_start"`
-			HelperPID     int    `json:"helper_pid"`
-			TracerPID     int    `json:"tracer_pid"`
-			WorkerPID     int    `json:"worker_pid"`
-			ControllerPID int    `json:"controller_pid"`
-		}
+		var arm retainedCaptureArm
 		if err := engine.readCheckpointJSON(relative+"/guard/criu-retained-arm.json", &arm); err != nil ||
-			arm.Version != 1 || arm.Mode != "single_process_diagnostic" ||
+			arm.Version != 2 || arm.Mode != "single_process_retained" ||
 			arm.SourcePID != source.Runtime.PID || arm.TracerPID != interruptedPID ||
 			arm.WorkerPID != worker.PID || arm.ControllerPID != command.Process.Pid {
 			t.Fatal("retained-context diagnostic was not armed for its exact interrupted transaction", err, arm)
@@ -325,18 +341,7 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		if birth, err := processBirth(source.Runtime.PID); err != nil || birth != arm.SourceStart {
 			t.Fatal("retained-context diagnostic lost the original source process birth", err)
 		}
-		var cure struct {
-			Version     int    `json:"version"`
-			Passed      bool   `json:"passed"`
-			SourcePID   int    `json:"source_pid"`
-			SourceStart string `json:"source_start"`
-			HelperPID   int    `json:"helper_pid"`
-			Threads     int    `json:"threads"`
-			Registers   bool   `json:"registers_match"`
-			SignalMask  bool   `json:"signal_mask_match"`
-			Maps        int    `json:"injected_maps_after"`
-			Held        bool   `json:"source_held"`
-		}
+		var cure retainedCaptureResult
 		cureDeadline := time.Now().Add(20 * time.Second)
 		for {
 			err := engine.readCheckpointJSON(relative+"/guard/criu-retained-result.json", &cure)
@@ -348,18 +353,35 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		if !cure.Passed || cure.Version != 1 || cure.SourcePID != arm.SourcePID ||
+		if !cure.Passed || cure.Version != 2 || cure.SourcePID != arm.SourcePID ||
 			cure.SourceStart != arm.SourceStart || cure.HelperPID != arm.HelperPID ||
-			!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held || cure.Threads <= 0 {
+			!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held ||
+			cure.Threads <= 0 || cure.Nonce != arm.Nonce {
 			t.Fatal("retained-context producer did not prove its scoped cure", cure)
 		}
 		if err := engine.validateCgroup(source.Record); err != nil {
 			t.Fatal(err)
 		}
 		events, err := captureGuardEvents(originalGroup)
-		if err != nil || events["frozen"] != 1 || events["populated"] != 1 ||
+		if err != nil || events["frozen"] > 1 || events["populated"] != 1 ||
 			before.BallastBytes != 32<<20 || before.BallastAddress == 0 || before.BallastAddress > 1<<62 {
 			t.Fatal("diagnostic cure did not retain its original frozen source and complete RAM bounds", events, err)
+		}
+		if events["frozen"] == 0 {
+			if pauseMode {
+				record, err := engine.read("interrupted")
+				if err != nil || !cure.Authorized || record.Phase != "running" || record.Pause != nil ||
+					len(record.PauseHistory) != 1 || record.PauseHistory[0].SnapshotID != snapshot ||
+					record.PauseHistory[0].RejectedAt == "" || record.PauseHistory[0].Error == "" {
+					t.Fatal("interrupted pause lost its confirmed running source or failed operation history", err, record)
+				}
+			} else {
+				var recovered *checkpointCaptureError
+				replayErr := engine.reconcileAbortedCheckpoint(source.Record, snapshot, relative)
+				if !cure.Authorized || !errors.As(replayErr, &recovered) || !recovered.recovered {
+					t.Fatal("source ran without the original guard's immutable recovery acknowledgement", replayErr)
+				}
+			}
 		}
 		maps, err := os.ReadFile(fmt.Sprintf("/proc/%d/maps", source.Runtime.PID))
 		if err != nil || bytes.Contains(maps, []byte("CRIUMFD")) {
@@ -377,9 +399,10 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			t.Fatal("read-only diagnostic found changed original 32-MiB RAM", hashErr, closeErr, read)
 		}
 		encoded, err := json.Marshal(map[string]any{
-			"passed": true, "source_pid": source.Runtime.PID, "source_held": true,
-			"ballast_bytes": read, "ballast_sha256": fmt.Sprintf("%x", digest.Sum(nil)),
-			"cure": cure, "scope": "Real page dump and retained C cure; no diagnostic thaw or production release authority.",
+			"passed": true, "source_pid": source.Runtime.PID, "source_held": events["frozen"] == 1,
+			"guard_authorized": cure.Authorized,
+			"ballast_bytes":    read, "ballast_sha256": fmt.Sprintf("%x", digest.Sum(nil)),
+			"cure": cure, "scope": "Real page dump and retained C cure; source release requires the original guard's checked acknowledgement.",
 		})
 		if err != nil {
 			t.Fatal("encode exact held-source diagnostic", err)
@@ -387,7 +410,7 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		if err := os.WriteFile("/output/interruption-retained-context.json", append(encoded, '\n'), 0600); err != nil {
 			t.Fatal("save exact held-source diagnostic", err)
 		}
-		t.Log("retained CRIU context removed its injected mapping and preserved all original 32-MiB RAM while the source stayed held")
+		t.Log("retained CRIU context removed its injected mapping and preserved all original 32-MiB RAM without diagnostic thaw")
 	}
 	freezerAfter, freezeErr := captureReadFile(originalGroup, "cgroup.freeze", 64)
 	eventsAfter, eventsErr := captureReadFile(originalGroup, "cgroup.events", 4096)
@@ -405,9 +428,24 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(engine.config.Root, relative, "checkpoint.json")); !os.IsNotExist(err) {
 		t.Fatal("interrupted capture published complete backing", err)
 	}
-	for _, name := range []string{"capture-process-complete.json", "capture-abort-intent.json", "guard-capture-aborted.json"} {
+	for _, name := range []string{"capture-process-complete.json"} {
 		if _, err := os.Stat(filepath.Join(engine.config.Root, relative, "guard", name)); !os.IsNotExist(err) {
 			t.Fatal("interrupted CRIU gained a process-completion or safe-abort receipt", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(engine.config.Root, relative, "guard", "capture-process-restored.json")); err == nil {
+		if !pauseMode {
+			var recovered *checkpointCaptureError
+			replayErr := engine.reconcileAbortedCheckpoint(source.Record, snapshot, relative)
+			if !errors.As(replayErr, &recovered) || !recovered.recovered {
+				t.Fatal("actual CRIU loss has an unproved recovery receipt", replayErr)
+			}
+		}
+	} else {
+		for _, name := range []string{"capture-abort-intent.json", "guard-capture-aborted.json"} {
+			if _, err := os.Stat(filepath.Join(engine.config.Root, relative, "guard", name)); !os.IsNotExist(err) {
+				t.Fatal("uncured CRIU loss gained an unsafe abort acknowledgement", name, err)
+			}
 		}
 	}
 	afterNetwork, networkErr := networkRules()
@@ -463,7 +501,74 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatal("interruption changed original private RAM", err)
 	}
-	if _, err := readCaptureActor(source.Runtime.PID, "advance"); err != nil {
+	advanced, err := readCaptureActor(source.Runtime.PID, "advance")
+	if err != nil {
 		t.Fatal("interrupted source cannot continue useful work", err)
+	}
+	if _, err := os.Stat(filepath.Join(engine.config.Root, relative, "guard", "capture-process-restored.json")); err == nil && !pauseMode {
+		replay := func() error {
+			_, err := engine.Checkpoint(ctx, "interrupted", snapshot)
+			return err
+		}
+		var recovered *checkpointCaptureError
+		if err := replay(); !errors.As(err, &recovered) || !recovered.recovered {
+			t.Fatal("proved CRIU rollback did not retain its immutable failed-checkpoint outcome", err)
+		}
+		for name, field := range map[string]string{
+			"criu-retained-arm.json":        "helper_start",
+			"criu-retained-request.json":    "nonce",
+			"criu-retained-result.json":     "nonce",
+			"capture-process-restored.json": "arm_sha256",
+			"capture-network-rollback.json": "source_start",
+		} {
+			path := filepath.Join(engine.config.Root, relative, "guard", name)
+			original, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var changed map[string]any
+			if err := json.Unmarshal(original, &changed); err != nil {
+				t.Fatal(err)
+			}
+			changed[field] = "tampered"
+			encoded, err := json.Marshal(changed)
+			if err != nil || os.WriteFile(path, encoded, 0600) != nil {
+				t.Fatal("prepare owned receipt corruption control", name, err)
+			}
+			replayErr := replay()
+			if err := os.WriteFile(path, original, 0600); err != nil {
+				t.Fatal("restore only the owned receipt control", name, err)
+			}
+			var unsafe *checkpointCaptureError
+			if replayErr == nil || (errors.As(replayErr, &unsafe) && unsafe.recovered) {
+				t.Fatal("tampered retained-context proof authorized recovery replay", name)
+			}
+			view, err := engine.Inspect(ctx, "interrupted")
+			current, readErr := readCaptureActor(source.Runtime.PID, "get")
+			if err != nil || view.Runtime == nil || view.Runtime.PID != source.Runtime.PID ||
+				view.Runtime.Status != "running" || readErr != nil || !reflect.DeepEqual(current, advanced) {
+				t.Fatal("refused proof replay changed the original running source", name, err, readErr)
+			}
+		}
+		if err := replay(); !errors.As(err, &recovered) || !recovered.recovered {
+			t.Fatal("restored receipt controls changed the retained original failure", err)
+		}
+		t.Log("immutable CRIU-loss replay passed and changed arm/grant/result/restoration/network proofs were refused without recapture")
+	}
+	if pauseMode {
+		beforeReplay, err := engine.read("interrupted")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := engine.Pause(ctx, "interrupted", snapshot); err == nil {
+			t.Fatal("failed pause identity was reused for a second capture")
+		}
+		afterReplay, err := engine.read("interrupted")
+		current, readErr := readCaptureActor(source.Runtime.PID, "get")
+		if err != nil || !reflect.DeepEqual(beforeReplay, afterReplay) ||
+			readErr != nil || !reflect.DeepEqual(current, advanced) {
+			t.Fatal("failed-pause replay changed retained history or original RAM", err, readErr)
+		}
+		t.Log("actual CRIU-loss pause restored running state, retained failure history and refused identity reuse")
 	}
 }

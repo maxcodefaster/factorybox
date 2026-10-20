@@ -9,6 +9,7 @@ import tarfile
 import uuid
 
 import native_base
+import criu_candidate
 import reference
 import reference_lifecycle
 import sources
@@ -49,7 +50,9 @@ def archive_volume(output, name, owner, image, result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--criu-build", required=True)
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--criu-build")
+    inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
     parser.add_argument("--native-base-build", required=True)
     parser.add_argument("--test", help="One selected C case for diagnosis")
     options = parser.parse_args()
@@ -60,20 +63,25 @@ def main():
             parser.error("--test must name one declared core case")
         expected = [options.test]
     image, base = native_base.load(options.native_base_build)
-    build, criu = reference_lifecycle.component_build(options.criu_build, "factorybox-build-criu-")
-    if reference.sha(build / "criu") != criu["binary_sha256"]:
-        raise ValueError("CRIU binary changed")
-    component = json.loads((ROOT / "upstream/lock.json").read_text())["components"]["criu"]
-    tree = ROOT / ".cache/sources/criu"
-    sources.validate_inputs(component)
-    unchanged = sources.check_source(tree, ROOT / ".cache/downloads" / component["archive"], component)
+    lock = ROOT / "upstream/lock.json"
+    if options.retained_candidate:
+        build, criu, component, unchanged = criu_candidate.load(options.retained_candidate)
+        tree, lock = build / "context", build / "source-lock.json"
+    else:
+        build, criu = reference_lifecycle.component_build(options.criu_build, "factorybox-build-criu-")
+        if reference.sha(build / "criu") != criu["binary_sha256"]:
+            raise ValueError("CRIU binary changed")
+        component = json.loads(lock.read_text())["components"]["criu"]
+        tree = ROOT / ".cache/sources/criu"
+        sources.validate_inputs(component)
+        unchanged = sources.check_source(tree, ROOT / ".cache/downloads" / component["archive"], component)
     owner = uuid.uuid4().hex
     name = "factorybox-criu-core-" + owner
     output = reference.new_artifact(name)
     output.mkdir()
     for source in ["criu-core.py", "criu-core-cases.json"]:
         shutil.copyfile(ROOT / "tests" / source, output / source)
-    shutil.copyfile(ROOT / "upstream/lock.json", output / "source-lock.json")
+    shutil.copyfile(lock, output / "source-lock.json")
     # Preserve dangling and ordinary upstream symlinks across the Mac file share.
     # The native compiler receives the exact verified files on a Linux volume.
     with tarfile.open(output / "source.tar", "w", dereference=False) as archive:
@@ -82,7 +90,8 @@ def main():
         "schema": 1, "owner": owner, "container_name": name, "volume_name": name,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "passed": False, "cleanup": False, "production_qualified": False,
-        "criu_build": options.criu_build, "criu_sha256": criu["binary_sha256"],
+        "criu_build": options.criu_build or options.retained_candidate,
+        "retained_candidate": bool(options.retained_candidate), "criu_sha256": criu["binary_sha256"],
         "native_base_build": options.native_base_build, "image": image,
         "native_base_packages_sha256": base["packages_sha256"],
         "source_lock_sha256": reference.sha(output / "source-lock.json"),
