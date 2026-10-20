@@ -38,14 +38,21 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Current runc integration | `factorybox-upstream-9e3324f1d97e4130a6d6ea6040d62b5a`: 47 passes, twelve original upstream skips |
 | Unchanged fs/mgr/IPC/library modules | Retain the combined pass in `factorybox-upstream-eafc65ac3e6f46fcb89b97480cf224d8`; the manager's four shiftfs cases skip on this worker |
 | Current CRIU core | `factorybox-criu-core-ea025fce7b7f4939b70aeec382d5bdfe`: 18 unchanged C tests, two dump/restore cycles each, zero skips |
-| Prepared-base pause/resume | `factorybox-runtime-3002210d52a04dca9fd3460bd3f7cb49`: eight tests, 41 subtests, zero skips, owned cleanup |
-| Full developer lifecycle with separate Theia | `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b`: eight app phases and nine IDE checks, unchanged inputs/global sentinels, full cleanup |
-| Full developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-06054d432354417bbe84e0da64cb0cdf`: eight app, nine IDE and eight authenticated OpenCode API checks; unchanged inputs/global sentinels, full cleanup |
+| Prepared-base pause/resume | `factorybox-runtime-ddb555c6666c407a87ab91555edbe0af`: nine tests, 46 subtests, zero skips, owned cleanup |
+| Filesystem preflight rejection | `factorybox-runtime-f8ec18cb222e4feb9e91acccce6abb24`: checkpoint/pause and immutable replay preserve the original running PID, RAM and useful work; forged rejection kind refused |
+| Image ownership and durability | `factorybox-runtime-f8ec18cb222e4feb9e91acccce6abb24`: nine tests and 40 subtests, including one complete-directory barrier, failed-barrier refusal and symlink/hardlink/foreign-mount rejection |
+| Earlier separate-Theia baseline | `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b`: eight app phases and nine IDE checks, unchanged inputs/global sentinels, full cleanup |
+| Current developer lifecycle with Theia and OpenCode | `factorybox-devx-lifecycle-147a342d25c245909ffc9e308334fcbf`: eight app, nine IDE and eight authenticated OpenCode API checks; unchanged inputs/global sentinels, full cleanup |
 | Interrupted CRIU process recovery | **Failing**: the current source remains held after the verified CRIU child is killed |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
 Required failing or unrun gates block a production release.
+An owned diagnostic, `factorybox-proc-kcore-ac45c0f06a5e46f5ac4bcc02140c6756`, reproduced the
+missing entry in a freshly mounted private Proc filesystem without Sysbox. `/proc/kmsg` and
+`/proc/kallsyms` existed. The original Bats case expects `Permission denied` for `cat /proc/kcore`;
+this worker returns `No such file or directory`. No dummy Proc entry or assertion replacement
+is used to hide that platform difference.
 
 ## Runtime and consumer boundaries
 
@@ -128,8 +135,9 @@ mise exec -- python3 tools/build_criu.py \
 
 The current Sysbox comparison passed from empty Go caches. The current CRIU binary also matched
 comparison build `factorybox-build-criu-3781b0dbb40f4928a0b52b046ec6f4bd`. These observations cover
-the selected native builder, not another platform. The Factorybox CLI binaries also match across
-the two passing frozen developer build contexts. Factorybox's original-code license must be
+the selected native builder, not another platform. The current Factorybox CLI also matches
+between the native image/admission gate and the passing frozen developer context.
+Factorybox's original-code license must be
 chosen before public distribution. No public release or Factory installation is part of the
 current qualification.
 
@@ -191,6 +199,11 @@ and xattrs, and rejects unowned binds or foreign mounts. Inode identities and ct
 remain equal after copying. Executable hooks and arbitrary mount layouts are not admitted.
 Base garbage collection and reconstruction after losing the worker mount namespace are not
 implemented.
+Filesystem configuration admission runs while the original source is safely frozen, before the
+guard enters CRIU capture. The worker repeats admission. Known preflight rejection therefore
+thaws the original process and retains a failed immutable operation rather than leaving it held.
+Namespace and filesystem rejection records remain distinct; replay refuses a changed kind.
+This does not authorize thaw after an uncertain CRIU failure.
 
 ### Pause, recovery and failure containment
 
@@ -234,7 +247,7 @@ mise exec -- python3 tools/lifecycle_native.py \
 ```
 
 Lifecycle profiles include `lifecycle`, `guard`, `capture`, `pause`, `base`, `base-pause`,
-`delegation`, `namespaces`, `time`, `mountfd` and the required failing `interruption` gate.
+`delegation`, `namespaces`, `time`, `mountfd`, `admission` and the required failing `interruption` gate.
 Each runner checks declared assertions, inputs, process outcome and exact owned cleanup.
 Small native fixtures do not replace full developer-workload qualification.
 
@@ -320,7 +333,7 @@ workspace, requires `OPENCODE_PASSWORD`, binds to loopback and keeps its databas
 workspace's `.git` directory unless `OPENCODE_DB` is supplied. `FACTORY_OPENCODE_CONFIG` remains
 optional. Model fetching is disabled. The `--opencode` fixture option checks the supplied server's
 authenticated native API across lifecycle phases. Add it to the same command to include the
-optional harness in the Sysbox workload. The combined gate passed in 312.48 seconds with full
+optional harness in the Sysbox workload. The current combined gate passed in 352.08 seconds with full
 cleanup. Every phase verified the supplied OpenCode 2.0.27 process's namespace PID/version through
 `/api/info`, authenticated session reads and rejection of unauthenticated reads. Probes execute
 inside the sandbox's user, PID, mount and network namespaces. Their own HTTP connections consume
@@ -339,25 +352,27 @@ by the core lifecycle.
 
 | Phase | Separate Theia | Separate Theia and in-sandbox OpenCode |
 | --- | ---: | ---: |
-| Frozen rootfs, immutable base and OCI preparation | 42.707 s | 12.538 s |
-| Prepared start through first useful Connector response | 43.300 s | 26.082 s |
-| Source checkpoint preceding the first fork | 25.948 s | 22.913 s |
-| Fork of that checkpoint through first useful app response | 13.439 s | 12.426 s |
-| Branch checkpoint preceding the descendant fork | 10.735 s | 16.362 s |
-| Fork of fork through first useful app response | 14.380 s | 35.386 s |
-| Pause with stopped source and snapshot RAM release | 14.980 s | 34.066 s |
-| Resume through first useful app response | 4.122 s | 4.648 s |
-| Resumed-source checkpoint preceding its fork | 34.678 s | 33.362 s |
-| Fork of resumed source through first useful app response | 28.514 s | 21.932 s |
+| Frozen rootfs, immutable base and OCI preparation | 42.707 s | 31.885 s |
+| Prepared start through first useful Connector response | 43.300 s | 57.278 s |
+| Source checkpoint preceding the first fork | 25.948 s | 17.374 s |
+| Fork of that checkpoint through first useful app response | 13.439 s | 29.156 s |
+| Branch checkpoint preceding the descendant fork | 10.735 s | 25.995 s |
+| Fork of fork through first useful app response | 14.380 s | 24.037 s |
+| Pause with stopped source and snapshot RAM release | 14.980 s | 15.666 s |
+| Resume through first useful app response | 4.122 s | 8.966 s |
+| Resumed-source checkpoint preceding its fork | 34.678 s | 31.192 s |
+| Fork of resumed source through first useful app response | 28.514 s | 14.070 s |
 
 Both columns are individual shared-worker observations with the selected components. Evidence:
 `factorybox-devx-lifecycle-e3c84fef88f548a68ed7ecbd49da5a3b` and
-`factorybox-devx-lifecycle-06054d432354417bbe84e0da64cb0cdf`. Outer execution took 318.03 and
-312.48 seconds respectively; Go lifecycle including teardown took 291.53 and 298.29 seconds.
+`factorybox-devx-lifecycle-147a342d25c245909ffc9e308334fcbf`. Outer execution took 318.03 and
+352.08 seconds respectively; Go lifecycle including teardown took 291.53 and 337.22 seconds.
+The first column precedes the filesystem-admission and image-durability changes; it is a
+historical baseline, not a controlled before/after performance comparison.
 
 Preparation precedes prepared start. Fork timings use an already published checkpoint. A fresh
 current-state fork must also pay its preceding checkpoint: the first combined observation's
-22.913-second checkpoint plus 12.426-second fork totals about 35.34 seconds. These are component
+17.374-second checkpoint plus 29.156-second fork totals about 46.53 seconds. These are component
 sums, not a separately instrumented aggregate request. App-response timings precede the
 subsequent IDE/OpenCode assertions; those checks have their own observations. Artifacts retain
 CPU, I/O and memory samples. External IDE writes are serialized outside capture.
@@ -365,8 +380,17 @@ CPU, I/O and memory samples. External IDE writes are serialized outside capture.
 These observations do not establish p95 or isolate improvements from background load.
 The sub-three-second p95 target remains unachieved. Selected optimizations are the verified
 immutable lower, complete target verification with fresh source-digest reuse, one durability
-barrier per generation and a reused digest buffer. Rejected lazy/delta/read-hint experiments
+barrier per filesystem/image generation and a reused digest buffer. Rejected lazy/delta/read-hint experiments
 remain historical evidence, not runtime defaults.
+
+The preceding full regression, `factorybox-devx-lifecycle-16442a4d4a5c46c9895d407b6a04487a`, hit
+the unchanged 60-second capture deadline after its resumed-source dump. Its retained metadata
+shows CRIU finished in 1.06 seconds, filesystem copying/verification took 41.99 seconds and
+filesystem durability took 16.53 seconds. Only six of 268 images had their ownership adjusted
+before timeout. Image finalization previously forced a separate file barrier for each image.
+The current path verifies independent regular files through the pinned directory, rejects
+foreign mounts, and uses one complete filesystem barrier plus directory sync. The failed
+run remains failed; a later complete pass does not establish a latency distribution.
 
 ## Storage and exact cleanup
 

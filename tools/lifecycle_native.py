@@ -17,8 +17,8 @@ import upstream_unit
 ROOT = reference.ROOT
 EXPECTED_TESTS = 6
 EXPECTED_CAPTURE_SUBTESTS = 17
-EXPECTED_ADAPTER_TESTS = 7
-EXPECTED_ADAPTER_SUBTESTS = 35
+EXPECTED_ADAPTER_TESTS = 8
+EXPECTED_ADAPTER_SUBTESTS = 40
 
 
 def archive_capture(archive, name, owner, result, image):
@@ -60,7 +60,7 @@ def archive_capture(archive, name, owner, result, image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption", "admission"], default="lifecycle")
     parser.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for checkpoint-based suites")
     parser.add_argument("--test", help="One exact native diagnostic test")
@@ -69,7 +69,7 @@ def main():
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
-    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption"]
+    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "interruption", "admission"]
     if capture_mode and (not options.criu_build or options.test):
         parser.error("checkpoint-based suites require --criu-build and run their complete selected suite")
     if options.criu_build and not capture_mode:
@@ -89,6 +89,10 @@ def main():
         "scope": ("Exact owned empty cgroup subtree retirement, foreign child-mount refusal and "
                   "populated-child preservation through Engine.Delete. No Sysbox daemon or process workload."
                   if options.test == "TestNativeEmptyCgroupRetirement" else
+                  "Public checkpoint/pause filesystem admission before process capture. A successfully "
+                  "started no-op hook remains unsupported for capture; rejection and immutable replay "
+                  "must preserve the original running PID, RAM and useful work without starting CRIU."
+                  if options.suite == "admission" else
                   "Actual pinned CRIU child interrupted through its pidfd after an image reaches "
                   "8 MiB while tracing its verified original 32-MiB RAM source. Failed capture "
                   "must preserve original identity, RAM, private network rules, useful work and "
@@ -233,6 +237,7 @@ def main():
             "--env", "FACTORYBOX_NATIVE_DELEGATION=" + ("1" if options.suite == "delegation" else "0"),
             "--env", "FACTORYBOX_NATIVE_MOUNT_FD=" + ("1" if options.suite == "mountfd" else "0"),
             "--env", "FACTORYBOX_NATIVE_INTERRUPTION=" + ("1" if options.suite == "interruption" else "0"),
+            "--env", "FACTORYBOX_NATIVE_FILESYSTEM_ADMISSION=" + ("1" if options.suite == "admission" else "0"),
             "--env", "FACTORYBOX_NATIVE_TEST=" + (options.test or ""),
             "--env", "FACTORYBOX_RUNTIME_SHA256=" + components["binary_sha256"]["sysbox-runc"],
             "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB",
@@ -286,6 +291,7 @@ def main():
             (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 6 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "interruption" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "admission" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "namespaces" or result["passed_subtests"] == 1 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["time", "delegation"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "mountfd" or result["passed_subtests"] == 2 + EXPECTED_ADAPTER_SUBTESTS) and

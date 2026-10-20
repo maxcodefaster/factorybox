@@ -68,6 +68,7 @@
     "changes": [
       "Port the proved GNU cp archive/reflink path for physical overlay backing directories and private Sysbox-managed volumes.",
       "Require the actual single-lower overlay layout, explicit manager root and saved ID-mapped Sysbox mount identities; reject unowned external binds.",
+      "Run the read-only filesystem admission while the original source guard is still in its safe frozen phase, and repeat it in the capture worker before invoking CRIU. Rejected inputs never enter process capture.",
       "Capture caller-provided lower and upper independently unless the source explicitly uses a completely verified private Factorybox base.",
       "Add complete content, mode, UID/GID, mtime, link, device and xattr digests, foreign-mount rejection and independent-inode checks.",
       "Hash hardlinked payloads once per inode inside each frozen-tree scan while retaining every path and link relationship.",
@@ -99,6 +100,7 @@
       "Extract the ordinary complete retained-source checkpoint options, mapped image ownership and final regular-file ownership checks.",
       "Use the same pinned modern runc library as ramctl, without its experiment switches, fixed paths, pre-dump or lazy-inheritance modes.",
       "Supply a per-capture CRIU configuration through a private raw state copy; preserve the original opaque Sysbox state and verify it is unchanged after dump.",
+      "Pin the image directory and refuse symlinks, hardlinks and foreign bind mounts before changing image ownership. Persist the complete image generation with one filesystem barrier instead of a separate file barrier per CRIU image; propagate durability failure without completion.",
       "Keep vendor configuration types inside this adapter. The caller supplies original kernel handles through the guarded worker."
     ],
     "sources": {

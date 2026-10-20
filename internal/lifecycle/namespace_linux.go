@@ -14,22 +14,31 @@ import (
 )
 
 type checkpointAdmissionError struct {
+	kind       string
 	cause      error
 	recovered  bool
 	rejectedAt string
 }
 
 func (failure *checkpointAdmissionError) Error() string {
-	return "checkpoint namespace admission: " + failure.cause.Error()
+	return checkpointAdmissionPrefix(failure.kind) + failure.cause.Error()
 }
 
 func (failure *checkpointAdmissionError) Unwrap() error { return failure.cause }
+
+func checkpointAdmissionPrefix(kind string) string {
+	if kind == "filesystem" {
+		return "checkpoint filesystem admission: "
+	}
+	return "checkpoint namespace admission: "
+}
 
 type checkpointAdmissionRejection struct {
 	Version    int    `json:"version"`
 	SourceID   string `json:"source_id"`
 	SnapshotID string `json:"snapshot_id"`
 	SourcePID  int    `json:"source_pid"`
+	Kind       string `json:"kind,omitempty"`
 	RejectedAt string `json:"rejected_at"`
 	Error      string `json:"error"`
 }
@@ -47,7 +56,8 @@ func (e *Engine) reconcileRejectedCheckpoint(record Record, id, relative string)
 	}
 	if rejection.Version != 1 || rejection.SourceID != record.ID || rejection.SnapshotID != id ||
 		rejection.SourcePID <= 1 || rejection.RejectedAt == "" ||
-		!strings.HasPrefix(rejection.Error, "checkpoint namespace admission: ") {
+		(rejection.Kind != "" && rejection.Kind != "filesystem") ||
+		!strings.HasPrefix(rejection.Error, checkpointAdmissionPrefix(rejection.Kind)) {
 		return fmt.Errorf("checkpoint admission rejection differs from its original operation")
 	}
 	var intent checkpointIntent
@@ -116,7 +126,8 @@ func (e *Engine) reconcileRejectedCheckpoint(record Record, id, relative string)
 		return fmt.Errorf("rejected source is no longer confirmed running: %v", err)
 	}
 	return &checkpointAdmissionError{
-		cause:     errors.New(strings.TrimPrefix(rejection.Error, "checkpoint namespace admission: ")),
+		kind:      rejection.Kind,
+		cause:     errors.New(strings.TrimPrefix(rejection.Error, checkpointAdmissionPrefix(rejection.Kind))),
 		recovered: true, rejectedAt: rejection.RejectedAt,
 	}
 }

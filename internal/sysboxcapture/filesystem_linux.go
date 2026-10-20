@@ -58,6 +58,22 @@ func cleanAbsolute(path string) bool {
 		!strings.ContainsAny(path, "\n,:\\")
 }
 
+// AdmitFilesystem checks the original frozen source before the controller
+// enters process capture. The writer repeats this admission against its own
+// original state view; this check neither creates backing nor invokes CRIU.
+func AdmitFilesystem(request Request) error {
+	if !cleanAbsolute(request.RuntimeRoot) || request.RuntimeID != "fbx-"+request.Owner ||
+		len(request.Owner) != 32 || strings.Trim(request.Owner, "0123456789abcdef") != "" {
+		return fmt.Errorf("filesystem admission requires its original runtime identity")
+	}
+	state, err := os.ReadFile(filepath.Join(request.RuntimeRoot, request.RuntimeID, "state.json"))
+	if err != nil {
+		return err
+	}
+	_, err = planFilesystem(request, state)
+	return err
+}
+
 func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error) {
 	if !cleanAbsolute(request.Bundle) || !cleanAbsolute(request.ManagerRoot) ||
 		request.Rootfs != request.Bundle+"/rootfs" {

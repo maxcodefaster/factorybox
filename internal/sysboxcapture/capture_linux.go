@@ -228,13 +228,24 @@ func stateWithConfig(data []byte, configPath string) ([]byte, error) {
 }
 
 func ownImages(path string, uid, gid int) (int, error) {
-	entries, err := os.ReadDir(path)
+	return ownImagesWithBarrier(path, uid, gid, unix.Syncfs)
+}
+
+func ownImagesWithBarrier(path string, uid, gid int, barrier func(int) error) (int, error) {
+	directory, err := openDirectory(path)
+	if err != nil {
+		return 0, err
+	}
+	defer directory.Close()
+	entries, err := directory.ReadDir(-1)
 	if err != nil {
 		return 0, err
 	}
 	for _, entry := range entries {
-		fd, err := unix.Open(filepath.Join(path, entry.Name()),
-			unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+		fd, err := unix.Openat2(int(directory.Fd()), entry.Name(), &unix.OpenHow{
+			Flags:   unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NONBLOCK,
+			Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_XDEV,
+		})
 		if err != nil {
 			return 0, err
 		}
@@ -249,13 +260,19 @@ func ownImages(path string, uid, gid int) (int, error) {
 		if err == nil {
 			err = unix.Fchmod(fd, 0600)
 		}
-		if err == nil {
-			err = unix.Fsync(fd)
-		}
 		closeErr := unix.Close(fd)
 		if err := errors.Join(err, closeErr); err != nil {
 			return 0, err
 		}
+	}
+	// Every image is an independent regular file on this directory's
+	// filesystem. Persist all payload/ownership changes together instead of
+	// forcing its journal separately for every small CRIU image.
+	if err := barrier(int(directory.Fd())); err != nil {
+		return 0, fmt.Errorf("persist complete image generation: %w", err)
+	}
+	if err := directory.Sync(); err != nil {
+		return 0, err
 	}
 	return len(entries), nil
 }
