@@ -528,6 +528,10 @@ These diagnostics do not select Docker's storage driver or qualify the complete 
 
 The developer consumer runner also accepts `--retained-candidate` instead of `--criu-build`
 to qualify the same explicit candidate with the ordinary Docker/IDE/OpenCode workload.
+Use `tests/docker-overlay-candidate/native.py` in place of `tools/devx_lifecycle.py` for the
+explicitly unselected Docker Overlay2 consumer. It accepts the same arguments, replaces the
+one original `--storage-driver=vfs` setting in the frozen fixture and records the changed
+driver in its result. The complete candidate Docker-root proof uses this wrapper.
 Add `--suite docker-interruption` for a separate recovery regression against the real
 Docker root process's page-dump tracer loss. This suite requires the explicit candidate
 and omits optional IDE/harness consumers. It checks authorized cure, original stable process
