@@ -217,6 +217,7 @@ func (fixture *fixture) useful(phase string, view lifecycle.View, start time.Tim
 	if fixture.ide != nil {
 		fixture.ide.ready(phase, view, start, state.App.Marker)
 	}
+	fixture.harnessReady(phase, view)
 	return state
 }
 
@@ -230,7 +231,7 @@ func (fixture *fixture) cleanup(id string) {
 		}
 		for _, name := range []string{"factorybox-devx.log", "factorybox-connector.log",
 			"factorybox-devcontainer.log", "factorybox-dockerd.log", "factorybox-registry.log",
-			"factorybox-docker-info.txt"} {
+			"factorybox-docker-info.txt", "factorybox-opencode.log"} {
 			if data, err := os.ReadFile(root + "/var/log/" + name); err == nil {
 				if err := os.WriteFile("/output/"+id+"-"+name, data, 0600); err != nil {
 					fixture.t.Error(err)
@@ -299,6 +300,9 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 		"PATH=/opt/factorybox/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"HOME=/root", "DOCKER_HOST=unix:///var/run/docker.sock",
 		"FACTORYBOX_DEVX_SANDBOX=1", "UV_USE_IO_URING=0",
+	}
+	if os.Getenv("FACTORYBOX_DEVX_OPENCODE") == "1" {
+		process["env"] = append(process["env"].([]string), "FACTORYBOX_DEVX_OPENCODE=1")
 	}
 	capabilities := process["capabilities"].(map[string]any)
 	for key, list := range capabilities {

@@ -38,6 +38,7 @@ def collect_observations(output, result):
         ("devx-observations.json", "observations"),
         ("preparation.json", "preparation"),
         ("theia-observations.json", "theia_observations"),
+        ("opencode-observations.json", "opencode_observations"),
     ]:
         path = output / filename
         if path.exists():
@@ -96,10 +97,11 @@ def main():
     parser.add_argument("--sysbox-build", required=True)
     parser.add_argument("--criu-build", required=True)
     parser.add_argument("--theia-image", help="Optional exact cached IDE digest for the separate native RPC peer")
+    parser.add_argument("--opencode", action="store_true", help="Optional supplied OpenCode 2 consumer; no inference")
     parser.add_argument("--suite", choices=["lifecycle", "projection"], default="lifecycle")
     options = parser.parse_args()
-    if options.suite == "projection" and options.theia_image:
-        parser.error("projection is a minimal namespace regression without the IDE server")
+    if options.suite == "projection" and (options.theia_image or options.opencode):
+        parser.error("projection is a minimal namespace regression without application consumers")
     require_no_retained_worker()
     consumer_archive, consumers = devx_inputs.load(options.consumer_inputs, rootfs=True)
     project_archive, projects = devx_project_images.load(options.project_images)
@@ -118,6 +120,8 @@ def main():
     output.mkdir(parents=True)
     scripts = ["devx-lifecycle.sh", "devx-lifecycle-body.sh", "devx-sandbox.sh", "devx-devcontainer.sh",
                "private-cgroup-delegation.sh", "global-sysctl-observation.py", "wait-sysbox.sh"]
+    if options.opencode:
+        scripts.append("opencode-probe.cjs")
     for script in scripts:
         shutil.copyfile(ROOT / "tests" / script, archive / script)
     shutil.copyfile(ROOT / "tools/devx_lifecycle.py", archive / "runner.py")
@@ -142,6 +146,7 @@ def main():
         criu_archive / "criu", components / "criu", ROOT, criu["binary_sha256"])
     result = {
         "schema": 1, "owner": owner, "container_name": name, "volume_name": name, "suite": options.suite,
+        "opencode": options.opencode,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "consumer_inputs": options.consumer_inputs, "project_images": options.project_images,
         "sysbox_build": options.sysbox_build, "criu_build": options.criu_build,
@@ -206,6 +211,8 @@ def main():
         ]
         if peer:
             command += ["--env", "FACTORYBOX_DEVX_THEIA=1", "--env", "FACTORYBOX_DEVX_RUN=" + owner]
+        if options.opencode:
+            command += ["--env", "FACTORYBOX_DEVX_OPENCODE=1"]
         if options.suite == "projection":
             command += ["--env", "FACTORYBOX_DEVX_PROJECTION=1"]
         mounts = [
@@ -222,6 +229,8 @@ def main():
             "project-images.json", "wait-sysbox.sh"]]
         if peer or options.suite == "projection":
             mounts.append((archive / "ide-filesystem", "/ide-filesystem", True))
+        if options.opencode:
+            mounts.append((archive / "opencode-probe.cjs", "/opencode-probe.cjs", True))
         for source, destination, readonly in mounts:
             command += ["--mount", f"type=bind,source={source},target={destination}" +
                         (",readonly" if readonly else "")]
@@ -276,6 +285,13 @@ def main():
                 {row["phase"] for row in ide_observations} == expected | {"selected-sandbox-edit-readback"} and
                 all(row["client_id"] == peer.result["peer"]["client_id"] and
                     row["pid"] == peer.result["peer"]["pid"] for row in ide_observations))
+        if options.opencode:
+            harness = result.get("opencode_observations", [])
+            result["passed"] = (
+                result["passed"] and len(harness) == len(expected) and
+                {row["phase"] for row in harness} == expected and
+                all(row["server_version"] == "2.0.27" and row["unauthorized_status"] == 401 and
+                    row["info_status"] == 200 and row["session_status"] == 200 for row in harness))
         if not result["passed"]:
             raise ValueError("public developer lifecycle failed or did not execute every required assertion")
     except Exception as error:

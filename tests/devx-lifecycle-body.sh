@@ -25,6 +25,9 @@ cp /devx-devcontainer.sh "$root/bin/devcontainer"
 cp /devx-actor /devx-registry /project-images.tar /project-images.json "$root/"
 chmod 0755 "$root/devx-actor" "$root/devx-registry"
 chmod 0755 "$root/bin/devcontainer"
+if test "${FACTORYBOX_DEVX_OPENCODE:-}" = 1; then
+  cp /opencode-probe.cjs "$root/opencode-probe.cjs"
+fi
 /out/sysbox-mgr --disable-shiftfs --data-root /var/lib/sysbox/manager \
   --log /output/sysbox-mgr.log > /output/sysbox-mgr-stdio.log 2>&1 &
 manager=$!

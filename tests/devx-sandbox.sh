@@ -11,6 +11,17 @@ git -C /workspace/project add .
 git -C /workspace/project -c user.name=Factorybox -c user.email=fixture@example.invalid commit -qm 'Native fixture'
 chown -R 1000:1000 /workspace/project
 touch /run/factorybox-workspace-ready
+if test "${FACTORYBOX_DEVX_OPENCODE:-}" = 1; then
+  previous_umask=$(umask)
+  umask 077
+  OPENCODE_PASSWORD=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+  export OPENCODE_PASSWORD
+  printf '%s' "$OPENCODE_PASSWORD" > /run/fixture-opencode-password
+  /bin/sh /opt/factorybox/example/opencode.sh /workspace/project \
+    > /var/log/factorybox-opencode.log 2>&1 &
+  printf '%s\n' "$!" > /run/fixture-opencode.pid
+  umask "$previous_umask"
+fi
 /opt/factorybox/devx-registry --archive=/opt/factorybox/project-images.tar \
   --pins=/opt/factorybox/project-images.json > /var/log/factorybox-registry.log 2>&1 &
 registry=$!
