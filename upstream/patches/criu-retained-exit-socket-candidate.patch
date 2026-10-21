@@ -1,0 +1,33 @@
+--- a/criu/include/factorybox-exit-observer.h
++++ b/criu/include/factorybox-exit-observer.h
+@@ -140,16 +140,25 @@
+ 		}
+ 		if (events[0].revents & POLLIN) {
+ 			char command;
+-			if (read(life, &command, 1) != 1 || command != 'C')
++			ssize_t count = read(life, &command, 1);
++			if (!count) {
++				/* SOCK_SEQPACKET reports EOF as readable as well as
++				 * HUP. The parent's final wait event may follow it.
++				 * Keep the exit relationship until that event. */
++				events[0].fd = -1;
++			} else if (count != 1 || command != 'C')
+ 				return -1;
+-			cancelling = true;
+-			cancel_deadline = factorybox_observer_milliseconds() + 2000;
++			else {
++				cancelling = true;
++				cancel_deadline = factorybox_observer_milliseconds() + 2000;
++			}
+ 		}
+ 		if (events[1].revents & POLLIN && factorybox_observer_drain(observer->signals))
+ 			return -1;
+-		if (events[0].revents & (POLLERR | POLLNVAL) ||
+-		    (events[0].revents & POLLHUP && !cancelling && !observer->held))
++		if (events[0].revents & (POLLERR | POLLNVAL))
+ 			return -1;
++		if (events[0].revents & POLLHUP)
++			events[0].fd = -1;
+ 	}
+ }
+ 

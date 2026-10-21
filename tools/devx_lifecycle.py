@@ -222,6 +222,7 @@ def main():
         "consumer_inputs": options.consumer_inputs, "project_images": options.project_images,
         "sysbox_build": options.sysbox_build, "criu_build": options.criu_build or options.retained_candidate,
         "retained_candidate": bool(options.retained_candidate),
+        "exit_hold_candidate": bool(criu.get("exit_hold_candidate")),
         "native_base_build": options.native_base_build, "native_image": image,
         "runtime_rootfs_sha256": consumers["rootfs_tar_sha256"],
         "project_images_sha256": projects["archive_sha256"],
@@ -312,6 +313,8 @@ def main():
             command += ["--env", "FACTORYBOX_DEVX_CRIU_FAULT=" + options.docker_fault_process,
                         "--env", "FACTORYBOX_DEVX_CRIU_FAULT_OPERATION=" + options.docker_fault_operation,
                         "--env", "FACTORYBOX_DEVX_CRIU_FAULT_COMPONENT=" + options.docker_fault_component]
+            if criu.get("exit_hold_candidate"):
+                command += ["--env", "FACTORYBOX_CRIU_EXIT_HOLD=1"]
         mounts = [
             (output, "/output", False), (components, "/component-input", True),
             (archive / "example", "/example", True),

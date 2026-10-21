@@ -22,10 +22,14 @@ def load(name):
         if reference.sha(path / file) != result[field]:
             raise ValueError("retained-context candidate input changed: " + file)
     for file, expected in result.get("candidate_patch_sha256", {}).items():
-        if file not in {"retained.patch", "early-hold.patch", "exact-wait.patch", "nested-overlay.patch",
+        if file not in {"retained.patch", "early-hold.patch", "exact-wait.patch", "exit-hold.patch",
+                        "exit-hold-socket.patch", "nested-overlay.patch",
                         "nested-overlay-stable-path.patch",
                         "nested-overlay-shared-root.patch"} or reference.sha(path / file) != expected:
             raise ValueError("retained-context candidate patch input changed")
+    for file, expected in result.get("candidate_overlay_sha256", {}).items():
+        if file != "exit-observer.h" or reference.sha(path / file) != expected:
+            raise ValueError("retained-context candidate overlay input changed")
     if reference.sha(root / "upstream/lock.json") != result["base_source_lock_sha256"]:
         raise ValueError("retained-context candidate belongs to a different selected base")
     if sources.tree_sha(path / "context") != result["context_sha256"]:

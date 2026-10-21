@@ -44,6 +44,7 @@ type faultArm struct {
 	HelperStart      string        `json:"helper_start"`
 	ActivePID        int           `json:"active_pid"`
 	ActiveVirtualPID int           `json:"active_vpid"`
+	ExitHoldArmed    bool          `json:"exit_hold_armed"`
 	Nonce            string        `json:"nonce"`
 	Tree             []faultThread `json:"tree"`
 }
@@ -224,6 +225,18 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		return result
 	}
 	before := containers()
+	exitHold := os.Getenv("FACTORYBOX_CRIU_EXIT_HOLD") == "1"
+	requestedVirtualPID := 1
+	if exitHold && target == "dockerd" {
+		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/root/run/private-docker.pid", source.Runtime.PID))
+		if err != nil {
+			fixture.t.Fatal("read only the original private Docker daemon's PID", err)
+		}
+		requestedVirtualPID, err = strconv.Atoi(strings.TrimSpace(string(data)))
+		if err != nil || requestedVirtualPID <= 1 {
+			fixture.t.Fatal("invalid original private Docker daemon PID", err)
+		}
+	}
 	snapshot := strings.Repeat("e", 32)
 	relative := filepath.Join(fixture.root, "objects/source/captures", snapshot)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
@@ -263,10 +276,17 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	}
 	deadline := time.Now().Add(30 * time.Second)
 	tracer, tracerFD := 0, -1
+	holdRequested := false
 	for tracer == 0 && time.Now().Before(deadline) {
 		if readJSON("capture-worker-intent.json", &worker) == nil &&
 			worker.SourcePID == source.Runtime.PID && worker.Token == snapshot {
 			birth, birthErr := faultProcessBirth(worker.PID)
+			if exitHold && !holdRequested && birthErr == nil && birth == worker.Start {
+				if err := testtrace.RequestPageHold(filepath.Join(relative, "guard"), snapshot, requestedVirtualPID); err != nil {
+					fixture.t.Fatal("request only the owned Docker page boundary", err)
+				}
+				holdRequested = true
+			}
 			status, statusErr := os.ReadFile(fmt.Sprintf("/proc/%d/status", source.Runtime.PID))
 			if birthErr == nil && birth == worker.Start && statusErr == nil {
 				for _, line := range strings.Split(string(status), "\n") {
@@ -302,27 +322,37 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		fixture.t.Fatal("did not observe the exact owned CRIU tracing real Docker")
 	}
 	defer unix.Close(tracerFD)
-	if err := unix.PtraceSeize(tracer); err != nil {
-		fixture.t.Fatal(err)
+	if !exitHold {
+		if err := unix.PtraceSeize(tracer); err != nil {
+			fixture.t.Fatal(err)
+		}
 	}
 	tracing := true
 	defer func() {
 		if tracing {
 			unix.PidfdSendSignal(tracerFD, unix.SIGKILL, nil, 0)
-			waiter.Wait(tracer, time.Now().Add(2*time.Second))
+			if exitHold {
+				testtrace.WaitDead(tracerFD, time.Now().Add(2*time.Second))
+			} else {
+				waiter.Wait(tracer, time.Now().Add(2*time.Second))
+			}
 		}
 	}()
-	if err := unix.PtraceInterrupt(tracer); err != nil {
-		fixture.t.Fatal(err)
+	var status unix.WaitStatus
+	var err error
+	if !exitHold {
+		if err := unix.PtraceInterrupt(tracer); err != nil {
+			fixture.t.Fatal(err)
+		}
+		status, err = waiter.Wait(tracer, deadline)
+		if err != nil || !status.Stopped() {
+			fixture.t.Fatal("owned CRIU did not stop for injection", err, status)
+		}
+		if err := unix.PtraceSetOptions(tracer, unix.PTRACE_O_TRACESYSGOOD); err != nil {
+			fixture.t.Fatal(err)
+		}
 	}
 	deadline = time.Now().Add(30 * time.Second)
-	status, err := waiter.Wait(tracer, deadline)
-	if err != nil || !status.Stopped() {
-		fixture.t.Fatal("owned CRIU did not stop for injection", err, status)
-	}
-	if err := unix.PtraceSetOptions(tracer, unix.PTRACE_O_TRACESYSGOOD); err != nil {
-		fixture.t.Fatal(err)
-	}
 	var arm faultArm
 	var pageBytes int64
 	var activeComm string
@@ -341,9 +371,29 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 			if matches {
 				pageBytes = faultPageBytes(filepath.Join(relative, "images"), arm.ActiveVirtualPID)
 				if pageBytes >= 4096 {
-					break
+					if !exitHold {
+						break
+					}
+					if !arm.ExitHoldArmed || arm.ActiveVirtualPID != requestedVirtualPID {
+						fixture.t.Fatal("the requested Docker fault has no armed exit observer")
+					}
+					held, err := testtrace.PageHeld(filepath.Join(relative, "guard"), snapshot,
+						tracer, arm.HelperPID, arm.ActivePID, arm.ActiveVirtualPID, arm.Nonce)
+					if err != nil {
+						fixture.t.Fatal(err)
+					}
+					if held {
+						break
+					}
 				}
 			}
+		}
+		if exitHold {
+			if time.Now().After(deadline) {
+				fixture.t.Fatal("CRIU did not reach the exact acknowledged Docker page-dump boundary")
+			}
+			time.Sleep(time.Millisecond)
+			continue
 		}
 		signal := int(status.StopSignal())
 		if signal == int(unix.SIGTRAP) || signal == int(unix.SIGTRAP)|0x80 {
@@ -387,21 +437,26 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		fixture.t.Fatal("save the exact armed identities before injecting the fault", err)
 	}
 	var cure struct {
-		Passed     bool   `json:"passed"`
-		Authorized bool   `json:"guard_authorized"`
-		Nonce      string `json:"nonce"`
-		Processes  int    `json:"processes"`
-		Threads    int    `json:"threads"`
-		Registers  bool   `json:"registers_match"`
-		SignalMask bool   `json:"signal_mask_match"`
-		Maps       int    `json:"injected_maps_after"`
-		Held       bool   `json:"source_held"`
+		Passed       bool   `json:"passed"`
+		Authorized   bool   `json:"guard_authorized"`
+		Nonce        string `json:"nonce"`
+		Processes    int    `json:"processes"`
+		Threads      int    `json:"threads"`
+		Registers    bool   `json:"registers_match"`
+		SignalMask   bool   `json:"signal_mask_match"`
+		Maps         int    `json:"injected_maps_after"`
+		Held         bool   `json:"source_held"`
+		ExitStopHeld bool   `json:"exit_stop_held"`
 	}
 	var cureProof any
 	helperKilled := false
 	if component == "helper" {
 		helperKilled = fixture.killRetainedHelper(arm, tracer, source.Runtime.PID)
-		if err := unix.PtraceDetach(tracer); err != nil {
+		if exitHold {
+			if err := unix.PidfdSendSignal(tracerFD, unix.SIGCONT, nil, 0); err != nil {
+				fixture.t.Fatal("resume only the original healthy tracer after helper death", err)
+			}
+		} else if err := unix.PtraceDetach(tracer); err != nil {
 			fixture.t.Fatal("resume only the original healthy tracer", err)
 		}
 		tracing = false
@@ -422,9 +477,15 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		if err := unix.PidfdSendSignal(tracerFD, unix.SIGKILL, nil, 0); err != nil {
 			fixture.t.Fatal(err)
 		}
-		status, err = waiter.Wait(tracer, time.Now().Add(2*time.Second))
-		if err != nil || (!status.Signaled() && !status.Exited()) {
-			fixture.t.Fatal("exact CRIU trace was not reaped", err, status)
+		if exitHold {
+			if err := testtrace.WaitDead(tracerFD, time.Now().Add(2*time.Second)); err != nil {
+				fixture.t.Fatal(err)
+			}
+		} else {
+			status, err = waiter.Wait(tracer, time.Now().Add(2*time.Second))
+			if err != nil || (!status.Signaled() && !status.Exited()) {
+				fixture.t.Fatal("exact CRIU trace was not reaped", err, status)
+			}
 		}
 		tracing = false
 		err = command.Wait()
@@ -435,7 +496,8 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		if err := readJSON("criu-retained-result.json", &cure); err != nil ||
 			!cure.Passed || !cure.Authorized || cure.Nonce != arm.Nonce ||
 			cure.Processes != len(processes) || cure.Threads != len(arm.Tree) ||
-			!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held {
+			!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held ||
+			cure.ExitStopHeld != arm.ExitHoldArmed {
 			fixture.t.Fatal("real Docker source has no complete authorized cure", err, cure)
 		}
 		cureProof = cure

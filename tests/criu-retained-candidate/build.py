@@ -16,6 +16,10 @@ import sources
 root = reference.ROOT
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--native-base-build", required=True)
+parser.add_argument("--exit-hold", action="store_true",
+                    help="Freeze the original source at the tracer exit stop, before tracee detach")
+parser.add_argument("--exit-hold-socket", action="store_true",
+                    help="Keep the observer through socket EOF until the parent's terminal event")
 parser.add_argument("--nested-overlay", action="store_true",
                     help="Add the unselected captured-layer mount-v2 diagnostic patch")
 parser.add_argument("--nested-overlay-stable-paths", action="store_true",
@@ -23,6 +27,8 @@ parser.add_argument("--nested-overlay-stable-paths", action="store_true",
 parser.add_argument("--nested-overlay-shared-root", action="store_true",
                     help="Bind each captured covering filesystem once so upper/work share a mount")
 options = parser.parse_args()
+if options.exit_hold_socket and not options.exit_hold:
+    parser.error("--exit-hold-socket requires --exit-hold")
 if options.nested_overlay_stable_paths and not options.nested_overlay:
     parser.error("--nested-overlay-stable-paths requires --nested-overlay")
 if options.nested_overlay_shared_root and not options.nested_overlay_stable_paths:
@@ -32,6 +38,12 @@ patch_inputs = [
     (root / "upstream/patches/criu-retained-early-hold-candidate.patch", "early-hold.patch"),
     (root / "upstream/patches/criu-retained-exact-wait-candidate.patch", "exact-wait.patch"),
 ]
+if options.exit_hold:
+    patch_inputs.append(
+        (root / "upstream/patches/criu-retained-exit-hold-candidate.patch", "exit-hold.patch"))
+if options.exit_hold_socket:
+    patch_inputs.append(
+        (root / "upstream/patches/criu-retained-exit-socket-candidate.patch", "exit-hold-socket.patch"))
 if options.nested_overlay:
     patch_inputs.append(
         (root / "upstream/patches/criu-nested-overlay-candidate.patch", "nested-overlay.patch"))
@@ -58,6 +70,17 @@ shutil.copytree(prepared, context, symlinks=True)
 (context / sources.CACHE_RECORD).unlink(missing_ok=True)
 candidate = copy.deepcopy(lock)
 component = candidate["components"]["criu"]
+overlay_inputs = {}
+if options.exit_hold:
+    overlay = root / "upstream/candidates/criu-exit-observer.h"
+    relative = "criu/include/factorybox-exit-observer.h"
+    shutil.copyfile(overlay, archive / "exit-observer.h")
+    shutil.copyfile(overlay, context / relative)
+    local = str(overlay.relative_to(root))
+    component["overlays"][relative] = local
+    component["local_inputs_sha256"][local] = reference.sha(overlay)
+    component.setdefault("prepared_files_sha256", {})[relative] = reference.sha(overlay)
+    overlay_inputs["exit-observer.h"] = reference.sha(overlay)
 for patch_input, filename in patch_inputs:
     shutil.copyfile(patch_input, archive / filename)
     subprocess.run(["patch", "--batch", "--fuzz=0", "-p1", "-i", str(archive / filename)],
@@ -69,7 +92,8 @@ for relative in [
     "criu/cr-dump.c", "criu/parasite-syscall.c", "criu/Makefile.crtools",
     "criu/factorybox-retained.c", "criu/include/factorybox-retained.h",
     "compel/src/lib/infect.c",
-] + (["criu/mount-v2.c"] if options.nested_overlay else []):
+] + (["criu/mount-v2.c"] if options.nested_overlay else []) + (
+        ["criu/include/factorybox-exit-observer.h"] if options.exit_hold else []):
     component.setdefault("prepared_files_sha256", {})[relative] = reference.sha(context / relative)
 (archive / "source-lock.json").write_text(json.dumps(candidate, indent=2) + "\n")
 recipe = json.loads((root / "upstream/criu-build.json").read_text())
@@ -102,6 +126,7 @@ result = {
     "patch_sha256": reference.sha(archive / "retained.patch"),
     "candidate_patch_sha256": {filename: reference.sha(archive / filename)
                                for _, filename in patch_inputs},
+    "candidate_overlay_sha256": overlay_inputs,
     "context_sha256": context_sha, "build_inputs_sha256": reference.sha(archive / "criu-build.json"),
     "native_base_packages_sha256": base["packages_sha256"],
     "unchanged_upstream_test_files": unchanged,
@@ -115,6 +140,22 @@ result = {
              "The existing multi-thread restore wait remains unchanged. No production qualification.",
     "passed": False, "cleanup": False, "diagnostic_only": True, "production_qualified": False,
 }
+if options.exit_hold:
+    result["exit_hold_candidate"] = True
+    result["scope"] += (
+        " The retained helper traces only its original parent without EXITKILL. "
+        "It freezes the pinned source at PTRACE_EVENT_EXIT before the kernel releases "
+        "the source tracees, then retains the same original-guard cure/release checks. "
+        "The private test request stops after the requested process page dump and before cure. "
+        "Normal completion explicitly detaches the observer."
+    )
+if options.exit_hold_socket:
+    result["exit_hold_socket_candidate"] = True
+    result["scope"] += (
+        " Ordered socket-EOF follow-up keeps the ptrace relationship through readable EOF/HUP "
+        "until the exact original parent's terminal wait event. "
+        "Socket EOF alone never authorizes source release."
+    )
 if options.nested_overlay:
     result["nested_overlay_candidate"] = True
     result["scope"] += (

@@ -93,6 +93,9 @@ for file, target in [
 ]:
     command += ["--mount", f"type=bind,source={archive / file},target={target},readonly"]
 command += ["--entrypoint", "/bin/bash", image, "/native.sh"]
+if criu.get("exit_hold_candidate"):
+    location = command.index("--entrypoint")
+    command[location:location] = ["--env", "FACTORYBOX_CRIU_EXIT_HOLD=1"]
 if corruption_control:
     location = command.index("--entrypoint")
     command[location:location] = ["--env", "FACTORYBOX_CRIU_RETAINED_CORRUPTION_CONTROL=1"]
@@ -114,6 +117,7 @@ if options.thread_churn:
 result = {
     "owner": owner, "container_name": name, "volume_name": name, "command": command,
     "candidate": candidate_name, "candidate_sha256": criu["binary_sha256"],
+    "exit_hold_candidate": bool(criu.get("exit_hold_candidate")),
     "corruption_control": corruption_control,
     "pause": options.pause,
     "grant_control": options.grant_control,

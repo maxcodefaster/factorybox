@@ -76,7 +76,8 @@ class CandidatePatchTests(unittest.TestCase):
 
     def test_overlay_followups_require_their_own_frozen_patch(self):
         for filename in ["nested-overlay.patch", "nested-overlay-stable-path.patch",
-                         "nested-overlay-shared-root.patch", "exact-wait.patch"]:
+                         "nested-overlay-shared-root.patch", "exact-wait.patch", "exit-hold.patch",
+                         "exit-hold-socket.patch"]:
             with self.subTest(patch=filename), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 name, archive, result = self.fixture(root, True)
@@ -92,3 +93,35 @@ class CandidatePatchTests(unittest.TestCase):
                     patch.write_bytes(b"changed overlay patch")
                     with self.assertRaisesRegex(ValueError, "candidate patch input changed"):
                         criu_candidate.load(name)
+
+    def test_changed_exit_observer_refused_before_source_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            name, archive, result = self.fixture(root, True)
+            overlay = archive / "exit-observer.h"
+            overlay.write_bytes(b"frozen observer")
+            result["candidate_overlay_sha256"] = {
+                overlay.name: hashlib.sha256(overlay.read_bytes()).hexdigest()}
+            (archive / "result.json").write_text(json.dumps(result))
+            with mock.patch.object(criu_candidate.reference, "ROOT", root), \
+                    mock.patch.object(criu_candidate.sources, "tree_sha", return_value="frozen-context"), \
+                    mock.patch.object(criu_candidate.sources, "validate_inputs") as validate, \
+                    mock.patch.object(criu_candidate.sources, "check_source", return_value=1030):
+                self.assertEqual(criu_candidate.load(name)[0], archive)
+                validate.reset_mock()
+                overlay.write_bytes(b"changed observer")
+                with self.assertRaisesRegex(ValueError, "candidate overlay input changed"):
+                    criu_candidate.load(name)
+                validate.assert_not_called()
+
+    def test_unrecognized_overlay_path_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            name, archive, result = self.fixture(root, True)
+            result["candidate_overlay_sha256"] = {"../outside-artifact": "unused"}
+            (archive / "result.json").write_text(json.dumps(result))
+            with mock.patch.object(criu_candidate.reference, "ROOT", root), \
+                    mock.patch.object(criu_candidate.sources, "validate_inputs") as validate:
+                with self.assertRaisesRegex(ValueError, "candidate overlay input changed"):
+                    criu_candidate.load(name)
+                validate.assert_not_called()

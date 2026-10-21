@@ -34,6 +34,7 @@ type retainedCaptureArm struct {
 	ActivePID        int                     `json:"active_pid"`
 	ActiveStart      string                  `json:"active_start"`
 	ActiveVirtualPID int                     `json:"active_vpid"`
+	ExitHoldArmed    bool                    `json:"exit_hold_armed"`
 	Tree             []retainedCaptureThread `json:"tree"`
 }
 
@@ -52,20 +53,21 @@ type retainedCaptureRequest struct {
 }
 
 type retainedCaptureResult struct {
-	Version     int    `json:"version"`
-	Passed      bool   `json:"passed"`
-	SourcePID   int    `json:"source_pid"`
-	SourceStart string `json:"source_start"`
-	HelperPID   int    `json:"helper_pid"`
-	Threads     int    `json:"threads"`
-	Registers   bool   `json:"registers_match"`
-	SignalMask  bool   `json:"signal_mask_match"`
-	Maps        int    `json:"injected_maps_after"`
-	Held        bool   `json:"source_held"`
-	Authorized  bool   `json:"guard_authorized"`
-	Nonce       string `json:"nonce"`
-	ActivePID   int    `json:"active_pid"`
-	Processes   int    `json:"processes"`
+	Version      int    `json:"version"`
+	Passed       bool   `json:"passed"`
+	SourcePID    int    `json:"source_pid"`
+	SourceStart  string `json:"source_start"`
+	HelperPID    int    `json:"helper_pid"`
+	Threads      int    `json:"threads"`
+	Registers    bool   `json:"registers_match"`
+	SignalMask   bool   `json:"signal_mask_match"`
+	Maps         int    `json:"injected_maps_after"`
+	Held         bool   `json:"source_held"`
+	Authorized   bool   `json:"guard_authorized"`
+	Nonce        string `json:"nonce"`
+	ActivePID    int    `json:"active_pid"`
+	Processes    int    `json:"processes"`
+	ExitStopHeld bool   `json:"exit_stop_held"`
 }
 
 type captureProcessRestoration struct {
@@ -228,7 +230,8 @@ func captureRetainedResult(config captureGuardConfig, anchors captureGuardAnchor
 		result.SourceStart != config.Start || result.HelperPID != arm.HelperPID ||
 		result.Threads != len(arm.Tree) || result.Processes != processes || result.ActivePID != arm.ActivePID ||
 		!result.Registers || !result.SignalMask ||
-		result.Maps != 0 || !result.Held || !result.Authorized || result.Nonce != arm.Nonce {
+		result.Maps != 0 || !result.Held || !result.Authorized || result.Nonce != arm.Nonce ||
+		result.ExitStopHeld != arm.ExitHoldArmed {
 		return fmt.Errorf("retained context did not prove its authorized complete process cure")
 	}
 	return nil

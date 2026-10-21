@@ -50,6 +50,44 @@ func stopRetainedDumpNative(t *testing.T, pid, pidfd int, images string, activeP
 	if err != nil {
 		t.Fatal(err)
 	}
+	if os.Getenv("FACTORYBOX_CRIU_EXIT_HOLD") == "1" {
+		finish := func() {
+			if pinned >= 0 {
+				_ = unix.PidfdSendSignal(pinned, unix.SIGKILL, nil, 0)
+				if err := testtrace.WaitDead(pinned, time.Now().Add(2*time.Second)); err != nil {
+					t.Error(err)
+				}
+				unix.Close(pinned)
+				pinned = -1
+			}
+		}
+		held := false
+		defer func() {
+			if !held {
+				finish()
+			}
+		}()
+		guard := filepath.Join(filepath.Dir(images), "guard")
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
+			var arm retainedCaptureArm
+			data, err := os.ReadFile(filepath.Join(guard, "criu-retained-arm.json"))
+			if err == nil && json.Unmarshal(data, &arm) == nil && arm.ExitHoldArmed &&
+				arm.TracerPID == pid && arm.ActivePID == activePID && arm.ActiveVirtualPID == virtualPID &&
+				retainedPagesWrittenNative(images, virtualPID) {
+				stopped, err := testtrace.PageHeld(guard, filepath.Base(filepath.Dir(images)),
+					pid, arm.HelperPID, activePID, virtualPID, arm.Nonce)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if stopped {
+					held = true
+					return finish
+				}
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatal("owned CRIU did not acknowledge its active process page-image fault boundary")
+	}
 	waiter := testtrace.New("exact CRIU trace event exceeded its test deadline")
 	if err := unix.PtraceSeize(pid); err != nil {
 		waiter.Close()

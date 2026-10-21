@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"factorybox/internal/testtrace"
 	"golang.org/x/sys/unix"
 )
 
@@ -305,12 +306,20 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	}
 	var heldGuard retainedCaptureArm
 	var resumeGuard func()
+	holdRequested := false
 	for interruptedPID == 0 {
 		if err := engine.readCheckpointJSON(relative+"/guard/capture-worker-intent.json", &worker); err == nil &&
 			worker.Token == snapshot && worker.SourcePID == source.Runtime.PID &&
 			worker.CriuSHA256 == engine.config.CriuSHA256 {
 			birth, err := processBirth(worker.PID)
 			if err == nil && birth == worker.Start {
+				if os.Getenv("FACTORYBOX_CRIU_EXIT_HOLD") == "1" && !holdRequested {
+					if err := testtrace.RequestPageHold(filepath.Join(engine.config.Root, relative, "guard"),
+						snapshot, activeVirtualPID); err != nil {
+						t.Fatal("request the exact owned page boundary", err)
+					}
+					holdRequested = true
+				}
 				status, _ := os.ReadFile(fmt.Sprintf("/proc/%d/status", activePID))
 				tracer := 0
 				for _, line := range strings.Split(string(status), "\n") {
@@ -436,7 +445,8 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			cure.SourceStart != arm.SourceStart || cure.HelperPID != arm.HelperPID ||
 			!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held ||
 			cure.Threads != len(arm.Tree) || cure.ActivePID != arm.ActivePID ||
-			cure.Processes != expectedProcesses || cure.Nonce != arm.Nonce {
+			cure.Processes != expectedProcesses || cure.Nonce != arm.Nonce ||
+			cure.ExitStopHeld != arm.ExitHoldArmed {
 			t.Fatal("retained-context producer did not prove its scoped cure", cure)
 		}
 		if err := engine.validateCgroup(source.Record); err != nil {

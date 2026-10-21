@@ -1,0 +1,197 @@
+--- a/criu/factorybox-retained.c
++++ b/criu/factorybox-retained.c
+@@ -24,6 +24,7 @@
+ #include "criu-log.h"
+ #include "types.h"
+ #include "factorybox-retained.h"
++#include "factorybox-exit-observer.h"
+ #include "infect.h"
+ #include "infect-rpc.h"
+ #include "pstree.h"
+@@ -198,6 +199,11 @@
+ 		usleep(1000);
+ 	}
+ 	return -1;
++}
++
++static int hold_original(void *context)
++{
++	return frozen(*(int *)context, 1);
+ }
+ 
+ static void expired(int signal)
+@@ -398,15 +404,17 @@
+ static void recover(struct parasite_ctl *ctl, int group, int evidence, int life,
+ 		    int ready, int *parents, int source, unsigned long long source_start, int active)
+ {
+-	char record[64 << 10], log_name[80], command;
+-	int log, original_log = log_get_fd(), count = original_count, result = -1, index, used;
+-	int keep[] = {group, evidence, life, ready, parents[0], parents[1], parents[2], parents[3],
+-		      parents[4], compel_rpc_sock(ctl), original_log, 1, 2};
++	char record[64 << 10], log_name[80];
++	int log, original_log = log_get_fd(), count = original_count, result = -1, index, used, observed;
++	struct factorybox_exit_observer observer;
++	sigset_t original_mask;
+ 	struct sigaction action = {.sa_handler = SIG_DFL};
+-	struct pollfd events[2] = {{.fd = life, .events = POLLIN}, {.fd = parents[0], .events = POLLIN}};
+ 	user_regs_struct_t expected = ctl->orig.regs, actual;
+ 	k_rtsigset_t expected_mask = ctl->orig.sigmask, actual_mask;
+ 	int maps = -1, registers_match = 0, mask_match = 0, authorized = 0, processes = 0;
++	if (sigprocmask(SIG_SETMASK, NULL, &original_mask) ||
++	    factorybox_observer_arm(&observer, original_pids[0]))
++		_exit(21);
+ 	sigemptyset(&action.sa_mask);
+ 	if (sigaction(SIGCHLD, &action, NULL))
+ 		_exit(21);
+@@ -415,14 +423,18 @@
+ 	if (log < 0 || original_log < 0 || dup2(log, original_log) < 0 ||
+ 	    dup2(log, STDOUT_FILENO) < 0 || dup2(log, STDERR_FILENO) < 0)
+ 		_exit(22);
+-	retain_fds(keep, sizeof(keep) / sizeof(keep[0]));
++	{
++		int keep[] = {group, evidence, life, ready, parents[0], parents[1], parents[2], parents[3],
++			      parents[4], compel_rpc_sock(ctl), original_log, observer.signals, 1, 2};
++		retain_fds(keep, sizeof(keep) / sizeof(keep[0]));
++	}
+ 	used = snprintf(record, sizeof(record),
+ 		 "{\"version\":3,\"mode\":\"process_tree_retained\",\"source_pid\":%d,"
+ 		 "\"source_start\":\"%llu\",\"helper_pid\":%d,\"helper_start\":\"%llu\","
+ 		 "\"tracer_pid\":%d,\"tracer_start\":\"%llu\",\"worker_pid\":%d,\"worker_start\":\"%llu\","
+ 		 "\"controller_pid\":%d,\"controller_start\":\"%llu\",\"guard_pid\":%d,"
+ 		 "\"guard_start\":\"%llu\",\"nonce\":\"%s\",\"active_pid\":%d,"
+-		 "\"active_start\":\"%llu\",\"active_vpid\":%d,\"tree\":[",
++		 "\"active_start\":\"%llu\",\"active_vpid\":%d,\"exit_hold_armed\":true,\"tree\":[",
+ 		 source, source_start, getpid(), process_field(getpid(), 22),
+ 		 original_pids[0], original_starts[0], original_pids[1], original_starts[1],
+ 		 original_pids[2], original_starts[2], original_pids[3], original_starts[3], recovery_nonce,
+@@ -445,24 +457,16 @@
+ 	if (metadata(evidence, "criu-retained-arm.json", record) || write(ready, "R", 1) != 1)
+ 		_exit(23);
+ 	close(ready);
+-	/* All inherited RPC/stdout descriptors were closed above, so the
+-	 * original tracer's death cannot leave the Go worker blocked. */
+-	for (;;) {
+-		int ready = poll(events, 2, 15000);
+-		if (ready <= 0)
+-			_exit(24);
+-		if (events[0].revents & POLLIN) {
+-			if (read(life, &command, 1) == 1 && command == 'C')
+-				_exit(0);
+-		}
+-		if (events[1].revents & POLLIN)
+-			break;
+-	}
+-	/* Hold the pinned original group immediately on tracer death, before
+-	 * waiting for the capture worker to finish rollback and exit. Cure and
+-	 * source release still require the original guard's checked grant. */
+-	if (frozen(group, 1))
+-		_exit(28);
++	/* The exit stop precedes the kernel's detach of the source tracees.
++	 * Freeze there, not after a pidfd reports an already completed exit. */
++	observed = factorybox_observer_wait(&observer, life, hold_original, &group);
++	if (!observed)
++		_exit(0);
++	if (observed != 1 || !observer.held)
++		_exit(24);
++	close(observer.signals);
++	if (sigprocmask(SIG_SETMASK, &original_mask, NULL))
++		_exit(24);
+ 	if (!__atomic_load_n(active_phase, __ATOMIC_ACQUIRE))
+ 		_exit(25);
+ 	/* The failed worker must have completed its hold and network rollback.
+@@ -537,7 +541,8 @@
+ 		 "{\"version\":3,\"passed\":%s,\"source_pid\":%d,\"source_start\":\"%llu\","
+ 		 "\"helper_pid\":%d,\"threads\":%d,\"registers_match\":%s,"
+ 		 "\"signal_mask_match\":%s,\"injected_maps_after\":%d,\"source_held\":true,"
+-		 "\"guard_authorized\":%s,\"nonce\":\"%s\",\"active_pid\":%d,\"processes\":%d}\n",
++		 "\"guard_authorized\":%s,\"nonce\":\"%s\",\"active_pid\":%d,\"processes\":%d,"
++		 "\"exit_stop_held\":true}\n",
+ 		 result == 0 ? "true" : "false", source, source_start, getpid(), count,
+ 		 registers_match ? "true" : "false", mask_match ? "true" : "false", maps,
+ 		 authorized ? "true" : "false", recovery_nonce, active, processes);
+@@ -548,7 +553,7 @@
+ int factorybox_retained_begin(struct parasite_ctl *ctl, int pid)
+ {
+ 	int group = -1, evidence = -1, life[2], ready[2], parents[5], worker, controller, guard;
+-	int index, child;
++	int index, child, outcome = 0;
+ 	unsigned char random_nonce[32];
+ 	struct stat info;
+ 	struct statfs filesystem;
+@@ -617,6 +622,7 @@
+ 	if (sigprocmask(SIG_BLOCK, &blocked, &previous))
+ 		goto close_ready;
+ 	child = fork();
++	outcome = -1;
+ 	if (child == 0) {
+ 		close(life[1]);
+ 		close(ready[0]);
+@@ -676,7 +682,48 @@
+ 		close(group);
+ 	if (evidence >= 0)
+ 		close(evidence);
+-	return 0;
++	return outcome;
++}
++
++/* Private native-test fault point. A sandbox cannot write the root-owned
++ * transaction guard directory. No request means no additional stop. */
++int factorybox_retained_test_stop(int pid)
++{
++	int evidence, length, failed, vpid = captured_vpid(pid);
++	ssize_t count;
++	char request[256], expected[256], stopped[512];
++	struct stat info;
++	if (child_pid <= 1 || !active_phase || !__atomic_load_n(active_phase, __ATOMIC_ACQUIRE))
++		return 0;
++	evidence = openat(get_service_fd(IMG_FD_OFF), "../guard",
++			  O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++	if (evidence < 0)
++		return -1;
++	if (fstat(evidence, &info) || info.st_uid || (info.st_mode & 0777) != 0700) {
++		close(evidence);
++		return -1;
++	}
++	if (fstatat(evidence, "criu-retained-test-request.json", &info, AT_SYMLINK_NOFOLLOW)) {
++		int missing = errno == ENOENT;
++		close(evidence);
++		return missing ? 0 : -1;
++	}
++	count = private_record(evidence, "criu-retained-test-request.json", request, sizeof(request));
++	length = snprintf(expected, sizeof(expected),
++			  "{\"version\":1,\"token\":\"%s\",\"active_vpid\":%d}\n", capture_token, vpid);
++	if (count != length || memcmp(request, expected, length)) {
++		/* A canonical request for a later process is not our stop. */
++		int target = private_number(evidence, "criu-retained-test-request.json", "active_vpid");
++		close(evidence);
++		return target > 0 && target != vpid ? 0 : -1;
++	}
++	snprintf(stopped, sizeof(stopped),
++		 "{\"version\":1,\"token\":\"%s\",\"tracer_pid\":%d,\"helper_pid\":%d,"
++		 "\"active_pid\":%d,\"active_vpid\":%d,\"nonce\":\"%s\"}\n",
++		 capture_token, getpid(), child_pid, pid, vpid, recovery_nonce);
++	failed = metadata(evidence, "criu-retained-test-stop.json", stopped);
++	close(evidence);
++	return failed ? -1 : raise(SIGSTOP);
+ }
+ 
+ void factorybox_retained_disable(void)
+--- a/criu/include/factorybox-retained.h
++++ b/criu/include/factorybox-retained.h
+@@ -5,4 +5,5 @@
+ void factorybox_retained_disable(void);
+ void factorybox_retained_end(void);
+ int factorybox_retained_child(int pid);
++int factorybox_retained_test_stop(int pid);
+ #endif
+--- a/criu/cr-dump.c
++++ b/criu/cr-dump.c
+@@ -1745,6 +1745,8 @@
+ 	ret = parasite_dump_pages_seized(item, &vmas, &mdc, parasite_ctl);
+ 	if (ret)
+ 		goto err_cure;
++	if (factorybox_retained_test_stop(pid))
++		goto err_cure;
+ 
+ 	ret = parasite_dump_sigacts_seized(parasite_ctl, item);
+ 	if (ret) {
