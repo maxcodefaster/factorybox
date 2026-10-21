@@ -177,8 +177,9 @@ func (fixture *fixture) dockerRequest(pid int, method, path string, body []byte)
 
 func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial observedState) {
 	fixture.t.Helper()
-	if os.Getenv("FACTORYBOX_DEVX_CRIU_FAULT") != "root" {
-		fixture.t.Fatal("Docker fault requires the exact root process probe")
+	target := os.Getenv("FACTORYBOX_DEVX_CRIU_FAULT")
+	if target != "root" && target != "dockerd" {
+		fixture.t.Fatal("Docker fault requires an exact root or dockerd process probe")
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -307,14 +308,24 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	}
 	var arm faultArm
 	var pageBytes int64
+	var activeComm string
 	for {
 		if readJSON("criu-retained-arm.json", &arm) == nil &&
 			arm.Version == 3 && arm.TracerPID == tracer && arm.WorkerPID == worker.PID &&
 			arm.ControllerPID == command.Process.Pid && arm.SourcePID == source.Runtime.PID &&
-			arm.ActivePID == source.Runtime.PID && arm.ActiveVirtualPID == 1 {
-			pageBytes = faultPageBytes(filepath.Join(relative, "images"), arm.ActiveVirtualPID)
-			if pageBytes >= 4096 {
-				break
+			arm.ActivePID > 1 && arm.ActiveVirtualPID > 0 {
+			comm, commErr := os.ReadFile(fmt.Sprintf("/proc/%d/comm", arm.ActivePID))
+			activeComm = strings.TrimSpace(string(comm))
+			matches := target == "root" && arm.ActivePID == source.Runtime.PID && arm.ActiveVirtualPID == 1
+			if target == "dockerd" {
+				matches = commErr == nil && activeComm == "dockerd" &&
+					arm.ActivePID != source.Runtime.PID && arm.ActiveVirtualPID > 1
+			}
+			if matches {
+				pageBytes = faultPageBytes(filepath.Join(relative, "images"), arm.ActiveVirtualPID)
+				if pageBytes >= 4096 {
+					break
+				}
 			}
 		}
 		signal := int(status.StopSignal())
@@ -326,7 +337,7 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		}
 		status, err = waiter.Wait(tracer, deadline)
 		if err != nil || !status.Stopped() {
-			fixture.t.Fatal("CRIU exited before the real Docker root page-dump boundary", err, status)
+			fixture.t.Fatal("CRIU exited before the real Docker "+target+" page-dump boundary", err, status)
 		}
 	}
 	processes, retained := map[int]bool{}, map[int]faultThread{}
@@ -346,6 +357,13 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	}
 	if len(processes) < 4 || len(retained) < 4 {
 		fixture.t.Fatal("fault did not cover a real Docker process tree", len(processes), len(retained))
+	}
+	if target == "dockerd" {
+		thread, found := retained[arm.ActivePID]
+		birth, birthErr := faultProcessBirth(arm.ActivePID)
+		if !found || thread.Process != arm.ActivePID || birthErr != nil || birth != thread.Start {
+			fixture.t.Fatal("fault did not reach the exact original Docker daemon child", birthErr)
+		}
 	}
 	if err := unix.PidfdSendSignal(tracerFD, unix.SIGKILL, nil, 0); err != nil {
 		fixture.t.Fatal(err)
@@ -418,25 +436,30 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		finished.ExitCode == nil || *finished.ExitCode != 0 || !bytes.Contains(output, []byte(nonce)) {
 		fixture.t.Fatal("original Docker cannot complete useful new work after CRIU loss", err)
 	}
+	fault := "root-process-page-dump"
+	if target == "dockerd" {
+		fault = "docker-daemon-child-page-dump"
+	}
 	record, err := json.MarshalIndent(map[string]any{
-		"passed": true, "fault": "root-process-page-dump", "active_page_bytes": pageBytes,
+		"passed": true, "fault": fault, "active_page_bytes": pageBytes,
+		"active_pid": arm.ActivePID, "active_vpid": arm.ActiveVirtualPID, "active_comm": activeComm,
 		"source_pid": source.Runtime.PID, "tracer_pid": tracer, "processes": len(processes),
 		"threads": len(arm.Tree), "retained_processes": retained, "cure": cure,
 		"unchanged_app": after, "unchanged_containers": before, "docker_exec_exit": *finished.ExitCode,
-		"scope": "Real Docker/Compose/Dev Container process tree, root page-dump tracer death, " +
+		"scope": "Real Docker/Compose/Dev Container process tree, " + target + " page-dump tracer death, " +
 			"guard-authorized recovery, original stable process identities/app state and new Docker exec. " +
-			"No Docker-child dump, helper/guard loss or external agent inference qualification.",
+			"No other process target, helper/guard loss or external agent inference qualification.",
 	}, "", "  ")
 	if err != nil || os.WriteFile("/output/devx-criu-interruption.json", append(record, '\n'), 0600) != nil {
 		fixture.t.Fatal("save complete developer fault result", err)
 	}
-	fixture.t.Logf("real Docker root page-dump recovery preserved %d processes/%d threads; new Docker exec passed",
-		len(processes), len(arm.Tree))
+	fixture.t.Logf("real Docker %s page-dump recovery preserved %d processes/%d threads; new Docker exec passed",
+		target, len(processes), len(arm.Tree))
 }
 
 func TestNativeDockerCaptureInterruption(t *testing.T) {
-	if os.Getenv("FACTORYBOX_DEVX_CRIU_FAULT") != "root" {
-		t.Skip("requires the owned real-Docker root page-dump fault fixture")
+	if target := os.Getenv("FACTORYBOX_DEVX_CRIU_FAULT"); target != "root" && target != "dockerd" {
+		t.Skip("requires the owned real-Docker root or dockerd page-dump fault fixture")
 	}
 	fixture, source, initial := prepareDeveloperFixture(t)
 	prior := strings.Repeat("a", 32)

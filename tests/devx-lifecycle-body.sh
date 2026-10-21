@@ -54,9 +54,9 @@ pathlib.Path("/output/preparation.json").write_text(json.dumps({
 PY
 status=0
 test_pattern='^TestNativeDeveloperLifecycle$'
-if test "${FACTORYBOX_DEVX_CRIU_FAULT:-}" = root; then
-  test_pattern='^TestNativeDockerCaptureInterruption$'
-fi
+case "${FACTORYBOX_DEVX_CRIU_FAULT:-}" in
+  root|dockerd) test_pattern='^TestNativeDockerCaptureInterruption$' ;;
+esac
 /devx-lifecycle.test -test.v -test.timeout=390s -test.run "$test_pattern" || status=$?
 if test "${FACTORYBOX_DEVX_THEIA:-}" = 1; then
   printf '%s\n' "$status" > /output/theia-lifecycle-complete.partial

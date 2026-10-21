@@ -149,7 +149,11 @@ def main():
     parser.add_argument("--opencode", action="store_true", help="Optional supplied OpenCode 2 consumer; no inference")
     parser.add_argument("--suite", choices=["lifecycle", "projection", "docker-interruption"],
                         default="lifecycle")
+    parser.add_argument("--docker-fault-process", choices=["root", "dockerd"], default="root",
+                        help="Exact process whose own page dump must be interrupted")
     options = parser.parse_args()
+    if options.docker_fault_process != "root" and options.suite != "docker-interruption":
+        parser.error("--docker-fault-process requires --suite docker-interruption")
     if options.suite == "projection" and (options.theia_image or options.opencode):
         parser.error("projection is a minimal namespace regression without application consumers")
     if options.suite == "docker-interruption" and not options.retained_candidate:
@@ -232,13 +236,15 @@ def main():
         result["scope"] = ("Bounded native regression for exact IDE namespace/root selection and "
                            "live bind-mounted read/write. No Sysbox workload, IDE server or lifecycle qualification.")
     if options.suite == "docker-interruption":
+        result["docker_fault_process"] = options.docker_fault_process
+        target = ("root process" if options.docker_fault_process == "root" else "dockerd child")
         result["scope"] = ("Real private Docker vfs, Compose, Dev Containers CLI and Factory Connector. "
-                           "Kills only the pinned CRIU child after the Docker root process's page image begins. "
+                           f"Kills only the pinned CRIU tracer after the {target}'s own page image begins. "
                            "Requires authorized cure, original stable process identities, unchanged running "
                            "containers/app state, a new Docker exec, mutation/capture/fork of the cured source, "
                            "RAM/filesystem independence and a usable prior immutable checkpoint. "
                            "The separate ordinary lifecycle suite covers pause/resume, descendants, IDE and harness. "
-                           "No Docker-child dump, helper/guard loss, browser, inference or latency distribution qualification.")
+                           "No other process target, helper/guard loss, browser, inference or latency distribution qualification.")
     failure = None
     try:
         context = archive / "context"
@@ -282,7 +288,7 @@ def main():
         if options.suite == "projection":
             command += ["--env", "FACTORYBOX_DEVX_PROJECTION=1"]
         if options.suite == "docker-interruption":
-            command += ["--env", "FACTORYBOX_DEVX_CRIU_FAULT=root"]
+            command += ["--env", "FACTORYBOX_DEVX_CRIU_FAULT=" + options.docker_fault_process]
         mounts = [
             (output, "/output", False), (components, "/component-input", True),
             (archive / "example", "/example", True),
@@ -351,7 +357,11 @@ def main():
                 "--- PASS: TestNativeIDEProjectionNamespace " in text and
                 "--- SKIP:" not in text and "--- FAIL:" not in text)
         if options.suite == "docker-interruption":
-            result["passed"] = result["passed"] and result.get("docker_fault", {}).get("passed") is True
+            fault = result.get("docker_fault", {})
+            expected_fault = ("root-process-page-dump" if options.docker_fault_process == "root"
+                              else "docker-daemon-child-page-dump")
+            result["passed"] = (result["passed"] and fault.get("passed") is True and
+                                fault.get("fault") == expected_fault)
         if peer:
             ide_observations = result.get("theia_observations", [])
             result["theia"] = peer.result
