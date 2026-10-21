@@ -81,6 +81,54 @@ type captureProcessRestoration struct {
 	NetworkSHA     string              `json:"network_sha256"`
 }
 
+// This handle is opened before the guard acknowledges its original parent.
+// A reused numeric PID can neither replace it nor authorize another caller.
+type captureControllerIdentity struct {
+	pid, pidfd int
+	start      string
+}
+
+func capturePinController(pid int) (captureControllerIdentity, error) {
+	identity := captureControllerIdentity{pid: pid, pidfd: -1}
+	if pid <= 1 || pid != os.Getppid() {
+		return identity, fmt.Errorf("guard controller is not its original parent")
+	}
+	fd, err := unix.PidfdOpen(pid, 0)
+	if err != nil {
+		return identity, err
+	}
+	start, err := processBirth(pid)
+	if err != nil {
+		unix.Close(fd)
+		return identity, err
+	}
+	identity.pidfd, identity.start = fd, start
+	return identity, nil
+}
+
+func (identity captureControllerIdentity) exited() (bool, error) {
+	if identity.pidfd < 0 || identity.start == "" {
+		return false, fmt.Errorf("guard lacks its original controller identity")
+	}
+	for {
+		poll := []unix.PollFd{{Fd: int32(identity.pidfd), Events: unix.POLLIN}}
+		n, err := unix.Poll(poll, 0)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if n == 0 {
+			return false, nil
+		}
+		if n != 1 || poll[0].Revents&unix.POLLIN == 0 {
+			return false, fmt.Errorf("original controller pidfd changed its event state")
+		}
+		return true, nil
+	}
+}
+
 func captureRetainedRecords(config captureGuardConfig, anchors captureGuardAnchors) (retainedCaptureArm, captureWorkerIntent, error) {
 	var arm retainedCaptureArm
 	var worker captureWorkerIntent
@@ -239,7 +287,8 @@ func captureRetainedResult(config captureGuardConfig, anchors captureGuardAnchor
 
 // Only the original independent guard can grant temporary execution to the
 // retained CRIU helper. The source remains held when this method returns.
-func captureGuardCureRetained(config captureGuardConfig, anchors captureGuardAnchors) (resultErr error) {
+func captureGuardCureRetained(config captureGuardConfig, anchors captureGuardAnchors,
+	controller captureControllerIdentity) (resultErr error) {
 	if err := captureGuardCaptureReturned(config, anchors); err != nil {
 		return err
 	}
@@ -251,9 +300,13 @@ func captureGuardCureRetained(config captureGuardConfig, anchors captureGuardAnc
 	if err != nil || arm.GuardPID != os.Getpid() || arm.GuardStart != guardBirth {
 		return fmt.Errorf("retained context is not owned by this original guard")
 	}
-	controllerBirth, err := processBirth(config.Controller)
-	if err != nil || controllerBirth != arm.ControllerStart {
-		return fmt.Errorf("retained context lost its original active controller")
+	if controller.pid != config.Controller || controller.start != arm.ControllerStart {
+		return fmt.Errorf("retained context differs from the original pinned controller")
+	}
+	// Use the pinned kernel identity, not a fresh lookup of a numeric PID
+	// which may disappear or be reused while the guard is curing.
+	if _, err := controller.exited(); err != nil {
+		return err
 	}
 	if err := captureRetainedTreeCurrent(config, anchors, arm, false); err != nil {
 		return err

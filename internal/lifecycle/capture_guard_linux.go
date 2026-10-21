@@ -403,6 +403,11 @@ func captureGuardServe() (resultErr error) {
 	if err := captureGuardValidate(config, anchor); err != nil {
 		return err
 	}
+	controller, err := capturePinController(config.Controller)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(controller.pidfd)
 	selfGroup, err := os.ReadFile("/proc/self/cgroup")
 	if err != nil || strings.Contains(string(selfGroup), "/"+config.Source.RuntimeID) {
 		return fmt.Errorf("guard is inside the captured source cgroup")
@@ -451,7 +456,7 @@ func captureGuardServe() (resultErr error) {
 			if !unsafe || stopped {
 				return fmt.Errorf("retained cure has no matching live-source capture")
 			}
-			if err := captureGuardCureRetained(config, anchor); err != nil {
+			if err := captureGuardCureRetained(config, anchor, controller); err != nil {
 				return err
 			}
 			name, acknowledgement = "guard-capture-cured.json", "source-cured:"
@@ -481,6 +486,10 @@ func captureGuardServe() (resultErr error) {
 			return err
 		}
 		if _, err := socket.Write([]byte(acknowledgement + config.Token)); err != nil {
+			if exited, exitErr := controller.exited(); exitErr == nil && exited {
+				request = nil
+				break
+			}
 			return err
 		}
 	}
@@ -520,10 +529,23 @@ func captureGuardServe() (resultErr error) {
 			status = "source_stopped_guard_disarmed"
 		}
 	} else if status == "" && unsafe {
-		// An orphaned ramctl/CRIU child may still be capturing. Preserve the
-		// original frozen source until a new controller reconciles that
-		// command and validates tracer/thread state. EOF is not a safe point.
-		status, resultErr = captureGuardHold(config, anchor)
+		if exited, exitErr := controller.exited(); exitErr == nil && exited && config.CriuSHA256 != "" {
+			if err := captureGuardAbortOrphan(config, anchor, controller); err == nil {
+				unsafe = false
+			} else if writeErr := captureGuardWrite(anchor.evidence, "guard-orphan-recovery.json",
+				map[string]any{"token": config.Token, "passed": false, "error": err.Error()}); writeErr != nil {
+				resultErr = writeErr
+			}
+		}
+		// A live or unproved writer still requires the original source hold.
+		// EOF alone never authorizes release.
+		var recoveryErr error
+		if unsafe {
+			status, recoveryErr = captureGuardHold(config, anchor)
+		} else {
+			status, recoveryErr = captureGuardRecover(config, anchor)
+		}
+		resultErr = errors.Join(resultErr, recoveryErr)
 	} else if status == "" {
 		status, resultErr = captureGuardRecover(config, anchor)
 	}

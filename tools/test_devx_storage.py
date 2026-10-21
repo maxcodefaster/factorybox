@@ -127,6 +127,8 @@ class DeveloperStorageTests(unittest.TestCase):
         modes = [
             (["--docker-fault-component", "helper"],
              "--docker-fault-component requires --suite docker-interruption"),
+            (["--docker-fault-component", "controller"],
+             "--docker-fault-component requires --suite docker-interruption"),
             (["--suite", "docker-interruption", "--docker-fault-component", "helper",
               "--docker-fault-operation", "pause"],
              "the helper-loss proof currently requires checkpoint"),

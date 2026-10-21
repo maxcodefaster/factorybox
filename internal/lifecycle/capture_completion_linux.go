@@ -145,6 +145,39 @@ func captureGuardAbortIntent(config captureGuardConfig, anchors captureGuardAnch
 	return intent, nil
 }
 
+// Finish only the original guard's already entered transaction after its
+// pinned caller exits. An unfinished/live writer is never a safe point.
+func captureGuardAbortOrphan(config captureGuardConfig, anchors captureGuardAnchors,
+	controller captureControllerIdentity) error {
+	exited, err := controller.exited()
+	if err != nil || !exited {
+		return fmt.Errorf("orphan recovery lacks the original controller's confirmed exit: %v", err)
+	}
+	if err := captureGuardProcessCompleted(config, anchors); err != nil {
+		if _, receiptErr := captureCompletionBytes(anchors.evidence, "capture-process-complete.json", 64<<10); !errors.Is(receiptErr, os.ErrNotExist) {
+			return err
+		}
+		if err := captureGuardCureRetained(config, anchors, controller); err != nil {
+			return err
+		}
+		if err := captureGuardProcessCompleted(config, anchors); err != nil {
+			return err
+		}
+	}
+	if _, err := captureGuardAbortIntent(config, anchors); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		intent := captureAbortIntent{Version: 1, Token: config.Token, FailedAt: now(),
+			Error: "original controller exited before checkpoint completion"}
+		if err := captureGuardWrite(anchors.evidence, "capture-abort-intent.json", intent); err != nil {
+			return err
+		}
+	}
+	return captureGuardWrite(anchors.evidence, "guard-capture-aborted.json",
+		map[string]any{"token": config.Token, "capture_in_flight": false})
+}
+
 func (guard *captureGuard) captureAborted(cause error) (*checkpointCaptureError, error) {
 	if !guard.unsafe || guard.stopped || cause == nil {
 		return nil, fmt.Errorf("capture abort is outside its failed in-flight transaction")

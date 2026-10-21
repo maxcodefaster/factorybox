@@ -41,7 +41,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Exact-wait candidate CRIU core | `factorybox-criu-core-e3af8c54af074fb9ad0e8d3f7e8ce82a`: all 18 unchanged C cases pass two dump/restore cycles each with CRIU candidate `factorybox-build-criu-retained-5587c002b1744963a8ad3b970bd5063f`, including threads, futexes, pipes, Unix sockets, queues, timers, file locks and memfd. Every case retains its own final upstream assertions and credential checks. This is the existing host-flavor core selection, not the complete ZDTM matrix or ordinary developer qualification. Exact cleanup passes |
 | Exit-observer candidate CRIU core | `factorybox-criu-core-ddee089626ba42988300a3c902f95973`: the same 18 unchanged cases pass two dump/restore cycles each with CRIU candidate `factorybox-build-criu-retained-2502cb8843f341909d3bf1c3c1c37a66`, zero skips, original assertions/credential checks and exact cleanup. All 1,030 upstream test files verify unchanged. This does not replace the separate active-context recovery, developer or complete ZDTM gates |
 | Prepared-base pause/resume | `factorybox-runtime-cb225f6502304e15ac47e7b8c1410aa7`: nine tests, 46 subtests, zero skips, unchanged frozen inputs/source/components and owned cleanup. Current descriptor admission and managed-volume settings retain the selected CRIU's full pause/resume/RAM-release and resumed-source fork assertions |
-| Capture guard failure/disarm | `factorybox-runtime-d1ff147321434c1391dbbc3893b6e90d`: all twelve original cases after retrying interrupted pidfd polls, owned cleanup |
+| Capture guard failure/disarm | `factorybox-runtime-d1ff147321434c1391dbbc3893b6e90d`: all twelve original cases after retrying interrupted pidfd polls. Current controller-pinning/orphan-cleanup regression `factorybox-runtime-95ee7641b32a48f493e69784759b89de` passes the same twelve unchanged cases with no skips and exact cleanup |
 | Worker loss after completed CRIU | `factorybox-runtime-09a48beb73f94b9cb8e0749a548d648e`: nine tests, 43 subtests, zero skips; checkpoint/pause source recovery, copy-child death, live/forged receipt refusal and lost failed-pause publication recovery |
 | Current candidate worker-loss regression | `factorybox-runtime-b4f376c0bc444f148f2e1e091fbee498` passes the same nine tests/43 subtests without skips, with the current shared-root CRIU candidate and SHM FS composition. Actual copy-worker death after successful CRIU preserves the original checkpoint/pause sources and useful prior forks; copy-child death, live/forged completion refusal and failed-pause publication recovery pass. Frozen Go, component inputs, complete source context and exact cleanup pass. Earlier `factorybox-runtime-ebf9f09ce2de4bddbe877a297eed4fac` failed before native execution because the runner incorrectly required homogeneous-builder metadata from explicit component inputs. The fixed runner preserves recipe/context verification when it actually builds an image; supplied component binaries and the explicit native base retain their own pin/recipe/package checks. The earlier failed result remains unchanged |
 | Filesystem and descriptor admission | `factorybox-runtime-bd020a38178f40a88695427f11d3ab1b`: ten tests/43 subtests, zero skips, selected CRIU. Original hook assertions remain; held root/child mount contexts reject before CRIU with original PID/RAM/useful work and history intact. A transient context settles before a complete checkpoint and independent fork. Changed descriptor observation refused on replay; 128 real contexts produce less than 4 KiB of evidence |
@@ -103,6 +103,9 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Timed-source exit reproducer | `factorybox-exit-hold-76012ba8910b40e59680faa8807a79ca` reproduces normal timed-source exit after its tracer dies and before a delayed pidfd observer freezes it. Holding the tracer's `PTRACE_EVENT_EXIT` prevents that gap. The real socket variant reproduces a separate EOF handling failure in `factorybox-exit-hold-e144254552724449a4c743a8993907fb`. The ordered socket correction passes tracer death in `factorybox-exit-hold-c60c9360a37644318bff8aa30e1e76b5`, normal cancellation in `factorybox-exit-hold-5e2d87fef014444c95000bc4cccaf5c9`, and tracer death from a job-control stop in `factorybox-exit-hold-1ad0fb2fef3c4937889eca1f06e49591`. These use the same observer header and socket follow-up as CRIU, with real processes/private cgroups and exact cleanup. Their roughly 0.4-second bodies exclude outer container startup and are not lifecycle latency measurements |
 | First exit-observer integration | **Failing**, superseded, in `factorybox-runtime-retained-9e37a18e57a941efa8c3bc31bef77358`: the actual child page-dump stop and tracer kill succeed, but the retained observer rejects readable socket EOF before the terminal wait event. No authorized recovery is qualified. The identical Go/Sysbox inputs pass with the ordered socket correction below. Retirement `factorybox-storage-retirement-9f836a6a387b48c2b6b138dd7c2e4746` retains all member metadata, large-file hashes, small contents and complete controller diagnostics; source, builds, results and logs remain |
 | Exit-observer child failed-pause recovery | `factorybox-runtime-retained-d6f5f39d351847c5be009b7b2afa4a80` passes all nine main tests/40 subtests and twelve physical invalid-grant refusals with CRIU candidate `factorybox-build-criu-retained-2502cb8843f341909d3bf1c3c1c37a66`. The retained helper freezes the pinned source before the dying tracer detaches its tracees. After killing the tracer at the requested child's completed page dump, authorized cure preserves both original multithreaded processes with 32 MiB private RAM each, TCP, the prior independent fork, failed-pause history and normal source use. Original registers/masks match, injected mappings are absent, and the result explicitly proves the exit stop was held. Frozen inputs and exact cleanup pass. This is a two-process gate; current Docker, helper/guard loss, IDE and ordinary lifecycle gates still apply before reference selection |
+| Original CLI loss before retained cure | Baselines `factorybox-runtime-retained-c56b5fa5838b4398b09db81b220e6c60` and single-process `factorybox-runtime-retained-448447f46f5d40a8a033b0c3e93a195e` retain the source but cannot reconcile after their CLI dies. Pinned-controller identity allows cure in `factorybox-runtime-retained-e0efe1f4533f4556aadf05cb4009c68d`, but its broken ACK still prevents safe-abort publication. Complete single-process `factorybox-runtime-retained-d697ed1cabbc456e8dda4b3b8aad6c89` and final two-process `factorybox-runtime-retained-e9a021ccf0e7411aa817b3fb424efb99` pass nine tests/40 subtests and all twelve invalid-grant controls. After tracer/worker exit and checked network rollback, the original CLI is killed before the same original guard grants cure. Both original 32-MiB processes, TCP, prior independent fork, parent-child relationships, failed-pause history and public replay remain usable. The complete arm and grant retain their original controller/guard/nonce identities. No original-guard death or earlier loss window is qualified |
+| Docker original-CLI loss recovery | `factorybox-devx-lifecycle-5b0db558d30f4c5d8e0eba99ec4449f8` passes all six dedicated app phases with the same component/consumer inputs. Kill the tracer after 27,332,608 bytes in the Docker daemon child's own image, then kill its original CLI after worker exit/network rollback and before cure. The same original guard authorizes complete recovery of all 13 processes/100 threads; original register/mask checks, zero injected mappings, unchanged armed identities, public replay, rejected-pause history, new Docker exec, mutation and independently useful fresh/prior forks all pass. Go takes 71.86 seconds; outer execution 93.992 under unchanged limits. Individual current/prior useful forks take 2.903/3.445 seconds. Frozen inputs/global sentinels and exact cleanup pass. This is the dockerd/pause window; no guard death, earlier controller-loss window, optional-consumer or latency-distribution qualification |
+| Final pinned-controller Docker countercheck | `factorybox-devx-lifecycle-5875def9ac15440d86aef256edefeaef` repeats the same complete CLI-loss gate after removing a racy fresh numeric-PID lookup in favor of the already pinned kernel identity. All six phases pass after tracer death at 28,131,328 own-daemon page bytes and subsequent CLI death, preserving 13 original processes/98 threads, original recovery identities, new Docker exec, failed-pause replay/history and useful fresh/prior forks. Go takes 93.64 seconds and outer execution 113.808. Individual current/prior useful forks take 11.301/13.668 seconds. This uncontrolled difference from the preceding run is not a proved speed change. Inputs/global sentinels and exact cleanup pass; other fault windows and production qualification remain open |
 | Exit-observer Docker failed-pause recovery | `factorybox-devx-lifecycle-37571ecc4aba4893b329672e6207ebc2` passes the complete dedicated Docker/Compose/Dev Container gate with the same candidate and SHM FS composition. The acknowledged stop follows 27,480,064 bytes in the Docker daemon child's own page image, before its retained context is cured. Killing the tracer preserves all 13 original processes/99 threads under authorized cure with an explicit exit-stop proof, unchanged running containers/app state and a successful new Docker exec. Rejected-pause history, refusal of the failed snapshot ID, source mutation, fresh/current-state independent fork, divergent branch mutation and a useful prior-checkpoint fork all pass. Go takes 78.30 seconds and outer execution 106.212 within the unchanged bounds. Current/prior useful forks take 3.349/2.730 seconds in these individual shared-worker observations; no latency distribution or improvement over other profiles is inferred. Frozen inputs/global sentinels and exact cleanup pass. Helper/guard loss, other fault windows and the complete optional-consumer profile still require qualification on this build |
 | Exit-observer Docker helper-loss countercheck | **Failing baseline**, superseded, in `factorybox-devx-lifecycle-702fcebd268f47fbb70e57ef024b1045`. Helper death after 27,713,536 bytes of the daemon child's own image still permits a complete checkpoint, preservation of 13 original processes/100 threads, new Docker exec, an independent 3.897-second fork and divergent mutation. The fresh checkpoint then fails on `/runc`: CRIU cannot find mount 7289 for mapped file `fd=-3`. No fresh-state/prior-state fork is qualified by this run. Go takes 62.45 seconds and outer execution 76.838; frozen inputs/global sentinels and exact cleanup pass. The native executable reproducer above identifies the scanner gap; the complete same-component successor below passes after only the scanner and its native test change. Retirement `factorybox-storage-retirement-9c13d148047f4545841be6add38f8cfd` retains complete member metadata, large-file hashes, small contents and controller diagnostics alongside original source/builds/results/logs |
 | Complete exit-observer Docker helper-loss gate | `factorybox-devx-lifecycle-902ffeb8a63b420f97791caf1604c269` passes all nine app phases with the same CRIU/Sysbox binaries and consumers. The helper dies after 29,106,176 bytes in the Docker daemon child's own page image; the healthy tracer completes the checkpoint and preserves all 13 original processes/102 threads, running containers/app state and a successful new Docker exec. That checkpoint forks independently, source and branch mutate independently, and fresh capture/current-state and prior-state useful forks all pass. Individual useful forks take 3.903/9.278/5.093 seconds. Go takes 160.30 seconds and outer execution 176.187 under unchanged limits. Frozen inputs/global sentinels and exact cleanup pass. This does not qualify simultaneous tracer/helper loss, guard loss, other fault windows, IDE composition or a latency distribution |
@@ -440,8 +443,9 @@ The missed parent fault in `factorybox-runtime-retained-108385e5281849aca4fa2109
 is retained as a failed test observation. The test now traces only its exact owned CRIU,
 stops it at a syscall boundary after at least 8 MiB of the selected process's own page image,
 then kills and reaps that exact tracer. It does not add a production pause hook or relax the
-original page-data/running-source assertions. Real Docker/Dev Container interruption recovery,
-other capture windows and worker/guard loss during the cure remain unqualified.
+original page-data/running-source assertions. The passing real Docker and original-CLI loss
+windows are listed above. Other capture windows and worker/guard loss during the cure
+remain unqualified.
 
 The subsequent full developer run found an additional ordinary failure boundary: a live
 mount-transaction `fscontext` descriptor rejected during pause. The operation remained
@@ -614,6 +618,12 @@ the original tracer continues. This separate gate currently accepts only checkpo
 It requires that checkpoint to finish and produce an independently usable fork before
 the ordinary source-mutation, fresh-checkpoint and prior-checkpoint assertions continue.
 Unsupported helper/suite/operation combinations reject before input loading or resource admission.
+Add `--docker-fault-component controller` for the demonstrated `dockerd`/`pause` CLI-loss
+window. It first kills the exact tracer at its acknowledged page boundary, waits for the
+original worker to exit with checked network rollback, then kills only the pinned original
+CLI before resuming its original guard. Public replay must recover the existing transaction
+without changing the arm, guard, original controller or nonce. The complete ordinary Docker
+source/fresh-capture/current-fork/prior-fork assertions still run.
 This suite requires the explicit candidate
 and omits optional IDE/harness consumers. Tracer-loss gates check authorized cure, original stable process
 identities, unchanged containers/app state, a new Docker exec, mutation and a fresh
@@ -653,6 +663,27 @@ Frozen older candidates retain their exact patch inputs and
 remain loadable. Add `--thread-churn` to the candidate native runner for an owned nonleader
 thread exit triggered at the actual tracer stop; every original RAM/TCP/source/fork assertion
 remains. This is a timing regression probe, not permission to ignore changed identities.
+
+The guard pins its original parent with a pidfd and birth time before acknowledging startup.
+That same guard can complete the already authorized cleanup after this caller exits;
+a recycled numeric PID supplies no new authority. A broken ACK to the confirmed dead caller
+continues through verified cleanup and safe-abort publication. Source release still requires
+the original source/tree identities, stopped writers, checked network rollback, complete
+cure and unchanged raw Sysbox state. An active or unproved writer keeps the source held.
+Public replay then finalizes the existing failed-operation history. No guard is replaced
+and no new checkpoint is published by this recovery.
+
+```sh
+mise exec -- python3 tests/criu-retained-candidate/native.py \
+  --candidate factorybox-build-criu-retained-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --pause --multiprocess --interrupt-child --grant-control --controller-loss
+```
+
+`--controller-loss` requires the physical grant controls. Its demonstrated boundary is
+after worker/network rollback and before cure grant; loss of the original guard itself
+and caller loss before that boundary remain separate required failure cases.
 
 The explicitly unselected `--exit-hold --exit-hold-socket` build adds
 `criu-retained-exit-hold-candidate.patch`, the pinned private observer header and
@@ -1233,6 +1264,13 @@ resolved `/runc` recapture dump after the same-component nine-phase helper-loss 
 Its native red/green source hashes differ only in executable admission and that native test.
 All tar metadata, large hashes, small contents and complete controller diagnostics remain.
 No unresolved payload or frozen build input is retired by these operations.
+
+Retirement `factorybox-storage-retirement-eeb91a7f28204e899fa1552ca87c27da` replaces the
+three resolved CLI-loss failure payloads and an earlier positive duplicate after the
+matching one/two-process controller-loss gates pass. Component bytes and fault options
+match, all 9/40 assertions and twelve invalid grants pass, and every controller diagnostic
+file is retained in full. Source, executables, original results/logs, all member metadata
+and large-file hashes remain. The current complete recovery proofs remain directly usable.
 
 ## Remaining release requirements
 

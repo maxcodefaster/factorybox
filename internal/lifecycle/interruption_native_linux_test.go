@@ -40,6 +40,10 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		t.Fatal("child interruption requires the two-process fixture")
 	}
 	grantControl := os.Getenv("FACTORYBOX_CRIU_RETAINED_GRANT_CONTROL") == "1"
+	controllerLoss := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_CONTROLLER_LOSS") == "1"
+	if controllerLoss && !grantControl {
+		t.Fatal("controller-loss injection requires the original stopped guard and grant controls")
+	}
 	threadChurn := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_THREAD_CHURN") == "1"
 	if grantControl && os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") != "1" {
 		t.Fatal("retained grant controls require the retained-context candidate")
@@ -400,6 +404,35 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	t.Logf("interrupted pinned CRIU PID %d after at least 8 MiB of the active process's page image while tracing original source PID %d, active PID %d", interruptedPID, source.Runtime.PID, activePID)
 	if grantControl {
 		probeRetainedGrantsNative(t, engine, relative, originalGroup, heldGuard)
+		if controllerLoss {
+			fd, err := unix.PidfdOpen(command.Process.Pid, 0)
+			if err != nil {
+				t.Fatal("pin only the original CLI controller", err)
+			}
+			birth, birthErr := processBirth(command.Process.Pid)
+			actual, actualErr := os.Stat(fmt.Sprintf("/proc/%d/exe", command.Process.Pid))
+			expected, expectedErr := os.Stat("/factorybox")
+			if birthErr != nil || birth != heldGuard.ControllerStart || actualErr != nil || expectedErr != nil ||
+				!os.SameFile(actual, expected) || command.Process.Pid != heldGuard.ControllerPID {
+				unix.Close(fd)
+				t.Fatal("original controller birth or executable changed before injection")
+			}
+			killErr := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0)
+			exitErr := testtrace.WaitDead(fd, time.Now().Add(2*time.Second))
+			unix.Close(fd)
+			if err := errors.Join(killErr, exitErr); err != nil {
+				t.Fatal("kill only the pinned original controller after worker rollback", err)
+			}
+			evidence, err := json.Marshal(map[string]any{
+				"passed": false, "controller_pid": heldGuard.ControllerPID,
+				"controller_start": heldGuard.ControllerStart, "guard_pid": heldGuard.GuardPID,
+				"source_pid": source.Runtime.PID, "controller_killed": true,
+				"scope": "Original CLI death after tracer/worker exit and network rollback, before the retained cure grant.",
+			})
+			if err != nil || os.WriteFile("/output/interruption-controller-loss.json", append(evidence, '\n'), 0600) != nil {
+				t.Fatal("record exact controller-loss boundary", err)
+			}
+		}
 		resumeGuard()
 	}
 	if err := command.Wait(); err == nil {
@@ -411,6 +444,18 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	} {
 		if err := os.WriteFile("/output/"+name, data, 0600); err != nil {
 			t.Fatal("save interrupted command outcome before validating recovery", err)
+		}
+	}
+	if controllerLoss {
+		var recovered *checkpointCaptureError
+		var replayErr error
+		if pauseMode {
+			_, replayErr = engine.Pause(ctx, "interrupted", snapshot)
+		} else {
+			_, replayErr = engine.Checkpoint(ctx, "interrupted", snapshot)
+		}
+		if !errors.As(replayErr, &recovered) || !recovered.recovered {
+			t.Fatal("original controller death has no proved recoverable transaction", replayErr)
 		}
 	}
 	if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
@@ -735,6 +780,30 @@ func TestInterruptedCaptureNative(t *testing.T) {
 				t.Fatal("thread-churn control never executed its owned nonleader exit", err)
 			}
 			time.Sleep(time.Millisecond)
+		}
+	}
+	if controllerLoss {
+		var arm retainedCaptureArm
+		var request retainedCaptureRequest
+		if err := engine.readCheckpointJSON(relative+"/guard/criu-retained-arm.json", &arm); err != nil ||
+			!reflect.DeepEqual(arm, heldGuard) {
+			t.Fatal("controller-loss recovery replaced its original armed identities", err)
+		}
+		if err := engine.readCheckpointJSON(relative+"/guard/criu-retained-request.json", &request); err != nil ||
+			request.GuardPID != heldGuard.GuardPID || request.ControllerPID != heldGuard.ControllerPID ||
+			request.Nonce != heldGuard.Nonce || request.Token != snapshot {
+			t.Fatal("controller-loss recovery changed the original guard or controller authority", err)
+		}
+		evidence, err := json.Marshal(map[string]any{
+			"passed": true, "controller_pid": heldGuard.ControllerPID,
+			"controller_start": heldGuard.ControllerStart, "guard_pid": heldGuard.GuardPID,
+			"source_pid": source.Runtime.PID, "controller_killed": true,
+			"same_original_guard": true, "replay_recovered": true,
+			"scope": "Original CLI death after tracer/worker exit and network rollback, before cure grant. " +
+				"All original RAM/TCP/independent-fork/history/replay assertions passed.",
+		})
+		if err != nil || os.WriteFile("/output/interruption-controller-loss.json", append(evidence, '\n'), 0600) != nil {
+			t.Fatal("save complete controller-loss recovery proof", err)
 		}
 	}
 }

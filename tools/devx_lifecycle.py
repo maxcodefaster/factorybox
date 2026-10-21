@@ -154,8 +154,8 @@ def main():
                         help="Exact process whose own page dump must be interrupted")
     parser.add_argument("--docker-fault-operation", choices=["checkpoint", "pause"], default="checkpoint",
                         help="Lifecycle operation whose actual page dump must be interrupted")
-    parser.add_argument("--docker-fault-component", choices=["tracer", "helper"], default="tracer",
-                        help="Exact CRIU component to kill at the selected page-dump boundary")
+    parser.add_argument("--docker-fault-component", choices=["tracer", "helper", "controller"], default="tracer",
+                        help="Exact component to kill; controller loss follows tracer/worker rollback")
     options = parser.parse_args()
     if options.docker_fault_process != "root" and options.suite != "docker-interruption":
         parser.error("--docker-fault-process requires --suite docker-interruption")
@@ -267,6 +267,14 @@ def main():
                 "That checkpoint must fork independently, then source mutation, fresh capture/fork and the prior "
                 "checkpoint fork must still work. No tracer-plus-helper double loss, guard loss, pause, IDE, "
                 "inference or latency distribution qualification.")
+        elif options.docker_fault_component == "controller":
+            result["scope"] = (
+                "Real Docker/Compose/Dev Container tree. Kill the pinned tracer at the selected "
+                "process page dump, then the original CLI after worker exit and checked network "
+                "rollback, before the same original guard grants cure. Require unchanged recovery "
+                "identities, public transaction replay, original useful Docker/app state and all "
+                "fresh/current/prior independent fork assertions. No guard death, earlier loss "
+                "window, optional consumers or latency-distribution qualification.")
     failure = None
     try:
         context = archive / "context"
@@ -391,6 +399,8 @@ def main():
                               else "docker-daemon-child-page-dump")
             if options.docker_fault_component == "helper":
                 expected_fault = "retained-helper-loss-during-" + options.docker_fault_process + "-page-dump"
+            elif options.docker_fault_component == "controller":
+                expected_fault = "controller-loss-after-" + options.docker_fault_process + "-page-dump"
             result["passed"] = (result["passed"] and fault.get("passed") is True and
                                 fault.get("fault") == expected_fault and
                                 fault.get("operation") == options.docker_fault_operation and
@@ -398,6 +408,9 @@ def main():
             if options.docker_fault_component == "helper":
                 result["passed"] = (result["passed"] and fault.get("retained_helper_killed") is True and
                                     fault.get("checkpoint_published_after_helper_loss") is True)
+            elif options.docker_fault_component == "controller":
+                result["passed"] = (result["passed"] and fault.get("controller_killed") is True and
+                                    fault.get("same_original_guard") is True)
             if options.docker_fault_operation == "pause":
                 result["passed"] = (result["passed"] and
                                     fault.get("failed_pause_history_retained") is True and

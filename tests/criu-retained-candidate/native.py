@@ -27,9 +27,13 @@ parser.add_argument("--grant-control", action="store_true")
 parser.add_argument("--multiprocess", action="store_true")
 parser.add_argument("--interrupt-child", action="store_true")
 parser.add_argument("--thread-churn", action="store_true")
+parser.add_argument("--controller-loss", action="store_true",
+                    help="Kill only the original CLI after rollback and before its guard grants cure")
 options = parser.parse_args()
 if options.interrupt_child and not options.multiprocess:
     parser.error("--interrupt-child requires --multiprocess")
+if options.controller_loss and not options.grant_control:
+    parser.error("--controller-loss requires --grant-control")
 candidate_name = options.candidate
 corruption_control = options.corruption_control
 candidate, criu, _, _ = criu_candidate.load(candidate_name)
@@ -114,6 +118,9 @@ if options.interrupt_child:
 if options.thread_churn:
     location = command.index("--entrypoint")
     command[location:location] = ["--env", "FACTORYBOX_NATIVE_INTERRUPTION_THREAD_CHURN=1"]
+if options.controller_loss:
+    location = command.index("--entrypoint")
+    command[location:location] = ["--env", "FACTORYBOX_NATIVE_INTERRUPTION_CONTROLLER_LOSS=1"]
 result = {
     "owner": owner, "container_name": name, "volume_name": name, "command": command,
     "candidate": candidate_name, "candidate_sha256": criu["binary_sha256"],
@@ -124,6 +131,7 @@ result = {
     "multiprocess": options.multiprocess,
     "interrupt_child": options.interrupt_child,
     "thread_churn": options.thread_churn,
+    "controller_loss": options.controller_loss,
     "inputs_sha256": inputs, "component_sha256": component_hashes, "source_sha256": source_sha,
     "scope": "Actual CRIU kill during pages dump; only the original independent guard may authorize "
              "process cure and source release. Complete 32-MiB RAM, TCP, previous committed fork "
@@ -174,6 +182,13 @@ try:
         result["thread_churn_control"] = json.loads(control.read_text()) if control.exists() else {}
         result["passed"] = bool(result["passed"] and result["thread_churn_control"].get("passed") and
                                 result["thread_churn_control"].get("retired_guest_tid", 0) > 1)
+    if options.controller_loss:
+        control = output / "interruption-controller-loss.json"
+        result["controller_loss_control"] = json.loads(control.read_text()) if control.exists() else {}
+        result["passed"] = bool(result["passed"] and result["controller_loss_control"].get("passed") and
+                                result["controller_loss_control"].get("controller_killed") and
+                                result["controller_loss_control"].get("same_original_guard") and
+                                result["controller_loss_control"].get("replay_recovered"))
     proof = output / "interruption-retained-context.json"
     if proof.exists():
         result["diagnostic"] = json.loads(proof.read_text())
