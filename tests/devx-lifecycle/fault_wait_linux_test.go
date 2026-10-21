@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"factorybox/internal/testtrace"
 	"golang.org/x/sys/unix"
 )
 
@@ -19,8 +20,8 @@ func TestNativeFaultWaitCost(t *testing.T) {
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	waiter := newFaultTraceWaiter()
-	defer waiter.close()
+	waiter := testtrace.New("owned CRIU trace deadline expired")
+	defer waiter.Close()
 	// Use a single-threaded producer: tracing only a Go program's leader
 	// would silently miss syscalls executed by its other runtime threads.
 	command := exec.Command("/usr/bin/python3", "-S", "-c",
@@ -34,12 +35,12 @@ func TestNativeFaultWaitCost(t *testing.T) {
 	defer func() {
 		if !waited {
 			command.Process.Kill()
-			waiter.wait(command.Process.Pid, time.Now().Add(2*time.Second))
+			waiter.Wait(command.Process.Pid, time.Now().Add(2*time.Second))
 		}
 	}()
 	started := time.Now()
 	deadline := started.Add(10 * time.Second)
-	status, err := waiter.wait(command.Process.Pid, deadline)
+	status, err := waiter.Wait(command.Process.Pid, deadline)
 	if err != nil || !status.Stopped() {
 		t.Fatal("owned producer did not reach its initial exec stop", status, err)
 	}
@@ -55,7 +56,7 @@ func TestNativeFaultWaitCost(t *testing.T) {
 		if err := unix.PtraceSyscall(command.Process.Pid, deliver); err != nil {
 			t.Fatal(err)
 		}
-		status, err = waiter.wait(command.Process.Pid, deadline)
+		status, err = waiter.Wait(command.Process.Pid, deadline)
 		if err != nil {
 			t.Fatal("owned producer did not finish within its diagnostic bound", err)
 		}
@@ -78,8 +79,8 @@ func TestNativeFaultWaitDeadline(t *testing.T) {
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	waiter := newFaultTraceWaiter()
-	defer waiter.close()
+	waiter := testtrace.New("owned CRIU trace deadline expired")
+	defer waiter.Close()
 	command := exec.Command("/bin/sleep", "30")
 	command.SysProcAttr = &syscall.SysProcAttr{Ptrace: true}
 	if err := command.Start(); err != nil {
@@ -88,26 +89,25 @@ func TestNativeFaultWaitDeadline(t *testing.T) {
 	defer command.Process.Release()
 	defer func() {
 		command.Process.Kill()
-		status, err := waiter.wait(command.Process.Pid, time.Now().Add(2*time.Second))
+		status, err := waiter.Wait(command.Process.Pid, time.Now().Add(2*time.Second))
 		if err != nil || !status.Signaled() {
 			t.Error("owned sleeping producer was not reaped", status, err)
 		}
 	}()
-	status, err := waiter.wait(command.Process.Pid, time.Now().Add(2*time.Second))
+	status, err := waiter.Wait(command.Process.Pid, time.Now().Add(2*time.Second))
 	if err != nil || !status.Stopped() {
 		t.Fatal("owned sleeping producer did not reach its initial exec stop", status, err)
 	}
 	if err := unix.PtraceCont(command.Process.Pid, 0); err != nil {
 		t.Fatal(err)
 	}
-	// A stale or unrelated child notification must not count as this PID's
+	// A real unrelated child notification must not count as this PID's
 	// next stop, nor should waiting for another signal lose the deadline.
-	select {
-	case waiter.events <- unix.SIGCHLD:
-	default:
+	if err := exec.Command("/bin/true").Run(); err != nil {
+		t.Fatal(err)
 	}
 	started := time.Now()
-	status, err = waiter.wait(command.Process.Pid, started.Add(20*time.Millisecond))
+	status, err = waiter.Wait(command.Process.Pid, started.Add(20*time.Millisecond))
 	elapsed := time.Since(started)
 	if err == nil || status != 0 || elapsed < 20*time.Millisecond || elapsed > time.Second {
 		t.Fatal("native trace waiting lost its exact PID or absolute deadline", status, err, elapsed)

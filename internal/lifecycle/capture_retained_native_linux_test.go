@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"factorybox/internal/testtrace"
 	"golang.org/x/sys/unix"
 )
 
@@ -43,31 +44,15 @@ func retainedPagesWrittenNative(images string, virtualPID int) bool {
 	return err == nil && info.Size() >= 8<<20
 }
 
-func retainedTraceWaitNative(pid int, deadline time.Time) (unix.WaitStatus, error) {
-	for time.Now().Before(deadline) {
-		var status unix.WaitStatus
-		result, err := unix.Wait4(pid, &status, unix.WALL|unix.WNOHANG, nil)
-		if errors.Is(err, unix.EINTR) {
-			continue
-		}
-		if err != nil {
-			return status, err
-		}
-		if result == pid {
-			return status, nil
-		}
-		time.Sleep(100 * time.Microsecond)
-	}
-	return 0, fmt.Errorf("exact CRIU trace event exceeded its test deadline")
-}
-
 func stopRetainedDumpNative(t *testing.T, pid, pidfd int, images string, activePID, virtualPID int) func() {
 	t.Helper()
 	pinned, err := unix.Dup(pidfd)
 	if err != nil {
 		t.Fatal(err)
 	}
+	waiter := testtrace.New("exact CRIU trace event exceeded its test deadline")
 	if err := unix.PtraceSeize(pid); err != nil {
+		waiter.Close()
 		unix.Close(pinned)
 		t.Fatal("seize only the pinned owned CRIU for exact fault injection", err)
 	}
@@ -75,11 +60,12 @@ func stopRetainedDumpNative(t *testing.T, pid, pidfd int, images string, activeP
 	finish := func() {
 		if active {
 			_ = unix.PidfdSendSignal(pinned, unix.SIGKILL, nil, 0)
-			status, err := retainedTraceWaitNative(pid, time.Now().Add(2*time.Second))
+			status, err := waiter.Wait(pid, time.Now().Add(2*time.Second))
 			if err != nil || (!status.Exited() && !status.Signaled()) {
 				t.Error("reap only the pinned CRIU trace relationship", err, status)
 			}
 			unix.Close(pinned)
+			waiter.Close()
 			active = false
 		}
 	}
@@ -93,7 +79,7 @@ func stopRetainedDumpNative(t *testing.T, pid, pidfd int, images string, activeP
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(10 * time.Second)
-	status, err := retainedTraceWaitNative(pid, deadline)
+	status, err := waiter.Wait(pid, deadline)
 	if err != nil || !status.Stopped() {
 		t.Fatal("owned CRIU did not enter the initial test trace stop", err, status)
 	}
@@ -116,7 +102,7 @@ func stopRetainedDumpNative(t *testing.T, pid, pidfd int, images string, activeP
 		if err := unix.PtraceSyscall(pid, signal); err != nil {
 			t.Fatal(err)
 		}
-		status, err = retainedTraceWaitNative(pid, deadline)
+		status, err = waiter.Wait(pid, deadline)
 		if err != nil || !status.Stopped() {
 			t.Fatal("owned CRIU exited before its process page-image fault boundary", err, status)
 		}
