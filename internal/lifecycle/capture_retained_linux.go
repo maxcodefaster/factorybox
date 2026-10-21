@@ -255,6 +255,35 @@ func captureRetainedHashes(anchors captureGuardAnchors) ([4]string, error) {
 	return hashes, nil
 }
 
+func capturePinRetainedHelper(config captureGuardConfig, arm retainedCaptureArm) (_ int, resultErr error) {
+	binary, err := openRuntime(config.Criu, config.CriuSHA256)
+	if err != nil {
+		return -1, err
+	}
+	defer binary.Close()
+	fd, err := unix.PidfdOpen(arm.HelperPID, 0)
+	if err != nil {
+		return -1, err
+	}
+	defer func() {
+		if resultErr != nil {
+			unix.Close(fd)
+		}
+	}()
+	expected, statErr := binary.Stat()
+	actual, actualErr := os.Stat(fmt.Sprintf("/proc/%d/exe", arm.HelperPID))
+	birth, birthErr := processBirth(arm.HelperPID)
+	if statErr != nil || actualErr != nil || birthErr != nil ||
+		birth != arm.HelperStart || !os.SameFile(expected, actual) {
+		return -1, fmt.Errorf("retained helper executable or birth differs from pinned CRIU")
+	}
+	membership, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", arm.HelperPID))
+	if err != nil || strings.Contains(string(membership), "/"+config.Source.RuntimeID) {
+		return -1, fmt.Errorf("retained helper is inside the captured source cgroup: %v", err)
+	}
+	return fd, nil
+}
+
 func captureRetainedResult(config captureGuardConfig, anchors captureGuardAnchors, arm retainedCaptureArm) error {
 	var request retainedCaptureRequest
 	if err := captureCompletionRead(anchors.evidence, "criu-retained-request.json", &request); err != nil {
@@ -311,46 +340,17 @@ func captureGuardCureRetained(config captureGuardConfig, anchors captureGuardAnc
 	if err := captureRetainedTreeCurrent(config, anchors, arm, false); err != nil {
 		return err
 	}
-	var network struct {
-		Token        string            `json:"token"`
-		SourcePID    int               `json:"source_pid"`
-		SourceStart  string            `json:"source_start"`
-		SourceFrozen bool              `json:"source_frozen"`
-		EventsBefore map[string]uint64 `json:"events_before"`
-		Passed       bool              `json:"passed"`
-	}
-	if err := captureCompletionRead(anchors.evidence, "capture-network-rollback.json", &network); err != nil {
+	if err := captureRetainedNetwork(config, anchors); err != nil {
 		return err
 	}
-	if !network.Passed || !network.SourceFrozen || network.Token != config.Token ||
-		network.SourcePID != config.PID || network.SourceStart != config.Start {
-		return fmt.Errorf("retained context lacks its original checked network rollback")
-	}
-	saved, err := captureRetainedState(config, anchors)
-	if err != nil {
+	if _, err := captureRetainedState(config, anchors); err != nil {
 		return err
 	}
-	binary, err := openRuntime(config.Criu, config.CriuSHA256)
-	if err != nil {
-		return err
-	}
-	defer binary.Close()
-	fd, err := unix.PidfdOpen(arm.HelperPID, 0)
+	fd, err := capturePinRetainedHelper(config, arm)
 	if err != nil {
 		return err
 	}
 	defer unix.Close(fd)
-	expected, statErr := binary.Stat()
-	actual, actualErr := os.Stat(fmt.Sprintf("/proc/%d/exe", arm.HelperPID))
-	birth, birthErr := processBirth(arm.HelperPID)
-	if statErr != nil || actualErr != nil || birthErr != nil ||
-		birth != arm.HelperStart || !os.SameFile(expected, actual) {
-		return fmt.Errorf("retained helper executable or birth differs from pinned CRIU")
-	}
-	membership, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", arm.HelperPID))
-	if err != nil || strings.Contains(string(membership), "/"+config.Source.RuntimeID) {
-		return fmt.Errorf("retained helper is inside the captured source cgroup: %v", err)
-	}
 	defer func() {
 		if resultErr != nil {
 			// Stop the exact retained writer before reasserting a source
@@ -378,23 +378,155 @@ func captureGuardCureRetained(config captureGuardConfig, anchors captureGuardAnc
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+	return captureRetainedPublishRestoration(config, anchors, arm, worker)
+}
+
+func captureRetainedNetwork(config captureGuardConfig, anchors captureGuardAnchors) error {
+	var network struct {
+		Token        string            `json:"token"`
+		SourcePID    int               `json:"source_pid"`
+		SourceStart  string            `json:"source_start"`
+		SourceFrozen bool              `json:"source_frozen"`
+		EventsBefore map[string]uint64 `json:"events_before"`
+		Passed       bool              `json:"passed"`
+	}
+	if err := captureCompletionRead(anchors.evidence, "capture-network-rollback.json", &network); err != nil {
+		return err
+	}
+	if !network.Passed || !network.SourceFrozen || network.Token != config.Token ||
+		network.SourcePID != config.PID || network.SourceStart != config.Start {
+		return fmt.Errorf("retained context lacks its original checked network rollback")
+	}
+	return nil
+}
+
+func captureRetainedPublishRestoration(config captureGuardConfig, anchors captureGuardAnchors,
+	arm retainedCaptureArm, worker captureWorkerIntent) error {
+	if err := captureRetainedResult(config, anchors, arm); err != nil {
+		return err
+	}
 	if err := captureGuardCaptureReturned(config, anchors); err != nil {
 		return err
 	}
 	if err := captureRetainedTreeCurrent(config, anchors, arm, true); err != nil {
 		return err
 	}
-	if _, err := captureRetainedState(config, anchors); err != nil {
+	if err := captureRetainedNetwork(config, anchors); err != nil {
+		return err
+	}
+	saved, err := captureRetainedState(config, anchors)
+	if err != nil {
 		return err
 	}
 	hashes, err := captureRetainedHashes(anchors)
 	if err != nil {
 		return err
 	}
-	return captureGuardWrite(anchors.evidence, "capture-process-restored.json", captureProcessRestoration{
+	expected := captureProcessRestoration{
 		Version: 1, Worker: worker, SourceStart: config.Start, SourceStateSHA: sum(saved),
 		ArmSHA: hashes[0], RequestSHA: hashes[1], ResultSHA: hashes[2], NetworkSHA: hashes[3],
-	})
+	}
+	var stored captureProcessRestoration
+	if err := captureCompletionRead(anchors.evidence, "capture-process-restored.json", &stored); err == nil {
+		if stored != expected {
+			return fmt.Errorf("retained restoration receipt differs from its original proof")
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return captureGuardWrite(anchors.evidence, "capture-process-restored.json", expected)
+}
+
+// The original caller may finish a cure already authorized by its original
+// guard. It never writes a new grant or releases a live retained writer.
+func (guard *captureGuard) completeDelegatedCure(cause error) (*checkpointCaptureError, error) {
+	if !guard.exited || !guard.unsafe || cause == nil {
+		return nil, fmt.Errorf("delegated cure is outside the original failed guard transaction")
+	}
+	arm, worker, err := captureRetainedRecords(guard.config, guard.anchor)
+	if err != nil {
+		return nil, err
+	}
+	birth, err := processBirth(os.Getpid())
+	if err != nil || os.Getpid() != arm.ControllerPID || arm.ControllerPID != guard.config.Controller ||
+		birth != arm.ControllerStart || guard.cmd.Process.Pid != arm.GuardPID {
+		return nil, fmt.Errorf("delegated cure lost its original controller/guard identities")
+	}
+	var grant retainedCaptureRequest
+	if err := captureCompletionRead(guard.anchor.evidence, "criu-retained-request.json", &grant); err != nil {
+		return nil, err
+	}
+	if grant.Version != 1 || grant.Token != guard.config.Token || grant.Nonce != arm.Nonce ||
+		grant.ControllerPID != arm.ControllerPID || grant.GuardPID != arm.GuardPID {
+		return nil, fmt.Errorf("delegated cure lacks its original guard's exact grant")
+	}
+	helper := -1
+	if current, err := processBirth(arm.HelperPID); err == nil && current == arm.HelperStart {
+		helper, err = capturePinRetainedHelper(guard.config, arm)
+		if err != nil {
+			if current, birthErr := processBirth(arm.HelperPID); birthErr == nil && current == arm.HelperStart {
+				return nil, err
+			}
+		}
+	}
+	if helper >= 0 {
+		defer unix.Close(helper)
+	}
+	deadline := time.Now().Add(12 * time.Second)
+	for {
+		exited := helper < 0
+		if helper >= 0 {
+			poll := []unix.PollFd{{Fd: int32(helper), Events: unix.POLLIN}}
+			n, err := unix.Poll(poll, 0)
+			if errors.Is(err, unix.EINTR) {
+				continue
+			}
+			if err != nil || (n != 0 && poll[0].Revents&unix.POLLIN == 0) {
+				return nil, fmt.Errorf("delegated cure helper has no valid exit state: %v", err)
+			}
+			exited = n == 1
+		}
+		err = captureRetainedResult(guard.config, guard.anchor, arm)
+		if err == nil && exited {
+			break
+		}
+		if err != nil && (!errors.Is(err, os.ErrNotExist) || exited) {
+			return nil, err
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("delegated original cure did not finish within 12s")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := captureRetainedPublishRestoration(guard.config, guard.anchor, arm, worker); err != nil {
+		return nil, err
+	}
+	intent, err := captureGuardAbortIntent(guard.config, guard.anchor)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		intent = captureAbortIntent{Version: 1, Token: guard.config.Token, FailedAt: now(), Error: cause.Error()}
+		if err := captureGuardWrite(guard.anchor.evidence, "capture-abort-intent.json", intent); err != nil {
+			return nil, err
+		}
+	}
+	var acknowledgement struct {
+		Token    string `json:"token"`
+		InFlight bool   `json:"capture_in_flight"`
+	}
+	if err := captureCompletionRead(guard.anchor.evidence, "guard-capture-aborted.json", &acknowledgement); err == nil {
+		if acknowledgement.Token != guard.config.Token || acknowledgement.InFlight {
+			return nil, fmt.Errorf("delegated abort acknowledgement differs from its original transaction")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	} else if err := captureGuardWrite(guard.anchor.evidence, "guard-capture-aborted.json",
+		map[string]any{"token": guard.config.Token, "capture_in_flight": false}); err != nil {
+		return nil, err
+	}
+	return &checkpointCaptureError{cause: errors.New(intent.Error), failedAt: intent.FailedAt}, nil
 }
 
 func captureGuardRestoredReceipt(config captureGuardConfig, anchors captureGuardAnchors) (captureProcessCompletion, error) {

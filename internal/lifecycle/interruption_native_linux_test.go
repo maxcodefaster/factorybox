@@ -41,8 +41,12 @@ func TestInterruptedCaptureNative(t *testing.T) {
 	}
 	grantControl := os.Getenv("FACTORYBOX_CRIU_RETAINED_GRANT_CONTROL") == "1"
 	controllerLoss := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_CONTROLLER_LOSS") == "1"
+	guardLoss := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_GUARD_LOSS") == "1"
 	if controllerLoss && !grantControl {
 		t.Fatal("controller-loss injection requires the original stopped guard and grant controls")
+	}
+	if guardLoss && (!grantControl || controllerLoss) {
+		t.Fatal("guard-loss injection requires grant controls and a surviving original controller")
 	}
 	threadChurn := os.Getenv("FACTORYBOX_NATIVE_INTERRUPTION_THREAD_CHURN") == "1"
 	if grantControl && os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") != "1" {
@@ -433,7 +437,45 @@ func TestInterruptedCaptureNative(t *testing.T) {
 				t.Fatal("record exact controller-loss boundary", err)
 			}
 		}
-		resumeGuard()
+		if guardLoss {
+			resumeCure := stopRetainedCureNative(t, heldGuard, originalGroup, resumeGuard)
+			defer resumeCure()
+			guardFD, err := unix.PidfdOpen(heldGuard.GuardPID, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			birth, birthErr := processBirth(heldGuard.GuardPID)
+			if birthErr != nil || birth != heldGuard.GuardStart {
+				unix.Close(guardFD)
+				t.Fatal("original guard changed before delegated-cure loss", birthErr)
+			}
+			killErr := unix.PidfdSendSignal(guardFD, unix.SIGKILL, nil, 0)
+			exitErr := testtrace.WaitDead(guardFD, time.Now().Add(2*time.Second))
+			unix.Close(guardFD)
+			if err := errors.Join(killErr, exitErr); err != nil {
+				t.Fatal("kill only the original guard after its accepted grant", err)
+			}
+			controllerFD, err := unix.PidfdOpen(command.Process.Pid, 0)
+			controllerWaited := false
+			if err == nil {
+				poll := []unix.PollFd{{Fd: int32(controllerFD), Events: unix.POLLIN}}
+				n, pollErr := unix.Poll(poll, 100)
+				controllerWaited = pollErr == nil && n == 0
+				unix.Close(controllerFD)
+			}
+			data, err := json.Marshal(map[string]any{
+				"passed": false, "guard_killed": true, "guard_pid": heldGuard.GuardPID,
+				"controller_pid": heldGuard.ControllerPID, "source_pid": source.Runtime.PID,
+				"controller_waited_for_cure": controllerWaited,
+				"scope":                      "Original guard death after its accepted cure grant, at the helper's source-freezer open.",
+			})
+			if err != nil || os.WriteFile("/output/interruption-guard-loss.json", append(data, '\n'), 0600) != nil {
+				t.Fatal("save exact guard-loss boundary", err)
+			}
+			resumeCure()
+		} else {
+			resumeGuard()
+		}
 	}
 	if err := command.Wait(); err == nil {
 		t.Fatal("interrupted CRIU published a successful checkpoint")
@@ -456,6 +498,26 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		}
 		if !errors.As(replayErr, &recovered) || !recovered.recovered {
 			t.Fatal("original controller death has no proved recoverable transaction", replayErr)
+		}
+	}
+	if guardLoss {
+		var recovered *checkpointCaptureError
+		var replayErr error
+		if pauseMode {
+			_, replayErr = engine.Pause(ctx, "interrupted", snapshot)
+			// A controller which already finalized the rejected pause must
+			// refuse its existing identity without starting another capture.
+			record, readErr := engine.read("interrupted")
+			if readErr == nil && record.Phase == "running" && record.Pause == nil && len(record.PauseHistory) == 1 {
+				replayErr = nil
+			} else if !errors.As(replayErr, &recovered) || !recovered.recovered {
+				t.Fatal("guard loss has no proved recoverable failed pause", replayErr, readErr)
+			}
+		} else {
+			_, replayErr = engine.Checkpoint(ctx, "interrupted", snapshot)
+			if !errors.As(replayErr, &recovered) || !recovered.recovered {
+				t.Fatal("guard loss has no proved recoverable checkpoint", replayErr)
+			}
 		}
 	}
 	if os.Getenv("FACTORYBOX_CRIU_RETAINED_DIAGNOSTIC") == "1" {
@@ -782,7 +844,7 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 	}
-	if controllerLoss {
+	if controllerLoss || guardLoss {
 		var arm retainedCaptureArm
 		var request retainedCaptureRequest
 		if err := engine.readCheckpointJSON(relative+"/guard/criu-retained-arm.json", &arm); err != nil ||
@@ -794,6 +856,8 @@ func TestInterruptedCaptureNative(t *testing.T) {
 			request.Nonce != heldGuard.Nonce || request.Token != snapshot {
 			t.Fatal("controller-loss recovery changed the original guard or controller authority", err)
 		}
+	}
+	if controllerLoss {
 		evidence, err := json.Marshal(map[string]any{
 			"passed": true, "controller_pid": heldGuard.ControllerPID,
 			"controller_start": heldGuard.ControllerStart, "guard_pid": heldGuard.GuardPID,
@@ -804,6 +868,19 @@ func TestInterruptedCaptureNative(t *testing.T) {
 		})
 		if err != nil || os.WriteFile("/output/interruption-controller-loss.json", append(evidence, '\n'), 0600) != nil {
 			t.Fatal("save complete controller-loss recovery proof", err)
+		}
+	}
+	if guardLoss {
+		data, err := os.ReadFile("/output/interruption-guard-loss.json")
+		var proof map[string]any
+		if err != nil || json.Unmarshal(data, &proof) != nil || proof["controller_waited_for_cure"] != true {
+			t.Fatal("original controller abandoned its still-live delegated cure", err)
+		}
+		proof["passed"] = true
+		proof["original_identities_preserved"] = true
+		data, err = json.Marshal(proof)
+		if err != nil || os.WriteFile("/output/interruption-guard-loss.json", append(data, '\n'), 0600) != nil {
+			t.Fatal("save complete guard-loss recovery proof", err)
 		}
 	}
 }

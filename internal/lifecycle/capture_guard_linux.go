@@ -803,13 +803,29 @@ func (guard *captureGuard) finish(recoverSource bool) (resultErr error) {
 	if resultErr != nil {
 		status := "original_source_held_for_capture_reconciliation"
 		var err error
+		var delegated *checkpointCaptureError
 		if guard.config.StopSource && captureGuardValidateStopped(guard.config, guard.anchor) == nil {
 			status = "original_source_stopped_capture_unconfirmed"
 			if guard.stopped {
 				status = "source_stopped_guard_disarmed"
 			}
 		} else if guard.unsafe {
-			status, err = captureGuardHold(guard.config, guard.anchor)
+			if guard.config.CriuSHA256 != "" {
+				var observeErr error
+				delegated, observeErr = guard.completeDelegatedCure(resultErr)
+				if observeErr == nil {
+					guard.unsafe = false
+				} else {
+					resultErr = errors.Join(resultErr,
+						captureGuardWrite(guard.anchor.evidence, "guard-delegated-recovery.json",
+							map[string]any{"token": guard.config.Token, "passed": false, "error": observeErr.Error()}))
+				}
+			}
+			if guard.unsafe {
+				status, err = captureGuardHold(guard.config, guard.anchor)
+			} else {
+				status, err = captureGuardRecover(guard.config, guard.anchor)
+			}
 		} else {
 			status, err = captureGuardRecover(guard.config, guard.anchor)
 		}
@@ -818,7 +834,12 @@ func (guard *captureGuard) finish(recoverSource bool) (resultErr error) {
 		if err != nil {
 			record["error"] = err.Error()
 		}
-		resultErr = errors.Join(resultErr, err, captureGuardWrite(guard.anchor.evidence, "guard-controller-outcome.json", record))
+		writeErr := captureGuardWrite(guard.anchor.evidence, "guard-controller-outcome.json", record)
+		if delegated != nil && err == nil && writeErr == nil {
+			delegated.recovered = true
+			resultErr = errors.Join(resultErr, delegated)
+		}
+		resultErr = errors.Join(resultErr, err, writeErr)
 	}
 	return resultErr
 }
