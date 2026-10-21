@@ -181,6 +181,13 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	if target != "root" && target != "dockerd" {
 		fixture.t.Fatal("Docker fault requires an exact root or dockerd process probe")
 	}
+	operation := os.Getenv("FACTORYBOX_DEVX_CRIU_FAULT_OPERATION")
+	if operation == "" {
+		operation = "checkpoint"
+	}
+	if operation != "checkpoint" && operation != "pause" {
+		fixture.t.Fatal("Docker fault requires a checkpoint or pause operation")
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	waiter := testtrace.New("owned CRIU trace deadline expired")
@@ -216,7 +223,7 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		"--runtime-sha256", os.Getenv("FACTORYBOX_RUNTIME_SHA256"),
 		"--criu", "/out/criu", "--criu-sha256", os.Getenv("FACTORYBOX_CRIU_SHA256"),
 		"--manager-root", "/var/lib/sysbox/manager",
-		"checkpoint", "--snapshot-id", snapshot, "source")
+		operation, "--snapshot-id", snapshot, "source")
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
 	if err := command.Start(); err != nil {
@@ -376,7 +383,7 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	err = command.Wait()
 	waited = true
 	if err == nil {
-		fixture.t.Fatal("killed CRIU published a successful developer checkpoint")
+		fixture.t.Fatal("killed CRIU published a successful developer " + operation)
 	}
 	var cure struct {
 		Passed     bool   `json:"passed"`
@@ -405,6 +412,37 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	view := fixture.view("state", "source")
 	if view.Runtime == nil || view.Runtime.PID != source.Runtime.PID || view.Record.Phase != "running" {
 		fixture.t.Fatal("Docker recovery did not retain its exact running source")
+	}
+	failedPauseHistory, failedIdentityReplay := false, false
+	if operation == "pause" {
+		history := view.Record.PauseHistory
+		if view.Record.Pause != nil || len(history) != len(source.Record.PauseHistory)+1 ||
+			len(source.Record.PauseHistory) != 0 && !reflect.DeepEqual(history[:len(history)-1], source.Record.PauseHistory) {
+			fixture.t.Fatal("failed real-Docker pause did not retain exactly its rejected transition")
+		}
+		failed := history[len(history)-1]
+		if failed.SnapshotID != snapshot || failed.SourcePID != source.Runtime.PID ||
+			failed.RequestedAt == "" || failed.RejectedAt == "" || failed.Error == "" ||
+			failed.CompletedAt != "" || failed.Resume != nil {
+			fixture.t.Fatal("failed real-Docker pause has no complete rejection history")
+		}
+		failedPauseHistory = true
+		// Reusing the same failed identity must stop before another capture,
+		// and must not append another history entry or change the source.
+		replay := exec.CommandContext(ctx, command.Path, command.Args[1:]...)
+		replay.WaitDelay = 2 * time.Second
+		replayOutput, replayErr := replay.CombinedOutput()
+		if err := os.WriteFile("/output/docker-fault-replay.stderr", replayOutput, 0600); err != nil {
+			fixture.t.Fatal(err)
+		}
+		if replayErr == nil || !bytes.Contains(replayOutput, []byte("pause snapshot identity already exists")) {
+			fixture.t.Fatal("failed pause identity was not refused before recapture", replayErr)
+		}
+		again := fixture.view("state", "source")
+		if !reflect.DeepEqual(again, view) {
+			fixture.t.Fatal("failed pause identity replay changed the original record or runtime")
+		}
+		failedIdentityReplay = true
 	}
 	after, err := readApp(source.Runtime.PID, "")
 	if err != nil || !reflect.DeepEqual(after, initial) || !reflect.DeepEqual(containers(), before) {
@@ -441,12 +479,13 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		fault = "docker-daemon-child-page-dump"
 	}
 	record, err := json.MarshalIndent(map[string]any{
-		"passed": true, "fault": fault, "active_page_bytes": pageBytes,
+		"passed": true, "fault": fault, "operation": operation, "active_page_bytes": pageBytes,
+		"failed_pause_history_retained": failedPauseHistory, "failed_identity_replay_refused": failedIdentityReplay,
 		"active_pid": arm.ActivePID, "active_vpid": arm.ActiveVirtualPID, "active_comm": activeComm,
 		"source_pid": source.Runtime.PID, "tracer_pid": tracer, "processes": len(processes),
 		"threads": len(arm.Tree), "retained_processes": retained, "cure": cure,
 		"unchanged_app": after, "unchanged_containers": before, "docker_exec_exit": *finished.ExitCode,
-		"scope": "Real Docker/Compose/Dev Container process tree, " + target + " page-dump tracer death, " +
+		"scope": "Real Docker/Compose/Dev Container process tree, " + target + " page-dump tracer death during " + operation + ", " +
 			"guard-authorized recovery, original stable process identities/app state and new Docker exec. " +
 			"No other process target, helper/guard loss or external agent inference qualification.",
 	}, "", "  ")

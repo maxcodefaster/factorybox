@@ -108,6 +108,20 @@ class DeveloperStorageTests(unittest.TestCase):
             admission.assert_not_called()
             artifact.assert_not_called()
 
+    def test_pause_fault_requires_its_dedicated_suite_before_resource_admission(self):
+        command = ["devx_lifecycle.py", "--docker-fault-operation", "pause"]
+        for flag in ["consumer-inputs", "project-images", "native-base-build", "sysbox-build", "retained-candidate"]:
+            command += ["--" + flag, "unused"]
+        with mock.patch.object(sys, "argv", command), \
+                mock.patch.object(devx_lifecycle, "require_no_retained_worker") as admission, \
+                mock.patch.object(devx_lifecycle.reference, "new_artifact") as artifact, \
+                mock.patch.object(sys, "stderr"):
+            with self.assertRaises(SystemExit) as error:
+                devx_lifecycle.main()
+            self.assertEqual(error.exception.code, 2)
+            admission.assert_not_called()
+            artifact.assert_not_called()
+
     def test_retained_volume_blocks_the_next_run_before_inputs_or_artifacts_are_created(self):
         volume = "factorybox-devx-lifecycle-" + "a" * 32
         command = ["devx_lifecycle.py"]
