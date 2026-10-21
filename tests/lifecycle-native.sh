@@ -52,7 +52,7 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
     test_pattern='^TestPauseNative$'
   fi
   if test "${FACTORYBOX_NATIVE_NAMESPACES:-}" = 1; then
-    test_pattern='^TestCapture(Namespaces|ChildrenNamespace)Native$'
+    test_pattern='^TestCapture(Namespaces|ChildrenNamespace|NestedZombieNamespace)Native$'
   fi
   if test "${FACTORYBOX_NATIVE_TIME:-}" = 1; then
     test_pattern='^TestTimeNamespaceForkNative$'

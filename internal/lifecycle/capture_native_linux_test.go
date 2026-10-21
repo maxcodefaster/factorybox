@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 	"unsafe"
@@ -40,6 +42,31 @@ type captureActorState struct {
 	TCPListener    int    `json:"tcp_listener,omitempty"`
 	MountContextFD int    `json:"mount_context_fd,omitempty"`
 	MountContexts  int    `json:"mount_contexts,omitempty"`
+	ZombiePID      int    `json:"zombie_pid,omitempty"`
+	ZombieWaitable bool   `json:"zombie_waitable,omitempty"`
+	ZombieReaped   bool   `json:"zombie_reaped,omitempty"`
+	ZombieExit     int    `json:"zombie_exit,omitempty"`
+}
+
+func captureZombieWaitable(pid int) error {
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		var info unix.Siginfo
+		err := unix.Waitid(unix.P_PID, pid, &info, unix.WEXITED|unix.WNOWAIT|unix.WNOHANG, nil)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if info.Code == 1 { // CLD_EXITED, without consuming this child's status.
+			return nil
+		}
+		if info.Code != 0 {
+			return fmt.Errorf("owned child exited with unexpected wait code %d", info.Code)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return fmt.Errorf("owned child did not become a waitable zombie")
 }
 
 func TestCaptureTimeNamespaceLauncher(t *testing.T) {
@@ -72,7 +99,30 @@ func TestCaptureActor(t *testing.T) {
 	if os.Getenv("FACTORYBOX_CAPTURE_ACTOR_CHILD") == "1" {
 		stateDirectory = "/child-state"
 	}
+	if os.Getenv("FACTORYBOX_CAPTURE_ACTOR_ZOMBIE") == "1" {
+		stateDirectory = "/zombie-state"
+	}
 	state := captureActorState{Payload: make([]byte, 8192)}
+	if os.Getenv("FACTORYBOX_CAPTURE_ACTOR_ZOMBIE") == "1" {
+		if os.Getpid() != 1 {
+			t.Fatal("zombie actor is not the init of its nested PID namespace")
+		}
+		child := exec.Command("/bin/sh", "-c", "exit 47")
+		child.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		if err := child.Start(); err != nil {
+			t.Fatal(err)
+		}
+		state.ZombiePID = child.Process.Pid
+		// Close Go's pidfd without reaping. The later explicit wait must
+		// still see this exact child and its exit status in every fork.
+		if err := child.Process.Release(); err != nil {
+			t.Fatal(err)
+		}
+		if err := captureZombieWaitable(state.ZombiePID); err != nil {
+			t.Fatal("retain the original unconsumed child status", err)
+		}
+		state.ZombieWaitable = true
+	}
 	var futureStop, futureDone chan struct{}
 	futureTID := 0
 	if _, err := rand.Read(state.Payload); err != nil {
@@ -340,17 +390,22 @@ func TestCaptureActor(t *testing.T) {
 					t.Error(err)
 					return
 				}
-			case "make-shared-child", "make-memory-child":
+			case "make-shared-child", "make-memory-child", "make-nested-zombie":
 				if state.NestedPID != 0 {
 					t.Error("owned child already exists")
 					return
 				}
 				child := exec.Command("/bin/sleep", "300")
 				mode := "shared"
-				if request == "make-memory-child" {
+				if request == "make-memory-child" || request == "make-nested-zombie" {
 					child = exec.Command(os.Args[0], "-test.run=^TestCaptureActor$", "-test.timeout=0")
-					child.Env = append(os.Environ(), "FACTORYBOX_CAPTURE_ACTOR_CHILD=1")
 					mode = "memory"
+					child.Env = append(os.Environ(), "FACTORYBOX_CAPTURE_ACTOR_CHILD=1")
+					if request == "make-nested-zombie" {
+						mode = "nested-zombie"
+						child.Env = append(os.Environ(), "FACTORYBOX_CAPTURE_ACTOR_ZOMBIE=1")
+						child.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWPID, Setsid: true}
+					}
 				}
 				if err := child.Start(); err != nil {
 					t.Error(err)
@@ -361,6 +416,18 @@ func TestCaptureActor(t *testing.T) {
 					t.Error(err)
 					return
 				}
+			case "reap-zombie":
+				if state.ZombiePID <= 1 || state.ZombieReaped {
+					t.Error("no original unreaped child")
+					return
+				}
+				var status unix.WaitStatus
+				pid, err := unix.Wait4(state.ZombiePID, &status, 0, nil)
+				if err != nil || pid != state.ZombiePID || !status.Exited() || status.ExitStatus() != 47 {
+					t.Error("original child PID or exit status changed", pid, status, err)
+					return
+				}
+				state.ZombieReaped, state.ZombieWaitable, state.ZombieExit = true, false, status.ExitStatus()
 			case "drop-time-child":
 				if state.NestedPID <= 1 {
 					t.Error("no owned time namespace child")
@@ -431,6 +498,13 @@ func TestCaptureActor(t *testing.T) {
 					return
 				}
 				state.CgroupLimit = strings.TrimSpace(string(value[:n]))
+			}
+			if state.ZombiePID > 1 && !state.ZombieReaped {
+				if err := captureZombieWaitable(state.ZombiePID); err != nil {
+					t.Error("original child is no longer waitable without reaping", err)
+					return
+				}
+				state.ZombieWaitable = true
 			}
 			if err := json.NewEncoder(client).Encode(state); err != nil {
 				t.Error(err)

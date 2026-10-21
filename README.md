@@ -16,6 +16,65 @@ The runtime executes on Linux. Reference admission requires ARM64, 4096-byte pag
 Matching this tuple alone does not establish runtime installation, filesystem compatibility
 or recovery.
 
+## Continue on another computer
+
+Clone the development branch and run the portable checks from [Develop on the Mac](#develop-on-the-mac):
+
+```sh
+git clone --branch codex/factorybox https://github.com/maxcodefaster/factorybox.git
+cd factorybox
+mise install
+mise run check
+mise exec -- python3 tools/reference.py verify
+```
+
+Git carries the runtime, pinned source recipes, ordered patches and regression tests.
+The ignored `artifacts/`, `.cache/` and local Docker images stay on the original Mac.
+Rebuild native inputs using the commands below. The current native runners require the
+`orbstack` Docker context and the admitted Linux ARM64/kernel tuple above. A different
+computer or kernel needs qualification before its native results are comparable.
+The full developer fixture additionally needs the Factory consumer images, including Theia;
+the small namespace regression needs only the public-source runtime/base/Busybox inputs.
+
+The next fix is the nested-PID-namespace zombie restore failure. The complete developer
+run's diagnostic log shows a parent killed by SIGSEGV immediately after starting restoration
+of an exited `wget` child. The child has an own-namespace PID but no `ids` image.
+The suspected code is `nested_ns_set_tid()` in the prepared CRIU `criu/nested-ns.c`,
+which dereferences `item->ids`. Verify this diagnosis before changing it.
+`nested_ns_pid_ok()` must use the same parent-visible PID decision; merely avoiding the
+null dereference could restore the wrong PID and break the parent's later wait.
+
+`TestCaptureNestedZombieNamespaceNative` now reduces the restore failure to a small fixture.
+It requires the original child PID and exit status 47, retained parent RAM, recapture,
+fork of fork after source deletion, and independent real `Wait4` calls in each parent.
+The initial run `factorybox-runtime-c75e7b0582cb4ffc8b38a3d623d1ec3f` is **failing**:
+ten main tests and 41 subtests pass, the new case fails on its first fork in 3.31 seconds,
+and zero tests skip. Input/source/component checks and exact cleanup pass.
+The small failure's restore log still needs comparison with the full workload's SIGSEGV.
+No CRIU fix for this case is implemented yet.
+
+On the original Mac, reproduce with the exact existing candidate inputs:
+
+```sh
+mise exec -- python3 tools/lifecycle_native.py \
+  --sysbox-build factorybox-build-sysbox-shm-deb7d99a0a134f4c990b15ef10abd031 \
+  --retained-candidate factorybox-build-criu-retained-2502cb8843f341909d3bf1c3c1c37a66 \
+  --native-base-build factorybox-build-native-base-aade0777712c460cbd8bf22156888b6f \
+  --suite namespaces
+```
+
+To rebuild that CRIU candidate after preparing sources and the native base, use
+`tests/criu-retained-candidate/build.py` with `--exit-hold --exit-hold-socket
+--nested-overlay --nested-overlay-stable-paths --nested-overlay-shared-root` and the
+new `--native-base-build` identity. Rebuild the SHM FS composition using the final section.
+Each new build receives its own artifact name; original-Mac IDs are not portable downloads.
+
+Continue with a new ordered CRIU patch and make the namespace regression pass without
+weakening its wait/PID/RAM assertions. Then rerun the CRIU core and complete
+Docker/Theia/OpenCode lifecycle with the ordinary runc composition. The remaining recovery
+windows include guard loss before cure authorization and earlier CLI loss. Required upstream
+platform failures, installation, worker quotas and license review still block a production release.
+
 ## Current qualification
 
 | Selected input | Exact local artifact |

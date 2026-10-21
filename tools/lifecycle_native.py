@@ -154,6 +154,8 @@ def main():
                   "before CRIU, original RAM/files and useful work preserved, retained failed "
                   "pause intent with recovery of lost publication and refusal of an unsafe receipt, "
                   "then ordinary capture of the same tree sharing its root time namespace. "
+                  "A separate nested-PID-namespace init retains an exited child across independent "
+                  "fork/recapture/descendant and each real parent reaps its original PID/status. "
                   "This does not qualify nested time namespace capture or the developer lifecycle."
                   if options.suite == "namespaces" else
                   "Positive nested time namespace capture/fork/pause/resume with two actors sharing "
@@ -333,7 +335,7 @@ def main():
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
             result["source_context_unchanged"] and
-            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (4 if options.suite == "admission" else 2 if options.suite == "namespaces" else 1) if capture_mode else
+            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (4 if options.suite == "admission" else 3 if options.suite == "namespaces" else 1) if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + EXPECTED_ADAPTER_SUBTESTS) and
