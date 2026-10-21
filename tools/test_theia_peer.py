@@ -106,3 +106,42 @@ while not (root/'theia-host-finished').exists():time.sleep(.01)
                 mock.call(["container", "inspect", worker])])
             self.assertFalse(peer.volume_created)
             self.assertFalse(peer.attempted)
+
+    def test_setup_failure_preserves_bounded_output_and_original_error_before_cleanup(self):
+        errors = [
+            subprocess.CalledProcessError(125, ["docker"], b"owned stdout",
+                                          b"old output" * 1024 + b"actual setup failure"),
+            subprocess.TimeoutExpired(["docker"], 30, output="partial stdout",
+                                      stderr="partial stderr"),
+        ]
+        for error in errors:
+            with self.subTest(kind=type(error).__name__), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                owner = "a" * 32
+                worker = "factorybox-devx-lifecycle-" + owner
+                peer = theia_peer.Peer(worker, owner, {"image": "pinned-image"}, root, root, "unused")
+                observed = {"Name": "/" + worker, "State": {"Running": True},
+                            "Config": {"Labels": {"com.factorybox.run": owner}}}
+                def docker(args):
+                    if args == ["container", "inspect", worker]:
+                        return json.dumps([observed])
+                    if args[:2] == ["volume", "create"]:
+                        return peer.volume
+                    self.fail("unexpected external operation")
+                with mock.patch.object(theia_peer.reference, "docker", side_effect=docker), \
+                        mock.patch.object(theia_peer.subprocess, "run", side_effect=error) as run, \
+                        mock.patch.object(theia_peer.reference, "owned_delete") as remove:
+                    with self.assertRaises(type(error)) as raised:
+                        peer.start({"version": 1, "run_owner": owner, "uid": 1000, "gid": 1000})
+                self.assertIs(raised.exception, error)
+                self.assertEqual(run.call_args.kwargs["timeout"], 30)
+                remove.assert_not_called()
+                for stream in ["stdout", "stderr"]:
+                    expected = getattr(error, stream)
+                    if isinstance(expected, str):
+                        expected = expected.encode()
+                    self.assertEqual((peer.archive / ("setup-" + stream + ".log")).read_bytes(),
+                                     expected[-8192:])
+                self.assertEqual(peer.result["setup_failure"]["type"], type(error).__name__)
+                self.assertGreaterEqual(peer.result["setup_seconds"], 0)
+                self.assertFalse(peer.started)

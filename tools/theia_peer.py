@@ -52,7 +52,21 @@ for(const path of ['/experiment','/experiment/theia','/experiment/theia/home'])f
             "--entrypoint", "node", self.image["image"], "-e", prepare, json.dumps([uid, gid]),
         ]
         self.result["setup_command"] = setup
-        subprocess.run(setup, check=True, capture_output=True, timeout=30)
+        setup_started = time.monotonic()
+        try:
+            subprocess.run(setup, check=True, capture_output=True, timeout=30)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            self.result["setup_failure"] = {
+                "type": type(error).__name__, "returncode": getattr(error, "returncode", None),
+            }
+            for stream in ["stdout", "stderr"]:
+                content = getattr(error, stream, None) or b""
+                if isinstance(content, str):
+                    content = content.encode()
+                (self.archive / ("setup-" + stream + ".log")).write_bytes(content[-8192:])
+            raise
+        finally:
+            self.result["setup_seconds"] = time.monotonic() - setup_started
         reference.owned_delete("container", self.setup, self.owner)
         command = [
             *reference.DOCKER, "run", "--detach", "--pull=never", "--name", self.name,

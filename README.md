@@ -31,7 +31,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 99 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 101 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
@@ -91,12 +91,24 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Native fault-tracer wait | Polling baseline `factorybox-fault-wait-2839c920006f45228a8ae080aca272ce` takes 1.808 seconds for 2,716 observations and fails its separate one-second diagnostic budget. SIGCHLD-based waiting passes in `factorybox-fault-wait-11820cc9c52f4039ad4f5375c2877e4c` at 0.205 seconds. Repository runner `factorybox-fault-wait-2016c1fde8fe48c48263af50803821d2` passes both the counted producer at 0.640 seconds and an absolute deadline with a stale notification at 20.140 ms. Inputs and owned cleanup pass. The Docker injection deadline and page-image assertion remain unchanged; these observations measure test instrumentation, not fork/resume performance |
 | Shared core/Docker trace waiting | `factorybox-fault-wait-59374a56ccf148cc8692b343728a842f` passes the same counted producer in 101.717 ms and a 20.482-ms deadline with a real unrelated child notification. `internal/testtrace` now supplies both core and developer fault probes and is absent from the production CLI dependency graph. The source is tested natively; these are instrumentation observations, not startup/fork/resume gains |
 | Complete candidate Docker-root recovery | `factorybox-devx-lifecycle-8dcd74a0ca0b4019ba45556ac1e46092` passes the complete dedicated gate with the SHM FS composition and shared-root CRIU candidate, using Docker Overlay2. Tracer death after 69,632 actual root page-image bytes is cured with 13 original processes/103 threads. New Docker exec, original-state mutation, fresh checkpoint, independent useful current-state fork, divergent branch/source mutation and a useful prior-checkpoint fork all pass. Go takes 346.66 seconds and outer execution 402.81, within the unchanged 390/420-second bounds. Inputs/global sentinels and exact cleanup pass. Current/prior forks take 22.162/38.834 seconds through useful work; preparation takes 179.608 seconds and cold first use 90.303. Components and storage driver remain unselected pending ordinary developer and remaining failure gates; no latency distribution or production release is qualified |
+| Complete candidate Docker-daemon child recovery | `factorybox-devx-lifecycle-f379e6e4af134ad0ab03b0aa784027c2` passes the same complete dedicated gate with the same FS/CRIU composition and Overlay2. The exact active `dockerd` child has 26,578,944 bytes in its own page image when its tracer is killed. Authorized cure preserves 13 original processes/99 threads, their app state and running containers; a new Docker exec, original-source mutation, fresh checkpoint, independent current-state fork, divergent mutation and the previous checkpoint fork all pass. Go takes 139.12 seconds and outer execution 194.927 within the unchanged limits. Inputs/global sentinels and exact cleanup pass. Current/prior useful forks take 23.669/7.244 seconds. Preparation takes 36.077 seconds and cold first use 40.053; this uncontrolled shared-worker difference from the root proof is not an implementation speedup. No other child target, helper/guard loss or complete developer/p95 qualification is inferred |
 | Combined candidate developer attempt | **Failing** in `factorybox-devx-lifecycle-b11fca474290494b97cb5a01a14c6ffa`: the same components with Overlay2, separate Theia and OpenCode reach only the first useful app/IDE/API phase before the 420-second outer deadline. Preparation takes 178.435 seconds, cold first use 122.498, first checkpoint 65.207 and the fork CLI 60.355. The fork completes after the outer deadline; no useful-fork, descendant or pause/resume verdict is qualified. All 4,381,999,104 failure-archive bytes verify. Worker cleanup passes; the original result correctly retains failed IDE cleanup. Separate IDE reconciliation `0674564a6fce471c8ea0f858126737b3` verifies its 1-MiB workspace and removes it. Offline verification confirms frozen inputs/components/source/example and absence of all owned resources. Terminal global-sentinel checks did not run |
+| Later combined developer attempt, IDE setup | **Failing** in `factorybox-devx-lifecycle-ea1b0b2f54a3467ba30498154def028f`: the same FS/CRIU composition, Overlay2 and optional consumers fail during the separate IDE's directory-setup command, which reaches its unchanged 30-second timeout. No complete app/IDE/OpenCode phase is qualified. Worker execution takes 185.210 seconds, preparation 122.337, including 91.820 seconds importing the verified base. This is not the 420-second outer timeout. The worker is stopped before peer cleanup; worker/IDE cleanup passes, all 3,213,885,440 failure-archive bytes verify and before/after global sentinels match. The helper now retains bounded setup stdout/stderr and elapsed time on both command failure and timeout. The new regression fails in both cases against the preceding helper and passes after correction; no startup fix or complete developer pass is inferred |
 | Stop failed worker before peer cleanup | Native baseline `factorybox-cleanup-order-0b9189eab46144658983e0aa6c09fb73` observes the real worker still running when peer cleanup begins. `factorybox-cleanup-order-e2726e0bc4d045059034c8f26a530977` passes after moving the ownership-checked stop ahead of peer cleanup. Both tiny failure archives verify and exact cleanup passes. Unit regressions preserve stop/peer/archive order and refuse changed ownership before or after stopping. This is cleanup evidence, not a replacement for the combined developer gate |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
 Required failing or unrun gates block a production release.
+The latest IDE setup failure is also reproducible outside Sysbox in owned, bounded containers.
+`factorybox-theia-setup-d0e53d7c3aa4427288b3bbf8d8414f08` retains the original setup program,
+image and resource/capability limits, with only direct stdout/stderr files replacing pipes;
+it still reaches 30.012 seconds. Docker inspection reports `Running`, while a subsequent
+exec reports that the same container is not running. Separate shell controls in the pinned
+native base also time out. Additional CPU, memory, PID, capability, UID, io_uring and
+stdio diagnostics did not establish a successful fix. These observations narrow the
+consumer/container-launch investigation; they do not prove a kernel, image or Node defect.
+Every owned diagnostic resource is removed. The complete developer gate remains failed.
+
 An owned diagnostic, `factorybox-proc-kcore-ac45c0f06a5e46f5ac4bcc02140c6756`, reproduced the
 missing entry in a freshly mounted private Proc filesystem without Sysbox. `/proc/kmsg` and
 `/proc/kallsyms` existed. The original Bats case expects `Permission denied` for `cat /proc/kcore`;
@@ -539,15 +551,21 @@ explicitly unselected Docker Overlay2 consumer. It accepts the same arguments, r
 one original `--storage-driver=vfs` setting in the frozen fixture and records the changed
 driver in its result. The complete candidate Docker-root proof uses this wrapper.
 Add `--suite docker-interruption` for a separate recovery regression against the real
-Docker root process's page-dump tracer loss. This suite requires the explicit candidate
+Docker root process's page-dump tracer loss. Add `--docker-fault-process dockerd` to interrupt
+the active Docker daemon child's own page dump instead. The child selector additionally
+requires its nonroot virtual PID, original leader identity and `dockerd` process name.
+The runner requires the matching recorded root/daemon verdict and rejects a child selector
+outside the dedicated suite before loading inputs or creating resources.
+This suite requires the explicit candidate
 and omits optional IDE/harness consumers. It checks authorized cure, original stable process
 identities, unchanged containers/app state, a new Docker exec, mutation and a fresh
 checkpoint/fork of the cured source, independent branch mutation and a usable prior
 checkpoint. The ordinary lifecycle suite retains every pause/resume/descendant assertion.
 The root has
 a small address space; injection requires its own page image to contain at least one
-4096-byte page. This complements the existing 8-MiB actor probes and does not qualify
-Docker-child dump interruption or loss of the recovery helper/guard.
+4096-byte page. The daemon-child proof reaches 26,578,944 bytes in that child's own image.
+These complement the existing 8-MiB actor probes; no other child target or loss of the
+recovery helper/guard is qualified.
 The tracer waits for SIGCHLD and reaps only the exact owned PID, with an absolute deadline.
 Its small native regression counts actual producer stops and checks an absent event with a
 stale notification. It can run without preparing a developer workload:
@@ -802,6 +820,15 @@ executable staging is selected as a demonstrated startup gain. The own named-vol
 uses Btrfs; host source/executable binds use a FUSE filesystem. These are current worker
 observations, not a portable storage or latency contract. Other Factory/Kubernetes workloads
 remain untouched; the shared VM's observed swap usage further limits latency attribution.
+
+The isolated fork-image persistence comparison in
+`factorybox-fork-image-barrier-7077b8cdb6444f0d97d7575f2f37cc08` pairs the actual per-file
+barrier with a test-only whole-filesystem barrier on 262 independent images and 235,945,984
+payload bytes. Complete bytes, modes, mtimes and source independence agree throughout.
+The ABBA times are 0.279/0.139/0.038/0.014 seconds; the last unchanged control is fastest.
+This does not establish a repeatable barrier improvement or explain a sixty-second fork.
+Neither the prototype nor a production barrier change is selected.
+
 Writable-tree capture records separate `source_read_us`, `copy_us` and `target_read_us`
 observations. The latest full run's first Docker tree took 4.164 seconds to read/verify the
 source, 0.886 seconds to copy and 2.854 seconds to verify the independent target.
@@ -1048,6 +1075,16 @@ Retirement `factorybox-storage-retirement-23611e9a3d6d4af49f6ead7cb0f6f54f` recl
 359,542,784 allocated bytes from twelve older successful payloads after checking later passes
 with matching components, native test hashes and test counts. Compressed member indexes,
 small-file contents, large-member hashes, source, binaries, results and original receipts remain.
+
+Lossless repacks `factorybox-storage-repack-979d3b10d5da4653a1123ffe891a0b91` and
+`factorybox-storage-repack-112a0347a6314e948c911d5d7a62ca44` preserve all 3,213,885,440 and
+4,381,999,104 raw bytes of the latest IDE-setup failure and preceding developer timeout.
+Their 424,481,497/768,557,141-byte replacements reclaim 1,366,274,985 encoded file bytes.
+Both complete decoded streams verify, with pinned recovery pointers and unchanged original
+results. The preceding run's original failed cleanup remains recorded; repacking additionally
+requires its exact successful IDE reconciliation and absence of its owned containers/volumes.
+Sharing `factorybox-storage-share-d6bd2dc5dd334e1f951a078ddbddd8c9` preserves five identical
+closed executable files and reclaims another 59,465,728 allocated bytes.
 
 ## Remaining release requirements
 
