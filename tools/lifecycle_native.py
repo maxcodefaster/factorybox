@@ -22,6 +22,27 @@ EXPECTED_ADAPTER_TESTS = 8
 EXPECTED_ADAPTER_SUBTESTS = 40
 
 
+def builder_command(build, components, archive, name, *, component_inputs):
+    # Supplied completed component outputs and the native image are checked
+    # separately below. Their provenance may describe a per-binary composition,
+    # which is not a source context for rebuilding a Sysbox builder image.
+    if component_inputs:
+        return None
+    dockerfile = ROOT / "build/sysbox.Dockerfile"
+    if reference.sha(dockerfile) != components["dockerfile_sha256"]:
+        raise ValueError("Sysbox builder recipe changed")
+    expected = json.loads((build / "context-manifest.json").read_text())
+    if upstream_unit.context_manifest(build / "context") != expected:
+        raise ValueError("Sysbox context changed")
+    return [
+        *reference.DOCKER, "build", "--provenance=false", "--progress=plain",
+        "--platform=linux/arm64", "--target", "build", "--output",
+        "type=image,compression=uncompressed", "--tag", name,
+        "--metadata-file", str(archive / "builder-metadata.json"),
+        "-f", str(dockerfile), str(build / "context"),
+    ]
+
+
 def archive_capture(archive, name, owner, result, image):
     fixture = json.loads(reference.docker(["container", "inspect", name]))[0]
     if fixture["Config"].get("Labels", {}).get("com.factorybox.run") != owner:
@@ -201,17 +222,7 @@ def main():
                                    for p in (context / directory).glob("*.go")}
         for module_file in ["go.mod", "go.sum"]:
             result["source_sha256"][module_file] = reference.sha(context / module_file)
-        dockerfile = ROOT / "build/sysbox.Dockerfile"
-        if reference.sha(dockerfile) != components["dockerfile_sha256"]:
-            raise ValueError("Sysbox builder recipe changed")
-        expected = json.loads((build / "context-manifest.json").read_text())
-        if upstream_unit.context_manifest(build / "context") != expected:
-            raise ValueError("Sysbox context changed")
-        command = [*reference.DOCKER, "build", "--provenance=false", "--progress=plain",
-                   "--platform=linux/arm64", "--target", "build", "--output",
-                   "type=image,compression=uncompressed", "--tag", name,
-                   "--metadata-file", str(archive / "builder-metadata.json"),
-                   "-f", str(dockerfile), str(build / "context")]
+        command = builder_command(build, components, archive, name, component_inputs=component_inputs)
         if component_inputs:
             inputs = archive / "components"
             inputs.mkdir()
