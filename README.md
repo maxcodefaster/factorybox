@@ -31,7 +31,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 101 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 108 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
@@ -94,6 +94,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Complete candidate Docker-daemon child recovery | `factorybox-devx-lifecycle-f379e6e4af134ad0ab03b0aa784027c2` passes the same complete dedicated gate with the same FS/CRIU composition and Overlay2. The exact active `dockerd` child has 26,578,944 bytes in its own page image when its tracer is killed. Authorized cure preserves 13 original processes/99 threads, their app state and running containers; a new Docker exec, original-source mutation, fresh checkpoint, independent current-state fork, divergent mutation and the previous checkpoint fork all pass. Go takes 139.12 seconds and outer execution 194.927 within the unchanged limits. Inputs/global sentinels and exact cleanup pass. Current/prior useful forks take 23.669/7.244 seconds. Preparation takes 36.077 seconds and cold first use 40.053; this uncontrolled shared-worker difference from the root proof is not an implementation speedup. No other child target, helper/guard loss or complete developer/p95 qualification is inferred |
 | Combined candidate developer attempt | **Failing** in `factorybox-devx-lifecycle-b11fca474290494b97cb5a01a14c6ffa`: the same components with Overlay2, separate Theia and OpenCode reach only the first useful app/IDE/API phase before the 420-second outer deadline. Preparation takes 178.435 seconds, cold first use 122.498, first checkpoint 65.207 and the fork CLI 60.355. The fork completes after the outer deadline; no useful-fork, descendant or pause/resume verdict is qualified. All 4,381,999,104 failure-archive bytes verify. Worker cleanup passes; the original result correctly retains failed IDE cleanup. Separate IDE reconciliation `0674564a6fce471c8ea0f858126737b3` verifies its 1-MiB workspace and removes it. Offline verification confirms frozen inputs/components/source/example and absence of all owned resources. Terminal global-sentinel checks did not run |
 | Later combined developer attempt, IDE setup | **Failing** in `factorybox-devx-lifecycle-ea1b0b2f54a3467ba30498154def028f`: the same FS/CRIU composition, Overlay2 and optional consumers fail during the separate IDE's directory-setup command, which reaches its unchanged 30-second timeout. No complete app/IDE/OpenCode phase is qualified. Worker execution takes 185.210 seconds, preparation 122.337, including 91.820 seconds importing the verified base. This is not the 420-second outer timeout. The worker is stopped before peer cleanup; worker/IDE cleanup passes, all 3,213,885,440 failure-archive bytes verify and before/after global sentinels match. The helper now retains bounded setup stdout/stderr and elapsed time on both command failure and timeout. The new regression fails in both cases against the preceding helper and passes after correction; no startup fix or complete developer pass is inferred |
+| Early IDE admission before large staging | **Failing native setup**, correctly rejected in `factorybox-theia-admission-a43726fdb5424237bcef62d0c90747bd`. The real developer CLI runs the original shared setup recipe before loading large consumer/project inputs or creating a developer worker. The unchanged setup deadline expires at 30.009 seconds; total admission takes 34.440 seconds including checks/cleanup. The independent staging witness supplies intentionally absent large inputs and verifies that only the 22,590-byte admission artifact is created. Frozen probe inputs and exact cleanup pass. This prevents another large failure archive; it does not qualify an IDE or improve runtime fork/resume latency |
 | Stop failed worker before peer cleanup | Native baseline `factorybox-cleanup-order-0b9189eab46144658983e0aa6c09fb73` observes the real worker still running when peer cleanup begins. `factorybox-cleanup-order-e2726e0bc4d045059034c8f26a530977` passes after moving the ownership-checked stop ahead of peer cleanup. Both tiny failure archives verify and exact cleanup passes. Unit regressions preserve stop/peer/archive order and refuse changed ownership before or after stopping. This is cleanup evidence, not a replacement for the combined developer gate |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
@@ -108,6 +109,25 @@ native base also time out. Additional CPU, memory, PID, capability, UID, io_urin
 stdio diagnostics did not establish a successful fix. These observations narrow the
 consumer/container-launch investigation; they do not prove a kernel, image or Node defect.
 Every owned diagnostic resource is removed. The complete developer gate remains failed.
+
+The prestarted observer in `factorybox-warm-observer-0dbc5c061cea44dbb5078a51e13abab3`
+locates the delay before the application executes: the exact new target is still
+`runc:[2:INIT]`, blocked opening its exec FIFO. Across its samples, the complete target
+cgroup uses only 29,174 CPU microseconds, 3,674,112 current memory bytes, no throttling and
+no memory/PID limit events. Docker creation takes 0.152 seconds; the outer start still
+exceeds thirty seconds. The observer itself also takes about thirty seconds to start.
+The faster body of an isolated copy test is therefore not proof of fast outer Docker startup.
+
+The exact one-container shim stack in
+`factorybox-warm-observer-335fabbbd15f44e0a2d827bd4c770b16` waits for its `runc start`
+command. `factorybox-warm-observer-13ac0d9fd47344da9e48deabac919636` binds that command
+to the new container ID and observes it waiting on a local Unix socket.
+Read-only identity probe `factorybox-runtime-identity-8f6b5f877941481aa43a621f093942c8`
+finds a 67,360-byte `/usr/bin/runc` launcher, SHA-256
+`cca6a4274546523520ac9e73c78ff398d1d9afc174f0ce1ddeac330510bff1ea`, whose diagnostic
+strings identify a separate underlying runtime and control socket. Its service's origin
+and repair are unqualified. No host runtime, kernel, global settings or unrelated container
+is changed. Logging, TTY and documented per-container CA-injection controls did not fix it.
 
 An owned diagnostic, `factorybox-proc-kcore-ac45c0f06a5e46f5ac4bcc02140c6756`, reproduced the
 missing entry in a freshly mounted private Proc filesystem without Sysbox. `/proc/kmsg` and
@@ -619,6 +639,23 @@ Input JSON supplies exact `build-runtime-host` and `developer-ide` repository di
 Preparation verifies their platforms/identities and exports a never-started runtime. The full
 lifecycle verifies that frozen rootfs archive by size and hash, allowing use after the unused
 original image is evicted. Consumers executing images still require their exact cached identity.
+
+When `--theia-image` is supplied, the lifecycle first verifies the sealed reference and runs
+the original small IDE setup on its own disposable volume. A native failure stops before
+large input staging; unresolved admission containers/volumes block another probe. The
+ordinary IDE setup still runs with the actual mapped checkout ownership during the complete
+lifecycle. Admission does not replace any app, IDE, harness, descendant or pause/resume assertion.
+It retains the original 30-second setup deadline and never reports production qualification.
+Run this small gate separately with an exact cached IDE digest:
+
+```sh
+mise exec -- python3 tools/theia_admission.py \
+  --image EXACT_CACHED_IDE_REPOSITORY_DIGEST
+```
+
+A successful admission warms the cached IDE image. Its separate elapsed time and receipt
+are recorded in the complete developer result; do not present a subsequent IDE start as a
+cold observation or omit this preparation cost from a cold-start comparison.
 
 The current frozen consumer contains Docker 29.9.0, Compose 5.6.0, Dev Containers CLI 0.89.0,
 Node 24.21.0, the real Factory Runtime Connector, OpenCode server 2.0.27 and Bun 1.4.3.

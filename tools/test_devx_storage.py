@@ -131,6 +131,26 @@ class DeveloperStorageTests(unittest.TestCase):
             self.assertEqual(docker.call_args.args[0][:2], ["volume", "ls"])
             remove.assert_not_called()
 
+    def test_failed_ide_admission_blocks_all_large_input_staging(self):
+        command = ["devx_lifecycle.py", "--theia-image", "unused-pinned-image"]
+        for flag in ["consumer-inputs", "project-images", "native-base-build", "sysbox-build", "criu-build"]:
+            command += ["--" + flag, "unused"]
+        image = {"id": "sha256:" + "a" * 64}
+        with mock.patch.object(sys, "argv", command), \
+                mock.patch.object(devx_lifecycle, "require_no_retained_worker"), \
+                mock.patch.object(devx_lifecycle.devx_inputs, "inspect_image", return_value=image), \
+                mock.patch.object(devx_lifecycle.theia_admission, "qualify",
+                                  side_effect=ValueError("admission deadline")) as qualify, \
+                mock.patch.object(devx_lifecycle.devx_inputs, "load") as consumers, \
+                mock.patch.object(devx_lifecycle.devx_project_images, "load") as projects, \
+                mock.patch.object(devx_lifecycle.native_base, "load") as native, \
+                mock.patch.object(devx_lifecycle.reference, "new_artifact") as artifact:
+            with self.assertRaisesRegex(ValueError, "admission deadline"):
+                devx_lifecycle.main()
+            qualify.assert_called_once_with(image)
+            for stage in [consumers, projects, native, artifact]:
+                stage.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

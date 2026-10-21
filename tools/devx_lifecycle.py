@@ -17,6 +17,7 @@ import criu_candidate
 import native_base
 import reference
 import reference_lifecycle
+import theia_admission
 import theia_peer
 import upstream_bats
 import upstream_unit
@@ -161,6 +162,8 @@ def main():
     if options.suite == "docker-interruption" and (options.theia_image or options.opencode):
         parser.error("Docker interruption exercises core recovery without optional IDE/harness consumers")
     require_no_retained_worker()
+    ide_image = devx_inputs.inspect_image(options.theia_image) if options.theia_image else None
+    ide_admission = theia_admission.qualify(ide_image) if ide_image else None
     consumer_archive, consumers = devx_inputs.load(options.consumer_inputs, rootfs=True)
     project_archive, projects = devx_project_images.load(options.project_images)
     image, _ = native_base.load(options.native_base_build)
@@ -171,9 +174,6 @@ def main():
     else:
         criu_archive, criu = reference_lifecycle.component_build(
             options.criu_build, "factorybox-build-criu-")
-    ide_image = devx_inputs.inspect_image(options.theia_image) if options.theia_image else None
-    if ide_image:
-        reference.verify()
     owner = uuid.uuid4().hex
     name = "factorybox-devx-lifecycle-" + owner
     archive = reference.new_artifact(name)
@@ -228,6 +228,7 @@ def main():
     peer = theia_peer.Peer(name, owner, ide_image, archive, output, image) if ide_image else None
     if peer:
         result["theia_image"] = ide_image
+        result["theia_admission"] = ide_admission
         result["scope"] += (" The optional separate Theia peer uses worker-controlled live workspace bind "
                             "views with serialized external writes; native RPC connection continuity "
                             "and Connector app readback are required. This is a private fixture "

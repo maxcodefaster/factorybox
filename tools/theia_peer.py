@@ -10,6 +10,42 @@ import theia_native
 import upstream_bats
 
 
+def setup_command(name, volume, owner, image, uid, gid):
+    prepare = """
+const fs=require('node:fs');const [uid,gid]=JSON.parse(process.argv[1]);
+fs.mkdirSync('/experiment/theia/home',{recursive:true});
+for(const path of ['/experiment','/experiment/theia','/experiment/theia/home'])fs.chownSync(path,uid,gid);
+"""
+    return [
+        *reference.DOCKER, "run", "--pull=never", "--name", name,
+        "--label", "com.factorybox.run=" + owner, "--cpus=1", "--memory=256m",
+        "--pids-limit=32", "--network=none", "--read-only", "--user=0:0",
+        "--cap-drop=ALL", "--cap-add=CHOWN", "--cap-add=DAC_OVERRIDE",
+        "--security-opt=no-new-privileges",
+        "--mount", f"type=volume,source={volume},target=/experiment",
+        "--entrypoint", "node", image["image"], "-e", prepare, json.dumps([uid, gid]),
+    ]
+
+
+def run_setup(command, archive, result):
+    result["setup_command"] = command
+    started = time.monotonic()
+    try:
+        subprocess.run(command, check=True, capture_output=True, timeout=30)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        result["setup_failure"] = {
+            "type": type(error).__name__, "returncode": getattr(error, "returncode", None),
+        }
+        for stream in ["stdout", "stderr"]:
+            content = getattr(error, stream, None) or b""
+            if isinstance(content, str):
+                content = content.encode()
+            (archive / ("setup-" + stream + ".log")).write_bytes(content[-8192:])
+        raise
+    finally:
+        result["setup_seconds"] = time.monotonic() - started
+
+
 class Peer:
     def __init__(self, worker, owner, image, archive, output, archive_image):
         self.worker, self.owner, self.image = worker, owner, image
@@ -37,36 +73,8 @@ class Peer:
         reference_lifecycle.write_json(self.archive / "peer-intent.json", self.result)
         self.volume_created = True
         reference.docker(["volume", "create", "--label", "com.factorybox.run=" + self.owner, self.volume])
-        prepare = """
-const fs=require('node:fs');const [uid,gid]=JSON.parse(process.argv[1]);
-fs.mkdirSync('/experiment/theia/home',{recursive:true});
-for(const path of ['/experiment','/experiment/theia','/experiment/theia/home'])fs.chownSync(path,uid,gid);
-"""
-        setup = [
-            *reference.DOCKER, "run", "--pull=never", "--name", self.setup,
-            "--label", "com.factorybox.run=" + self.owner, "--cpus=1", "--memory=256m",
-            "--pids-limit=32", "--network=none", "--read-only", "--user=0:0",
-            "--cap-drop=ALL", "--cap-add=CHOWN", "--cap-add=DAC_OVERRIDE",
-            "--security-opt=no-new-privileges",
-            "--mount", f"type=volume,source={self.volume},target=/experiment",
-            "--entrypoint", "node", self.image["image"], "-e", prepare, json.dumps([uid, gid]),
-        ]
-        self.result["setup_command"] = setup
-        setup_started = time.monotonic()
-        try:
-            subprocess.run(setup, check=True, capture_output=True, timeout=30)
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-            self.result["setup_failure"] = {
-                "type": type(error).__name__, "returncode": getattr(error, "returncode", None),
-            }
-            for stream in ["stdout", "stderr"]:
-                content = getattr(error, stream, None) or b""
-                if isinstance(content, str):
-                    content = content.encode()
-                (self.archive / ("setup-" + stream + ".log")).write_bytes(content[-8192:])
-            raise
-        finally:
-            self.result["setup_seconds"] = time.monotonic() - setup_started
+        setup = setup_command(self.setup, self.volume, self.owner, self.image, uid, gid)
+        run_setup(setup, self.archive, self.result)
         reference.owned_delete("container", self.setup, self.owner)
         command = [
             *reference.DOCKER, "run", "--detach", "--pull=never", "--name", self.name,
