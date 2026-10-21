@@ -40,6 +40,8 @@ type faultArm struct {
 	TracerPID        int           `json:"tracer_pid"`
 	WorkerPID        int           `json:"worker_pid"`
 	ControllerPID    int           `json:"controller_pid"`
+	HelperPID        int           `json:"helper_pid"`
+	HelperStart      string        `json:"helper_start"`
 	ActivePID        int           `json:"active_pid"`
 	ActiveVirtualPID int           `json:"active_vpid"`
 	Nonce            string        `json:"nonce"`
@@ -187,6 +189,14 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	}
 	if operation != "checkpoint" && operation != "pause" {
 		fixture.t.Fatal("Docker fault requires a checkpoint or pause operation")
+	}
+	component := os.Getenv("FACTORYBOX_DEVX_CRIU_FAULT_COMPONENT")
+	if component == "" {
+		component = "tracer"
+	}
+	if component != "tracer" && component != "helper" ||
+		component == "helper" && operation != "checkpoint" {
+		fixture.t.Fatal("Docker helper loss requires a checkpoint; tracer loss admits checkpoint or pause")
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -372,18 +382,9 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 			fixture.t.Fatal("fault did not reach the exact original Docker daemon child", birthErr)
 		}
 	}
-	if err := unix.PidfdSendSignal(tracerFD, unix.SIGKILL, nil, 0); err != nil {
-		fixture.t.Fatal(err)
-	}
-	status, err = waiter.Wait(tracer, time.Now().Add(2*time.Second))
-	if err != nil || (!status.Signaled() && !status.Exited()) {
-		fixture.t.Fatal("exact CRIU trace was not reaped", err, status)
-	}
-	tracing = false
-	err = command.Wait()
-	waited = true
-	if err == nil {
-		fixture.t.Fatal("killed CRIU published a successful developer " + operation)
+	armed, err := json.MarshalIndent(arm, "", "  ")
+	if err != nil || os.WriteFile("/output/docker-fault-arm.json", append(armed, '\n'), 0600) != nil {
+		fixture.t.Fatal("save the exact armed identities before injecting the fault", err)
 	}
 	var cure struct {
 		Passed     bool   `json:"passed"`
@@ -396,11 +397,48 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		Maps       int    `json:"injected_maps_after"`
 		Held       bool   `json:"source_held"`
 	}
-	if err := readJSON("criu-retained-result.json", &cure); err != nil ||
-		!cure.Passed || !cure.Authorized || cure.Nonce != arm.Nonce ||
-		cure.Processes != len(processes) || cure.Threads != len(arm.Tree) ||
-		!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held {
-		fixture.t.Fatal("real Docker source has no complete authorized cure", err, cure)
+	var cureProof any
+	helperKilled := false
+	if component == "helper" {
+		helperKilled = fixture.killRetainedHelper(arm, tracer, source.Runtime.PID)
+		if err := unix.PtraceDetach(tracer); err != nil {
+			fixture.t.Fatal("resume only the original healthy tracer", err)
+		}
+		tracing = false
+		err = command.Wait()
+		waited = true
+		if err != nil {
+			fixture.t.Fatal("healthy tracer failed after its retained helper died", err, stderr.String())
+		}
+		var checkpoint lifecycle.Checkpoint
+		if err := json.Unmarshal(stdout.Bytes(), &checkpoint); err != nil ||
+			checkpoint.ID != snapshot || checkpoint.SourceID != source.Record.ID ||
+			checkpoint.RuntimeID != source.Runtime.ID || checkpoint.Owner != source.Record.Owner ||
+			checkpoint.SourcePID != source.Runtime.PID || checkpoint.ReleasedAt == "" ||
+			checkpoint.SourceStopped || checkpoint.Filesystem == nil || len(checkpoint.Files) == 0 {
+			fixture.t.Fatal("helper loss has no complete published source checkpoint", err)
+		}
+	} else {
+		if err := unix.PidfdSendSignal(tracerFD, unix.SIGKILL, nil, 0); err != nil {
+			fixture.t.Fatal(err)
+		}
+		status, err = waiter.Wait(tracer, time.Now().Add(2*time.Second))
+		if err != nil || (!status.Signaled() && !status.Exited()) {
+			fixture.t.Fatal("exact CRIU trace was not reaped", err, status)
+		}
+		tracing = false
+		err = command.Wait()
+		waited = true
+		if err == nil {
+			fixture.t.Fatal("killed CRIU published a successful developer " + operation)
+		}
+		if err := readJSON("criu-retained-result.json", &cure); err != nil ||
+			!cure.Passed || !cure.Authorized || cure.Nonce != arm.Nonce ||
+			cure.Processes != len(processes) || cure.Threads != len(arm.Tree) ||
+			!cure.Registers || !cure.SignalMask || cure.Maps != 0 || !cure.Held {
+			fixture.t.Fatal("real Docker source has no complete authorized cure", err, cure)
+		}
+		cureProof = cure
 	}
 	for pid, thread := range retained {
 		birth, err := faultProcessBirth(pid)
@@ -478,22 +516,64 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	if target == "dockerd" {
 		fault = "docker-daemon-child-page-dump"
 	}
+	if component == "helper" {
+		fault = "retained-helper-loss-during-" + target + "-page-dump"
+	}
 	record, err := json.MarshalIndent(map[string]any{
-		"passed": true, "fault": fault, "operation": operation, "active_page_bytes": pageBytes,
+		"passed": true, "fault": fault, "operation": operation, "component": component, "active_page_bytes": pageBytes,
+		"retained_helper_killed": helperKilled, "checkpoint_published_after_helper_loss": helperKilled,
+		"helper_pid": arm.HelperPID, "helper_start": arm.HelperStart,
 		"failed_pause_history_retained": failedPauseHistory, "failed_identity_replay_refused": failedIdentityReplay,
 		"active_pid": arm.ActivePID, "active_vpid": arm.ActiveVirtualPID, "active_comm": activeComm,
 		"source_pid": source.Runtime.PID, "tracer_pid": tracer, "processes": len(processes),
-		"threads": len(arm.Tree), "retained_processes": retained, "cure": cure,
+		"threads": len(arm.Tree), "retained_processes": retained, "cure": cureProof,
 		"unchanged_app": after, "unchanged_containers": before, "docker_exec_exit": *finished.ExitCode,
-		"scope": "Real Docker/Compose/Dev Container process tree, " + target + " page-dump tracer death during " + operation + ", " +
-			"guard-authorized recovery, original stable process identities/app state and new Docker exec. " +
-			"No other process target, helper/guard loss or external agent inference qualification.",
+		"scope": "Real Docker/Compose/Dev Container process tree, " + target + " page-dump " + component + " death during " + operation + ", " +
+			"original stable process identities/app state and new Docker exec. " +
+			"No other process target, simultaneous failures, guard loss or external agent inference qualification.",
 	}, "", "  ")
 	if err != nil || os.WriteFile("/output/devx-criu-interruption.json", append(record, '\n'), 0600) != nil {
 		fixture.t.Fatal("save complete developer fault result", err)
 	}
-	fixture.t.Logf("real Docker %s page-dump recovery preserved %d processes/%d threads; new Docker exec passed",
-		target, len(processes), len(arm.Tree))
+	fixture.t.Logf("real Docker %s page-dump %s loss preserved %d processes/%d threads; new Docker exec passed",
+		target, component, len(processes), len(arm.Tree))
+}
+
+func (fixture *fixture) killRetainedHelper(arm faultArm, tracer, source int) bool {
+	fixture.t.Helper()
+	if arm.HelperPID <= 1 || arm.HelperPID == tracer || arm.HelperPID == source ||
+		arm.HelperPID == arm.WorkerPID || arm.HelperPID == arm.ControllerPID || arm.HelperStart == "" {
+		fixture.t.Fatal("retained helper identity overlaps another original process")
+	}
+	for _, thread := range arm.Tree {
+		if thread.PID == arm.HelperPID {
+			fixture.t.Fatal("retained helper is in the captured source tree")
+		}
+	}
+	fd, err := unix.PidfdOpen(arm.HelperPID, 0)
+	if err != nil {
+		fixture.t.Fatal("pin exact retained helper", err)
+	}
+	defer unix.Close(fd)
+	birth, birthErr := faultProcessBirth(arm.HelperPID)
+	actual, actualErr := os.Stat(fmt.Sprintf("/proc/%d/exe", arm.HelperPID))
+	expected, expectedErr := os.Stat("/out/criu")
+	state, stateErr := os.ReadFile(fmt.Sprintf("/proc/%d/status", arm.HelperPID))
+	if birthErr != nil || birth != arm.HelperStart || actualErr != nil || expectedErr != nil ||
+		!os.SameFile(actual, expected) || stateErr != nil ||
+		!strings.Contains(string(state), fmt.Sprintf("PPid:\t%d\n", tracer)) {
+		fixture.t.Fatal("retained helper birth, parent or pinned executable changed")
+	}
+	if ready, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 0); err != nil || ready != 0 {
+		fixture.t.Fatal("retained helper already exited before injection", ready, err)
+	}
+	if err := unix.PidfdSendSignal(fd, unix.SIGKILL, nil, 0); err != nil {
+		fixture.t.Fatal("kill only the pinned retained helper", err)
+	}
+	if ready, err := unix.Poll([]unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}, 2000); err != nil || ready != 1 {
+		fixture.t.Fatal("retained helper death was not observed", ready, err)
+	}
+	return true
 }
 
 func TestNativeDockerCaptureInterruption(t *testing.T) {
@@ -504,6 +584,24 @@ func TestNativeDockerCaptureInterruption(t *testing.T) {
 	prior := strings.Repeat("a", 32)
 	fixture.command("checkpoint", "--snapshot-id", prior, "source")
 	fixture.interruptDockerCapture(source, initial)
+	if os.Getenv("FACTORYBOX_DEVX_CRIU_FAULT_COMPONENT") == "helper" {
+		start := time.Now()
+		branch := fixture.view("fork", "--source", "source", "--snapshot-id",
+			strings.Repeat("e", 32), "helper-loss-snapshot")
+		fixture.cleanup("helper-loss-snapshot")
+		cloned := fixture.useful("fork-helper-loss-first-use", branch, start, "")
+		if !reflect.DeepEqual(initial, cloned) || branch.Runtime.ID == source.Runtime.ID {
+			t.Fatal("checkpoint completed under helper loss has no independent complete fork")
+		}
+		mutated := fixture.useful("helper-loss-branch-advance", branch, time.Now(),
+			`{"increment":1,"marker":"helper-loss-branch"}`)
+		sourceAgain := fixture.useful("helper-loss-source-independent", source, time.Now(), "")
+		if mutated.App.Counter != 1 || mutated.App.Marker != "helper-loss-branch" ||
+			!reflect.DeepEqual(sourceAgain, initial) {
+			t.Fatal("helper-loss checkpoint fork changed the original source")
+		}
+		fixture.view("delete", "helper-loss-snapshot")
+	}
 	sourceAfter := fixture.useful("recovered-source-advance", source, time.Now(),
 		`{"increment":1,"marker":"recovered-source"}`)
 	if sourceAfter.App.Counter != 1 || sourceAfter.App.Marker != "recovered-source" {

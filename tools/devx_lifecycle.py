@@ -154,11 +154,17 @@ def main():
                         help="Exact process whose own page dump must be interrupted")
     parser.add_argument("--docker-fault-operation", choices=["checkpoint", "pause"], default="checkpoint",
                         help="Lifecycle operation whose actual page dump must be interrupted")
+    parser.add_argument("--docker-fault-component", choices=["tracer", "helper"], default="tracer",
+                        help="Exact CRIU component to kill at the selected page-dump boundary")
     options = parser.parse_args()
     if options.docker_fault_process != "root" and options.suite != "docker-interruption":
         parser.error("--docker-fault-process requires --suite docker-interruption")
     if options.docker_fault_operation != "checkpoint" and options.suite != "docker-interruption":
         parser.error("--docker-fault-operation requires --suite docker-interruption")
+    if options.docker_fault_component != "tracer" and options.suite != "docker-interruption":
+        parser.error("--docker-fault-component requires --suite docker-interruption")
+    if options.docker_fault_component == "helper" and options.docker_fault_operation != "checkpoint":
+        parser.error("the helper-loss proof currently requires checkpoint")
     if options.suite == "projection" and (options.theia_image or options.opencode):
         parser.error("projection is a minimal namespace regression without application consumers")
     if options.suite == "docker-interruption" and not options.retained_candidate:
@@ -243,15 +249,23 @@ def main():
     if options.suite == "docker-interruption":
         result["docker_fault_process"] = options.docker_fault_process
         result["docker_fault_operation"] = options.docker_fault_operation
+        result["docker_fault_component"] = options.docker_fault_component
         target = ("root process" if options.docker_fault_process == "root" else "dockerd child")
         result["scope"] = ("Real private Docker vfs, Compose, Dev Containers CLI and Factory Connector. "
-                           f"Kills only the pinned CRIU tracer during {options.docker_fault_operation}, "
+                           f"Kills only the pinned CRIU {options.docker_fault_component} during {options.docker_fault_operation}, "
                            f"after the {target}'s own page image begins. "
                            "Requires authorized cure, original stable process identities, unchanged running "
                            "containers/app state, a new Docker exec, mutation/capture/fork of the cured source, "
                            "RAM/filesystem independence and a usable prior immutable checkpoint. "
                            "The separate ordinary lifecycle suite covers pause/resume, descendants, IDE and harness. "
                            "No other process target, helper/guard loss, browser, inference or latency distribution qualification.")
+        if options.docker_fault_component == "helper":
+            result["scope"] = (
+                f"Real private Docker/Compose/Dev Container tree; pinned retained helper death during {target} page dump. "
+                "The healthy tracer must publish a verified complete checkpoint and leave the original source useful. "
+                "That checkpoint must fork independently, then source mutation, fresh capture/fork and the prior "
+                "checkpoint fork must still work. No tracer-plus-helper double loss, guard loss, pause, IDE, "
+                "inference or latency distribution qualification.")
     failure = None
     try:
         context = archive / "context"
@@ -296,7 +310,8 @@ def main():
             command += ["--env", "FACTORYBOX_DEVX_PROJECTION=1"]
         if options.suite == "docker-interruption":
             command += ["--env", "FACTORYBOX_DEVX_CRIU_FAULT=" + options.docker_fault_process,
-                        "--env", "FACTORYBOX_DEVX_CRIU_FAULT_OPERATION=" + options.docker_fault_operation]
+                        "--env", "FACTORYBOX_DEVX_CRIU_FAULT_OPERATION=" + options.docker_fault_operation,
+                        "--env", "FACTORYBOX_DEVX_CRIU_FAULT_COMPONENT=" + options.docker_fault_component]
         mounts = [
             (output, "/output", False), (components, "/component-input", True),
             (archive / "example", "/example", True),
@@ -350,6 +365,9 @@ def main():
             expected = {"prepared-start-first-use", "recovered-source-advance", "fork-after-interruption-first-use",
                         "recovered-branch-advance", "recovered-source-independent",
                         "fork-before-interruption-first-use"}
+            if options.docker_fault_component == "helper":
+                expected |= {"fork-helper-loss-first-use", "helper-loss-branch-advance",
+                             "helper-loss-source-independent"}
             test_name = "TestNativeDockerCaptureInterruption"
         observed = [row["phase"] for row in result.get("observations", [])]
         result["passed"] = (
@@ -368,9 +386,15 @@ def main():
             fault = result.get("docker_fault", {})
             expected_fault = ("root-process-page-dump" if options.docker_fault_process == "root"
                               else "docker-daemon-child-page-dump")
+            if options.docker_fault_component == "helper":
+                expected_fault = "retained-helper-loss-during-" + options.docker_fault_process + "-page-dump"
             result["passed"] = (result["passed"] and fault.get("passed") is True and
                                 fault.get("fault") == expected_fault and
-                                fault.get("operation") == options.docker_fault_operation)
+                                fault.get("operation") == options.docker_fault_operation and
+                                fault.get("component") == options.docker_fault_component)
+            if options.docker_fault_component == "helper":
+                result["passed"] = (result["passed"] and fault.get("retained_helper_killed") is True and
+                                    fault.get("checkpoint_published_after_helper_loss") is True)
             if options.docker_fault_operation == "pause":
                 result["passed"] = (result["passed"] and
                                     fault.get("failed_pause_history_retained") is True and

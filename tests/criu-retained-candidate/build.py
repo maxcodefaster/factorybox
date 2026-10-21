@@ -30,6 +30,7 @@ if options.nested_overlay_shared_root and not options.nested_overlay_stable_path
 patch_inputs = [
     (root / "upstream/patches/criu-retained-context-candidate.patch", "retained.patch"),
     (root / "upstream/patches/criu-retained-early-hold-candidate.patch", "early-hold.patch"),
+    (root / "upstream/patches/criu-retained-exact-wait-candidate.patch", "exact-wait.patch"),
 ]
 if options.nested_overlay:
     patch_inputs.append(
@@ -67,6 +68,7 @@ for patch_input, filename in patch_inputs:
 for relative in [
     "criu/cr-dump.c", "criu/parasite-syscall.c", "criu/Makefile.crtools",
     "criu/factorybox-retained.c", "criu/include/factorybox-retained.h",
+    "compel/src/lib/infect.c",
 ] + (["criu/mount-v2.c"] if options.nested_overlay else []):
     component.setdefault("prepared_files_sha256", {})[relative] = reference.sha(context / relative)
 (archive / "source-lock.json").write_text(json.dumps(candidate, indent=2) + "\n")
@@ -108,7 +110,9 @@ result = {
              "Retained active-process C context cures only after "
              "the original tracer and worker exit, with the exact original live guard's canonical "
              "grant or an explicitly unauthorized held-source diagnostic after both controllers exit. "
-             "Only the Go guard may authorize source release. No production qualification.",
+             "Only the Go guard may authorize source release. Single-task cure waits only for "
+             "its exact tracee, so an exited recovery helper cannot satisfy that wait. "
+             "The existing multi-thread restore wait remains unchanged. No production qualification.",
     "passed": False, "cleanup": False, "diagnostic_only": True, "production_qualified": False,
 }
 if options.nested_overlay:

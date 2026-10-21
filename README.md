@@ -31,13 +31,14 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 111 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 112 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
 | Current runc integration | `factorybox-upstream-9e3324f1d97e4130a6d6ea6040d62b5a`: 47 passes, twelve original upstream skips |
 | Unchanged fs/mgr/IPC/library modules | Retain the combined pass in `factorybox-upstream-eafc65ac3e6f46fcb89b97480cf224d8`; the manager's four shiftfs cases skip on this worker |
 | Current CRIU core | `factorybox-criu-core-ea025fce7b7f4939b70aeec382d5bdfe`: 18 unchanged C tests, two dump/restore cycles each, zero skips |
+| Exact-wait candidate CRIU core | `factorybox-criu-core-e3af8c54af074fb9ad0e8d3f7e8ce82a`: all 18 unchanged C cases pass two dump/restore cycles each with CRIU candidate `factorybox-build-criu-retained-5587c002b1744963a8ad3b970bd5063f`, including threads, futexes, pipes, Unix sockets, queues, timers, file locks and memfd. Every case retains its own final upstream assertions and credential checks. This is the existing host-flavor core selection, not the complete ZDTM matrix or ordinary developer qualification. Exact cleanup passes |
 | Prepared-base pause/resume | `factorybox-runtime-cb225f6502304e15ac47e7b8c1410aa7`: nine tests, 46 subtests, zero skips, unchanged frozen inputs/source/components and owned cleanup. Current descriptor admission and managed-volume settings retain the selected CRIU's full pause/resume/RAM-release and resumed-source fork assertions |
 | Capture guard failure/disarm | `factorybox-runtime-d1ff147321434c1391dbbc3893b6e90d`: all twelve original cases after retrying interrupted pidfd polls, owned cleanup |
 | Worker loss after completed CRIU | `factorybox-runtime-09a48beb73f94b9cb8e0749a548d648e`: nine tests, 43 subtests, zero skips; checkpoint/pause source recovery, copy-child death, live/forged receipt refusal and lost failed-pause publication recovery |
@@ -94,6 +95,9 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Complete candidate Docker-root recovery | `factorybox-devx-lifecycle-8dcd74a0ca0b4019ba45556ac1e46092` passes the complete dedicated gate with the SHM FS composition and shared-root CRIU candidate, using Docker Overlay2. Tracer death after 69,632 actual root page-image bytes is cured with 13 original processes/103 threads. New Docker exec, original-state mutation, fresh checkpoint, independent useful current-state fork, divergent branch/source mutation and a useful prior-checkpoint fork all pass. Go takes 346.66 seconds and outer execution 402.81, within the unchanged 390/420-second bounds. Inputs/global sentinels and exact cleanup pass. Current/prior forks take 22.162/38.834 seconds through useful work; preparation takes 179.608 seconds and cold first use 90.303. Components and storage driver remain unselected pending ordinary developer and remaining failure gates; no latency distribution or production release is qualified |
 | Complete candidate Docker-daemon child recovery | `factorybox-devx-lifecycle-f379e6e4af134ad0ab03b0aa784027c2` passes the same complete dedicated gate with the same FS/CRIU composition and Overlay2. The exact active `dockerd` child has 26,578,944 bytes in its own page image when its tracer is killed. Authorized cure preserves 13 original processes/99 threads, their app state and running containers; a new Docker exec, original-source mutation, fresh checkpoint, independent current-state fork, divergent mutation and the previous checkpoint fork all pass. Go takes 139.12 seconds and outer execution 194.927 within the unchanged limits. Inputs/global sentinels and exact cleanup pass. Current/prior useful forks take 23.669/7.244 seconds. Preparation takes 36.077 seconds and cold first use 40.053; this uncontrolled shared-worker difference from the root proof is not an implementation speedup. No other child target, helper/guard loss or complete developer/p95 qualification is inferred |
 | Complete candidate Docker-child failed-pause recovery | `factorybox-devx-lifecycle-9996bd36247f4c6f9ee4f2048071d1bc` passes the dedicated gate with the same component composition and Overlay2, interrupting a real pause after 27,189,248 bytes of the `dockerd` child's own page image. Authorized cure preserves 13 original processes/98 threads, running containers/app state and new Docker exec. The running source retains exactly one rejected-pause history entry and refuses the same failed snapshot ID without changing record/runtime. Mutation, fresh checkpoint, independent current-state fork, divergent mutation and useful prior-checkpoint fork all pass. Go takes 122.29 seconds; outer execution 175.801, with unchanged deadlines. Current/prior useful forks take 4.287/3.529 seconds in this individual observation. Inputs/global sentinels and exact cleanup pass. This does not qualify normal pause/resume, other targets, helper/guard loss or a latency distribution |
+| Docker recovery-helper loss | **Failing baseline** in `factorybox-devx-lifecycle-d22c8f5846ef4386973acf7bc8f587cd`: the exact retained helper is killed during the Docker daemon child's page dump. The original tracer then fails ordinary cure because Compel's single-task wait consumes helper 2240's SIGKILL status while waiting for source task 236. The archived arm record confirms both identities. This run qualifies no helper-loss checkpoint or fork. Go takes 169.88 seconds; outer execution 233.236. Frozen inputs/global sentinels and exact cleanup pass. All 3,774,873,600 failure-archive bytes verified before lossless repacking. After the complete corrected helper gate passed, retirement `factorybox-storage-retirement-03b7acf837ad466bb24c504f847266b2` replaced the superseded volume payload with complete member metadata, small contents and controller diagnostics. Source, original results/logs, frozen builds and receipts remain |
+| Docker helper loss with exact single-task waits | `factorybox-devx-lifecycle-b3728a1f8a3a4010b331cfb0cdfcde48` passes all nine app phases with CRIU candidate `factorybox-build-criu-retained-5587c002b1744963a8ad3b970bd5063f`, the same FS composition and Overlay2. Its pinned retained helper dies after 27,295,744 bytes of the Docker daemon child's own page image. The healthy tracer publishes a complete checkpoint; the original 14 processes/99 threads, running containers/app state and new Docker exec remain useful. That checkpoint forks independently before original-source mutation, fresh checkpoint/current-state fork, divergent mutation and prior-checkpoint fork all pass. Go takes 130.43 seconds and outer execution 184.127, with unchanged limits. Individual useful forks take 10.514 seconds for the helper-loss checkpoint, 9.439 for fresh state and 13.023 for the prior checkpoint. Frozen inputs/global sentinels and exact cleanup pass. No simultaneous tracer/helper loss, guard loss, pause, IDE or latency distribution is qualified |
+| Exact-wait candidate failed-pause countercheck | **Failing** in `factorybox-devx-lifecycle-db482e3951ff416fb85dc68b3150bb5a`: with the same new CRIU build, the tracer dies during the real Docker daemon child's page dump. The guard refuses recovery because original process 2223, identified as `sleep` in the CRIU seize log, has disappeared. No recovery grant is published, so ordinary source release, failed-pause history and subsequent forks are unqualified. A later retained-helper diagnostic records an unauthorized held source; it is not an authorized cure. Go takes 95.60 seconds. The inner delete refuses the unresolved pause; outer exact cleanup and frozen inputs/global sentinels pass. All 3,769,630,720 failure-archive bytes verify; lossless repack `factorybox-storage-repack-794b606f15604b7d9f4efb84ad2fd838` preserves them in 677,634,496 encoded bytes with a pinned recovery pointer. This countercheck keeps the new candidate unselected and does not establish the cause of the process disappearance |
 | Current candidate lifecycle with OpenCode, IDE omitted | `factorybox-devx-lifecycle-7ac4aec7d0be4db085d37548fe1957ca` passes all eight app and eight authenticated OpenCode API phases with the same FS/CRIU composition and Overlay2. Independent branch mutation, descendant after source deletion, RAM-releasing pause/resume and fork of resumed state pass. Pause reduces source anonymous memory from 364,810,240 bytes to zero and snapshot residency from 317,997,056 bytes to zero; other filesystem cache remains charged. Go takes 193.45 seconds and outer execution 239.277. Preparation takes 22.664 seconds; app first use 34.088. Individual app-useful fork/descendant/resume/resumed-fork observations are 18.155/16.551/5.939/30.024 seconds; pause takes 12.305. Frozen inputs, global sentinels and exact cleanup pass. Theia is deliberately absent from this optional-consumer profile; the required separate IDE composition remains failed. No model inference, browser, production release or latency distribution is qualified |
 | Combined candidate developer attempt | **Failing** in `factorybox-devx-lifecycle-b11fca474290494b97cb5a01a14c6ffa`: the same components with Overlay2, separate Theia and OpenCode reach only the first useful app/IDE/API phase before the 420-second outer deadline. Preparation takes 178.435 seconds, cold first use 122.498, first checkpoint 65.207 and the fork CLI 60.355. The fork completes after the outer deadline; no useful-fork, descendant or pause/resume verdict is qualified. All 4,381,999,104 failure-archive bytes verify. Worker cleanup passes; the original result correctly retains failed IDE cleanup. Separate IDE reconciliation `0674564a6fce471c8ea0f858126737b3` verifies its 1-MiB workspace and removes it. Offline verification confirms frozen inputs/components/source/example and absence of all owned resources. Terminal global-sentinel checks did not run |
 | Later combined developer attempt, IDE setup | **Failing** in `factorybox-devx-lifecycle-ea1b0b2f54a3467ba30498154def028f`: the same FS/CRIU composition, Overlay2 and optional consumers fail during the separate IDE's directory-setup command, which reaches its unchanged 30-second timeout. No complete app/IDE/OpenCode phase is qualified. Worker execution takes 185.210 seconds, preparation 122.337, including 91.820 seconds importing the verified base. This is not the 420-second outer timeout. The worker is stopped before peer cleanup; worker/IDE cleanup passes, all 3,213,885,440 failure-archive bytes verify and before/after global sentinels match. The helper now retains bounded setup stdout/stderr and elapsed time on both command failure and timeout. The new regression fails in both cases against the preceding helper and passes after correction; no startup fix or complete developer pass is inferred |
@@ -584,8 +588,13 @@ checkpoint. This additionally requires the recovered original to be running, exa
 rejected-pause history, and refusal of the failed snapshot ID without changing that record
 or runtime. The same new-Docker-exec, fresh checkpoint, independent fork and prior checkpoint
 assertions still run. The option is refused outside the dedicated interruption suite.
+Add `--docker-fault-component helper` to kill the pinned retained recovery helper while
+the original tracer continues. This separate gate currently accepts only checkpoints.
+It requires that checkpoint to finish and produce an independently usable fork before
+the ordinary source-mutation, fresh-checkpoint and prior-checkpoint assertions continue.
+Unsupported helper/suite/operation combinations reject before input loading or resource admission.
 This suite requires the explicit candidate
-and omits optional IDE/harness consumers. It checks authorized cure, original stable process
+and omits optional IDE/harness consumers. Tracer-loss gates check authorized cure, original stable process
 identities, unchanged containers/app state, a new Docker exec, mutation and a fresh
 checkpoint/fork of the cured source, independent branch mutation and a usable prior
 checkpoint. The ordinary lifecycle suite retains every pause/resume/descendant assertion.
@@ -593,7 +602,9 @@ The root has
 a small address space; injection requires its own page image to contain at least one
 4096-byte page. The daemon-child proof reaches 26,578,944 bytes in that child's own image.
 These complement the existing 8-MiB actor probes; no other child target or loss of the
-recovery helper/guard is qualified.
+guard is qualified. The separate helper-loss checkpoint gate passes for the Docker daemon
+child with the exact-wait candidate. It does not qualify simultaneous failures or helper loss
+during pause.
 The tracer waits for SIGCHLD and reaps only the exact owned PID, with an absolute deadline.
 Its small native regression counts actual producer stops and checks an absent event with a
 stale notification. It can run without preparing a developer workload:
@@ -612,7 +623,11 @@ The later complete root/child checkpoint and child failed-pause proofs in the ta
 include a fresh checkpoint and independently useful fork of the cured source.
 
 New candidate builds apply `criu-retained-early-hold-candidate.patch` after the preserved
-original process-tree patch. Frozen older candidates retain their exact patch inputs and
+original process-tree patch, then `criu-retained-exact-wait-candidate.patch`.
+The latter scopes single-task parasite cure/unmap waits to their exact tracee, preserving
+the existing multi-thread restore wait. Its complete real Docker helper-loss regression is
+recorded above; the remaining candidate gates still apply before reference selection.
+Frozen older candidates retain their exact patch inputs and
 remain loadable. Add `--thread-churn` to the candidate native runner for an owned nonleader
 thread exit triggered at the actual tracer stop; every original RAM/TCP/source/fork assertion
 remains. This is a timing regression probe, not permission to ignore changed identities.
@@ -1132,6 +1147,21 @@ results. The preceding run's original failed cleanup remains recorded; repacking
 requires its exact successful IDE reconciliation and absence of its owned containers/volumes.
 Sharing `factorybox-storage-share-d6bd2dc5dd334e1f951a078ddbddd8c9` preserves five identical
 closed executable files and reclaims another 59,465,728 allocated bytes.
+
+Retirement `factorybox-storage-retirement-c60cbff1acca4ed589ce662f08b79821` reclaims
+717,275,446 encoded bytes from the old candidate's resolved foreign-network Unix-socket
+failure. The later complete Docker-root recovery/fresh-capture/current/prior-fork proof
+supersedes it. Both component tuples are explicit in the receipt. All 108,608 member records,
+large-file hashes, small contents and 2,393 complete controller diagnostic files remain,
+alongside the original source/builds/results/logs. Current helper/IDE failures and selected
+inputs remain complete.
+
+Retirement `factorybox-storage-retirement-03b7acf837ad466bb24c504f847266b2` reclaims
+646,116,481 encoded bytes from the resolved helper-loss baseline after the complete nine-phase
+replacement passes. The receipt verifies identical Sysbox/consumer inputs and every original
+CRIU patch hash plus only the exact-wait addition. All 87,244 member records, large hashes,
+small contents and 1,106 complete controller diagnostic files remain. The subsequent unresolved
+failed-pause archive stays complete.
 
 ## Remaining release requirements
 

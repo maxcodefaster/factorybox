@@ -1,0 +1,65 @@
+--- a/compel/src/lib/infect.c
++++ b/compel/src/lib/infect.c
+@@ -28,6 +28,8 @@
+ #include "rpc-pie-priv.h"
+ #include "infect-util.h"
+ 
++static int stop_on_syscall(pid_t target, int tasks, int sys_nr, int sys_nr_compat);
++
+ #define __sys(foo)     foo
+ #define __sys_err(ret) (-errno)
+ 
+@@ -1490,7 +1492,7 @@
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	if (compel_stop_on_syscall(1, __NR(rt_sigreturn, 0), __NR(rt_sigreturn, 1)))
++	if (stop_on_syscall(pid, 1, __NR(rt_sigreturn, 0), __NR(rt_sigreturn, 1)))
+ 		return -1;
+ 
+ 	/*
+@@ -1627,7 +1629,7 @@
+ 	if (ret)
+ 		goto err;
+ 
+-	ret = compel_stop_on_syscall(1, __NR(munmap, 0), __NR(munmap, 1));
++	ret = stop_on_syscall(pid, 1, __NR(munmap, 0), __NR(munmap, 1));
+ 
+ 	/*
+ 	 * Don't touch extended registers here: they were restored
+@@ -1703,11 +1705,13 @@
+ /*
+  * Trap tasks on the exit from the specified syscall
+  *
++ * target - exact task during cure, or -1 for multi-thread restore.
++ * A cure must not consume the exit status of an unrelated recovery helper.
+  * tasks - number of processes, which should be trapped
+  * sys_nr - the required syscall number
+  * sys_nr_compat - the required compatible syscall number
+  */
+-int compel_stop_on_syscall(int tasks, const int sys_nr, const int sys_nr_compat)
++static int stop_on_syscall(pid_t target, int tasks, const int sys_nr, const int sys_nr_compat)
+ {
+ 	enum trace_flags trace = tasks > 1 ? TRACE_ALL : TRACE_ENTER;
+ 	user_regs_struct_t regs;
+@@ -1717,7 +1721,7 @@
+ 
+ 	/* Stop all threads on the enter point in sys_rt_sigreturn */
+ 	while (tasks) {
+-		pid = wait4(-1, &status, __WALL, NULL);
++		pid = wait4(target, &status, __WALL, NULL);
+ 		if (pid == -1) {
+ 			pr_perror("wait4 failed");
+ 			return -1;
+@@ -1791,6 +1795,11 @@
+ 	return 0;
+ }
+ 
++int compel_stop_on_syscall(int tasks, const int sys_nr, const int sys_nr_compat)
++{
++	return stop_on_syscall(-1, tasks, sys_nr, sys_nr_compat);
++}
++
+ int compel_mode_native(struct parasite_ctl *ctl)
+ {
+ 	return user_regs_native(&ctl->orig.regs);
