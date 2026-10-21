@@ -117,12 +117,15 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Combined candidate developer attempt | **Failing** in `factorybox-devx-lifecycle-b11fca474290494b97cb5a01a14c6ffa`: the same components with Overlay2, separate Theia and OpenCode reach only the first useful app/IDE/API phase before the 420-second outer deadline. Preparation takes 178.435 seconds, cold first use 122.498, first checkpoint 65.207 and the fork CLI 60.355. The fork completes after the outer deadline; no useful-fork, descendant or pause/resume verdict is qualified. All 4,381,999,104 failure-archive bytes verify. Worker cleanup passes; the original result correctly retains failed IDE cleanup. Separate IDE reconciliation `0674564a6fce471c8ea0f858126737b3` verifies its 1-MiB workspace and removes it. Offline verification confirms frozen inputs/components/source/example and absence of all owned resources. Terminal global-sentinel checks did not run |
 | Later combined developer attempt, IDE setup | **Failing** in `factorybox-devx-lifecycle-ea1b0b2f54a3467ba30498154def028f`: the same FS/CRIU composition, Overlay2 and optional consumers fail during the separate IDE's directory-setup command, which reaches its unchanged 30-second timeout. No complete app/IDE/OpenCode phase is qualified. Worker execution takes 185.210 seconds, preparation 122.337, including 91.820 seconds importing the verified base. This is not the 420-second outer timeout. The worker is stopped before peer cleanup; worker/IDE cleanup passes, all 3,213,885,440 failure-archive bytes verify and before/after global sentinels match. The helper now retains bounded setup stdout/stderr and elapsed time on both command failure and timeout. The new regression fails in both cases against the preceding helper and passes after correction; no startup fix or complete developer pass is inferred |
 | Early IDE admission before large staging | **Failing native setup**, correctly rejected in `factorybox-theia-admission-a43726fdb5424237bcef62d0c90747bd`. The real developer CLI runs the original shared setup recipe before loading large consumer/project inputs or creating a developer worker. The unchanged setup deadline expires at 30.009 seconds; total admission takes 34.440 seconds including checks/cleanup. The independent staging witness supplies intentionally absent large inputs and verifies that only the 22,590-byte admission artifact is created. Frozen probe inputs and exact cleanup pass. This prevents another large failure archive; it does not qualify an IDE or improve runtime fork/resume latency |
+| Unchanged IDE setup recheck | `factorybox-theia-admission-98c2231ed43e410c9d4d964bb8920671` passes the same original setup in 1.094 seconds, with exact ownership cleanup. Its `earlier-failure-comparison.json` verifies identical normalized setup arguments, cached image and runner-input hashes against the earlier 30.009-second failure. The integrated admission `factorybox-theia-admission-2e116014b95f413da9cddde89572e567` also passes before the developer attempt below. No runtime, kernel, host settings, image or setup fix explains the changed observation; the earlier startup cause remains unresolved |
+| Current combined developer recheck | **Failing** in `factorybox-devx-lifecycle-11b22c1294d24e20b69573c50fd1b5e2` with the current Go code, exit-observer CRIU, SHM FS composition, Overlay2, separate Theia and OpenCode. Setup and five app/IDE/authenticated API phases pass, including the first independent fork and divergent source/branch edits. The descendant restore then fails in 20.619 seconds. Its exact `restore.log` reports process 960 killed by signal 11; the later closed listener is cleanup evidence, not the primary failure. Go takes 243.82 seconds, outer execution 315.946, preparation 102.068 and first app use 83.046. The first useful fork takes 9.858 seconds in this individual observation. No descendant, pause/resume or full developer qualification is inferred. Inputs/global sentinels and complete worker/IDE cleanup pass. All 5,537,529,856 failure-archive bytes verify and remain recoverable through the lossless encoding below; selected controller files are indexed under `descendant-diagnostics` |
+| Diagnostic restore logging build | `factorybox-build-sysbox-debug-5f687eb0cd1b4f868770481c582a8776` compiles an explicitly unselected composition with the same pinned source plus one additional patch changing only the restore RPC LogLevel from 2 to 4. Original inherited CLI/restore/resume/cgroup tests pass in the retained pinned builder. That builder contains pristine runc source after building FS, so the recipe checks both the pristine source and compiled original binary before copying in the fully verified prepared Factorybox runc module. FS/mgr bytes match the current SHM composition. The additional patch, before/after source inputs, compiler recipe and binaries are retained. This is diagnostic instrumentation, not a fix, speed gain, ordinary lifecycle pass or production selection |
 | Stop failed worker before peer cleanup | Native baseline `factorybox-cleanup-order-0b9189eab46144658983e0aa6c09fb73` observes the real worker still running when peer cleanup begins. `factorybox-cleanup-order-e2726e0bc4d045059034c8f26a530977` passes after moving the ownership-checked stop ahead of peer cleanup. Both tiny failure archives verify and exact cleanup passes. Unit regressions preserve stop/peer/archive order and refuse changed ownership before or after stopping. This is cleanup evidence, not a replacement for the combined developer gate |
 | Upstream Systemd `/proc/kcore` assertion | **Failing on the reference worker**; the original assertion is preserved |
 
 Skipped cases are not executed passes. The CRIU selection is not the full ZDTM matrix.
 Required failing or unrun gates block a production release.
-The latest IDE setup failure is also reproducible outside Sysbox in owned, bounded containers.
+The earlier IDE setup failure was also reproduced outside Sysbox in owned, bounded containers.
 `factorybox-theia-setup-d0e53d7c3aa4427288b3bbf8d8414f08` retains the original setup program,
 image and resource/capability limits, with only direct stdout/stderr files replacing pipes;
 it still reaches 30.012 seconds. Docker inspection reports `Running`, while a subsequent
@@ -130,7 +133,9 @@ exec reports that the same container is not running. Separate shell controls in 
 native base also time out. Additional CPU, memory, PID, capability, UID, io_uring and
 stdio diagnostics did not establish a successful fix. These observations narrow the
 consumer/container-launch investigation; they do not prove a kernel, image or Node defect.
-Every owned diagnostic resource is removed. The complete developer gate remains failed.
+Every owned diagnostic resource is removed. The current unchanged setup rechecks pass,
+but do not establish a repair or a cold-start latency guarantee. The complete current
+developer gate remains failed on the later descendant-restore segmentation fault.
 
 The prestarted observer in `factorybox-warm-observer-0dbc5c061cea44dbb5078a51e13abab3`
 locates the delay before the application executes: the exact new target is still
@@ -1320,12 +1325,32 @@ Executable-sharing receipts `factorybox-storage-share-8a3dd6e42b2e4ea3adab80c59e
 and `factorybox-storage-share-e90ca5cc22f941acab6c2c6a20c85556` preserve all executable
 bytes while reclaiming another 59,613,184 allocated bytes.
 
+The current descendant-restore failure retains all 5,537,529,856 original archive
+bytes through `factorybox-storage-repack-30922e0a9fbf4359ac309c352160e83b`.
+Its fully decoded hash matches the original, its 774,274,548-byte encoding has a
+pinned recovery pointer, and the repack reclaims 986,435,648 bytes without retiring
+the failure. Read-only kernel diagnostic
+`factorybox-kernel-fault-5c80a9c977b14ee6a557fd96f7eb1c3d` finds no matching crash
+context in its narrow UTC interval; it does not identify the faulting instruction.
+
+Retirement `factorybox-storage-retirement-3f4848f1a8d24be58fb3ad4f2c715d87` removes
+the old final-delete timeout's superseded encoding after its complete
+`factorybox-devx-lifecycle-ab5fe3cd0ebf41fe9d262e75e5bb9050` successor passes all
+eight app, nine IDE and eight OpenCode phases, global sentinels and exact cleanup.
+Sources, native test/CLI bytes, component bytes, examples and consumer identities
+match. The original timeout did not record a terminal input check; the retirement
+separately verifies every retained source/example/input/component against its
+original manifest without rewriting that result. All 432,558 members retain their
+metadata and large-file hashes; files up to 1 KiB and 189 controller diagnostic
+files retain their complete contents. This reclaims 1,012,754,362 bytes while the
+current unresolved failure and earlier startup diagnostics remain complete.
+
 ## Remaining release requirements
 
 Production qualification requires complete bounded failure recovery beyond the candidate's
 one/two-process page-dump proofs, including real Docker/Dev Container trees, recovery on the
 selected path, a complete developer pass within the unchanged deadlines after descriptor admission,
-and resolution of the observed
+resolution of the current descendant-restore segmentation fault, and resolution of the observed
 daemon-startup hang; resolution of required upstream failures/skips on supported
 workers; continued full developer qualification within the existing deadlines after behavioral
 changes; and native qualification of every claimed deployment target. The latest complete pass
