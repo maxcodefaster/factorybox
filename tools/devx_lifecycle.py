@@ -154,8 +154,8 @@ def main():
                         help="Exact process whose own page dump must be interrupted")
     parser.add_argument("--docker-fault-operation", choices=["checkpoint", "pause"], default="checkpoint",
                         help="Lifecycle operation whose actual page dump must be interrupted")
-    parser.add_argument("--docker-fault-component", choices=["tracer", "helper", "controller"], default="tracer",
-                        help="Exact component to kill; controller loss follows tracer/worker rollback")
+    parser.add_argument("--docker-fault-component", choices=["tracer", "helper", "controller", "guard"], default="tracer",
+                        help="Exact component to kill; guard loss follows accepted cure grant")
     options = parser.parse_args()
     if options.docker_fault_process != "root" and options.suite != "docker-interruption":
         parser.error("--docker-fault-process requires --suite docker-interruption")
@@ -184,6 +184,8 @@ def main():
     else:
         criu_archive, criu = reference_lifecycle.component_build(
             options.criu_build, "factorybox-build-criu-")
+    if options.docker_fault_component == "guard" and not criu.get("exit_hold_candidate"):
+        parser.error("the guard-loss proof requires the pinned exit-observer candidate")
     owner = uuid.uuid4().hex
     name = "factorybox-devx-lifecycle-" + owner
     archive = reference.new_artifact(name)
@@ -275,6 +277,16 @@ def main():
                 "identities, public transaction replay, original useful Docker/app state and all "
                 "fresh/current/prior independent fork assertions. No guard death, earlier loss "
                 "window, optional consumers or latency-distribution qualification.")
+        elif options.docker_fault_component == "guard":
+            result["scope"] = (
+                "Real Docker/Compose/Dev Container tree. Kill the pinned tracer at the selected "
+                "process page dump, wait for worker exit and checked network rollback, then "
+                "kill the original guard after the retained helper accepts its grant. "
+                "The surviving original CLI must wait for that helper and finalize the failed "
+                "operation with unchanged recovery identities. Original useful Docker/app state, "
+                "new Docker exec and all fresh/current/prior independent fork assertions remain. "
+                "No before-grant guard death, earlier CLI loss, optional consumers or "
+                "latency-distribution qualification.")
     failure = None
     try:
         context = archive / "context"
@@ -401,6 +413,8 @@ def main():
                 expected_fault = "retained-helper-loss-during-" + options.docker_fault_process + "-page-dump"
             elif options.docker_fault_component == "controller":
                 expected_fault = "controller-loss-after-" + options.docker_fault_process + "-page-dump"
+            elif options.docker_fault_component == "guard":
+                expected_fault = "guard-loss-after-accepted-grant-" + options.docker_fault_process + "-page-dump"
             result["passed"] = (result["passed"] and fault.get("passed") is True and
                                 fault.get("fault") == expected_fault and
                                 fault.get("operation") == options.docker_fault_operation and
@@ -411,6 +425,12 @@ def main():
             elif options.docker_fault_component == "controller":
                 result["passed"] = (result["passed"] and fault.get("controller_killed") is True and
                                     fault.get("same_original_guard") is True)
+            elif options.docker_fault_component == "guard":
+                result["passed"] = (
+                    result["passed"] and fault.get("guard_killed") is True and
+                    fault.get("controller_killed") is False and
+                    fault.get("controller_waited_for_cure") is True and
+                    fault.get("original_recovery_identities_preserved") is True)
             if options.docker_fault_operation == "pause":
                 result["passed"] = (result["passed"] and
                                     fault.get("failed_pause_history_retained") is True and

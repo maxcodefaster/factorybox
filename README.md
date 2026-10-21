@@ -31,7 +31,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 
 | Gate | Evidence and limits |
 | --- | --- |
-| Portable Go packages and Python tools | Mac Go checks pass; 114 Python tool tests pass |
+| Portable Go packages and Python tools | Mac Go checks pass; 115 Python tool tests pass |
 | Reference integrity | 232 sealed reference files verified; imported overlays remain unchanged |
 | Current Sysbox clean rebuild | `factorybox-build-sysbox-526aba43b72d44bc8f0a1769e6a1fe50`: fresh caches, identical runc/fs/mgr binaries and package manifest |
 | Current runc module | `factorybox-upstream-e3c049a6660a47a5ad44b00f51236a0d`: 279 main tests, 227 subtests, 14 original upstream skips |
@@ -108,6 +108,7 @@ and prepares its own inputs using the commands below. Runners verify supplied id
 | Delegated-cure regression checks | `factorybox-runtime-49c6f9db76c54e8fb14fa2cecba01f10` passes all twelve unchanged guard failure/disarm cases with no skips. `factorybox-runtime-retained-021f6403b1f04c53bcfbf3a7c670d58c` repeats the original-CLI loss gate after the delegated-cure changes: all nine tests/40 subtests, twelve invalid grants, both original 32-MiB processes, TCP, prior independent fork, immutable identities and public failed-pause replay pass. Exact cleanup and unchanged source/component inputs pass in both |
 | Docker original-CLI loss recovery | `factorybox-devx-lifecycle-5b0db558d30f4c5d8e0eba99ec4449f8` passes all six dedicated app phases with the same component/consumer inputs. Kill the tracer after 27,332,608 bytes in the Docker daemon child's own image, then kill its original CLI after worker exit/network rollback and before cure. The same original guard authorizes complete recovery of all 13 processes/100 threads; original register/mask checks, zero injected mappings, unchanged armed identities, public replay, rejected-pause history, new Docker exec, mutation and independently useful fresh/prior forks all pass. Go takes 71.86 seconds; outer execution 93.992 under unchanged limits. Individual current/prior useful forks take 2.903/3.445 seconds. Frozen inputs/global sentinels and exact cleanup pass. This is the dockerd/pause window; no guard death, earlier controller-loss window, optional-consumer or latency-distribution qualification |
 | Final pinned-controller Docker countercheck | `factorybox-devx-lifecycle-5875def9ac15440d86aef256edefeaef` repeats the same complete CLI-loss gate after removing a racy fresh numeric-PID lookup in favor of the already pinned kernel identity. All six phases pass after tracer death at 28,131,328 own-daemon page bytes and subsequent CLI death, preserving 13 original processes/98 threads, original recovery identities, new Docker exec, failed-pause replay/history and useful fresh/prior forks. Go takes 93.64 seconds and outer execution 113.808. Individual current/prior useful forks take 11.301/13.668 seconds. This uncontrolled difference from the preceding run is not a proved speed change. Inputs/global sentinels and exact cleanup pass; other fault windows and production qualification remain open |
+| Docker guard loss after accepted grant | `factorybox-devx-lifecycle-6f43bce3bfbe47e3ad00f162877f3a86` passes the complete dedicated failed-pause gate with the same FS/CRIU composition and Overlay2. Tracer death follows 26,628,096 bytes in the Docker daemon child's own page image. After worker exit and checked network rollback, the fixture stops the retained helper at its actual source-freezer open after grant acceptance and kills only the original guard. The original CLI waits for that helper and finalizes the failed pause with unchanged arm/grant identities. All 13 original processes/99 threads, running containers/app state, new Docker exec, failed-pause history/replay, fresh capture/current-state independent fork and prior-checkpoint fork pass. Go takes 117.93 seconds and outer execution 145.000 within unchanged limits. Current/prior useful forks take 5.366/6.911 seconds in this individual observation. Inputs/global sentinels and exact owned cleanup pass. Before-grant guard death, earlier CLI loss, other targets, optional consumers and a latency distribution remain unqualified |
 | Exit-observer Docker failed-pause recovery | `factorybox-devx-lifecycle-37571ecc4aba4893b329672e6207ebc2` passes the complete dedicated Docker/Compose/Dev Container gate with the same candidate and SHM FS composition. The acknowledged stop follows 27,480,064 bytes in the Docker daemon child's own page image, before its retained context is cured. Killing the tracer preserves all 13 original processes/99 threads under authorized cure with an explicit exit-stop proof, unchanged running containers/app state and a successful new Docker exec. Rejected-pause history, refusal of the failed snapshot ID, source mutation, fresh/current-state independent fork, divergent branch mutation and a useful prior-checkpoint fork all pass. Go takes 78.30 seconds and outer execution 106.212 within the unchanged bounds. Current/prior useful forks take 3.349/2.730 seconds in these individual shared-worker observations; no latency distribution or improvement over other profiles is inferred. Frozen inputs/global sentinels and exact cleanup pass. Helper/guard loss, other fault windows and the complete optional-consumer profile still require qualification on this build |
 | Exit-observer Docker helper-loss countercheck | **Failing baseline**, superseded, in `factorybox-devx-lifecycle-702fcebd268f47fbb70e57ef024b1045`. Helper death after 27,713,536 bytes of the daemon child's own image still permits a complete checkpoint, preservation of 13 original processes/100 threads, new Docker exec, an independent 3.897-second fork and divergent mutation. The fresh checkpoint then fails on `/runc`: CRIU cannot find mount 7289 for mapped file `fd=-3`. No fresh-state/prior-state fork is qualified by this run. Go takes 62.45 seconds and outer execution 76.838; frozen inputs/global sentinels and exact cleanup pass. The native executable reproducer above identifies the scanner gap; the complete same-component successor below passes after only the scanner and its native test change. Retirement `factorybox-storage-retirement-9c13d148047f4545841be6add38f8cfd` retains complete member metadata, large-file hashes, small contents and controller diagnostics alongside original source/builds/results/logs |
 | Complete exit-observer Docker helper-loss gate | `factorybox-devx-lifecycle-902ffeb8a63b420f97791caf1604c269` passes all nine app phases with the same CRIU/Sysbox binaries and consumers. The helper dies after 29,106,176 bytes in the Docker daemon child's own page image; the healthy tracer completes the checkpoint and preserves all 13 original processes/102 threads, running containers/app state and a successful new Docker exec. That checkpoint forks independently, source and branch mutate independently, and fresh capture/current-state and prior-state useful forks all pass. Individual useful forks take 3.903/9.278/5.093 seconds. Go takes 160.30 seconds and outer execution 176.187 under unchanged limits. Frozen inputs/global sentinels and exact cleanup pass. This does not qualify simultaneous tracer/helper loss, guard loss, other fault windows, IDE composition or a latency distribution |
@@ -698,7 +699,29 @@ rollback and unchanged raw Sysbox state before publishing restoration/abort evid
 It never issues a replacement grant. Existing matching evidence is reused without
 rewriting; mismatched evidence or a missing authorized result leaves the source held.
 The native case checks 64 MiB of RAM, TCP, independent prior forks and immutable identities.
-Before-grant guard death and the larger Docker guard-loss case remain required proofs.
+The dedicated Docker gate also passes this accepted-grant boundary with 13 original
+processes/99 threads, new Docker exec, fresh/current-state and prior-checkpoint forks.
+Core and Docker tests share the same helper-only syscall instrumentation in
+`internal/testtrace`, which is absent from the production CLI dependency graph.
+After that extraction, `factorybox-runtime-retained-46f4414499054320a6cd459a78d4d5be`
+passes the same nine core tests/40 subtests and twelve physical invalid-grant
+controls, with both original 32-MiB processes, TCP, prior fork and immutable recovery identities.
+Before-grant guard death and earlier CLI-loss windows remain required proofs.
+
+```sh
+mise exec -- python3 tests/docker-overlay-candidate/native.py \
+  --consumer-inputs factorybox-devx-inputs-EXACT_RUN_ID \
+  --project-images factorybox-devx-project-images-EXACT_RUN_ID \
+  --native-base-build factorybox-build-native-base-EXACT_RUN_ID \
+  --sysbox-build factorybox-build-sysbox-EXACT_RUN_ID \
+  --retained-candidate factorybox-build-criu-retained-EXACT_RUN_ID \
+  --suite docker-interruption --docker-fault-process dockerd \
+  --docker-fault-operation pause --docker-fault-component guard
+```
+
+Guard mode rejects a candidate without the pinned exit observer before creating a
+run artifact or native resources. It retains the original 90-second operation,
+30-second page-boundary observation and 10-second helper-trace limits.
 
 The explicitly unselected `--exit-hold --exit-hold-socket` build adds
 `criu-retained-exit-hold-candidate.patch`, the pinned private observer header and
@@ -1286,6 +1309,16 @@ matching one/two-process controller-loss gates pass. Component bytes and fault o
 match, all 9/40 assertions and twelve invalid grants pass, and every controller diagnostic
 file is retained in full. Source, executables, original results/logs, all member metadata
 and large-file hashes remain. The current complete recovery proofs remain directly usable.
+
+The shared-trace core successor also replaces the previous positive two-process
+guard-loss dump under `factorybox-storage-retirement-d50ce27e40e44cf2b94ee185644b77ff`.
+Both runs use identical runtime/CRIU/Sysbox binaries, options, 49 executed test names
+and twelve invalid-grant controls. The receipt retains all member metadata, small
+contents, complete controller diagnostics and large-file hashes, and reclaims
+78,211,466 bytes. The new complete core payload and Docker proof remain available.
+Executable-sharing receipts `factorybox-storage-share-8a3dd6e42b2e4ea3adab80c59e470e0f`
+and `factorybox-storage-share-e90ca5cc22f941acab6c2c6a20c85556` preserve all executable
+bytes while reclaiming another 59,613,184 allocated bytes.
 
 ## Remaining release requirements
 

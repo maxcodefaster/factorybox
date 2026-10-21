@@ -198,7 +198,7 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	if component == "" {
 		component = "tracer"
 	}
-	if component != "tracer" && component != "helper" && component != "controller" ||
+	if component != "tracer" && component != "helper" && component != "controller" && component != "guard" ||
 		component == "helper" && operation != "checkpoint" {
 		fixture.t.Fatal("Docker helper loss requires a checkpoint; tracer loss admits checkpoint or pause")
 	}
@@ -454,9 +454,15 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 	var cureProof any
 	helperKilled := false
 	controllerKilled := false
+	guardKilled := false
+	controllerWaited := false
+	identitiesPreserved := false
 	var resumeGuard func()
 	workerFD := -1
-	if component == "controller" {
+	if component == "controller" || component == "guard" {
+		if component == "guard" && !exitHold {
+			fixture.t.Fatal("guard-loss proof requires the pinned exit-observer candidate")
+		}
 		resumeGuard = fixture.stopOriginalFaultGuard(arm)
 		defer resumeGuard()
 		workerFD, err = unix.PidfdOpen(worker.PID, 0)
@@ -465,7 +471,7 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		}
 		defer unix.Close(workerFD)
 		if birth, err := faultProcessBirth(worker.PID); err != nil || birth != worker.Start {
-			fixture.t.Fatal("capture worker changed before controller-loss injection", err)
+			fixture.t.Fatal("capture worker changed before recovery-owner loss injection", err)
 		}
 	}
 	if component == "helper" {
@@ -506,9 +512,9 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 			}
 		}
 		tracing = false
-		if component == "controller" {
+		if component == "controller" || component == "guard" {
 			if err := testtrace.WaitDead(workerFD, time.Now().Add(5*time.Second)); err != nil {
-				fixture.t.Fatal("original worker did not finish before controller loss", err)
+				fixture.t.Fatal("original worker did not finish before recovery-owner loss", err)
 			}
 			var rollback struct {
 				Token  string `json:"token"`
@@ -518,8 +524,10 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 			}
 			if err := readJSON("capture-network-rollback.json", &rollback); err != nil ||
 				rollback.Token != snapshot || rollback.PID != source.Runtime.PID || !rollback.Passed || !rollback.Frozen {
-				fixture.t.Fatal("controller loss lacks checked original network rollback", err)
+				fixture.t.Fatal("recovery-owner loss lacks checked original network rollback", err)
 			}
+		}
+		if component == "controller" {
 			fd, err := unix.PidfdOpen(command.Process.Pid, 0)
 			if err != nil {
 				fixture.t.Fatal(err)
@@ -540,6 +548,47 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 			}
 			controllerKilled = true
 			resumeGuard()
+		} else if component == "guard" {
+			guardFD, err := unix.PidfdOpen(arm.GuardPID, 0)
+			if err != nil {
+				fixture.t.Fatal("pin original guard before accepted-grant loss", err)
+			}
+			defer unix.Close(guardFD)
+			if birth, err := faultProcessBirth(arm.GuardPID); err != nil || birth != arm.GuardStart {
+				fixture.t.Fatal("original guard changed before accepted-grant loss", err)
+			}
+			resumeCure := fixture.holdOriginalFaultCure(arm, source, resumeGuard)
+			defer resumeCure()
+			killErr := unix.PidfdSendSignal(guardFD, unix.SIGKILL, nil, 0)
+			exitErr := testtrace.WaitDead(guardFD, time.Now().Add(2*time.Second))
+			if err := errors.Join(killErr, exitErr); err != nil {
+				fixture.t.Fatal("kill only the original guard after its accepted grant", err)
+			}
+			guardKilled = true
+			controllerFD, err := unix.PidfdOpen(command.Process.Pid, 0)
+			if err != nil {
+				fixture.t.Fatal("original controller exited before retained cure", err)
+			}
+			defer unix.Close(controllerFD)
+			if birth, err := faultProcessBirth(command.Process.Pid); err != nil ||
+				command.Process.Pid != arm.ControllerPID || birth != arm.ControllerStart {
+				fixture.t.Fatal("original controller changed during accepted-grant loss", err)
+			}
+			for deadline := time.Now().Add(100 * time.Millisecond); time.Now().Before(deadline); {
+				poll := []unix.PollFd{{Fd: int32(controllerFD), Events: unix.POLLIN}}
+				count, err := unix.Poll(poll, int(time.Until(deadline).Milliseconds())+1)
+				if errors.Is(err, unix.EINTR) {
+					continue
+				}
+				if err != nil || count != 0 {
+					fixture.t.Fatal("original controller did not wait for retained cure", err, count)
+				}
+				controllerWaited = true
+			}
+			if !controllerWaited {
+				fixture.t.Fatal("original controller wait was not observed")
+			}
+			resumeCure()
 		}
 		err = command.Wait()
 		waited = true
@@ -556,9 +605,11 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 			if replayErr == nil || !bytes.Contains(output, []byte("after source process recovery")) {
 				fixture.t.Fatal("controller loss has no proved replay of its original failed transaction", replayErr, string(output))
 			}
+		}
+		if controllerKilled || guardKilled {
 			var current faultArm
 			if err := readJSON("criu-retained-arm.json", &current); err != nil || !reflect.DeepEqual(current, arm) {
-				fixture.t.Fatal("controller-loss replay replaced original armed identities", err)
+				fixture.t.Fatal("recovery-owner loss replaced original armed identities", err)
 			}
 			var grant struct {
 				Guard      int    `json:"guard_pid"`
@@ -567,8 +618,9 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 			}
 			if err := readJSON("criu-retained-request.json", &grant); err != nil ||
 				grant.Guard != arm.GuardPID || grant.Controller != arm.ControllerPID || grant.Nonce != arm.Nonce {
-				fixture.t.Fatal("controller-loss replay replaced the original recovery authority", err)
+				fixture.t.Fatal("recovery-owner loss replaced the original recovery authority", err)
 			}
+			identitiesPreserved = true
 		}
 		if err := readJSON("criu-retained-result.json", &cure); err != nil ||
 			!cure.Passed || !cure.Authorized || cure.Nonce != arm.Nonce ||
@@ -659,16 +711,22 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		fault = "retained-helper-loss-during-" + target + "-page-dump"
 	} else if component == "controller" {
 		fault = "controller-loss-after-" + target + "-page-dump"
+	} else if component == "guard" {
+		fault = "guard-loss-after-accepted-grant-" + target + "-page-dump"
 	}
 	boundary := target + " page-dump " + component + " death during " + operation
 	if controllerKilled {
 		boundary = target + " page-dump tracer death, then original CLI death after worker/network rollback before cure"
+	} else if guardKilled {
+		boundary = target + " page-dump tracer death, then original guard death at the helper's source-freezer open after grant acceptance"
 	}
 	record, err := json.MarshalIndent(map[string]any{
 		"passed": true, "fault": fault, "operation": operation, "component": component, "active_page_bytes": pageBytes,
 		"retained_helper_killed": helperKilled, "checkpoint_published_after_helper_loss": helperKilled,
 		"controller_killed": controllerKilled, "same_original_guard": controllerKilled,
-		"controller_pid": arm.ControllerPID, "guard_pid": arm.GuardPID,
+		"guard_killed": guardKilled, "controller_waited_for_cure": controllerWaited,
+		"original_recovery_identities_preserved": identitiesPreserved,
+		"controller_pid":                         arm.ControllerPID, "guard_pid": arm.GuardPID,
 		"helper_pid": arm.HelperPID, "helper_start": arm.HelperStart,
 		"failed_pause_history_retained": failedPauseHistory, "failed_identity_replay_refused": failedIdentityReplay,
 		"active_pid": arm.ActivePID, "active_vpid": arm.ActiveVirtualPID, "active_comm": activeComm,
@@ -677,7 +735,8 @@ func (fixture *fixture) interruptDockerCapture(source lifecycle.View, initial ob
 		"unchanged_app": after, "unchanged_containers": before, "docker_exec_exit": *finished.ExitCode,
 		"scope": "Real Docker/Compose/Dev Container process tree, " + boundary + ", " +
 			"original stable process identities/app state and new Docker exec. " +
-			"No other process target, simultaneous failures, guard loss or external agent inference qualification.",
+			"No other process target, before-grant guard death, earlier CLI loss, " +
+			"simultaneous tracer/helper loss or external agent inference qualification.",
 	}, "", "  ")
 	if err != nil || os.WriteFile("/output/devx-criu-interruption.json", append(record, '\n'), 0600) != nil {
 		fixture.t.Fatal("save complete developer fault result", err)
@@ -731,8 +790,37 @@ func (fixture *fixture) stopOriginalFaultGuard(arm faultArm) func() {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	fixture.t.Fatal("original guard did not stop at the controller-loss boundary")
+	fixture.t.Fatal("original guard did not stop at the recovery-owner loss boundary")
 	return resume
+}
+
+func (fixture *fixture) holdOriginalFaultCure(arm faultArm, source lifecycle.View, resumeGuard func()) func() {
+	fixture.t.Helper()
+	if arm.HelperPID <= 1 || arm.HelperStart == "" || source.Record.Cgroup == nil ||
+		arm.HelperPID == arm.GuardPID || arm.HelperPID == arm.ControllerPID ||
+		arm.HelperPID == arm.WorkerPID || arm.HelperPID == arm.TracerPID {
+		fixture.t.Fatal("retained cure helper identity overlaps another capture role")
+	}
+	for _, thread := range arm.Tree {
+		if thread.PID == arm.HelperPID {
+			fixture.t.Fatal("retained cure helper is in the captured source tree")
+		}
+	}
+	fd, err := unix.PidfdOpen(arm.HelperPID, 0)
+	if err != nil {
+		fixture.t.Fatal("pin original retained cure helper", err)
+	}
+	defer unix.Close(fd)
+	birth, birthErr := faultProcessBirth(arm.HelperPID)
+	actual, actualErr := os.Stat(fmt.Sprintf("/proc/%d/exe", arm.HelperPID))
+	expected, expectedErr := os.Stat("/out/criu")
+	if birthErr != nil || birth != arm.HelperStart || actualErr != nil || expectedErr != nil ||
+		!os.SameFile(actual, expected) {
+		fixture.t.Fatal("original retained cure helper birth or executable changed")
+	}
+	group := source.Record.Cgroup
+	return testtrace.HoldCure(fixture.t, arm.HelperPID, fd,
+		testtrace.Cgroup{Device: group.Device, Inode: group.Inode, MountID: group.MountID}, resumeGuard)
 }
 
 func (fixture *fixture) killRetainedHelper(arm faultArm, tracer, source int) bool {

@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 
 	"factorybox/internal/testtrace"
 	"golang.org/x/sys/unix"
@@ -28,100 +27,20 @@ func stopRetainedCureNative(t *testing.T, arm retainedCaptureArm, group *os.File
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer unix.Close(fd)
 	birth, birthErr := processBirth(arm.HelperPID)
 	actual, actualErr := os.Stat(fmt.Sprintf("/proc/%d/exe", arm.HelperPID))
 	expected, expectedErr := os.Stat("/out/criu")
 	if birthErr != nil || birth != arm.HelperStart || actualErr != nil || expectedErr != nil ||
 		!os.SameFile(actual, expected) {
-		unix.Close(fd)
 		t.Fatal("cannot pin original retained cure helper")
 	}
-	waiter := testtrace.New("original cure helper did not reach its authorized syscall boundary")
-	attached := false
-	finish := func() {
-		if attached {
-			if err := unix.PtraceDetach(arm.HelperPID); err != nil && !errors.Is(err, unix.ESRCH) {
-				t.Error("detach only the original retained cure helper", err)
-			}
-			attached = false
-		}
-		if fd >= 0 {
-			unix.Close(fd)
-			fd = -1
-			waiter.Close()
-		}
+	want, err := cgroupFDIdentity(int(group.Fd()))
+	if err != nil {
+		t.Fatal("pin original source cgroup", err)
 	}
-	t.Cleanup(finish)
-	held := false
-	defer func() {
-		if !held {
-			finish()
-		}
-	}()
-	if err := unix.PtraceSeize(arm.HelperPID); err != nil {
-		t.Fatal("trace only the original retained helper", err)
-	}
-	attached = true
-	if err := unix.PtraceInterrupt(arm.HelperPID); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	status, err := waiter.Wait(arm.HelperPID, deadline)
-	if err != nil || !status.Stopped() {
-		t.Fatal("retained helper did not enter its initial trace stop", err, status)
-	}
-	if err := unix.PtraceSetOptions(arm.HelperPID, unix.PTRACE_O_TRACESYSGOOD); err != nil {
-		t.Fatal(err)
-	}
-	resumeGuard()
-	for {
-		deliver := int(status.StopSignal())
-		if deliver == int(unix.SIGTRAP) || deliver == int(unix.SIGTRAP)|0x80 {
-			deliver = 0
-		}
-		if err := unix.PtraceSyscall(arm.HelperPID, deliver); err != nil {
-			t.Fatal(err)
-		}
-		status, err = waiter.Wait(arm.HelperPID, deadline)
-		if err != nil || !status.Stopped() {
-			t.Fatal("retained helper left before authorized cure entry", err, status)
-		}
-		var info struct {
-			Operation uint8
-			Padding   [3]byte
-			Arch      uint32
-			IP, SP    uint64
-			Number    uint64
-			Args      [6]uint64
-		}
-		_, _, errno := unix.Syscall6(unix.SYS_PTRACE, unix.PTRACE_GET_SYSCALL_INFO,
-			uintptr(arm.HelperPID), unsafe.Sizeof(info), uintptr(unsafe.Pointer(&info)), 0, 0)
-		if errno != 0 {
-			t.Fatal("read actual helper syscall boundary", errno)
-		}
-		if info.Operation != unix.PTRACE_SYSCALL_INFO_ENTRY || info.Number != unix.SYS_OPENAT {
-			continue
-		}
-		var name [32]byte
-		if _, err := unix.PtracePeekData(arm.HelperPID, uintptr(info.Args[1]), name[:]); err != nil {
-			t.Fatal("read only the owned helper's syscall filename", err)
-		}
-		if string(name[:14]) != "cgroup.freeze\x00" {
-			continue
-		}
-		pinned, err := unix.PidfdGetfd(fd, int(info.Args[0]), 0)
-		if err != nil {
-			t.Fatal("pin actual cure target directory", err)
-		}
-		got, statErr := cgroupFDIdentity(pinned)
-		unix.Close(pinned)
-		want, wantErr := cgroupFDIdentity(int(group.Fd()))
-		if statErr != nil || wantErr != nil || got != want {
-			t.Fatal("cure helper targeted a different source group", statErr, wantErr)
-		}
-		held = true
-		return finish
-	}
+	return testtrace.HoldCure(t, arm.HelperPID, fd,
+		testtrace.Cgroup{Device: want.Device, Inode: want.Inode, MountID: want.MountID}, resumeGuard)
 }
 
 func retainedPagesWrittenNative(images string, virtualPID int) bool {

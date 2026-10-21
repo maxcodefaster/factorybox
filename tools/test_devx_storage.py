@@ -129,6 +129,8 @@ class DeveloperStorageTests(unittest.TestCase):
              "--docker-fault-component requires --suite docker-interruption"),
             (["--docker-fault-component", "controller"],
              "--docker-fault-component requires --suite docker-interruption"),
+            (["--docker-fault-component", "guard"],
+             "--docker-fault-component requires --suite docker-interruption"),
             (["--suite", "docker-interruption", "--docker-fault-component", "helper",
               "--docker-fault-operation", "pause"],
              "the helper-loss proof currently requires checkpoint"),
@@ -152,6 +154,29 @@ class DeveloperStorageTests(unittest.TestCase):
                     self.assertIn(message, stderr.getvalue())
                     for stage in [admission, consumers, projects, native, artifact]:
                         stage.assert_not_called()
+
+    def test_guard_fault_rejects_missing_exit_observer_before_artifact_creation(self):
+        command = ["devx_lifecycle.py", "--suite", "docker-interruption",
+                   "--docker-fault-component", "guard"]
+        for flag in ["consumer-inputs", "project-images", "native-base-build",
+                     "sysbox-build", "retained-candidate"]:
+            command += ["--" + flag, "unused"]
+        with mock.patch.object(sys, "argv", command), \
+                mock.patch.object(sys, "stderr", new_callable=io.StringIO) as stderr, \
+                mock.patch.object(devx_lifecycle, "require_no_retained_worker"), \
+                mock.patch.object(devx_lifecycle.devx_inputs, "load", return_value=("consumer", {})), \
+                mock.patch.object(devx_lifecycle.devx_project_images, "load", return_value=("project", {})), \
+                mock.patch.object(devx_lifecycle.native_base, "load", return_value=("image", {})), \
+                mock.patch.object(devx_lifecycle.reference_lifecycle, "component_build",
+                                  return_value=("sysbox", {})), \
+                mock.patch.object(devx_lifecycle.criu_candidate, "load",
+                                  return_value=("criu", {"exit_hold_candidate": False}, None, None)), \
+                mock.patch.object(devx_lifecycle.reference, "new_artifact") as artifact:
+            with self.assertRaises(SystemExit) as error:
+                devx_lifecycle.main()
+            self.assertEqual(error.exception.code, 2)
+            self.assertIn("requires the pinned exit-observer candidate", stderr.getvalue())
+            artifact.assert_not_called()
 
     def test_retained_volume_blocks_the_next_run_before_inputs_or_artifacts_are_created(self):
         volume = "factorybox-devx-lifecycle-" + "a" * 32
