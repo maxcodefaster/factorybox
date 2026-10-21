@@ -152,7 +152,13 @@ func captureDetachedFile(tid, descriptor int, target string, threads map[int]str
 	if flags&unix.O_PATH == 0 {
 		return false, nil
 	}
-	fd, err := unix.Open(fmt.Sprintf("/proc/%d/fd/%d", tid, descriptor), unix.O_PATH|unix.O_CLOEXEC, 0)
+	return captureDetachedRegular(fmt.Sprintf("/proc/%d/fd/%d", tid, descriptor), threads, mounts)
+}
+
+// The executable can retain a detached mount after its originating descriptor
+// closes. Pin the actual proc reference rather than trusting its printed path.
+func captureDetachedRegular(path string, threads map[int]string, mounts *map[uint64]bool) (bool, error) {
+	fd, err := unix.Open(path, unix.O_PATH|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return false, err
 	}
@@ -186,7 +192,7 @@ func captureDetachedFile(tid, descriptor int, target string, threads map[int]str
 	}
 	var shmem unix.Stat_t
 	statErr := unix.Fstat(sample, &shmem)
-	closeErr = unix.Close(sample)
+	closeErr := unix.Close(sample)
 	if statErr != nil || closeErr != nil {
 		return false, errors.Join(statErr, closeErr)
 	}
@@ -254,6 +260,14 @@ func captureDescriptorBlockers(config captureGuardConfig, anchors captureGuardAn
 			}
 		} else {
 			representatives[tgid] = tid
+			detached, err := captureDetachedRegular(fmt.Sprintf("/proc/%d/exe", tid), threads, &mounts)
+			if err != nil {
+				return nil, err
+			}
+			if detached && len(blocked) < 16 {
+				// CRIU represents this process reference as mapped file -3.
+				blocked = append(blocked, captureDescriptorBlocker{TID: tid, FD: -3, Kind: "detached-executable"})
+			}
 		}
 		directory := fmt.Sprintf("/proc/%d/fd", tid)
 		file, err := os.Open(directory)
