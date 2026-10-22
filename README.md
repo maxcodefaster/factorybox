@@ -19,6 +19,8 @@ qualification remains open. Start with the
 [supported worker contract](docs/worker-contract.md).
 The subsequent [production work](docs/production-progress.md) includes real
 external-agent checks, fresh-start optimization and the remaining release gates.
+Its next comparison stopped on a restore PID collision after fourteen passing
+lifecycles. That unresolved failure blocks release and performance selection.
 
 ## Why use Factorybox
 
@@ -64,10 +66,12 @@ preserves application RAM and files. The [Factory composition](examples/factory)
 adds private Docker, Compose, Dev Containers, a separate Theia IDE and real
 OpenCode. Its active shell tool preserves private RAM and file watches across
 fork/resume, produces different branch results and returns its real exit status
-to the agent. Those lifecycle proofs use a deterministic local model peer.
-A separate real free-model tool round trip now passes with pinned OpenCode;
-external-model lifecycle, provider reconnection and external side effects
-remain release tests. See the [current evidence](docs/production-progress.md).
+to the agent. The original lifecycle proofs use a deterministic local model peer.
+A complete lifecycle and planned worker replacement now also pass with pinned
+OpenCode and a real external free model. Each capture requires the optional
+provider gateway to exit; later inference connects through a fresh gateway.
+Injected provider faults and uncertain external side effects remain release
+tests. See the [current evidence](docs/production-progress.md).
 Theia remains a separate reconnecting consumer rather than part of sandbox RAM.
 
 ```mermaid

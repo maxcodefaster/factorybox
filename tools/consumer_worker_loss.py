@@ -16,6 +16,8 @@ import devx_project_images
 import devx_lifecycle
 import criu_candidate
 import native_base
+import external_lifecycle
+import provider_peer
 import reference
 import reference_lifecycle
 import theia_admission
@@ -77,12 +79,16 @@ def main():
     parser.add_argument("--storage-driver",choices=["vfs","overlay2"],default="vfs")
     parser.add_argument("--theia-image")
     parser.add_argument("--opencode-flow",action="store_true",help="Preserve the real agent's running local tool and consume its actual result")
+    parser.add_argument("--external-provider-proof",help="Use the actual admitted free model and helper from this exact native gateway proof")
     parser.add_argument("--consumer-empty-features",action="store_true",help="Candidate exact consumer patch: omit the feature-control lookup for zero features only")
     parser.add_argument("--consumer-request-profile",action="store_true",help="Optional copied Factory example telemetry around its first dependency fetches")
     parser.add_argument("--probe",choices=["worker-loss","incomplete-pause","attached-exec","topology","lifecycle","warm-preparation"],default="worker-loss")
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
+    if options.external_provider_proof and (options.example != "factory" or not options.opencode_flow or
+            options.probe not in {"lifecycle", "worker-loss"} or options.baseline_runtime_build or options.consumer_request_profile):
+        parser.error("external inference requires the complete Factory agent lifecycle or committed-pause worker-loss case")
     if options.example == "minimal" and options.theia_image:
         parser.error("the unchanged minimal consumer has no IDE")
     if options.consumer_empty_features and (options.probe != "lifecycle" or options.baseline_runtime_build):
@@ -130,6 +136,7 @@ def main():
               "worker_image_id":worker["image_id"],"example":options.example,"loss":options.loss,
               "storage_driver":options.storage_driver,"driver_selected":False,
               "opencode_flow":options.opencode_flow,
+              "external_provider_enabled":bool(options.external_provider_proof),
               "consumer_empty_features":options.consumer_empty_features,
               "consumer_request_profile":options.consumer_request_profile,
               "probe":options.probe,
@@ -153,7 +160,8 @@ def main():
     if fixture_declaration.exists():
         result["fixture_verification"]=verify_fixture_extensions.verify(reference.ROOT)
         shutil.copyfile(fixture_declaration,artifact/"production-fixture-extensions.json")
-        shutil.copyfile(reference.ROOT/"tests/compatibility/actor-stream-error.patch",artifact/"actor-stream-error.patch")
+        for row in json.loads(fixture_declaration.read_text())["files"].values():
+            shutil.copyfile(reference.ROOT/row["patch"],artifact/Path(row["patch"]).name)
     shutil.copytree(reference.ROOT/"examples"/options.example,artifact/"example")
     if options.consumer_request_profile:
         path=artifact/"example/server.mjs"
@@ -206,14 +214,13 @@ traceDependency({event: 'module-loaded'});
     if options.opencode_flow:
         shutil.copytree(reference.ROOT/"tests/opencode-flow",artifact/"opencode-flow")
         shutil.copyfile(reference.ROOT/"tests/opencode-probe.cjs",artifact/"opencode-probe.cjs")
-        result["opencode_flow_inputs"] = upstream_unit.context_manifest(artifact/"opencode-flow")
         path=artifact/"devx-sandbox.sh"
         text=path.read_text()
         anchor='if test "${FACTORYBOX_DEVX_OPENCODE:-}" = 1; then'
         if text.count(anchor)!=1: raise ValueError("OpenCode service admission anchor changed")
         path.write_text(text.replace(anchor,
             'export FACTORY_OPENCODE_CONFIG="$(cat /opt/factorybox/opencode-flow/config.json)"\n'
-            '/usr/local/bin/node /opt/factorybox/opencode-flow/model.cjs > /var/log/factorybox-model.log 2>&1 &\n'+anchor))
+            + ('' if options.external_provider_proof else '/usr/local/bin/node /opt/factorybox/opencode-flow/model.cjs > /var/log/factorybox-model.log 2>&1 &\n') + anchor))
     if options.storage_driver == "overlay2":
         file = artifact/("minimal-sandbox.sh" if options.example == "minimal" else "devx-sandbox.sh")
         text = file.read_text()
@@ -224,7 +231,7 @@ traceDependency({event: 'module-loaded'});
         result["driver_input_after_sha256"] = reference.sha(file)
     reference_lifecycle.write_json(artifact/"project-images.json",[{"image":row["image"],"canonical_image":row["canonical_image"]} for row in projects["images"]])
     source = artifact/"source"
-    for directory in ["internal","cmd/factorybox","tests/devx-lifecycle","tests/devx-actor","tests/devx-registry","tests/minimal-actor","tests/ide-filesystem"]:
+    for directory in ["internal","cmd/factorybox","tests/devx-lifecycle","tests/devx-actor","tests/devx-registry","tests/minimal-actor","tests/ide-filesystem","tests/provider-fixture"]:
         shutil.copytree(reference.ROOT/directory,source/directory)
     for file in ["go.mod","go.sum"]: shutil.copyfile(reference.ROOT/file,source/file)
     if options.consumer_request_profile:
@@ -254,8 +261,14 @@ traceDependency({event: 'module-loaded'});
     before = sysctls()
     result["global_sysctls_before"] = before
     containers, peer, attempted = [], None, False
+    service, provider, providers = None, None, []
     print(json.dumps({"running":str(artifact),"example":options.example,"loss":options.loss}),flush=True)
     try:
+        if options.external_provider_proof:
+            external_lifecycle.prepare(artifact, options.external_provider_proof, worker["image_id"], result)
+            service = external_lifecycle.Service(artifact, result)
+        if options.opencode_flow:
+            result["opencode_flow_inputs"] = upstream_unit.context_manifest(artifact/"opencode-flow")
         env = dict(os.environ,GOOS="linux",GOARCH="amd64",CGO_ENABLED="0")
         for file,package,test in [("consumer-worker.test","./tests/devx-lifecycle",True),("devx-actor","./tests/devx-actor",False),
                                   ("devx-registry","./tests/devx-registry",False),("minimal-actor","./tests/minimal-actor",False),
@@ -298,6 +311,7 @@ traceDependency({event: 'module-loaded'});
             if options.probe == "incomplete-pause": command += ["--env","FACTORYBOX_DEVX_INCOMPLETE_PAUSE=1"]
             if baseline_receipt: command += ["--env","FACTORYBOX_DEVX_BASELINE_RUNTIME=1"]
             if options.opencode_flow: command += ["--env","FACTORYBOX_DEVX_OPENCODE=1","--env","FACTORYBOX_DEVX_OPENCODE_FLOW=1"]
+            if service: command += ["--env","FACTORYBOX_DEVX_EXTERNAL_PROVIDER=1"]
             if peer: command += ["--env","FACTORYBOX_DEVX_THEIA=1"]
             mounts = [(output,"/output",False),(components,"/component-input",True),(artifact/"example","/example",True),
                       (consumers_path/"runtime-rootfs.tar","/runtime-rootfs.tar",True),(projects_path/"images.tar","/project-images.tar",True),
@@ -306,6 +320,8 @@ traceDependency({event: 'module-loaded'});
                                                                      "minimal-actor","minimal-sandbox.sh","devx-sandbox.sh","devx-devcontainer.sh","project-images.json","ide-filesystem"]]
             if options.opencode_flow:
                 mounts += [(artifact/"opencode-flow","/opencode-flow",True),(artifact/"opencode-probe.cjs","/opencode-probe.cjs",True)]
+            if service:
+                mounts += [(Path(service.directory.name),"/external-provider",True),(artifact/"provider-gateway","/provider-gateway",True)]
             if baseline_receipt: mounts += [(artifact/"baseline-criu","/baseline-criu",True)]
             if options.consumer_empty_features:
                 mounts += [(artifact/file,"/"+file,True) for file in ["consumer-patch.py","consumer-patch.json"]]
@@ -316,6 +332,8 @@ traceDependency({event: 'module-loaded'});
             containers.append(container)
             identity = reference.docker(command)
             record["startup"] = ready(container,owner,identity,deadline)
+            provider = provider_peer.Peer(container,identity,owner,phase_artifact,output,result["external_provider"]["gateway_sha256"]) if service else None
+            if provider: providers.append(provider)
             probe_command = [*reference.DOCKER,"exec",identity,"/bin/bash","/consumer-worker-setup.sh"]
             probe_start = time.monotonic()
             with (phase_artifact/"stdout.txt").open("x") as stdout,(phase_artifact/"stderr.txt").open("x") as stderr:
@@ -323,6 +341,7 @@ traceDependency({event: 'module-loaded'});
                 try:
                     while probe.poll() is None:
                         pump_peer(peer,output)
+                        if provider: provider.pump()
                         if options.consumer_request_profile and (output/"devx-observations.json").exists() and not (phase_artifact/"dependency-profile.jsonl").exists():
                             exact_worker(container,owner,identity)
                             # Native output is intentionally mode 0600 until
@@ -339,6 +358,9 @@ traceDependency({event: 'module-loaded'});
                         marker = "FACTORYBOX_CONSUMER_PAUSE_INCOMPLETE=" if options.probe=="incomplete-pause" else "FACTORYBOX_CONSUMER_PAUSE_COMMITTED="
                         if phase == "prepare" and options.loss == "abrupt" and marker+owner in (phase_artifact/"stdout.txt").read_text().splitlines():
                             if peer and (not peer.closed or not peer.result.get("cleanup")): raise ValueError("old IDE helper still exists at intentional worker loss")
+                            if provider:
+                                provider.close()
+                                record["external_provider"] = provider.result
                             if not exact_worker(container,owner,identity)["State"]["Running"]: raise ValueError("worker disappeared before intentional loss")
                             reference.docker(["container","kill","--signal=KILL",identity]); break
                         if time.monotonic() >= deadline: raise TimeoutError("consumer whole lifecycle exceeded 420 seconds")
@@ -369,6 +391,9 @@ traceDependency({event: 'module-loaded'});
                         if options.probe=="warm-preparation":
                             record["preparation"]=json.loads((output/"preparation.json").read_text())
                             record["warm_preparation"]=json.loads((output/"warm-preparation.json").read_text())
+                        if provider:
+                            provider.close()
+                            record["external_provider"] = provider.result
                         reference.docker(["container","stop","--time=15",identity],timeout=20)
                 finally:
                     if probe.poll() is None:
@@ -389,6 +414,7 @@ traceDependency({event: 'module-loaded'});
             raise ValueError("frozen consumer proof inputs changed")
         if options.opencode_flow and upstream_unit.context_manifest(artifact/"opencode-flow") != result["opencode_flow_inputs"]:
             raise ValueError("frozen actual agent/tool inputs changed")
+        if service: service.require_requests()
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
@@ -401,6 +427,8 @@ traceDependency({event: 'module-loaded'});
                 (artifact/(container+"-final.log")).write_text(logs.stdout+logs.stderr)
                 reference.owned_delete("container",container,owner)
             if peer and not peer.closed: peer.close(True)
+            for owned_provider in providers:
+                if not owned_provider.closed: owned_provider.close(aborted=True)
             if attempted and not result["passed"]:
                 try:
                     upstream_bats.archive_stopped_volumes(artifact,name,owner,[name],worker["image"],result,timeout=600,compressed=True)
@@ -409,9 +437,11 @@ traceDependency({event: 'module-loaded'});
             if attempted and not preserve: reference.owned_delete("volume",name,owner)
             result["global_sysctls_after"] = sysctls()
             result["global_sysctls_unchanged"] = before == result["global_sysctls_after"]
-            result["cleanup"] = not preserve and (peer is None or peer.result.get("cleanup") is True)
+            result["cleanup"] = (not preserve and (peer is None or peer.result.get("cleanup") is True)
+                                 and all(owned.result.get("cleanup") is True for owned in providers))
             result["passed"] = result["passed"] and result["cleanup"] and result["global_sysctls_unchanged"]
         finally:
+            if service: service.close()
             reference_lifecycle.write_json(artifact/"result.json",result)
             print(json.dumps({"evidence":str(artifact),"passed":result["passed"],"cleanup":result["cleanup"],"error":result.get("error")}),flush=True)
         if not result["passed"]: raise RuntimeError("consumer worker-loss proof failed: "+str(artifact))

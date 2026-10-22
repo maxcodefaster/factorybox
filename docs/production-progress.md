@@ -54,10 +54,59 @@ The runner now retains Docker's output archive and extracts as the local user,
 so capacity accounting can traverse owned outputs. All test containers/volumes
 from these completed runs were removed after ownership checks.
 
-Still open: pause/resume and independent descendants with this external
-provider, provider/client disconnection, complete worker replacement after a
-committed pause, and refusal of unintended tool repetition after uncertain
-results. The previous deterministic-model lifecycle proofs remain separate.
+The later complete ordinary lifecycle below extends this first tool proof.
+Provider faults and complete worker replacement still need separate results.
+The previous deterministic-model lifecycle proofs remain separate.
+
+## Actual external agent through the complete lifecycle
+
+`factorybox-provider-gateway-277aa53b688f40b29ee71f6dd3829fdb` passes its native
+namespace and exact-stop test on the frozen C9 worker. The optional test helper
+joins only the target network namespace. It remains outside the captured PID
+and mount tree. Two real synthetic HTTP exchanges succeed through the owned
+Unix relay, each with a closed client connection. A wrong saved process birth
+is refused before signaling; the correct stop confirms pidfd exit and clean
+process completion. This test alone does not qualify checkpoint/restore.
+
+The full result
+`factorybox-consumer-worker-loss-51bb604fdf87451485cb1af3b384b794` passes with
+the actual pinned OpenCode, freshly admitted free model, private Docker/Compose,
+Dev Containers and separate Theia. Original session, private tool RAM and
+file/watch assertions hold through checkpoint, fork, fork of fork, pause,
+resume and fork of the resumed branch. Source, branch and after-resume fork
+each finish exactly their original one shell invocation, change their own RAM,
+deliver a real watch event and ingest exit 37. Each real external model answer
+acknowledges that environment's actual nonce and RAM hash.
+
+Four optional gateway lifetimes, one arm and three finishes, all stop with
+the same verified executable/birth/netns and exit code zero. No helper remains
+at a capture. Later inference uses a newly attached gateway in the current
+restored namespace. This establishes quiescent external inference, not the
+restoration of an in-flight external TCP connection. The lifecycle runtime has
+no provider dependency. The
+[ordered fixture extension](../tests/compatibility/external-provider-gateway.patch)
+keeps all existing assertions. Only explicitly external arm/finish calls get
+90 seconds; all others retain 30 seconds and the whole lifecycle retains 420.
+
+The native test takes 142.33 seconds. Provider exchanges take 3.189, 1.315,
+12.274 and 9.842 seconds, all HTTP 200, with no relay retries. This is one
+successful observation, not a distribution or production release. Exact
+owned cleanup, unchanged frozen inputs and global sysctls also pass.
+Portable checks with the new helper, IPC and fixture integration pass all six
+gates in `factorybox-checks-cf337992003f4914aa890c5c94293e22`, including vet,
+232 immutable reference files and both production fixture declarations.
+
+Planned same-host, same-boot worker replacement also passes in
+`factorybox-consumer-worker-loss-2be65549f1ad4d7caee70ea282f0b4a1`.
+The first worker commits its pause and exits. A newly owned worker recovers
+the original tool/session, removes the old saved controller only after verified
+recovery, takes a new checkpoint and makes an independent fork. Replaying the
+recovery request preserves the same target; deleting the recovered source
+leaves its descendant useful. Both real tool results reach the external model
+without another shell invocation. Three provider requests and three separately
+closed gateway lifetimes pass. The native prepare/recovery tests take 58.68
+and 65.33 seconds; outer setup adds about 8.9 seconds to the prepare probe.
+Abrupt worker loss and injected provider faults are still separate gates.
 
 ## Fresh start, first bounded consumer patch
 
@@ -191,10 +240,38 @@ gates on that revision, including 232 immutable reference files. Later new
 checks also pass in `factorybox-checks-4c691babb1a4402584e07f858bfb5621`, including
 the actual websocket regression and the original fixture hashes. Later new
 changes still need a final fresh receipt.
+The complete current portable revision passes in
+`factorybox-checks-f92f4de6ea934022b2a6bf0909073299`. The first implementation
+milestone is committed locally as `37389ef`, with the existing Go patch-context
+whitespace rule extended in `bb35414`. No public push or image publication was
+performed.
+
+The twenty-run comparison stopped with a failed fifteenth native run in
+`factorybox-consumer-start-comparison-88e95d80871c44afb590c575a76ac154`.
+Fourteen complete lifecycles pass. The next reference Factory run,
+`factorybox-consumer-worker-loss-0977945385bd4c528164eaf2dc4fa86a`, fails
+restoring the fork of its resumed branch. Its preserved CRIU log reports
+`Can't fork for 4463: File exists`, followed by `Restoring FAILED`.
+The restore-listener connection error in the public CLI is a later symptom.
+The worker and separate Theia were cleaned up with exact ownership checks;
+global sysctls are unchanged. The complete failed volume remains recoverable
+through its verified encoding receipt. This is an unresolved lifecycle
+failure, not a successful performance qualification. The fixed matrix is
+retained without replacing its failed row or omitting it from the verdict.
+
+Lossless repack `factorybox-storage-repack-a730ec1b25f247d5b35d8ba4e0851609`
+verifies all 12,155,092,992 decoded bytes against the original hash before
+replacing its compressed representation, reclaiming 2,625,294,484 bytes.
+Diagnostic inspection `factorybox-failure-inspection-781ddb347ace431a8bf6e3d5506d3cbc`
+again verifies the complete decoded payload and retains only the requested
+restore log and process-tree/core/identity images as bounded hashed files.
+No archive member path is extracted. The saved process 4463 has own-namespace
+PID 2, under nested init 1328. The conflicting occupant is not yet identified.
 
 ## Release work still required
 
-External lifecycle/reconnection and uncertainty handling; a predetermined
+Abrupt external-agent worker replacement, injected connection faults and uncertainty
+handling; resolution of the new PID collision; a predetermined
 repeated performance comparison; verified base reuse in the supplied
 operational path; store quotas/admission and low-disk cases; dependency-checked
 checkpoint/epoch retirement; explanation of the preserved Sysbox-fs timeout;

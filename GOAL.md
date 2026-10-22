@@ -160,10 +160,12 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
 ## Arbeitsstand
 
 - Baseline mit bisherigem Goal und Quellmanifest gesichert.
-- Echte kostenlose externe Inferenz mit OpenCode 2.0.27 und tatsächlichem
-  Vordergrund-Werkzeug, 16 MiB RAM, Dateiwatch und Ergebnis-/Exitverarbeitung
-  einschließlich exakt einer abgeschlossenen Shell-Ausführung nachgewiesen.
-  Externer Lifecycle, Verbindungsfehler und Recovery bleiben offen.
+- Der vollständige Factory-Lifecycle mit OpenCode 2.0.27, echtem kostenlosem
+  externem Modell und laufendem Vordergrund-Werkzeug besteht einmal, mit
+  16 MiB privatem RAM, Dateiwatch und unabhängiger Ergebnis-/Exitverarbeitung
+  in Quelle und Nachkommen. Gateway-Prozess und Verbindungen enden jeweils
+  vor Capture. Geplanter vollständiger Worker-Ersatz besteht ebenfalls.
+  Harter Abbruch und injizierte Verbindungsfehler bleiben offen.
 - Ein exakt gehashter optionaler Dev-Containers-Patch vermeidet einen unnötigen
   Katalogabruf ohne Features. Beide vollständigen Beispiele und neun Prüfungen
   der originalen/gepatchten Feature-Kontrolle bestehen. Erste einzelne
@@ -174,8 +176,12 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Timeout der Test-Gegenstelle bei einer ignorierten `stream-error`-Meldung.
   Geordneter Fixture-Patch und Regression erhalten alle bisherigen Assertions.
   Die Messkorrektur ist keine zusätzliche Laufzeitoptimierung.
-- Ein fester Vergleich mit fünf Beobachtungen je Variante und Beispiel ist
-  vorbereitet. Weitere Factory-Initialisierung wird gemessen. Speichergrenzen, Retention,
+- Der feste Vergleich unter
+  `factorybox-consumer-start-comparison-88e95d80871c44afb590c575a76ac154`
+  brach nach 14 vollständigen Erfolgen beim 15. Lauf ab. Beim Fork einer
+  resumierten Factory-Quelle meldet CRIU einen PID-Konflikt. Der vollständige
+  Fehlerdump bleibt erhalten; die Leistungsfreigabe ist nicht erteilt.
+  Weitere Factory-Initialisierung wird gemessen. Speichergrenzen, Retention,
   Starttimeout, Dauerlauf und reduzierte Auslieferung sind noch nicht erledigt.
 - [Fortschritt und genaue Belege](docs/production-progress.md). Das bestehende
   Referenzprofil und der eigentliche Go-Laufzeitcode sind bisher unverändert.

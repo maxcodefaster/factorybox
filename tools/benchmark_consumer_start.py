@@ -20,7 +20,7 @@ import upstream_unit
 
 def code_identity():
     value = benchmark_lifecycle.code_identity()
-    for name in ["tests/devx-actor", "tests/devx-registry", "tests/minimal-actor", "tests/ide-filesystem", "tests/consumer-optimizations"]:
+    for name in ["tests/devx-actor", "tests/devx-registry", "tests/minimal-actor", "tests/ide-filesystem", "tests/consumer-optimizations", "tests/provider-fixture"]:
         value[name] = upstream_unit.context_manifest(reference.ROOT / name)
     for name in ["tools/benchmark_lifecycle.py", "tools/benchmark_consumer_start.py", "tools/devcontainer_empty_features.py",
                  "tools/verify_fixture_extensions.py", "tests/production-fixture-extensions.json", "tests/compatibility/actor-stream-error.patch"]:
@@ -31,11 +31,14 @@ def code_identity():
 def exact_inputs(record, expected, example, configuration):
     if not record.get("passed") or not record.get("cleanup"):
         raise ValueError("a failed or incomplete native run cannot qualify")
+    declaration = reference.ROOT / "tests/production-fixture-extensions.json"
     if (record["example"] != example or record.get("probe") != "lifecycle" or record.get("storage_driver") != "overlay2" or
             record.get("consumer_request_profile") or record.get("baseline_input") or
+            record.get("external_provider_enabled") or
             record.get("consumer_empty_features") != (configuration == "candidate") or
             record.get("opencode_flow") != (example == "factory") or
-            record.get("fixture_verification", {}).get("production_extensions") != 1):
+            record.get("fixture_verification", {}).get("production_extensions") != len(json.loads(declaration.read_text())["files"]) or
+            record.get("inputs_sha256", {}).get(declaration.name) != reference.sha(declaration)):
         raise ValueError("native consumer configuration differs from the fixed comparison")
     identity = {key: record[key] for key in ["worker_image_id", "lifecycle_cli_sha256", "lifecycle_criu_sha256",
                "consumer_rootfs_sha256", "project_images_sha256", "example_manifest", "source_context"]}

@@ -1,4 +1,5 @@
 import copy
+import json
 import unittest
 
 import benchmark_consumer_start as consumer
@@ -45,7 +46,9 @@ class ConsumerComparisonQualification(unittest.TestCase):
     def test_mixed_fixture_or_component_bytes_cannot_enter_the_matrix(self):
         record = {"passed": True, "cleanup": True, "example": "factory", "probe": "lifecycle", "storage_driver": "overlay2",
                   "consumer_request_profile": False, "baseline_input": None, "consumer_empty_features": False,
-                  "opencode_flow": True, "fixture_verification": {"production_extensions": 1},
+                  "opencode_flow": True,
+                  "fixture_verification": {"production_extensions": len(json.loads((consumer.reference.ROOT / "tests/production-fixture-extensions.json").read_text())["files"])},
+                  "inputs_sha256": {"production-fixture-extensions.json": consumer.reference.sha(consumer.reference.ROOT / "tests/production-fixture-extensions.json")},
                   **{key: "fixed" for key in ["worker_image_id", "lifecycle_cli_sha256", "lifecycle_criu_sha256", "consumer_rootfs_sha256", "project_images_sha256", "example_manifest", "source_context"]}}
         expected = consumer.exact_inputs(record, None, "factory", "reference")
         for field in ["worker_image_id", "source_context", "example_manifest"]:
@@ -55,6 +58,10 @@ class ConsumerComparisonQualification(unittest.TestCase):
                 consumer.exact_inputs(changed, expected, "factory", "reference")
         with self.assertRaises(ValueError):
             consumer.exact_inputs({**record, "consumer_request_profile": True}, expected, "factory", "reference")
+        with self.assertRaises(ValueError):
+            consumer.exact_inputs({**record, "external_provider_enabled": True}, expected, "factory", "reference")
+        with self.assertRaises(ValueError):
+            consumer.exact_inputs({**record, "inputs_sha256": {"production-fixture-extensions.json": "different"}}, expected, "factory", "reference")
 
 
 if __name__ == "__main__":

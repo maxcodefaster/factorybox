@@ -1,0 +1,41 @@
+--- a/tests/devx-lifecycle/opencode_flow_linux_test.go
++++ b/tests/devx-lifecycle/opencode_flow_linux_test.go
+@@ -12,6 +12,7 @@
+ 	"time"
+ 
+ 	"factorybox/internal/lifecycle"
++	providerfixture "factorybox/tests/provider-fixture"
+ )
+ 
+ type agentToolState struct {
+@@ -47,8 +48,29 @@
+ 		}
+ 		anchors = append(anchors, file)
+ 	}
+-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
++	duration := 30 * time.Second
++	external := os.Getenv("FACTORYBOX_DEVX_EXTERNAL_PROVIDER") == "1" && (operation == "arm" || operation == "finish")
++	if external {
++		duration = 90 * time.Second
++	}
++	ctx, cancel := context.WithTimeout(context.Background(), duration)
+ 	defer cancel()
++	if external {
++		lease, err := providerfixture.Acquire(ctx, "/output", operation, providerfixture.Target{
++			RunOwner: os.Getenv("FACTORYBOX_DEVX_RUN"), Sandbox: view.Record.ID, Owner: view.Record.Owner,
++			Runtime: view.Runtime.ID, PID: view.Runtime.PID, Created: view.Runtime.Created,
++		})
++		if err != nil {
++			f.t.Fatal("attach exact external consumer provider", err)
++		}
++		defer func() {
++			closed, release := context.WithTimeout(context.Background(), 10*time.Second)
++			defer release()
++			if err := lease.Close(closed); err != nil {
++				f.t.Fatal("external provider did not fully exit before capture", err)
++			}
++		}()
++	}
+ 	options := []string{"--mount=/proc/self/fd/3", "--root=/proc/self/fd/4", "--wd=/proc/self/fd/4",
+ 		"--pid=/proc/self/fd/5", "--net=/proc/self/fd/6", "--user=/proc/self/fd/7", "--setuid=0", "--setgid=0", "--",
+ 		"/usr/local/bin/node", "/opt/factorybox/opencode-flow/client.cjs", operation}

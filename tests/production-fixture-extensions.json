@@ -8,6 +8,14 @@
   "upstream_assertions_modified": false,
   "latency_comparable_to_previous_fixture": false,
   "files": {
+    "tests/devx-lifecycle/opencode_flow_linux_test.go": {
+      "before_sha256": "f28df34aab7a82d561a99e060bb73d3f694302fb6fe6babdc27aedcbf0497e23",
+      "after_sha256": "242bd96138f257e9a0617af9c09abc29d266fa7a94aae2f54e5e4b8d64456114",
+      "patch": "tests/compatibility/external-provider-gateway.patch",
+      "patch_sha256": "482268752c111cf8d5ddd08370758fd89ece72bb9c08103113909221f8e1bb12",
+      "before_file": "factorybox-consumer-worker-loss-8f2854870e3043fe8ef6541172176d34/source/tests/devx-lifecycle/opencode_flow_linux_test.go",
+      "reason": "Retain every existing agent RAM, session, counter, nonce, filesystem-watch, exit/result and lifecycle assertion. Only explicit external-provider arm/finish calls acquire an independently ownership-verified optional test gateway and require its exact pidfd exit before returning to any capture. Those actual remote calls receive a 90-second operation context; the original 30-second context remains in all other cases and the whole lifecycle remains bounded to 420 seconds. No lifecycle-runtime dependency and no restoration of in-flight external TCP. Native helper proof 277aa53b688f40b29ee71f6dd3829fdb; full external lifecycle remains separately required. Vet remains enabled."
+    },
     "tests/devx-actor/main_linux.go": {
       "before_sha256": "b48eb72ae9c0f47c373132a49494cbb9aad1d6b895ace8138b7e0dac53cbe775",
       "after_sha256": "eda106fb9a7fa800567072701ff1dd6008da2872e64d668660248fdf2faba2b2",
