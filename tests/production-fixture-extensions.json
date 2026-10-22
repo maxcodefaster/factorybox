@@ -40,6 +40,14 @@
       "before_file": "factorybox-stream-error-regression-7fbd4a20583e4911af565fbb88f170a4/main_linux.go",
       "reason": "Keep the legacy error case and handle the actual Connector stream-error terminal frame identically. Preserve authentication, readiness, complete HTTP response/JSON checks, mutation behavior, resource/deadline assertions and vet. The old proof authority ignored this immediate failure and waited its 10-second request deadline when the first app port was not ready. Native timing evidence f3e29eaee4db4416b57eb3b9f949e752 and the actual websocket red regression establish the cause. This corrects the fixture; it is not a production runtime speedup. Remeasure both consumer variants with this same authority before comparing startup times."
     },
+    "tests/lifecycle-native.sh": {
+      "before_sha256": "10303c0d99b259c483505a8abeb78388230943b4794da5db37328424104bc5d2",
+      "after_sha256": "598bfbbf547168fbfab2af17827deecddd06cb9c0ab49083938f1369208859b9",
+      "patch": "tests/compatibility/native-lifecycle-selection.patch",
+      "patch_sha256": "38041283f16faf0ea74046e155ee2edb1e14291274d497960086814de5e7115c",
+      "before_file": "factorybox-runtime-777a91c9483240a4bf1baec01715915a/lifecycle-native.sh",
+      "reason": "Name the same six original base lifecycle tests explicitly. Their assertions, counts, native fixture, timeouts, ownership checks and cleanup stay unchanged. Newly added storage tests share the TestNative prefix but need the separate delivered-worker pressure setup; they cannot run in this old base fixture. Both complete storage suites are added as separate required default native gates, with unchanged original admission/resume/reserve tests plus actual full-disk capture-worker-loss checkpoint and pause cases. No required assertion is skipped or counted as passed through this selection change. Vet stays enabled."
+    },
     "internal/lifecycle/engine_linux_test.go": {
       "before_sha256": "980497fb7861a416e9e61243d137fbb83f0a8079f2198099317d142004ca954b",
       "after_sha256": "a43ae0da489642a01fa90a7799cbd763e1c14739752c9835efbd141c8ee9e105",

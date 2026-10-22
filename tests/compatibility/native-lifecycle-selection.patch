@@ -1,0 +1,11 @@
+--- a/tests/lifecycle-native.sh
++++ b/tests/lifecycle-native.sh
+@@ -16,7 +16,7 @@
+     chmod 0755 /out/criu
+   fi
+ fi
+-test_pattern='^TestNative'
++test_pattern='^TestNative(StartRecoveryAndDelete|ForeignIdentityPreservesRunningProcess|UncertainStartDoesNotRecreate|ControllerLockAndRuntimePin|CaptureGuardOnSysbox|EmptyCgroupRetirement)$'
+ if test "${FACTORYBOX_NATIVE_CAPTURE_GUARD:-}" = 1; then
+   test_pattern='^TestCaptureGuardNative$'
+ else

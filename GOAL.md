@@ -200,5 +200,11 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   vorab zugeteilte, besitzgeprüfte Rückabwicklungsreserve behebt diesen
   konkreten Fall nativ mit unverändertem RAM und altem Checkpoint. Das ist
   noch keine harte Store-Quote oder allgemeine Platzmangel-Freigabe.
+- Ein weiterer realer Fehler bei gleichzeitigem Capture-Worker-Verlust und
+  vollständig vollem Snapshot-Dateisystem ist reproduziert und korrigiert.
+  Der Controller gibt seine exakt besessene Reserve vor den Rückabwicklungs-
+  Belegen frei. Checkpoint und Pause bestehen den Fehlerfall mit laufender
+  Originalquelle vor Entfernen des Platzdrucks und unabhängig brauchbarem
+  altem Checkpoint. Die bisherigen Speicherfälle bestehen ebenfalls.
 - [Fortschritt und genaue Belege](docs/production-progress.md). Das bestehende
   Referenzprofil bleibt unverändert; der neue Go-Worker ist noch nicht freigegeben.

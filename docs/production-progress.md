@@ -631,6 +631,111 @@ sources, native results and reconstruction receipts remain exact. Its observed
 whole-artifact allocation delta overlaps the diagnostic's archive compaction;
 that delta is not an isolated measurement of reclaimed storage.
 
+## Controller recovery with zero free snapshot space
+
+Two native attempts on candidate `factorybox-build-worker-c45d9c2ed6a44c41bd642a0f01728a59`
+confirm another real failure:
+`factorybox-storage-admission-a5c1872a381046948e1a6daa4163b642` and
+`factorybox-storage-admission-bbda3a4ab636490cb0d12d4dacf75b78`.
+After successful CRIU, the test observes the exact capture worker's GNU copy
+child and stops that pidfd-pinned child. It stops the exact controller, kills
+the capture worker and verifies that its copy child exits with it. It allocates
+all remaining blocks on the private 128-MiB tmpfs. Actual capacity is zero and
+a separate write returns `ENOSPC`. The second attempt additionally requires
+every controller thread to be stopped, the original source still frozen and
+the original eight-MiB reserve still allocated before continuing the controller.
+The controller cannot write its abort/outcome receipts and leaves its original
+source frozen. The checkpoint case fails after 2.27 s and 2.34 s; the pause case
+is unrun in those failed attempts. Complete failed stores and logs are retained.
+
+The correction releases the exact private reserve at the beginning of failed
+controller capture cleanup, before the existing validated abort/recovery
+protocol writes its receipts. The killed worker cannot run its own release
+defer. The existing guard, tracer, cgroup, source-birth and receipt requirements
+are preserved; there is no diagnostic thaw, retry or snapshot removal.
+
+Candidate `factorybox-build-worker-5ada8cb272494383aca6b95cad7f4d30` builds with
+CLI SHA-256 `d3d2f5566dc0b9c0815e434eddf2cc7faad41928b1fdce35038d2ef85239b53e`,
+image `sha256:cb8dff98c26f3060848d8b33b13c571e65577bdf04970db2ae7cc78d98ee9cab`
+and package SHA-256
+`ddc1c71779ee3b5a024c6098e4ae88e5efba96321213d9e201621cf646fd8b05`.
+It uses the same pinned Sysbox and diagnostic CRIU components and remains unselected.
+
+The unchanged strengthened fault assertions pass for checkpoint and pause in
+`factorybox-storage-admission-e4eec8eba2d34cbaaa49aad37bafa542`, 3.04 s and
+3.22 s respectively. Before removing the owned pressure file, each failed
+operation restores the original PID/creation identity to running, preserves
+its private RAM/files/watch state and permits useful work. Its earlier complete
+checkpoint verifies byte-for-byte. After pressure is cleared to admit new
+backing, that older checkpoint produces a second independent useful sandbox.
+No incomplete checkpoint or killed-worker outcome is published; failed pause
+history remains exact. Cleanup, frozen inputs and global sysctls pass.
+
+The previous complete storage suite also passes on this candidate in
+`factorybox-storage-admission-de8cde98038c4831a471cf85447e0e99`: actual copy
+`ENOSPC` and all five preflight refusals, real file-backed pause/resume admission,
+and foreign/shared/wrong-guard reserve refusal plus exact release replay.
+Test times are 2.48 s, 2.16 s and 0.03 s. These two pressure scenarios do not
+qualify arbitrary simultaneous writers, controller death or every metadata
+publication failure.
+
+Both complete storage suites are now explicit default native gates. The old
+base lifecycle invocation names its same six original tests exactly, instead
+of also selecting the new pressure tests through their shared name prefix in
+a fixture without their required setup. Its ordered patch records the baseline
+and final hashes, preserves every original assertion and retains the expected
+six tests and zero skips. The new pressure suites keep their own delivered-worker
+setup and required proof checks; they are not counted as passing by exclusion
+from the old fixture.
+
+Both complete examples pass on these new bytes: Factory with separate Theia,
+Docker/Compose/Dev Containers and deterministic OpenCode in
+`factorybox-consumer-worker-loss-22b67525b1284ca0ae9207b7ce94d011`, native
+115.36 s; minimal in
+`factorybox-consumer-worker-loss-9847ab09fef14ac5a76b9bf36b9ddb98`, native
+40.14 s. These are whole-test durations, not a startup comparison. The new
+build retires only its optional compiler cache after that full Factory proof in
+`factorybox-storage-retire-cache-79904133070c4cf88dbc4b7e7221cd72`.
+
+Parent `factorybox-pilot-native-gates-0d1a02c6201a4f41a9125121db2422ba`
+passes the six original base lifecycle tests and three subtests in
+`factorybox-runtime-be7df28bd0c147e98558c5e9d361b190`, guard one/twelve in
+`factorybox-runtime-57810c6b639841e6b46650242a22ec72`, capture twelve/78 in
+`factorybox-runtime-00530f1b177848909efcbf7f145ba331` and pause twelve/67 in
+`factorybox-runtime-1534cd5f9b2e44de821bec0cd0c3d9d3`. Each has zero skips.
+It then stops before admission can allocate its artifact, because retained
+evidence uses 24.10 GiB and the next native run must retain eight GiB of
+headroom inside the 32-GiB budget. No admission assertion runs there;
+worker-loss is unrun in that parent. Its failed result is preserved.
+
+Maintenance `factorybox-storage-repack-ab4a1b86c515441890c7863fccad6ca2`
+losslessly re-encodes the closed passing admission archive, verifying all
+801,112,064 raw bytes and reclaiming 14,482,608 encoded bytes. The exact
+original decoded hash and reconstruction pointer remain available. Native
+component-input sharing first refuses a writable build-linked input without
+changing any files in
+`factorybox-storage-share-components-c40d48237f3b4588b413df0268622849`.
+The next operation skips those already shared writable inputs and shares only
+verified read-only copies of closed passing native fixture components in
+`factorybox-storage-share-components-d435c186601c49be98b0d57912bd3edc`.
+Its 39 per-input intent/completion receipts preserve bytes, mode, ownership and
+native results, reclaiming 920,551,424 allocated bytes. No build bundle,
+failed/active input, snapshot or guest payload changes. Duplicate inode
+timestamps can become the canonical inode's timestamps. This is evidence
+storage maintenance, not a runtime memory or startup optimization.
+
+The separate parent
+`factorybox-pilot-native-gates-881c109114c94c7a893cdf132a11e481` then passes
+the previously unrun admission and capture-worker-loss suites on the same
+candidate core: seventeen/78 in
+`factorybox-runtime-ca0a6ea34f8648d1988899d5d8227397` and twelve/64 in
+`factorybox-runtime-06a1d81fb7aa4162a33ef0ed311299fe`, each without skips.
+This includes the original live-worker/forged-receipt refusals and failed-pause
+reconciliation assertions. Portable checks pass in
+`factorybox-checks-30bfc8a5961144b3bedefddc648ae52a`. The earlier headroom-stopped
+parent remains failed; the original busy-overlay, nested PID collision and
+historical startup timeout remain unresolved.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

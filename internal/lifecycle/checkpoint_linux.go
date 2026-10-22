@@ -148,6 +148,9 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 	var captureFailure *checkpointCaptureError
 	defer func() {
 		if !finished {
+			// A killed worker cannot release its own reserve. Make space for
+			// the validated abort receipts before asking the guard to recover.
+			resultErr = errors.Join(resultErr, releaseCaptureReserve(guard.anchor.evidence, guard.config))
 			if guard.unsafe {
 				if failure, err := guard.captureAborted(resultErr); err == nil {
 					captureFailure, resultErr = failure, failure

@@ -14,7 +14,7 @@ import upstream_unit
 
 SUITES = ("lifecycle", "guard", "capture", "pause", "base", "base-pause",
           "delegation", "auxiliary", "namespaces", "time", "mountfd", "overlay",
-          "admission", "worker-loss", "criu-core")
+          "admission", "worker-loss", "criu-core", "storage-admission", "storage-controller-loss")
 
 
 def main():
@@ -40,6 +40,11 @@ def main():
             "scope":"Final in-process native regression binaries from the delivered image's exact core source, using the same pinned Sysbox/CRIU. Explicit native test-platform build; actual delivered CLI/image proofs remain separate.","production_qualified":False}
     commands=[]
     for suite in selected:
+        if suite in {"storage-admission", "storage-controller-loss"}:
+            commands.append((suite,[sys.executable,str(reference.ROOT/"tools/storage_admission_native.py"),
+                                    "--worker-build",options.worker_build,"--suite",
+                                    "controller-loss" if suite == "storage-controller-loss" else "admission"]))
+            continue
         if suite == "criu-core":
             commands.append((suite,[sys.executable,str(reference.ROOT/"tools/criu_core.py"),"--retained-candidate",worker["criu_build"],
                                    "--native-base-build",worker["native_base_build"],"--candidate-platform","linux/amd64"]))

@@ -21,6 +21,7 @@ import upstream_unit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build", required=True)
+    parser.add_argument("--suite", choices=["admission", "controller-loss"], default="admission")
     args = parser.parse_args()
     _, worker = build_worker.load(args.worker_build)
     native_base.require_native_host("linux/amd64", json.loads(reference.docker(["info", "--format", "{{json .}}"])))
@@ -30,7 +31,8 @@ def main():
     artifact.mkdir()
     source = artifact / "source"
     shutil.copyfile(__file__, artifact / "runner.py")
-    shutil.copyfile(reference.ROOT / "tests/storage-admission-setup.sh", artifact / "setup.sh")
+    setup = "storage-controller-loss-setup.sh" if args.suite == "controller-loss" else "storage-admission-setup.sh"
+    shutil.copyfile(reference.ROOT / "tests" / setup, artifact / "setup.sh")
     for directory in ["internal", "cmd/factorybox"]:
         shutil.copytree(reference.ROOT / directory, source / directory)
     for file in ["go.mod", "go.sum"]:
@@ -44,12 +46,17 @@ def main():
     if reference.sha(rootfs) != busybox["sha256"]:
         raise ValueError("native pressure rootfs input changed")
     result = {"schema": 1, "passed": False, "cleanup": False, "production_qualified": False,
-              "owner": owner, "worker_build": args.worker_build, "worker_image_id": worker["image_id"],
+              "owner": owner, "worker_build": args.worker_build, "worker_image_id": worker["image_id"], "suite": args.suite,
               "source_context": source_context, "rootfs_sha256": busybox["sha256"],
               "runner_sha256": reference.sha(artifact / "runner.py"), "setup_sha256": reference.sha(artifact / "setup.sh"),
-              "scope": "One source on a private 128-MiB tmpfs: preflight refusal, exact completed replay, "
+              "scope": ("Actual capture-worker SIGKILL during an observed owned filesystem copy, with the controller stopped "
+                       "and all remaining space on a private 128-MiB tmpfs allocated before it continues. "
+                       "Both checkpoint and pause must fail without freezing/losing the original RAM/files/watch or "
+                       "damaging an older independently usable checkpoint. No diagnostic thaw or host disk fill."
+                       if args.suite == "controller-loss" else
+                       "One source on a private 128-MiB tmpfs: preflight refusal, exact completed replay, "
                        "separate file-backed resume admission and actual post-admission ENOSPC. No host disk fill, "
-                       "hard store quota, distribution or production qualification."}
+                       "hard store quota, distribution or production qualification.")}
     before = consumer_worker_loss.sysctls()
     result["global_sysctls_before"] = before
     container_attempted = volume_attempted = False
@@ -69,6 +76,7 @@ def main():
                    "--privileged", "--cgroupns=private", "--cpus=3", "--memory=3g", "--pids-limit=512", "--network=none",
                    "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB", "--env", "FACTORYBOX_NATIVE_LIFECYCLE=1",
                    "--env", "FACTORYBOX_NATIVE_STORAGE=1",
+                   "--env", "FACTORYBOX_NATIVE_STORAGE_CONTROLLER_LOSS=" + ("1" if args.suite == "controller-loss" else "0"),
                    "--env", "FACTORYBOX_RUNTIME_SHA256=" + worker["bundle_sha256"]["components/sysbox-runc"],
                    "--env", "FACTORYBOX_CRIU_SHA256=" + worker["bundle_sha256"]["components/criu"],
                    "--mount", f"type=volume,source={name},target=/var/lib/sysbox"]
@@ -97,16 +105,28 @@ def main():
         result["state"] = state["State"]
         if done.returncode or state["State"]["OOMKilled"] or not state["State"]["Running"]:
             raise ValueError("native bounded storage-pressure assertions failed")
-        proof = json.loads((output / "storage.json").read_text())
-        resume = json.loads((output / "resume-admission.json").read_text())
-        reserve = json.loads((output / "reserve-ownership.json").read_text())
-        if (not proof.get("passed") or proof["preflight_rejections"] != 5 or "no space left" not in proof["actual_enospc"].lower() or
-                not resume.get("passed") or resume["preflight_rejections"] != 1 or
-                not all(reserve.get(key) is True for key in ["passed", "replacement_preserved", "shared_inode_refused", "replay_verified"])):
-            raise ValueError("native pressure proof lacks actual ENOSPC and required preflight cases")
-        result["pressure_result_sha256"] = reference.sha(output / "storage.json")
-        result["resume_result_sha256"] = reference.sha(output / "resume-admission.json")
-        result["reserve_result_sha256"] = reference.sha(output / "reserve-ownership.json")
+        if args.suite == "controller-loss":
+            result["controller_loss_proof_sha256"] = {}
+            for operation in ["checkpoint", "pause"]:
+                file = output / ("storage-controller-loss-" + operation + ".json")
+                proof = json.loads(file.read_text())
+                if (proof.get("passed") is not True or proof.get("operation") != operation or
+                        proof.get("available_before_controller_continue") != 0 or
+                        proof.get("actual_enospc") is not True or proof.get("prior_checkpoint_independent") is not True or
+                        proof.get("source_running_before_pressure_removal") is not True):
+                    raise ValueError("controller-loss proof lacks actual full-disk recovery and independent prior checkpoint")
+                result["controller_loss_proof_sha256"][operation] = reference.sha(file)
+        else:
+            proof = json.loads((output / "storage.json").read_text())
+            resume = json.loads((output / "resume-admission.json").read_text())
+            reserve = json.loads((output / "reserve-ownership.json").read_text())
+            if (not proof.get("passed") or proof["preflight_rejections"] != 5 or "no space left" not in proof["actual_enospc"].lower() or
+                    not resume.get("passed") or resume["preflight_rejections"] != 1 or
+                    not all(reserve.get(key) is True for key in ["passed", "replacement_preserved", "shared_inode_refused", "replay_verified"])):
+                raise ValueError("native pressure proof lacks actual ENOSPC and required preflight cases")
+            result["pressure_result_sha256"] = reference.sha(output / "storage.json")
+            result["resume_result_sha256"] = reference.sha(output / "resume-admission.json")
+            result["reserve_result_sha256"] = reference.sha(output / "reserve-ownership.json")
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
