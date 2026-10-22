@@ -50,6 +50,13 @@ func timerReaderFixture(t *testing.T, status boundedLossStatus, id, command stri
 }
 
 func timerReaderFixtureFiles(t *testing.T, status boundedLossStatus, id, command string, actor bool, files map[string][]byte) View {
+	return timerReaderFixtureFilesWithCleanup(t, status, id, command, actor, files, nil)
+}
+
+// A rejection fixture may retain an unresolved operation and its mounts until
+// the exact-owned outer worker is removed. Ordinary reader fixtures retain
+// their original per-sandbox deletion and overlay-unmount assertions.
+func timerReaderFixtureFilesWithCleanup(t *testing.T, status boundedLossStatus, id, command string, actor bool, files map[string][]byte, cleanup func(*testing.T, View)) View {
 	t.Helper()
 	bundle := status.Store + "/" + id + "-bundle"
 	for _, name := range []string{"", "/upper", "/work", "/rootfs"} {
@@ -84,11 +91,13 @@ func timerReaderFixtureFiles(t *testing.T, status boundedLossStatus, id, command
 	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0, "index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
-			t.Error("release exact reader fixture overlay", err)
-		}
-	})
+	if cleanup == nil {
+		t.Cleanup(func() {
+			if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
+				t.Error("release exact reader fixture overlay", err)
+			}
+		})
+	}
 	if out, err := exec.Command(status.Lifecycle.Runtime, "spec", "--bundle", bundle).CombinedOutput(); err != nil {
 		t.Fatal(string(out), err)
 	}
@@ -115,6 +124,10 @@ func timerReaderFixtureFiles(t *testing.T, status boundedLossStatus, id, command
 	}
 	view := boundedLossView(t, "start", "--bundle", bundle, id)
 	t.Cleanup(func() {
+		if cleanup != nil {
+			cleanup(t, view)
+			return
+		}
 		if _, err := boundedLossCommand("--worker-run-root", "/run/factorybox", "delete", id); err != nil {
 			t.Error("delete exact reader fixture", id, err)
 		}

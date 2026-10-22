@@ -5,7 +5,8 @@ COPY --from=go /usr/local/go /usr/local/go
 ENV PATH=/usr/local/go/bin:/root/go/bin:$PATH
 ENV GOMAXPROCS=2 GOFLAGS=-p=2 GOTOOLCHAIN=local
 ARG FACTORYBOX_BUILD_CACHE=shared
-RUN rm -f /etc/apt/sources.list.d/* \
+RUN --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \
+    rm -f /etc/apt/sources.list.d/* \
     && printf '%s\n' \
       'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261018T000000Z jammy main restricted universe multiverse' \
       'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20261018T000000Z jammy-updates main restricted universe multiverse' \
@@ -23,6 +24,7 @@ COPY sysbox-runc-pristine.tar.gz /tmp/runc.tar.gz
 WORKDIR /src/sysbox-runc
 RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
+    --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \
     go version > /out/toolchain.txt \
     && cc --version >> /out/toolchain.txt \
     && dpkg-query -W libseccomp-dev protobuf-compiler libprotobuf-dev >> /out/toolchain.txt \
@@ -32,6 +34,7 @@ RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/ro
     && make -C /src/sysbox-ipc
 RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
+    --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \
     go test -mod=readonly ./libsysbox/syscont \
       -run '^(TestCfgSeccomp|TestExperimentSeccompBlacklist)' -count=1 \
     && go test -mod=readonly -tags 'seccomp apparmor idmapped_mnt netgo osusergo' . \
@@ -40,12 +43,14 @@ RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/ro
       -run '^TestFactoryboxRestoreCgroup$' -count=1
 RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
+    --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \
     go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
       -o /out/libcontainer.test ./libcontainer \
     && go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
       -o /out/integration.test ./libcontainer/integration
 RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
+    --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \
     CGO_ENABLED=1 go build -mod=readonly -buildvcs=false -trimpath \
       -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
       -ldflags '-extldflags -static -X main.version=0.7.1-experiment -X main.commitId=081856cc5d17e7095f066b08d0eca6bb0b515c47-experiment' \
@@ -57,6 +62,7 @@ RUN rm -rf /src/sysbox-runc && mkdir /src/sysbox-runc \
 WORKDIR /src/sysbox-fs
 RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
+    --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \
     go test -mod=readonly ./state -run '^TestExperiment(Retained|Fork)' -count=1 \
     && go test -mod=readonly ./state -run '^TestFactoryboxSnapshotRejectsMalformedState$' -count=1 \
     && go test -mod=readonly ./ipc -run '^TestContainerPreRegister$' -count=1 \
@@ -67,6 +73,7 @@ RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/ro
 WORKDIR /src/sysbox-mgr
 RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
+    --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \
     go test -mod=readonly -tags idmapped_mnt . -run '^TestFactoryboxBinfmtMiscPolicy$' -count=1 \
     && CGO_ENABLED=1 go build -mod=readonly -buildvcs=false -trimpath \
       -tags 'idmapped_mnt netgo osusergo' \

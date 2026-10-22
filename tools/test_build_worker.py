@@ -51,6 +51,30 @@ class WorkerBuildInputs(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"image identity"):
             build_worker.load(self.name)
 
+    def test_explicit_criu_base_stays_immutable_and_matches_worker_recipe(self):
+        component = {"archive": "pinned.tar.gz", "patches": ["original.patch"]}
+        lock = {"components": {"criu": component}}
+        encoded = json.dumps(lock)
+        base = self.artifact/"criu-base-source-lock.json"
+        base.write_text(encoded)
+        (self.artifact/"source-lock.json").write_text(encoded)
+        recipe = json.loads((self.bundle/"build.json").read_text())
+        recipe["source_lock_sha256"] = reference.sha(self.artifact/"source-lock.json")
+        (self.bundle/"build.json").write_text(json.dumps(recipe))
+        result = json.loads((self.artifact/"result.json").read_text())
+        result["bundle_sha256"]["build.json"] = reference.sha(self.bundle/"build.json")
+        result["criu_base_source_lock_sha256"] = reference.sha(base)
+        (self.artifact/"result.json").write_text(json.dumps(result))
+        self.assertEqual(build_worker.load(self.name)[0], self.artifact)
+        base.write_text(encoded+"\n")
+        with self.assertRaisesRegex(ValueError, "frozen CRIU base changed"):
+            build_worker.load(self.name)
+        base.write_text(encoded)
+        changed = {"components": {"criu": {"archive": "changed.tar.gz"}}}
+        (self.artifact/"source-lock.json").write_text(json.dumps(changed))
+        with self.assertRaisesRegex(ValueError, "CRIU recipe differs"):
+            build_worker.load(self.name)
+
     def test_changed_or_extra_bundle_file(self):
         path = self.bundle/"components/criu"
         original = path.read_bytes()

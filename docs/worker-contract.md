@@ -220,6 +220,15 @@ Selection recovery across epochs, full-consumer retirement, broader exhaustion
 faults and epoch retirement remain unverified or unimplemented. See the
 [current timer evidence and remaining integration work](production-progress.md#remainder-mapping-changed-by-the-signal-handler).
 
+Candidate `factorybox-build-worker-d8cc5e7841bb4b6190fbb6331ff7fc5f` adds an
+optional sealed backend hold before restored tasks are released. Native fork
+and resume counter tests confirm the hold through CRIU detach until explicit
+thaw. Socket disconnects and a foreign acknowledgement reject restore and
+preserve unresolved operation evidence. The public lifecycle has not enabled
+this protocol or integrated timer activation. The remainder copy-order defect
+and the remaining release gates still block qualification. See the
+[restore hold proof](production-progress.md#holding-restored-tasks-before-application-continuation).
+
 ## Recovering a committed pause after worker replacement
 
 Before removing the old worker, retain its successful pause response and

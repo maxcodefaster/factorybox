@@ -9,6 +9,33 @@ import criu_candidate
 
 
 class CandidatePatchTests(unittest.TestCase):
+    def test_explicit_frozen_base_allows_only_unrelated_component_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            name, archive, result = self.fixture(root, True)
+            component = {"archive": "selected.tar.gz", "commit": "pinned", "patches": ["original.patch"]}
+            original = {"components": {"criu": component, "sysbox-runc": {"commit": "old"}}}
+            selected = archive / "selected-base-lock.json"
+            selected.write_text(json.dumps(original))
+            result["base_source_lock_sha256"] = hashlib.sha256(selected.read_bytes()).hexdigest()
+            (archive / "result.json").write_text(json.dumps(result))
+            current = {"components": {"criu": dict(component), "sysbox-runc": {"commit": "new"}}}
+            (root / "upstream/lock.json").write_text(json.dumps(current))
+            with mock.patch.object(criu_candidate.reference, "ROOT", root), \
+                    mock.patch.object(criu_candidate.sources, "tree_sha", return_value="frozen-context"), \
+                    mock.patch.object(criu_candidate.sources, "validate_inputs"), \
+                    mock.patch.object(criu_candidate.sources, "check_source", return_value=1030):
+                with self.assertRaisesRegex(ValueError, "different selected base"):
+                    criu_candidate.load(name)
+                self.assertEqual(criu_candidate.load(name, base_lock=selected)[0], archive)
+                current["components"]["criu"]["patches"] = ["changed.patch"]
+                (root / "upstream/lock.json").write_text(json.dumps(current))
+                with self.assertRaisesRegex(ValueError, "current CRIU recipe differs"):
+                    criu_candidate.load(name, base_lock=selected)
+                selected.write_text(selected.read_text()+"\n")
+                with self.assertRaisesRegex(ValueError, "different selected base"):
+                    criu_candidate.load(name, base_lock=selected)
+
     def fixture(self, root, extra):
         name = "factorybox-build-criu-retained-" + "a" * 32
         archive = root / "artifacts" / name

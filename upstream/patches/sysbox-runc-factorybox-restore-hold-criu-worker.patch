@@ -1,0 +1,263 @@
+--- a/factorybox_restore.go
++++ b/factorybox_restore.go
+@@ -400,8 +400,13 @@
+ 			control := os.NewFile(6, "original prepared restore hold control")
+ 			unix.CloseOnExec(int(control.Fd()))
+ 			defer control.Close()
+-			options.FactoryboxBeforeResume = func(pid int) error {
+-				return factoryboxHoldBeforeResume(group, control, target, pid, request, func() error {
++			origin, err := factoryboxHoldOrigin(target)
++			if err != nil {
++				return err
++			}
++			defer origin.Close()
++			options.FactoryboxBeforeResume = func(pid, criuPID int) error {
++				return factoryboxHoldBeforeResume(group, origin, control, target, context.GlobalString("criu"), pid, criuPID, request, func() error {
+ 					return factoryboxRestoreIdentity(request, context.GlobalString("root"), target, group)
+ 				})
+ 			}
+--- a/factorybox_restore_hold.go
++++ b/factorybox_restore_hold.go
+@@ -3,6 +3,7 @@
+ package main
+ 
+ import (
++	"bytes"
+ 	"crypto/sha256"
+ 	"encoding/hex"
+ 	"encoding/json"
+@@ -10,6 +11,7 @@
+ 	"fmt"
+ 	"io"
+ 	"os"
++	"path/filepath"
+ 	"strconv"
+ 	"strings"
+ 	"time"
+@@ -17,6 +19,100 @@
+ 	"github.com/opencontainers/runc/libcontainer"
+ 	"golang.org/x/sys/unix"
+ )
++
++// Pin the prepared launcher's own worker cgroup before CRIU is started.
++// Sysbox temporarily moves its CRIU child into the target's init.scope.
++func factoryboxHoldOrigin(target string) (*os.File, error) {
++	data, err := os.ReadFile("/proc/self/cgroup")
++	if err != nil {
++		return nil, err
++	}
++	path := ""
++	for _, line := range strings.Split(string(data), "\n") {
++		if strings.HasPrefix(line, "0::") {
++			if path != "" {
++				return nil, fmt.Errorf("ambiguous original worker cgroup")
++			}
++			path = strings.TrimPrefix(line, "0::")
++		}
++	}
++	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/"+target || strings.HasPrefix(path, "/"+target+"/") {
++		return nil, fmt.Errorf("restore launcher is outside its original worker cgroup")
++	}
++	fd, err := unix.Openat2(unix.AT_FDCWD, "/sys/fs/cgroup"+path, &unix.OpenHow{
++		Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
++		Resolve: unix.RESOLVE_NO_SYMLINKS,
++	})
++	if err != nil {
++		return nil, err
++	}
++	file := os.NewFile(uintptr(fd), "original restore worker cgroup")
++	var filesystem unix.Statfs_t
++	if err := unix.Fstatfs(fd, &filesystem); err != nil || filesystem.Type != unix.CGROUP2_SUPER_MAGIC {
++		file.Close()
++		return nil, fmt.Errorf("original worker is not on cgroup v2: %v", err)
++	}
++	return file, nil
++}
++
++func factoryboxHoldMoveCRIU(origin *os.File, target, executable string, criuPID int) error {
++	current, err := factoryboxHoldOrigin(target)
++	if err != nil {
++		return err
++	}
++	defer current.Close()
++	saved, err := origin.Stat()
++	if err != nil {
++		return err
++	}
++	now, err := current.Stat()
++	if err != nil || !os.SameFile(saved, now) {
++		return fmt.Errorf("original worker cgroup changed before CRIU return: %v", err)
++	}
++	actual, err := os.Stat(fmt.Sprintf("/proc/%d/exe", criuPID))
++	if err != nil {
++		return err
++	}
++	expected, err := os.Stat(executable)
++	if err != nil || !os.SameFile(actual, expected) {
++		return fmt.Errorf("pre-resume tracer executable differs from the original CRIU: %v", err)
++	}
++	pidfd, err := unix.PidfdOpen(criuPID, 0)
++	if err != nil {
++		return err
++	}
++	defer unix.Close(pidfd)
++	poll := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
++	if n, err := unix.Poll(poll, 0); err != nil || n != 0 {
++		return fmt.Errorf("original CRIU child has exited: %v", err)
++	}
++	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", criuPID))
++	if err != nil {
++		return err
++	}
++	member := false
++	for _, line := range strings.Split(string(data), "\n") {
++		member = member || line == "0::/"+target || strings.HasPrefix(line, "0::/"+target+"/")
++	}
++	if !member {
++		return fmt.Errorf("original CRIU child is outside its temporary target cgroup")
++	}
++	fd, err := unix.Openat(int(origin.Fd()), "cgroup.procs", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return err
++	}
++	procs := os.NewFile(uintptr(fd), "original CRIU worker return")
++	_, writeErr := procs.WriteString(strconv.Itoa(criuPID))
++	if err := errors.Join(writeErr, procs.Close()); err != nil {
++		return err
++	}
++	data, err = os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", criuPID))
++	worker, workerErr := os.ReadFile("/proc/self/cgroup")
++	if err != nil || workerErr != nil || !bytes.Equal(data, worker) {
++		return fmt.Errorf("original CRIU did not return to its worker cgroup: %v %v", err, workerErr)
++	}
++	return nil
++}
+ 
+ func factoryboxHoldRead(group *os.File, name string) ([]byte, error) {
+ 	fd, err := unix.Openat(int(group.Fd()), name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+@@ -56,7 +152,7 @@
+ // CRIU invokes this callback before its final ptrace detach. The exact
+ // inherited cgroup is frozen before acknowledging the notification. The
+ // controller must acknowledge this held identity, or restore fails closed.
+-func factoryboxHoldBeforeResume(group, control *os.File, target string, pid int, request any, validate func() error) error {
++func factoryboxHoldBeforeResume(group, origin, control *os.File, target, executable string, pid, criuPID int, request any, validate func() error) error {
+ 	if pid <= 1 || pid == os.Getpid() {
+ 		return fmt.Errorf("invalid pre-resume task identity")
+ 	}
+@@ -92,8 +188,11 @@
+ 			}
+ 		}
+ 	}
+-	if tracer <= 1 {
++	if tracer <= 1 || tracer != criuPID {
+ 		return fmt.Errorf("pre-resume task has already lost its CRIU tracer")
++	}
++	if err := factoryboxHoldMoveCRIU(origin, target, executable, criuPID); err != nil {
++		return err
+ 	}
+ 	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+ 	if err != nil {
+@@ -137,7 +236,8 @@
+ 	hash := sha256.Sum256(data)
+ 	token := hex.EncodeToString(hash[:])
+ 	packet, err := json.Marshal(map[string]any{"version": 1, "request_sha256": token, "runtime_id": target,
+-		"pid": pid, "process_start": fields[19], "criu_tracer_pid": tracer, "frozen_before_resume": true})
++		"pid": pid, "process_start": fields[19], "criu_tracer_pid": tracer, "frozen_before_resume": true,
++		"criu_returned_to_original_worker": true})
+ 	if err != nil {
+ 		return err
+ 	}
+--- a/factorybox_resume.go
++++ b/factorybox_resume.go
+@@ -262,8 +262,13 @@
+ 			control := os.NewFile(6, "original prepared resume hold control")
+ 			unix.CloseOnExec(int(control.Fd()))
+ 			defer control.Close()
+-			options.FactoryboxBeforeResume = func(pid int) error {
+-				return factoryboxHoldBeforeResume(group, control, target, pid, request, func() error {
++			origin, err := factoryboxHoldOrigin(target)
++			if err != nil {
++				return err
++			}
++			defer origin.Close()
++			options.FactoryboxBeforeResume = func(pid, criuPID int) error {
++				return factoryboxHoldBeforeResume(group, origin, control, target, context.GlobalString("criu"), pid, criuPID, request, func() error {
+ 					return factoryboxResumeIdentity(request, context.GlobalString("root"), target, group)
+ 				})
+ 			}
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -1844,7 +1844,7 @@
+ 			logrus.Debugf("Feature check says: %s", resp)
+ 			criuFeatures = resp.GetFeatures()
+ 		case t == criurpc.CriuReqType_NOTIFY:
+-			if err := c.criuNotifications(resp, process, cmd, opts, extFds, oob[:oobn]); err != nil {
++			if err := c.criuNotifications(resp, process, cmd, opts, extFds, oob[:oobn], criuProcess.Pid); err != nil {
+ 				return err
+ 			}
+ 			t = criurpc.CriuReqType_NOTIFY
+@@ -1920,7 +1920,7 @@
+ 	return nil
+ }
+ 
+-func (c *linuxContainer) criuNotifications(resp *criurpc.CriuResp, process *Process, cmd *exec.Cmd, opts *CriuOpts, fds []string, oob []byte) error {
++func (c *linuxContainer) criuNotifications(resp *criurpc.CriuResp, process *Process, cmd *exec.Cmd, opts *CriuOpts, fds []string, oob []byte, criuPID int) error {
+ 	notify := resp.GetNotify()
+ 	if notify == nil {
+ 		return fmt.Errorf("invalid response: %s", resp.String())
+@@ -2010,7 +2010,7 @@
+ 			if err != nil {
+ 				return err
+ 			}
+-			return opts.FactoryboxBeforeResume(pid)
++			return opts.FactoryboxBeforeResume(pid, criuPID)
+ 		}
+ 	case "orphan-pts-master":
+ 		scm, err := unix.ParseSocketControlMessage(oob)
+--- a/libcontainer/criu_opts_linux.go
++++ b/libcontainer/criu_opts_linux.go
+@@ -13,24 +13,24 @@
+ }
+ 
+ type CriuOpts struct {
+-	FactoryboxBeforeResume  func(int) error    // sealed Factorybox restore protocol, before CRIU detaches
+-	FactoryboxResume        bool               // retain an admitted Factorybox runtime creation identity
+-	FactoryboxConfigFile    string             // per-operation CRIU settings, no worker-wide configuration
+-	SysboxSeccompRestore    bool               // owned experiment; listener handoff before resume
+-	ImagesDirectory         string             // directory for storing image files
+-	WorkDirectory           string             // directory to cd and write logs/pidfiles/stats to
+-	ParentImage             string             // directory for storing parent image files in pre-dump and dump
+-	LeaveRunning            bool               // leave container in running state after checkpoint
+-	TcpEstablished          bool               // checkpoint/restore established TCP connections
+-	ExternalUnixConnections bool               // allow external unix connections
+-	ShellJob                bool               // allow to dump and restore shell jobs
+-	FileLocks               bool               // handle file locks, for safety
+-	PreDump                 bool               // call criu predump to perform iterative checkpoint
+-	PageServer              CriuPageServerInfo // allow to dump to criu page server
+-	VethPairs               []VethPairName     // pass the veth to criu when restore
+-	ManageCgroupsMode       criu.CriuCgMode    // dump or restore cgroup mode
+-	EmptyNs                 uint32             // don't c/r properties for namespace from this mask
+-	AutoDedup               bool               // auto deduplication for incremental dumps
+-	LazyPages               bool               // restore memory pages lazily using userfaultfd
+-	StatusFd                int                // fd for feedback when lazy server is ready
++	FactoryboxBeforeResume  func(int, int) error // restored root and CRIU PID, before final detach
++	FactoryboxResume        bool                 // retain an admitted Factorybox runtime creation identity
++	FactoryboxConfigFile    string               // per-operation CRIU settings, no worker-wide configuration
++	SysboxSeccompRestore    bool                 // owned experiment; listener handoff before resume
++	ImagesDirectory         string               // directory for storing image files
++	WorkDirectory           string               // directory to cd and write logs/pidfiles/stats to
++	ParentImage             string               // directory for storing parent image files in pre-dump and dump
++	LeaveRunning            bool                 // leave container in running state after checkpoint
++	TcpEstablished          bool                 // checkpoint/restore established TCP connections
++	ExternalUnixConnections bool                 // allow external unix connections
++	ShellJob                bool                 // allow to dump and restore shell jobs
++	FileLocks               bool                 // handle file locks, for safety
++	PreDump                 bool                 // call criu predump to perform iterative checkpoint
++	PageServer              CriuPageServerInfo   // allow to dump to criu page server
++	VethPairs               []VethPairName       // pass the veth to criu when restore
++	ManageCgroupsMode       criu.CriuCgMode      // dump or restore cgroup mode
++	EmptyNs                 uint32               // don't c/r properties for namespace from this mask
++	AutoDedup               bool                 // auto deduplication for incremental dumps
++	LazyPages               bool                 // restore memory pages lazily using userfaultfd
++	StatusFd                int                  // fd for feedback when lazy server is ready
+ }

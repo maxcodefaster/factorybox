@@ -1,0 +1,377 @@
+--- a/factorybox_restore.go
++++ b/factorybox_restore.go
+@@ -32,18 +32,19 @@
+ )
+ 
+ type factoryboxRestoreRequest struct {
+-	Version      int    `json:"version"`
+-	SandboxID    string `json:"sandbox_id"`
+-	Owner        string `json:"owner"`
+-	SourceID     string `json:"source_id"`
+-	SourceRootfs string `json:"source_rootfs"`
+-	Root         string `json:"root"`
+-	Filesystem   string `json:"filesystem"`
+-	Images       string `json:"images"`
+-	ManagerRoot  string `json:"manager_root"`
+-	ConfigSHA256 string `json:"config_sha256"`
+-	State        []byte `json:"state"`
+-	FsState      []byte `json:"fs_state"`
++	Version           int    `json:"version"`
++	SandboxID         string `json:"sandbox_id"`
++	Owner             string `json:"owner"`
++	SourceID          string `json:"source_id"`
++	SourceRootfs      string `json:"source_rootfs"`
++	Root              string `json:"root"`
++	Filesystem        string `json:"filesystem"`
++	Images            string `json:"images"`
++	ManagerRoot       string `json:"manager_root"`
++	ConfigSHA256      string `json:"config_sha256"`
++	State             []byte `json:"state"`
++	FsState           []byte `json:"fs_state"`
++	HoldForActivation bool   `json:"hold_for_activation,omitempty"`
+ }
+ 
+ const factoryboxRestoreSeals = unix.F_SEAL_WRITE | unix.F_SEAL_GROW | unix.F_SEAL_SHRINK | unix.F_SEAL_SEAL
+@@ -329,6 +330,12 @@
+ 		command := exec.Command("/proc/self/exe", "--root", context.GlobalString("root"), "--criu", context.GlobalString("criu"), "factorybox-restore-prepared", target)
+ 		command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNS}
+ 		command.ExtraFiles = []*os.File{file, lock, group}
++		if request.HoldForActivation {
++			control := os.NewFile(6, "original restore hold control")
++			unix.CloseOnExec(int(control.Fd()))
++			defer control.Close()
++			command.ExtraFiles = append(command.ExtraFiles, control)
++		}
+ 		command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+ 		if err := command.Run(); err != nil {
+ 			return err
+@@ -389,6 +396,16 @@
+ 		}()
+ 		options := &libcontainer.CriuOpts{SysboxSeccompRestore: true, ImagesDirectory: request.Images, WorkDirectory: request.Images,
+ 			ShellJob: true, FileLocks: true, EmptyNs: 0, TcpEstablished: true, ManageCgroupsMode: criu.CriuCgMode_FULL}
++		if request.HoldForActivation {
++			control := os.NewFile(6, "original prepared restore hold control")
++			unix.CloseOnExec(int(control.Fd()))
++			defer control.Close()
++			options.FactoryboxBeforeResume = func(pid int) error {
++				return factoryboxHoldBeforeResume(group, control, target, pid, request, func() error {
++					return factoryboxRestoreIdentity(request, context.GlobalString("root"), target, group)
++				})
++			}
++		}
+ 		process := &libcontainer.Process{Init: true, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}
+ 		if err := container.Restore(process, options); err != nil {
+ 			return err
+@@ -397,7 +414,7 @@
+ 		if err != nil {
+ 			return err
+ 		}
+-		if err := factoryboxRestoreComplete(request, state); err != nil {
++		if err := factoryboxRestoreOutcome(request, state, group); err != nil {
+ 			return err
+ 		}
+ 		if err := json.NewEncoder(os.Stdout).Encode(state); err != nil {
+--- /dev/null
++++ b/factorybox_restore_hold.go
+@@ -0,0 +1,177 @@
++//go:build linux
++
++package main
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"os"
++	"strconv"
++	"strings"
++	"time"
++
++	"github.com/opencontainers/runc/libcontainer"
++	"golang.org/x/sys/unix"
++)
++
++func factoryboxHoldRead(group *os.File, name string) ([]byte, error) {
++	fd, err := unix.Openat(int(group.Fd()), name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return nil, err
++	}
++	file := os.NewFile(uintptr(fd), "original restore hold "+name)
++	data, readErr := io.ReadAll(io.LimitReader(file, 16385))
++	if len(data) > 16384 {
++		readErr = errors.Join(readErr, fmt.Errorf("restore hold counters exceed bound"))
++	}
++	return data, errors.Join(readErr, file.Close())
++}
++
++func factoryboxHoldConfirmed(group *os.File) error {
++	data, err := factoryboxHoldRead(group, "cgroup.events")
++	if err != nil {
++		return err
++	}
++	values := map[string]uint64{}
++	for _, line := range strings.Split(string(data), "\n") {
++		fields := strings.Fields(line)
++		if len(fields) == 2 {
++			value, err := strconv.ParseUint(fields[1], 10, 64)
++			if err != nil {
++				return err
++			}
++			values[fields[0]] = value
++		}
++	}
++	if values["frozen"] != 1 || values["populated"] != 1 {
++		return fmt.Errorf("restored original cgroup is not populated and frozen")
++	}
++	return nil
++}
++
++// CRIU invokes this callback before its final ptrace detach. The exact
++// inherited cgroup is frozen before acknowledging the notification. The
++// controller must acknowledge this held identity, or restore fails closed.
++func factoryboxHoldBeforeResume(group, control *os.File, target string, pid int, request any, validate func() error) error {
++	if pid <= 1 || pid == os.Getpid() {
++		return fmt.Errorf("invalid pre-resume task identity")
++	}
++	if err := validate(); err != nil {
++		return err
++	}
++	kind, err := unix.GetsockoptInt(int(control.Fd()), unix.SOL_SOCKET, unix.SO_TYPE)
++	if err != nil || kind != unix.SOCK_SEQPACKET {
++		return fmt.Errorf("restore hold has no original packet control socket: %v", err)
++	}
++	membership, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
++	if err != nil {
++		return err
++	}
++	member := false
++	for _, line := range strings.Split(string(membership), "\n") {
++		member = member || line == "0::/"+target || strings.HasPrefix(line, "0::/"+target+"/")
++	}
++	if !member {
++		return fmt.Errorf("pre-resume task left its original cgroup")
++	}
++	status, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", pid))
++	if err != nil {
++		return err
++	}
++	tracer := 0
++	for _, line := range strings.Split(string(status), "\n") {
++		fields := strings.Fields(line)
++		if len(fields) == 2 && fields[0] == "TracerPid:" {
++			tracer, err = strconv.Atoi(fields[1])
++			if err != nil {
++				return err
++			}
++		}
++	}
++	if tracer <= 1 {
++		return fmt.Errorf("pre-resume task has already lost its CRIU tracer")
++	}
++	stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
++	if err != nil {
++		return err
++	}
++	end := strings.LastIndexByte(string(stat), ')')
++	if end < 0 {
++		return fmt.Errorf("invalid pre-resume task birth")
++	}
++	fields := strings.Fields(string(stat[end+1:]))
++	if len(fields) < 20 {
++		return fmt.Errorf("incomplete pre-resume task birth")
++	}
++	if _, err := strconv.ParseUint(fields[19], 10, 64); err != nil {
++		return err
++	}
++	fd, err := unix.Openat(int(group.Fd()), "cgroup.freeze", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
++	if err != nil {
++		return err
++	}
++	freeze := os.NewFile(uintptr(fd), "original pre-resume freezer")
++	_, writeErr := freeze.WriteString("1")
++	if err := errors.Join(writeErr, freeze.Close()); err != nil {
++		return err
++	}
++	for deadline := time.Now().Add(2 * time.Second); ; {
++		if err := validate(); err != nil {
++			return err
++		}
++		if err := factoryboxHoldConfirmed(group); err == nil {
++			break
++		} else if time.Now().After(deadline) {
++			return err
++		}
++		time.Sleep(time.Millisecond)
++	}
++	data, err := json.Marshal(request)
++	if err != nil {
++		return err
++	}
++	hash := sha256.Sum256(data)
++	token := hex.EncodeToString(hash[:])
++	packet, err := json.Marshal(map[string]any{"version": 1, "request_sha256": token, "runtime_id": target,
++		"pid": pid, "process_start": fields[19], "criu_tracer_pid": tracer, "frozen_before_resume": true})
++	if err != nil {
++		return err
++	}
++	if _, err := control.Write(packet); err != nil {
++		return err
++	}
++	poll := []unix.PollFd{{Fd: int32(control.Fd()), Events: unix.POLLIN | unix.POLLHUP}}
++	for {
++		_, err = unix.Poll(poll, 3000)
++		if !errors.Is(err, unix.EINTR) {
++			break
++		}
++	}
++	if err != nil || poll[0].Revents&unix.POLLIN == 0 {
++		return fmt.Errorf("restore hold controller did not acknowledge its original task: %v", err)
++	}
++	ack := make([]byte, 128)
++	n, err := control.Read(ack)
++	if err != nil || string(ack[:n]) != "held:"+token {
++		return fmt.Errorf("restore hold acknowledgement differs from its sealed request: %v", err)
++	}
++	return errors.Join(validate(), factoryboxHoldConfirmed(group))
++}
++
++func factoryboxRestoreOutcome(request factoryboxRestoreRequest, state *libcontainer.State, group *os.File) error {
++	if !request.HoldForActivation {
++		return factoryboxRestoreComplete(request, state)
++	}
++	if err := factoryboxHoldConfirmed(group); err != nil {
++		return err
++	}
++	data, err := factoryboxCompletionData(request.Owner, request, state)
++	if err != nil {
++		return err
++	}
++	return factoryboxStoreCompletion(request.Root+"/objects/"+request.SandboxID, "restore-held.json", data)
++}
+--- a/factorybox_restore_receipt.go
++++ b/factorybox_restore_receipt.go
+@@ -57,7 +57,7 @@
+ }
+ 
+ func factoryboxStoreCompletion(path, destination string, data []byte) error {
+-	if destination != "restore-result.json" && destination != "resume-result.json" {
++	if destination != "restore-result.json" && destination != "resume-result.json" && destination != "restore-held.json" && destination != "resume-held.json" {
+ 		return fmt.Errorf("unknown completion record")
+ 	}
+ 	fd, err := unix.Openat2(unix.AT_FDCWD, path, &unix.OpenHow{
+--- a/factorybox_resume.go
++++ b/factorybox_resume.go
+@@ -27,16 +27,17 @@
+ )
+ 
+ type factoryboxResumeRequest struct {
+-	Version        int    `json:"version"`
+-	SandboxID      string `json:"sandbox_id"`
+-	Owner          string `json:"owner"`
+-	Root           string `json:"root"`
+-	Filesystem     string `json:"filesystem"`
+-	Images         string `json:"images"`
+-	ManagerRoot    string `json:"manager_root"`
+-	SnapshotID     string `json:"snapshot_id"`
+-	ConfigSHA256   string `json:"config_sha256"`
+-	RuntimeCreated string `json:"runtime_created"`
++	Version           int    `json:"version"`
++	SandboxID         string `json:"sandbox_id"`
++	Owner             string `json:"owner"`
++	Root              string `json:"root"`
++	Filesystem        string `json:"filesystem"`
++	Images            string `json:"images"`
++	ManagerRoot       string `json:"manager_root"`
++	SnapshotID        string `json:"snapshot_id"`
++	ConfigSHA256      string `json:"config_sha256"`
++	RuntimeCreated    string `json:"runtime_created"`
++	HoldForActivation bool   `json:"hold_for_activation,omitempty"`
+ }
+ 
+ type factoryboxResumeRecord struct {
+@@ -216,6 +217,12 @@
+ 			"factorybox-resume-prepared", target)
+ 		command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNS}
+ 		command.ExtraFiles = []*os.File{file, lock, group}
++		if request.HoldForActivation {
++			control := os.NewFile(6, "original resume hold control")
++			unix.CloseOnExec(int(control.Fd()))
++			defer control.Close()
++			command.ExtraFiles = append(command.ExtraFiles, control)
++		}
+ 		command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+ 		return command.Run()
+ 	},
+@@ -251,12 +258,39 @@
+ 			FactoryboxConfigFile: filepath.Dir(request.Images) + "/criu.conf",
+ 			ImagesDirectory:      request.Images, WorkDirectory: request.Images,
+ 			ShellJob: true, FileLocks: true, EmptyNs: 0, TcpEstablished: true, ManageCgroupsMode: criu.CriuCgMode_FULL}
++		if request.HoldForActivation {
++			control := os.NewFile(6, "original prepared resume hold control")
++			unix.CloseOnExec(int(control.Fd()))
++			defer control.Close()
++			options.FactoryboxBeforeResume = func(pid int) error {
++				return factoryboxHoldBeforeResume(group, control, target, pid, request, func() error {
++					return factoryboxResumeIdentity(request, context.GlobalString("root"), target, group)
++				})
++			}
++		}
+ 		process := &libcontainer.Process{Init: true, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr}
+ 		if err := container.Restore(process, options); err != nil {
+ 			return err
+ 		}
+ 		if err := factoryboxResumeIdentity(request, context.GlobalString("root"), target, group); err != nil {
+ 			return err
++		}
++		if request.HoldForActivation {
++			state, err := container.State()
++			if err != nil {
++				return err
++			}
++			if err := factoryboxHoldConfirmed(group); err != nil {
++				return err
++			}
++			data, err := factoryboxCompletionData(request.Owner, request, state)
++			if err != nil {
++				return err
++			}
++			if err := factoryboxStoreCompletion(filepath.Dir(request.Images), "resume-held.json", data); err != nil {
++				return err
++			}
++			return json.NewEncoder(os.Stdout).Encode(state)
+ 		}
+ 		freezeFD, err := unix.Openat(int(group.Fd()), "cgroup.freeze", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+ 		if err != nil {
+--- a/libcontainer/container_linux.go
++++ b/libcontainer/container_linux.go
+@@ -2001,7 +2001,16 @@
+ 		}
+ 	case "pre-resume":
+ 		if c.experimentBridge != nil {
+-			return c.experimentBridge.wait()
++			if err := c.experimentBridge.wait(); err != nil {
++				return err
++			}
++		}
++		if opts.FactoryboxBeforeResume != nil {
++			pid, err := process.Pid()
++			if err != nil {
++				return err
++			}
++			return opts.FactoryboxBeforeResume(pid)
+ 		}
+ 	case "orphan-pts-master":
+ 		scm, err := unix.ParseSocketControlMessage(oob)
+--- a/libcontainer/criu_opts_linux.go
++++ b/libcontainer/criu_opts_linux.go
+@@ -13,6 +13,7 @@
+ }
+ 
+ type CriuOpts struct {
++	FactoryboxBeforeResume  func(int) error    // sealed Factorybox restore protocol, before CRIU detaches
+ 	FactoryboxResume        bool               // retain an admitted Factorybox runtime creation identity
+ 	FactoryboxConfigFile    string             // per-operation CRIU settings, no worker-wide configuration
+ 	SysboxSeccompRestore    bool               // owned experiment; listener handoff before resume

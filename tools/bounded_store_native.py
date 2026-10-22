@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold'], default='capacity')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
     args = parser.parse_args()
@@ -35,6 +35,7 @@ def main():
     remainder = args.suite == 'timer-remainder'
     kernel_prototype = args.suite == 'timer-kernel-activation-prototype'
     protection = args.suite == 'timer-remainder-protection' or kernel_prototype
+    restore_hold = args.suite == 'restore-hold'
     if args.timer_observe_exit and not prototype:
         parser.error('--timer-observe-exit requires timer-restart-prototype')
     if args.suite == 'retirement' or prototype or reader_only:
@@ -44,7 +45,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or remainder or protection
+    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or remainder or protection or restore_hold
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -125,6 +126,8 @@ def main():
     if kernel_prototype:
         result['scope'] = 'Test-only single-thread native kernel-wait activation after actual delivered source checkpoint, fork and resume, including a signal queued while frozen after syscall-entry activation, with the production independent tracer-exit guard. Original interruption-time deadline, handler-protection/EINTR/ABI assertions retained. Restores already exposed their ppoll continuation before test activation. Current CLI unchanged; no production pre-exposure integration, multi-thread, failure repair or production qualification.'
         result['prototype_inputs'] = prototype_inputs
+    if restore_hold:
+        result['scope'] = 'Pinned Sysbox private sealed restore/resume pre-detach hold, exact persisted cgroup and application counter through ACK, CRIU detach and explicit thaw. Actual socket disconnect and foreign ACK refuse. Hold protocol is opt-in and production lifecycle activation remains disabled; not production qualification.'
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = container = preserve = False
     identity = None
@@ -168,6 +171,8 @@ def main():
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_REMAINDER_PROTECTION=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerRemainderProtection$']
         if kernel_prototype:
             command += ['--env', 'FACTORYBOX_TIMER_KERNEL_PROTOTYPE=1']
+        if restore_hold:
+            command += ['--env', 'FACTORYBOX_NATIVE_RESTORE_HOLD=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeRestoreHold$']
         for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                        (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
             command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -190,8 +195,8 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = 1 if prototype or reader_only or exit_guard or signal_boundary or remainder or protection else 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        prefix = 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = 1 if prototype or reader_only or exit_guard or signal_boundary or remainder or protection or restore_hold else 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -251,6 +256,18 @@ def main():
             proof = json.loads(proof_path.read_text())
             if any(proof.get(key) is not True for key in ['passed', 'uncaptured_control', 'interruption_time_remainder', 'raw_eintr_and_abi']):
                 raise ValueError('timer interruption-time remainder proof incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif restore_hold:
+            proof_path = output / 'restore-hold.json'
+            proof = json.loads(proof_path.read_text())
+            cases = proof.get('cases', {})
+            if proof.get('passed') is not True or set(cases) != {'fork', 'resumed', 'fork-disconnect', 'resumed-disconnect', 'wrong-ack'}:
+                raise ValueError('native restore hold cases incomplete')
+            for mode, case in cases.items():
+                keys = ['held_before_ack', 'application_counter_unchanged']
+                keys += ['held_after_criu_detach', 'explicit_thaw_runs_application'] if mode in {'fork', 'resumed'} else ['failed_closed']
+                if any(case.get(key) is not True for key in keys):
+                    raise ValueError('native restore hold proof incomplete: ' + mode)
             result['proof_sha256'] = reference.sha(proof_path)
         elif protection:
             proof_path = output / 'timer-remainder-protection.json'

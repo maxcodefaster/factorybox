@@ -17,16 +17,17 @@ import (
 )
 
 type resumeRequest struct {
-	Version        int    `json:"version"`
-	SandboxID      string `json:"sandbox_id"`
-	Owner          string `json:"owner"`
-	Root           string `json:"root"`
-	Filesystem     string `json:"filesystem"`
-	Images         string `json:"images"`
-	ManagerRoot    string `json:"manager_root"`
-	SnapshotID     string `json:"snapshot_id"`
-	ConfigSHA256   string `json:"config_sha256"`
-	RuntimeCreated string `json:"runtime_created"`
+	Version           int    `json:"version"`
+	SandboxID         string `json:"sandbox_id"`
+	Owner             string `json:"owner"`
+	Root              string `json:"root"`
+	Filesystem        string `json:"filesystem"`
+	Images            string `json:"images"`
+	ManagerRoot       string `json:"manager_root"`
+	SnapshotID        string `json:"snapshot_id"`
+	ConfigSHA256      string `json:"config_sha256"`
+	RuntimeCreated    string `json:"runtime_created"`
+	HoldForActivation bool   `json:"hold_for_activation,omitempty"`
 }
 
 type resumeIntent struct {

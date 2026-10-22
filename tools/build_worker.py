@@ -26,6 +26,13 @@ def load(name):
     result = json.loads((artifact / "result.json").read_text())
     if result.get("schema") != 1 or not result.get("passed") or result.get("platform") != "linux/amd64":
         raise ValueError("worker build did not complete for AMD64")
+    if "criu_base_source_lock_sha256" in result:
+        base_lock = artifact / "criu-base-source-lock.json"
+        if base_lock.is_symlink() or reference.sha(base_lock) != result["criu_base_source_lock_sha256"]:
+            raise ValueError("worker frozen CRIU base changed")
+        if (json.loads(base_lock.read_text())["components"]["criu"] !=
+                json.loads((artifact / "source-lock.json").read_text())["components"]["criu"]):
+            raise ValueError("worker CRIU recipe differs from its frozen base")
     bundle = artifact / "image-context/bundle"
     entries = list(bundle.rglob("*"))
     if any(p.is_symlink() for p in entries) or {str(p.relative_to(bundle)) for p in entries if p.is_file()} != set(result["bundle_sha256"]):
@@ -57,12 +64,13 @@ def main():
     parser.add_argument("--native-base-build", required=True)
     parser.add_argument("--sysbox-build", required=True)
     parser.add_argument("--retained-candidate", required=True)
+    parser.add_argument("--criu-base-lock", type=Path, help="Exact immutable selected-base lock for the retained CRIU build; current CRIU component must match in full")
     parser.add_argument("--compare", help="Require an identical package and image from a separate no-cache build")
     parser.add_argument("--discard-compiler-scratch", action="store_true", help="After a successful verified build, retain its generated compiler-cache inventory and remove only that new build's optional scratch cache")
     options = parser.parse_args()
     base_image, base = native_base.load(options.native_base_build, candidate_platform="linux/amd64")
     sysbox_path, sysbox = reference_lifecycle.component_build(options.sysbox_build, "factorybox-build-sysbox-")
-    criu_path, criu, _, _ = criu_candidate.load(options.retained_candidate)
+    criu_path, criu, _, _ = criu_candidate.load(options.retained_candidate, base_lock=options.criu_base_lock)
     if any(row.get("platform") != "linux/amd64" for row in [sysbox, criu]):
         raise ValueError("worker components have different target platforms")
     comparison = load(options.compare)[1] if options.compare else None
@@ -80,6 +88,8 @@ def main():
         shutil.copyfile(reference.ROOT / file, source / file)
     shutil.copyfile(reference.ROOT / "build/worker.Dockerfile", context / "Dockerfile")
     shutil.copyfile(reference.ROOT / "upstream/lock.json", artifact / "source-lock.json")
+    if options.criu_base_lock:
+        shutil.copyfile(options.criu_base_lock, artifact / "criu-base-source-lock.json")
     result = {"schema": 1, "owner": owner, "platform": "linux/amd64", "passed": False,
               "production_qualified": False, "native_lifecycle_qualified": False, "selected": False,
               "source_context": upstream_unit.context_manifest(source),
@@ -91,6 +101,10 @@ def main():
               "scope": "Local candidate image assembly and reproducibility against one immutable native base. "
                        "No installation, publishing, platform or lifecycle qualification. Base includes its pinned "
                        "build/test utilities; this does not qualify a reduced production image."}
+    if options.criu_base_lock:
+        result["criu_base_source_lock_sha256"] = reference.sha(artifact / "criu-base-source-lock.json")
+        if result["criu_base_source_lock_sha256"] != criu["base_source_lock_sha256"]:
+            raise ValueError("frozen CRIU base changed while copying")
     print(json.dumps({"building": str(artifact)}), flush=True)
     try:
         env = dict(os.environ, GOOS="linux", GOARCH="amd64", GOAMD64="v1", GOEXPERIMENT="", GOFLAGS="",

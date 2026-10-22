@@ -1744,6 +1744,96 @@ native proof, including controller/tracer loss and exact cgroup ownership.
 Broader signal actions, interrupted mutation repair, multiple threads, repeated
 activation, private-page lifetime and all remaining release gates stay open.
 
+## Holding restored tasks before application continuation
+
+The optional sealed restore/resume protocol can now hold the exact restored
+cgroup before CRIU detaches its tasks. A late libcontainer callback first
+checks the persisted operation, cgroup descriptor, restored PID and birth,
+and the actual CRIU tracer. It freezes the target, sends the controller a
+request-hash-bound held identity over an inherited packet socket, and requires
+the exact acknowledgement. A missing or foreign acknowledgement fails restore.
+After successful CRIU completion, the adapter records `restore-held.json` or
+`resume-held.json`. These are separate from ordinary completion receipts.
+The public lifecycle does not yet request this hold or activate timers.
+
+The first native attempt exposes an important placement detail. Sysbox moves
+the temporary CRIU child into the target's `init.scope`. Freezing that cgroup
+also freezes CRIU while it is receiving the notification reply. The counter
+stays unchanged, but restore never completes. The first failure is retained in
+`factorybox-checkpoint-retirement-5c2ee77da5e04836a0b54208d3755424`.
+The diagnostic repeat
+`factorybox-checkpoint-retirement-0340a1e7bcd84979ad807ec7c8ee37fd` records
+CRIU inside the target cgroup, blocked in `get_signal` around `recvfrom`, both
+before and five seconds after the acknowledgement. The application counter
+remains exactly 140,573,640 and the target is populated and frozen.
+
+The ordered follow-up pins the prepared launcher's original worker cgroup
+before starting CRIU. At the late callback, it verifies the original worker
+descriptor, the exact CRIU PID from libcontainer, a live pidfd, the tracer's
+executable inode and its temporary target membership. It returns only that
+CRIU process to the original worker cgroup and verifies its new membership.
+The application tasks remain in the target. The subsequent freeze therefore
+holds the application while CRIU can finish detaching. No CRIU binary change,
+host runtime installation, global cgroup configuration or sysctl is involved.
+The first patch and the corrective patch are both retained as ordered inputs.
+
+Worker `factorybox-build-worker-d8cc5e7841bb4b6190fbb6331ff7fc5f` packages
+Sysbox build `factorybox-build-sysbox-510db28d7f1d40aaabbc10f9538da066`.
+Its package SHA-256 is
+`178b275c24ca9246fe63c4af1c1c8d4d167c7716377e3f67025d8e8b8d21f652`.
+Sysbox-fs and Sysbox-mgr, the toolchain and all APT package/source identities
+remain byte-identical to the prior component build. Only Sysbox-runc changes.
+The existing retained CRIU binary is reused after checking its exact frozen
+base lock and the complete unchanged current CRIU component recipe. The worker
+keeps that base lock and its hash. Default candidate verification remains
+strict; changed CRIU recipes or mutated base locks are refused by new tests.
+
+The final native hold proof
+`factorybox-checkpoint-retirement-47c230423bc2402f939e1039b1f3723d` passes
+five cases. Fork and resume hold a continuously incrementing native counter
+unchanged while awaiting acknowledgement and after CRIU has detached. The
+counter advances only after the explicit exact-cgroup thaw. Both restored
+process births and request hashes match their held receipts. Socket disconnects
+in fork and resume, and a foreign acknowledgement in fork, reject restore.
+In these three runs the rejected restored tasks have exited. Their unresolved
+operation records are preserved and deletion is explicitly refused without
+changing those records. All owned outer resources are then removed.
+
+The first version of that cleanup fixture incorrectly expects ordinary Delete
+to discard an unresolved creation; it fails in
+`factorybox-checkpoint-retirement-0b469a0e10fe48d881a61863a701ae74` after
+the positive fork and resume cases pass. The corrected new fixture verifies
+the refusal and retains the pending record and mounts until removal of its
+unique outer worker and volume. The shared reader constructor gains an
+explicit cleanup callback used only by the new rejected-resume fixture.
+Every existing caller keeps the original deletion and unmount assertions.
+Before/after hashes and exact reconstructed patches are recorded in
+`factorybox-restore-hold-notes-58e4c5e2cc7f4621a903411f62fe861a`.
+The backend's redundant-unregistration messages in rejected fork cleanup are
+preserved; no general cleanup/recovery qualification is claimed.
+
+The unchanged full four-test retirement suite also passes on this worker in
+`factorybox-checkpoint-retirement-98f1642fb342416eab5847d880695670`.
+Portable checks with vet, consumer compilation, Python checks and immutable
+reference/overlay verification pass in
+`factorybox-checks-d16ed43370d14442ab753922ed8f8aac`.
+
+The build initially encounters a missing Docker bridge and then its stale DNS
+address. A build-only resolver file is now recorded, hashed and mounted
+read-only at each dependency RUN. The host resolver is unchanged. The failed
+bridge, DNS and attempted read-only resolver-write builds remain archived.
+The successful builds use host networking only for dependency retrieval and
+retain the 3-CPU/3-GiB builder limits and the same dated APT inputs.
+
+Production qualification remains false. The timer self-copy defect remains
+in the public path. Next, request the proven hold in lifecycle restore/resume
+and activate the saved continuation before thaw, under an independent exit
+guard. Source capture also needs activation before source release. Reconcile
+interrupted activation, preserve repeated capture and worker recovery, and
+qualify pending signals, multiple threads and private-page lifetime. Capacity,
+worker-replacement, full-consumer and full upstream suites have not all been
+rerun on this optional-hold candidate.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

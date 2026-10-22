@@ -316,3 +316,16 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   eingefrorene Vergleichskontrolle. Die Runtime ist noch unverändert.
   Aktivierung vor Freigabe der Quelle und wiederhergestellter Tasks,
   Fehlerreparatur und alle übrigen Produktionsabnahmen bleiben offen.
+- Kandidat `d8cc5e7841bb4b6190fbb6331ff7fc5f` enthält jetzt ein optionales,
+  versiegeltes Backend-Protokoll, das wiederhergestellte Tasks vor CRIUs
+  Freigabe in ihrer eigenen cgroup hält. Der tatsächlich laufende native
+  Zähler bleibt über Bestätigung und CRIU-Detach bis zum expliziten Auftauen
+  unverändert. Fork, Resume, beide Verbindungsabbrüche und eine falsche
+  Bestätigung bestehen in
+  `factorybox-checkpoint-retirement-47c230423bc2402f939e1039b1f3723d`.
+  Unbestätigte Operationen behalten ihre Belege; deren Löschung wird geprüft
+  verweigert. Die vier bisherigen Stilllegungstests bestehen ebenfalls.
+  Der öffentliche Lifecycle nutzt diese Sperre noch nicht. Die Timer-
+  Aktivierung muss vor dem Auftauen integriert und unter Fehlern sowie
+  wiederholtem Capture/Recovery geprüft werden. Der Restzeit-Kopierfehler und
+  das vollständige Produktionsziel bleiben offen.

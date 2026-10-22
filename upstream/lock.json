@@ -980,7 +980,9 @@
         "upstream/patches/sysbox-runc-restore-receipt.patch": "b997efb01f5850d0d08ba04f51f84545f862b7f2656d5ae1dd83b64a5147355f",
         "upstream/patches/sysbox-runc-factorybox-resume.patch": "7da699508761d0c60b46fe4c777c34c50a6f3bf5713669bc5e98c3298c9f5459",
         "upstream/patches/sysbox-runc-restore-delegation-leaf.patch": "c739e8a7ee05f73b5ea16c5b45f231ab079b50851871a8d042647829a6145aad",
-        "upstream/patches/sysbox-runc-factorybox-overlay-index.patch": "af6fce9e0cf5ffc4ebf97f5ed268c8a15a1b0bfbda8c5f8e4e10c9f9c637646c"
+        "upstream/patches/sysbox-runc-factorybox-overlay-index.patch": "af6fce9e0cf5ffc4ebf97f5ed268c8a15a1b0bfbda8c5f8e4e10c9f9c637646c",
+        "upstream/patches/sysbox-runc-factorybox-restore-hold.patch": "f2d68b2d577d8f7fe5b707bfc06aed49804fd3ec3ab0e1b5464791b8113b3243",
+        "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch": "b0cc2468b3f531317af079480c458bc4ea0d78661acb2d9c84d0273cf61bf5fe"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -1011,7 +1013,9 @@
         "upstream/patches/sysbox-runc-restore-receipt.patch",
         "upstream/patches/sysbox-runc-factorybox-resume.patch",
         "upstream/patches/sysbox-runc-restore-delegation-leaf.patch",
-        "upstream/patches/sysbox-runc-factorybox-overlay-index.patch"
+        "upstream/patches/sysbox-runc-factorybox-overlay-index.patch",
+        "upstream/patches/sysbox-runc-factorybox-restore-hold.patch",
+        "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
@@ -1035,19 +1039,20 @@
       },
       "url": "https://codeload.github.com/nestybox/sysbox-runc/tar.gz/081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "prepared_files_sha256": {
-        "factorybox_restore.go": "e7edaf48ea98470619bb1f23001204abea75204ba7198399133d419d96d2b295",
+        "factorybox_restore.go": "a6decb8fb9184a63bf884a8a4cc1df2ca786043eb1edee9cefa353ee2714761c",
         "factorybox_restore_test.go": "96175516c7c5cebfacb6a89b1579cd7a824fb5934ec3683fbb6778f59c649927",
         "libcontainer/factorybox_restore_root_linux_test.go": "fd88c29e90203fa119cdab4149056a47fb6513c217e0508a2d566db17336d3e3",
         "main.go": "b88ed6bbd8de228d4363d92c3b053365e9097418fbf42bd446f09680b961bd17",
         "libcontainer/experiment_seccomp_linux.go": "09547f4889b780c25a73a8eb11732fe3fdf8e54ec82073edce6123bb47727f7f",
         "libcontainer/factoryboxrestore/factorybox_rootfs_linux.go": "2f9d5efa1e7324ddbbb777224dccd59845ea41b7bc6d74dc968fe8b5c4aaa036",
         "libcontainer/factorybox_restore_cgroup_linux.go": "cec1f923bafee61a32bce65feebca1603e795c37ee9e845d41271b1b3660d04c",
-        "factorybox_restore_receipt.go": "2e55536c7807779d87b715bd5457d329ee4bf6f86b942ddfbdc577122b046e83",
+        "factorybox_restore_receipt.go": "eb9b3ef36b1b1d80af994d6982d6aecec61c588630d523af492060588d9e331d",
         "factorybox_restore_receipt_test.go": "9577b54e7da495b8d861f1a10c8ce0d05e229a2637832264c89fc1405c3fffcd",
         "factorybox_resume_test.go": "3a891cc4bd6e60bafc5d671129305bd73b7a3e089b1aa720fac63c60e4ca5030",
-        "factorybox_resume.go": "49f75891dfbd1757f70330264e48b8e4ca504f46986ad67ac22a6ed92f563ccb",
-        "libcontainer/container_linux.go": "cc8390165d117db1ad631bd1855c509714efc95888135c7b28f73af4793d3b34",
-        "libcontainer/criu_opts_linux.go": "8238e48519cc801d579c5ae5284647e1ab403ee0527d7d560fbdb1c7ae528188"
+        "factorybox_resume.go": "800cb0aa2f753776c44808c08341fa4a6c700ca89f8f3f6d6c2deb62eb80081e",
+        "libcontainer/container_linux.go": "d692ddcf37b68d9ae8ce98f4709993c7fc924d76afccf12cb45ccb89fbcebe24",
+        "libcontainer/criu_opts_linux.go": "4530e3d259fcb05a459bb1a2b93d16af41340cd2364c13feb2ce3352d59cb8b8",
+        "factorybox_restore_hold.go": "b00ff13731546ce2e8e6f890e658b1a8dbf6eab2681449395a20db5d9b59786b"
       }
     },
     "sysbox-tests": {

@@ -1,12 +1,13 @@
 """Verify one explicitly unselected retained-context CRIU build."""
 import json
+from pathlib import Path
 import re
 
 import reference
 import sources
 
 
-def load(name):
+def load(name, *, base_lock=None):
     if not re.fullmatch(r"factorybox-build-criu-retained-[0-9a-f]{32}", name):
         raise ValueError("expected one exact retained-context candidate build")
     root = reference.ROOT
@@ -30,8 +31,15 @@ def load(name):
     for file, expected in result.get("candidate_overlay_sha256", {}).items():
         if file != "exit-observer.h" or reference.sha(path / file) != expected:
             raise ValueError("retained-context candidate overlay input changed")
-    if reference.sha(root / "upstream/lock.json") != result["base_source_lock_sha256"]:
+    current_lock = root / "upstream/lock.json"
+    selected_lock = Path(base_lock) if base_lock is not None else current_lock
+    if selected_lock.is_symlink() or reference.sha(selected_lock) != result["base_source_lock_sha256"]:
         raise ValueError("retained-context candidate belongs to a different selected base")
+    if base_lock is not None:
+        selected_component = json.loads(selected_lock.read_text())["components"]["criu"]
+        current_component = json.loads(current_lock.read_text())["components"]["criu"]
+        if selected_component != current_component:
+            raise ValueError("current CRIU recipe differs from the exact frozen selected base")
     if sources.tree_sha(path / "context") != result["context_sha256"]:
         raise ValueError("retained-context candidate source tree changed")
     component = json.loads((path / "source-lock.json").read_text())["components"]["criu"]

@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import hashlib
+import ipaddress
 import json
 import pathlib
 import shutil
@@ -24,7 +25,12 @@ def main():
     parser.add_argument("--clean", action="store_true",
                         help="Disable layer reuse and use new empty Go module/build caches")
     parser.add_argument("--compare", help="Require outputs identical to one exact successful build")
+    parser.add_argument("--build-dns", help="One resolver IP mounted read-only into host-network build RUN steps; host DNS is unchanged")
     options = parser.parse_args()
+    if options.build_dns:
+        options.build_dns = str(ipaddress.ip_address(options.build_dns))
+        if options.network != "host":
+            parser.error("--build-dns requires --network host")
     comparison = None
     if options.compare:
         previous, comparison = reference_lifecycle.component_build(
@@ -41,6 +47,12 @@ def main():
     context, output = archive / "context", archive / "output"
     context.mkdir(parents=True)
     output.mkdir()
+    resolvers = [options.build_dns] if options.build_dns else [line.split()[1] for line in pathlib.Path("/etc/resolv.conf").read_text().splitlines() if line.startswith("nameserver ")]
+    resolvers = [str(ipaddress.ip_address(value)) for value in resolvers]
+    if not resolvers:
+        raise ValueError("Sysbox build requires at least one explicit resolver")
+    resolver_file = context / "build-resolv.conf"
+    resolver_file.write_text("".join("nameserver " + value + "\n" for value in resolvers))
     lock_path = ROOT / "upstream/lock.json"
     shutil.copyfile(lock_path, archive / "source-lock.json")
     shutil.copyfile(ROOT / "build/sysbox.Dockerfile", archive / "Dockerfile")
@@ -51,6 +63,8 @@ def main():
         "source_lock_sha256": reference.sha(lock_path),
         "dockerfile_sha256": reference.sha(ROOT / "build/sysbox.Dockerfile"),
         "clean": options.clean, "comparison_build": options.compare,
+        "build_dns": options.build_dns,
+        "build_resolvers": resolvers, "build_resolv_sha256": reference.sha(resolver_file),
         "platform": options.platform, "native_lifecycle_qualified": False,
         "passed": False, "production_qualified": False,
         "scope": "Native component compilation, a natural-module libcontainer test compile gate "
@@ -102,6 +116,8 @@ def main():
         result["toolchain"] = (output / "toolchain.txt").read_text()
         result["packages_sha256"] = reference.sha(output / "packages.tsv")
         result["apt_sources_sha256"] = reference.sha(output / "apt-sources.list")
+        if reference.sha(resolver_file) != result["build_resolv_sha256"]:
+            raise ValueError("build-only resolver input changed")
         if comparison:
             result["matches_comparison"] = result["binary_sha256"] == comparison["binary_sha256"]
             result["packages_match_comparison"] = result["packages_sha256"] == comparison["packages_sha256"]

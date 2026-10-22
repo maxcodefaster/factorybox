@@ -17,18 +17,19 @@ import (
 // The Sysbox adapter decodes its vendor config inside the pinned executable.
 // The lifecycle controller passes only owned identities and saved opaque bytes.
 type restoreRequest struct {
-	Version      int    `json:"version"`
-	SandboxID    string `json:"sandbox_id"`
-	Owner        string `json:"owner"`
-	SourceID     string `json:"source_id"`
-	SourceRootfs string `json:"source_rootfs"`
-	Root         string `json:"root"`
-	Filesystem   string `json:"filesystem"`
-	Images       string `json:"images"`
-	ManagerRoot  string `json:"manager_root"`
-	ConfigSHA256 string `json:"config_sha256"`
-	State        []byte `json:"state"`
-	FsState      []byte `json:"fs_state"`
+	Version           int    `json:"version"`
+	SandboxID         string `json:"sandbox_id"`
+	Owner             string `json:"owner"`
+	SourceID          string `json:"source_id"`
+	SourceRootfs      string `json:"source_rootfs"`
+	Root              string `json:"root"`
+	Filesystem        string `json:"filesystem"`
+	Images            string `json:"images"`
+	ManagerRoot       string `json:"manager_root"`
+	ConfigSHA256      string `json:"config_sha256"`
+	State             []byte `json:"state"`
+	FsState           []byte `json:"fs_state"`
+	HoldForActivation bool   `json:"hold_for_activation,omitempty"`
 }
 
 type restoreResult struct {
