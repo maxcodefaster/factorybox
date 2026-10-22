@@ -1,0 +1,24 @@
+services:
+  worker:
+    image: ${FACTORYBOX_WORKER_IMAGE:?set an exact locally built image digest}
+    pull_policy: never
+    privileged: true
+    cgroup: private
+    cpus: 3.0
+    mem_limit: 3g
+    pids_limit: 512
+    network_mode: none
+    stop_grace_period: 15s
+    labels:
+      io.factorybox.store-id: ${FACTORYBOX_STORE_ID:?set the persistent store identity}
+    environment:
+      GOMAXPROCS: "2"
+      GOMEMLIMIT: 256MiB
+    command: ["--store-id", "${FACTORYBOX_STORE_ID:?set the persistent store identity}"]
+    volumes:
+      - state:/var/lib/sysbox
+
+volumes:
+  state:
+    external: true
+    name: ${FACTORYBOX_STORE_VOLUME:?set an exclusively owned persistent volume}

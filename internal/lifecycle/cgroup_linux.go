@@ -253,7 +253,7 @@ func (e *Engine) updateEmptyCgroupTree(record Record, retire bool) (resultErr er
 			controls = strings.Fields(string(data))
 			for _, control := range controls {
 				switch control {
-				case "cpuset", "cpu", "io", "memory", "pids":
+				case "cpuset", "cpu", "io", "memory", "hugetlb", "pids", "rdma", "misc", "dmem":
 				default:
 					return fmt.Errorf("resume delegation contains an unsupported controller %q", control)
 				}

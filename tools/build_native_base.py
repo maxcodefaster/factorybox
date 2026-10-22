@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build the Linux native-test/CRIU toolchain from public pinned inputs."""
+import argparse
 import datetime
 import json
 import shutil
@@ -8,9 +9,13 @@ import uuid
 
 import native_base
 import reference
+import build_config
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    build_config.add_arguments(parser)
+    options = parser.parse_args()
     owner = uuid.uuid4().hex
     name = "factorybox-build-native-base-" + owner
     archive = reference.new_artifact(name)
@@ -23,7 +28,8 @@ def main():
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "dockerfile_sha256": reference.sha(recipe),
         "base": "ghcr.io/coder/envbox@sha256:13e4477ed65912a72e52bb7115db63d4da934cf8a55962c8fdf7c470901dceff",
-        "apt_snapshot": "20261018T000000Z", "platform": "linux/arm64",
+        "apt_snapshot": "20261018T000000Z", "platform": options.platform,
+        "native_lifecycle_qualified": False,
         "passed": False, "cleanup": False, "production_qualified": False,
         "scope": "Public-input native-test and CRIU build dependencies. "
                  "Does not install a node runtime or qualify production.",
@@ -34,7 +40,7 @@ def main():
     try:
         command = [
             *reference.DOCKER, "build", "--provenance=false", "--progress=plain",
-            "--platform=linux/arm64", "--tag", name,
+            *build_config.arguments(options), "--tag", name,
             "--output", "type=image,compression=uncompressed",
             "--metadata-file", str(archive / "metadata.json"), str(context),
         ]
@@ -47,9 +53,8 @@ def main():
             raise ValueError("native base image build failed")
         metadata = json.loads((archive / "metadata.json").read_text())
         result["image"] = name + "@" + metadata["containerimage.digest"]
-        result["image_config"] = metadata["containerimage.config.digest"]
         inspected = json.loads(reference.docker(["image", "inspect", result["image"]]))[0]
-        native_base.verify_image(result, inspected)
+        native_base.bind_image_identity(result, metadata, inspected)
         result["docker_reported_image_id"] = inspected["Id"]
         inspect_command = [
             *reference.DOCKER, "run", "--pull=never", "--name", helper,

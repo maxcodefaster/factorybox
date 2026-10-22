@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import uuid
 
+import build_config
 import native_base
 import reference
 import reference_lifecycle
@@ -30,10 +31,11 @@ def file_sha(path):
         return hashlib.file_digest(file, "sha256").hexdigest()
 
 
-def build_fixture(archive, name, base):
+def build_fixture(archive, name, base, *, platform="linux/arm64", network="default", bounded_build=False):
+    options = argparse.Namespace(platform=platform, network=network, bounded_build=bounded_build)
     command = [
         *reference.DOCKER, "build", "--provenance=false", "--progress=plain",
-        "--platform=linux/arm64", "--tag", name,
+        *build_config.arguments(options), "--tag", name,
         "--build-arg", "NATIVE_BASE_IMAGE=" + base,
         "--output", "type=image,compression=uncompressed",
         "--metadata-file", str(archive / "builder.json"), str(archive / "context"),
@@ -44,14 +46,21 @@ def build_fixture(archive, name, base):
     return name + "@" + metadata["containerimage.digest"]
 
 
-def image_archive(name, native_build):
+def image_pins(platform):
+    build_config.architecture(platform)
+    return ROOT / ("upstream/bats-images.json" if platform == "linux/arm64" else
+                   "upstream/bats-images-amd64.json")
+
+
+def image_archive(name, native_build, *, platform="linux/arm64"):
     if not name or not re.fullmatch(r"factorybox-bats-images-[0-9a-f]{32}", name):
         raise ValueError("systemd requires one exact owned upstream image archive")
     archive = ROOT / "artifacts" / name
     result = json.loads((archive / "result.json").read_text())
-    pins = ROOT / "upstream/bats-images.json"
+    pins = image_pins(platform)
     if (not result.get("passed") or not result.get("cleanup") or
             result["native_base_build"] != native_build or
+            result.get("target_platform", "linux/arm64") != platform or
             result["inputs_sha256"]["pins.json"] != reference.sha(pins) or
             result["inputs_sha256"]["context/Dockerfile"] != reference.sha(ROOT / "build/upstream-bats.Dockerfile") or
             reference.sha(archive / "output/images.json") != result["images_json_sha256"] or
@@ -185,14 +194,26 @@ def main():
     parser.add_argument("--suite", choices=SUITES, default="lifecycle")
     parser.add_argument("--test", help="One exact original Bats test title for diagnosis")
     parser.add_argument("--images", help="Exact successful owned upstream image archive for systemd")
+    parser.add_argument("--candidate-platform", choices=["linux/amd64"])
+    parser.add_argument("--network", choices=["default", "host"], default="default")
+    parser.add_argument("--bounded-build", action="store_true")
+    parser.add_argument("--systemd-network-profile", action="store_true",
+                        help="Explicit networkless inner Docker for original systemd assertions")
     options = parser.parse_args()
+    if options.systemd_network_profile and options.suite != "systemd":
+        parser.error("--systemd-network-profile requires the systemd suite")
+    target = options.candidate_platform or "linux/arm64"
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}" ]))
+    native_base.require_native_host(target, host)
     if options.suite != "systemd" and options.images:
         parser.error("--images is only used by the systemd suite")
-    saved_images, acquisition = (image_archive(options.images, options.native_base_build)
+    saved_images, acquisition = (image_archive(options.images, options.native_base_build, platform=target)
                                  if options.suite == "systemd" else (None, None))
-    image, base = native_base.load(options.native_base_build)
+    image, base = native_base.load(options.native_base_build, candidate_platform=options.candidate_platform)
     component_build, components = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
+    if components.get("platform", "linux/arm64") != target:
+        raise ValueError("Sysbox build differs from the explicit native target")
     for name, expected in components["binary_sha256"].items():
         if reference.sha(component_build / "output" / name) != expected:
             raise ValueError("Sysbox component executable changed")
@@ -220,11 +241,16 @@ def main():
     shutil.copyfile(lock, archive / "source-lock.json")
     for script in ["upstream-bats.sh", "private-cgroup-delegation.sh", "global-sysctl-observation.py"]:
         shutil.copyfile(ROOT / "tests" / script, archive / script)
+    if options.systemd_network_profile:
+        for file in ["systemd-docker-cli.sh", "systemd-docker-profile.json"]:
+            shutil.copyfile(ROOT / "tests" / file, archive / file)
     with tarfile.open(archive / "source.tar", "w", dereference=False) as transport:
         transport.add(tree / "tests", arcname="tests")
     result = {
         "schema": 1, "owner": owner, "container_name": name, "suite": options.suite,
         "test": options.test, "passed": False, "cleanup": False, "production_qualified": False,
+        "target_platform": target, "native_lifecycle_qualified": False,
+        "systemd_network_profile": options.systemd_network_profile,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "sysbox_build": options.sysbox_build, "component_sha256": components["binary_sha256"],
         "native_base_build": options.native_base_build, "base_image": image,
@@ -247,18 +273,26 @@ def main():
         result["images_archive"] = options.images
         result["images_tar_sha256"] = acquisition["images_tar_sha256"]
         result["images"] = acquisition["images"]
+    if options.systemd_network_profile:
+        result["inputs_sha256"].update({file: reference.sha(archive / file)
+                                        for file in ["systemd-docker-cli.sh", "systemd-docker-profile.json"]})
+        result["scope"] += (" The inner Docker systemd service receives an explicit networkless "
+                            "daemon config via a readonly bind. No legacy iptables/module loading "
+                            "or Docker bridge/NAT qualification is inferred.")
     attempted = False
     volumes = []
     failure = None
     try:
-        fixture = build_fixture(archive, name, image)
+        fixture = build_fixture(archive, name, image, platform=target,
+                                network=options.network, bounded_build=options.bounded_build)
         result["fixture_image"] = fixture
         command = [
-            *reference.DOCKER, "run", "--pull=never", "--name", name,
+            *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
             "--label", "com.factorybox.run=" + owner, "--privileged",
             "--cgroupns=private", "--network=none", "--cpus=3", "--memory=3g", "--pids-limit=512",
             "--env", "FACTORYBOX_UPSTREAM_CONTAINER=1", "--env", "FACTORYBOX_UPSTREAM_BATS=1",
             "--env", "FACTORYBOX_BATS_SUITE=" + options.suite,
+            "--env", "FACTORYBOX_NATIVE_PLATFORM=" + target,
             "--env", "FACTORYBOX_BATS_SOURCE_SHA256=" + result["inputs_sha256"]["source.tar"],
             "--env", "FACTORYBOX_BATS_TEST=" + ("^" + re.escape(options.test) + "$" if options.test else ""),
             "--mount", f"type=bind,source={archive / 'source.tar'},target=/source.tar,readonly",
@@ -278,6 +312,10 @@ def main():
                 "--mount", f"type=bind,source={saved_images / 'images.tar'},target=/images.tar,readonly",
                 "--mount", f"type=bind,source={saved_images / 'images.json'},target=/expected-images.json,readonly",
             ]
+        if options.systemd_network_profile:
+            command += ["--env", "FACTORYBOX_SYSTEMD_NETWORK_PROFILE=1"]
+            for file in ["systemd-docker-cli.sh", "systemd-docker-profile.json"]:
+                command += ["--mount", f"type=bind,source={archive / file},target=/{file},readonly"]
         setup = "mount --make-rprivate /\n"
         if options.suite == "lifecycle":
             setup += "mount --bind /proc/sys /proc/sys\nmount -o remount,bind,ro /proc/sys\n"

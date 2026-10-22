@@ -13,9 +13,13 @@ import (
 	"syscall"
 
 	"factorybox/internal/lifecycle"
+	"factorybox/internal/worker"
 )
 
 func runLifecycle(args []string) error {
+	if handled, err := runWorker(args); handled {
+		return err
+	}
 	if handled, err := lifecycle.CaptureGuardCommand(args); handled {
 		return err
 	}
@@ -24,6 +28,8 @@ func runLifecycle(args []string) error {
 	}
 	flags := flag.NewFlagSet("factorybox", flag.ContinueOnError)
 	var config lifecycle.Config
+	var workerRunRoot string
+	flags.StringVar(&workerRunRoot, "worker-run-root", "", "resolve controller and components from the validated live worker")
 	flags.StringVar(&config.Root, "root", "", "private worker state directory")
 	flags.StringVar(&config.Runtime, "runtime", "", "exact Sysbox executable")
 	flags.StringVar(&config.RuntimeSHA256, "runtime-sha256", "", "required executable SHA-256")
@@ -33,6 +39,16 @@ func runLifecycle(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if workerRunRoot != "" {
+		if config != (lifecycle.Config{}) {
+			return fmt.Errorf("--worker-run-root cannot be combined with explicit controller/component options")
+		}
+		status, err := worker.Current(workerRunRoot)
+		if err != nil {
+			return err
+		}
+		config = status.Lifecycle
+	}
 	if flags.NArg() < 1 {
 		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA prepare-base|start|state|checkpoint|fork|pause|resume|delete")
 	}
@@ -40,6 +56,7 @@ func runLifecycle(args []string) error {
 	bundle := ""
 	snapshot := ""
 	source := ""
+	var recovery lifecycle.RecoveryRequest
 	if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
 		start.StringVar(&bundle, "bundle", "", "administrator-prepared OCI bundle")
@@ -70,10 +87,15 @@ func runLifecycle(args []string) error {
 		if source == "" {
 			return fmt.Errorf("prepare-base requires --source")
 		}
-	} else if command == "fork" {
+	} else if command == "fork" || command == "recover-paused" {
 		fork := flag.NewFlagSet("fork", flag.ContinueOnError)
 		fork.StringVar(&source, "source", "", "sandbox that owns the published checkpoint")
 		fork.StringVar(&snapshot, "snapshot-id", "", "immutable checkpoint identity")
+		if command == "recover-paused" {
+			fork.StringVar(&recovery.SourceRoot, "source-root", "", "fenced old worker controller directory on the same persistent store")
+			fork.StringVar(&recovery.SourceOwner, "source-owner", "", "exact saved sandbox owner")
+			fork.StringVar(&recovery.CheckpointSHA256, "checkpoint-sha256", "", "exact complete saved checkpoint SHA-256")
+		}
 		if err := fork.Parse(remaining); err != nil {
 			return err
 		}
@@ -118,6 +140,9 @@ func runLifecycle(args []string) error {
 		view, err = engine.Delete(ctx, remaining[0])
 	case "fork":
 		view, err = engine.Fork(ctx, source, snapshot, remaining[0])
+	case "recover-paused":
+		recovery.SourceID, recovery.SnapshotID = source, snapshot
+		view, err = engine.RecoverPaused(ctx, recovery, remaining[0])
 	case "pause":
 		view, err = engine.Pause(ctx, remaining[0], snapshot)
 	case "resume":

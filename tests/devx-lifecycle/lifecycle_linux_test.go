@@ -14,12 +14,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"factorybox/internal/lifecycle"
 	"factorybox/internal/sysboxcapture"
+	"factorybox/internal/worker"
 	"golang.org/x/sys/unix"
 )
 
@@ -46,11 +48,15 @@ type observation struct {
 }
 
 type fixture struct {
-	t       *testing.T
-	root    string
-	index   int
-	samples []observation
-	ide     *nativeIDE
+	t              *testing.T
+	root           string
+	index          int
+	samples        []observation
+	ide            *nativeIDE
+	workerRunRoot  string
+	explicitConfig *lifecycle.Config
+	retainSource   bool
+	agentExpected  *agentHeld
 }
 
 // These counters belong to the complete bounded fixture, including its
@@ -85,6 +91,13 @@ func (fixture *fixture) command(args ...string) []byte {
 		"--runtime-sha256", os.Getenv("FACTORYBOX_RUNTIME_SHA256"),
 		"--criu", "/out/criu", "--criu-sha256", os.Getenv("FACTORYBOX_CRIU_SHA256"),
 		"--manager-root", "/var/lib/sysbox/manager",
+	}
+	if fixture.workerRunRoot != "" {
+		prefix = []string{"--worker-run-root", fixture.workerRunRoot}
+	} else if fixture.explicitConfig != nil {
+		c := fixture.explicitConfig
+		prefix = []string{"--root", c.Root, "--runtime", c.Runtime, "--runtime-sha256", c.RuntimeSHA256,
+			"--criu", c.Criu, "--criu-sha256", c.CriuSHA256, "--manager-root", c.ManagerRoot}
 	}
 	command := exec.CommandContext(ctx, "/factorybox", append(prefix, args...)...)
 	var output, errors bytes.Buffer
@@ -223,6 +236,9 @@ func (fixture *fixture) useful(phase string, view lifecycle.View, start time.Tim
 
 func (fixture *fixture) cleanup(id string) {
 	fixture.t.Helper()
+	if fixture.retainSource && id == "source" {
+		return
+	}
 	fixture.t.Cleanup(func() {
 		view := fixture.view("state", id)
 		root := view.Record.Rootfs
@@ -243,12 +259,38 @@ func (fixture *fixture) cleanup(id string) {
 }
 
 func prepareDeveloperFixture(t *testing.T) (*fixture, lifecycle.View, observedState) {
+	fixture, source, start := prepareConsumerFixture(t)
+	fixture.attachIDE(source)
+	initial := fixture.useful("prepared-start-first-use", source, start, "")
+	if initial.App.Counter != 0 || initial.App.Marker != "source" {
+		t.Fatal("source did not initialize its fresh RAM and workspace")
+	}
+	return fixture, source, initial
+}
+
+func prepareConsumerFixture(t *testing.T) (*fixture, lifecycle.View, time.Time) {
 	t.Helper()
 	if os.Getenv("FACTORYBOX_DEVX_LIFECYCLE") != "1" {
 		t.Skip("requires its bounded native Sysbox developer fixture")
 	}
 	bundle := "/var/lib/sysbox/devx/bundle"
 	fixture := &fixture{t: t, root: "/var/lib/sysbox/devx/controller"}
+	if os.Getenv("FACTORYBOX_DEVX_WORKER_LOSS") == "1" || os.Getenv("FACTORYBOX_DEVX_WORKER_LIFECYCLE") == "1" {
+		status, err := worker.Current("/run/factorybox")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixture.root, fixture.workerRunRoot = status.Lifecycle.Root, "/run/factorybox"
+		fixture.retainSource = os.Getenv("FACTORYBOX_DEVX_WORKER_LOSS") == "1"
+		if os.Getenv("FACTORYBOX_DEVX_BASELINE_RUNTIME") == "1" {
+			// The selected old CLI predates the live-worker resolver. Run its
+			// exact public API in the same delivered supervisor/services, using
+			// that worker's verified paths and the original selected CRIU.
+			config := status.Lifecycle
+			config.Criu, config.CriuSHA256 = "/out/criu", os.Getenv("FACTORYBOX_CRIU_SHA256")
+			fixture.explicitConfig, fixture.workerRunRoot = &config, ""
+		}
+	}
 	preparationStart := time.Now()
 	var base lifecycle.Base
 	if err := json.Unmarshal(fixture.command("prepare-base", "--source", bundle+"/lower", "developer-base"), &base); err != nil {
@@ -275,7 +317,7 @@ func prepareDeveloperFixture(t *testing.T) (*fixture, lifecycle.View, observedSt
 		}
 	}
 	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0,
-		"lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
+		"index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -301,6 +343,7 @@ func prepareDeveloperFixture(t *testing.T) (*fixture, lifecycle.View, observedSt
 		"PATH=/opt/factorybox/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"HOME=/root", "DOCKER_HOST=unix:///var/run/docker.sock",
 		"FACTORYBOX_DEVX_SANDBOX=1", "UV_USE_IO_URING=0",
+		"GODEBUG=multipathtcp=0",
 	}
 	if os.Getenv("FACTORYBOX_DEVX_OPENCODE") == "1" {
 		process["env"] = append(process["env"].([]string), "FACTORYBOX_DEVX_OPENCODE=1")
@@ -323,13 +366,20 @@ func prepareDeveloperFixture(t *testing.T) (*fixture, lifecycle.View, observedSt
 		annotations = map[string]any{}
 	}
 	annotations["io.factorybox.base"] = base.ID
+	if os.Getenv("FACTORYBOX_DEVX_OPENCODE_FLOW") == "1" {
+		annotations["io.factorybox.checkpoint.irmap-scan-paths"] = `["/workspace","/root","/tmp","/opt/factory/opencode/server/config"]`
+	}
 	spec["annotations"] = annotations
 	linux := spec["linux"].(map[string]any)
 	linux["resources"] = map[string]any{
 		"pids": map[string]any{"limit": 384}, "devices": []map[string]any{{"allow": true, "access": "rwm"}},
 	}
+	seccompArch := map[string]string{"arm64": "SCMP_ARCH_AARCH64", "amd64": "SCMP_ARCH_X86_64"}[runtime.GOARCH]
+	if seccompArch == "" {
+		t.Fatalf("unsupported native seccomp architecture %q", runtime.GOARCH)
+	}
 	linux["seccomp"] = map[string]any{
-		"defaultAction": "SCMP_ACT_ALLOW", "architectures": []string{"SCMP_ARCH_AARCH64"},
+		"defaultAction": "SCMP_ACT_ALLOW", "architectures": []string{seccompArch},
 		"syscalls": []map[string]any{{
 			"names":  []string{"io_uring_setup", "io_uring_enter", "io_uring_register"},
 			"action": "SCMP_ACT_ERRNO", "errnoRet": 1,
@@ -367,6 +417,11 @@ func prepareDeveloperFixture(t *testing.T) (*fixture, lifecycle.View, observedSt
 	preparation["scope"] = "Unpack the frozen rootfs, inject test inputs, start Sysbox daemons, " +
 		"import and completely verify the owned immutable base, bind its read-only alias and prepare OCI. " +
 		"This precedes the prepared-start first-use observation."
+	if fixture.workerRunRoot != "" || fixture.explicitConfig != nil {
+		preparation["scope"] = "Unpack the frozen rootfs, inject test inputs, import and completely verify the owned immutable base, " +
+			"bind its read-only alias and prepare OCI. The delivered worker and service startup is charged separately by the runner. " +
+			"This precedes the prepared-start first-use observation."
+	}
 	preparationBytes, err = json.MarshalIndent(preparation, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -377,12 +432,7 @@ func prepareDeveloperFixture(t *testing.T) (*fixture, lifecycle.View, observedSt
 	start := time.Now()
 	source := fixture.view("start", "--bundle", bundle, "source")
 	fixture.cleanup("source")
-	fixture.attachIDE(source)
-	initial := fixture.useful("prepared-start-first-use", source, start, "")
-	if initial.App.Counter != 0 || initial.App.Marker != "source" {
-		t.Fatal("source did not initialize its fresh RAM and workspace")
-	}
-	return fixture, source, initial
+	return fixture, source, start
 }
 
 func TestNativeDeveloperLifecycle(t *testing.T) {
@@ -405,6 +455,10 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 	sourceAgain := fixture.useful("source-independent", source, time.Now(), "")
 	if !reflect.DeepEqual(sourceAfter, sourceAgain) {
 		t.Fatal("branch mutation changed the retained source")
+	}
+	fixture.finishAgentTool(source, "source-tool")
+	if os.Getenv("FACTORYBOX_DEVX_OPENCODE_FLOW") == "1" {
+		fixture.agentFlowReady("branch-after-source-tool", branch)
 	}
 	fixture.view("delete", "source")
 	descendantSnapshot := strings.Repeat("b", 32)
@@ -446,4 +500,9 @@ func TestNativeDeveloperLifecycle(t *testing.T) {
 		fixture.ide.diverge(resumed, afterResume)
 		fixture.ide.finish()
 	}
+	fixture.finishAgentTool(resumed, "resumed-tool")
+	if os.Getenv("FACTORYBOX_DEVX_OPENCODE_FLOW") == "1" {
+		fixture.agentFlowReady("descendant-after-source-tool", afterResume)
+	}
+	fixture.finishAgentTool(afterResume, "descendant-tool")
 }

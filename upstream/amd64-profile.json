@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "name": "factorybox-v0.1-linux-amd64",
+  "status": "reference",
+  "production_qualified": false,
+  "platform": {"os": "linux", "architecture": "amd64", "page_size": 4096, "kernel": "7.2.8-9-omarchy"},
+  "base_source_lock_sha256": "59bd940557b87d8e38758b38cc2adbef463e91165e905b4251c7189770844d23",
+  "go_source_sha256": "79b5bf53a95d88753f24bc1dc4ecfefea4c2faeb1fc888b9a7afca22191d406c",
+  "source_date_epoch": 1792368000,
+  "binary_sha256": {
+    "sysbox-runc": "4b9588e71fdbe87cfedaf6f29bab2a8af0da76262dcd7ee61b9304f3715b3bc2",
+    "sysbox-fs": "bf5493e6afa11a4756efeba7c9ca3f8588cdcb86d3cb49568ff1be8910bc267d",
+    "sysbox-mgr": "7eb83927a8c739ec55a026e7aa1e1964f29840c061c44ba8a614f91852d1cced",
+    "criu": "75e41cf4c525d7a735eb98e333b9dcd466d85e2b55b4019f67bd148da572b31f"
+  },
+  "additional_criu_patches": [
+    {"path": "upstream/patches/criu-retained-context-candidate.patch", "sha256": "f98c5e81291479ff744d96efe5d98473e232982ae7b853e6faf25a8880af50a8"},
+    {"path": "upstream/patches/criu-retained-early-hold-candidate.patch", "sha256": "cd5a53e90f8a946c1cc93e470a39513a1bb6d8dfe8acae43777b426a80e0374b"},
+    {"path": "upstream/patches/criu-retained-exact-wait-candidate.patch", "sha256": "624fad1b58fc2481df17056509582a09e328d6244fcbe5a30f83eab71eb36415"},
+    {"path": "upstream/patches/criu-retained-exit-hold-candidate.patch", "sha256": "48d4d8b3cd7deb774aab8979f691e2cefd774fc0d8d80c12795ab07f3bb54bdd"},
+    {"path": "upstream/patches/criu-retained-exit-socket-candidate.patch", "sha256": "3612de895a69e2d2c1376b27f22065c8f94693990a5f1b57550714e0a81cf729"}
+  ],
+  "additional_criu_overlay": {"path": "upstream/candidates/criu-exit-observer.h", "sha256": "414b50311c5be64871b1dacf916c2bcfff5dca2ae4de0e98a7b396d8b098be61"},
+  "manager_options": ["--disable-shiftfs", "--disable-inner-image-preload", "--disable-binfmt-misc"],
+  "consumer_storage_driver": "vfs",
+  "consumer_env": {"GODEBUG": "multipathtcp=0", "UV_USE_IO_URING": "0"},
+  "oci_seccomp_deny": ["io_uring_setup", "io_uring_enter", "io_uring_register"],
+  "sandbox_worker_limits": {"cpus": 3, "memory_bytes": 3221225472, "maximum_live_sandboxes": 2},
+  "theia_limits": {"cpus": 1, "memory_bytes": 805306368},
+  "lifecycle_deadline_seconds": 420,
+  "trust_boundary": "separate workers per customer or trust domain",
+  "unqualified": ["attached exec sessions in flight across PID namespaces", "MPTCP", "foreign binary handlers", "allocated hugepage/GPU/RDMA workloads", "guard loss before cure authorization", "earlier controller loss windows", "worker-restart RAM recovery", "cross-node migration", "arbitrary Kubernetes nodes", "latency percentiles"],
+  "qualification_report": "docs/amd64-validation.md",
+  "native_gate_selection": "factorybox-amd64-reference-5dc988b7837f47949e2df2fbfe4bd6ad"
+}

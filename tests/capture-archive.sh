@@ -13,5 +13,5 @@ for base in /input/factorybox-lifecycle-*; do
     if test -e "$path"; then paths+=("${path#/input/}"); fi
   done
 done
-tar --blocking-factor=2048 --numeric-owner -C /input -cpf /output/capture-source.tar --files-from=/dev/null -- "${paths[@]}"
-printf 'source-paths=%s\n' "${#paths[@]}" > /output/capture-archive.txt
+tar --blocking-factor=2048 --numeric-owner -C /input -cpf - --files-from=/dev/null -- "${paths[@]}"
+printf 'source-paths=%s\n' "${#paths[@]}" >&2

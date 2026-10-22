@@ -1,4 +1,5 @@
 import io
+import json
 import sys
 import unittest
 from unittest import mock
@@ -164,6 +165,8 @@ class DeveloperStorageTests(unittest.TestCase):
         with mock.patch.object(sys, "argv", command), \
                 mock.patch.object(sys, "stderr", new_callable=io.StringIO) as stderr, \
                 mock.patch.object(devx_lifecycle, "require_no_retained_worker"), \
+                mock.patch.object(devx_lifecycle.reference, "docker", return_value=json.dumps({
+                    "OSType": "linux", "Architecture": "aarch64", "KernelVersion": "fixture"})), \
                 mock.patch.object(devx_lifecycle.devx_inputs, "load", return_value=("consumer", {})), \
                 mock.patch.object(devx_lifecycle.devx_project_images, "load", return_value=("project", {})), \
                 mock.patch.object(devx_lifecycle.native_base, "load", return_value=("image", {})), \
@@ -208,6 +211,8 @@ class DeveloperStorageTests(unittest.TestCase):
         image = {"id": "sha256:" + "a" * 64}
         with mock.patch.object(sys, "argv", command), \
                 mock.patch.object(devx_lifecycle, "require_no_retained_worker"), \
+                mock.patch.object(devx_lifecycle.reference, "docker", return_value=json.dumps({
+                    "OSType": "linux", "Architecture": "aarch64", "KernelVersion": "fixture"})), \
                 mock.patch.object(devx_lifecycle.devx_inputs, "inspect_image", return_value=image), \
                 mock.patch.object(devx_lifecycle.theia_admission, "qualify",
                                   side_effect=ValueError("admission deadline")) as qualify, \

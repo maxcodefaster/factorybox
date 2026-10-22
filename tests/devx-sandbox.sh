@@ -4,6 +4,7 @@ set -eu
 test "${FACTORYBOX_DEVX_SANDBOX:-}" = 1
 mkdir -p /workspace/project /run/private-docker
 cp -a /opt/factorybox/example/. /workspace/project/
+chown -R 0:0 /workspace/project
 git -C /workspace/project init -q
 git -C /workspace/project config factory.repositoryIdentity factorybox-example
 git -C /workspace/project remote add origin file:///opt/factorybox/example.git

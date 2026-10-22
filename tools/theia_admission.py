@@ -9,7 +9,9 @@ import shutil
 import time
 import uuid
 
+import build_config
 import devx_inputs
+import native_base
 import reference
 import reference_lifecycle
 import theia_peer
@@ -106,8 +108,11 @@ def qualify(image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", required=True, help="Exact cached native IDE image digest")
+    parser.add_argument("--platform", choices=build_config.PLATFORMS, default="linux/arm64")
     options = parser.parse_args()
-    qualify(devx_inputs.inspect_image(options.image))
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
+    native_base.require_native_host(options.platform, host)
+    qualify(devx_inputs.inspect_image(options.image, platform=options.platform))
 
 
 if __name__ == "__main__":

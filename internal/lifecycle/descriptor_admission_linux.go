@@ -224,6 +224,7 @@ func captureDescriptorBlockers(config captureGuardConfig, anchors captureGuardAn
 	slices.Sort(tids)
 	representatives := map[int]int{}
 	var blocked []captureDescriptorBlocker
+	var sessionRoots []captureSessionRoot
 	var mounts map[uint64]bool
 	inspected := 0
 	for _, tid := range tids {
@@ -260,6 +261,17 @@ func captureDescriptorBlockers(config captureGuardConfig, anchors captureGuardAn
 			}
 		} else {
 			representatives[tgid] = tid
+			external, err := captureExternalSessionRoot(tgid, ownPID, status)
+			if err != nil {
+				return nil, err
+			}
+			if external {
+				var namespace unix.Stat_t
+				if err := unix.Stat(fmt.Sprintf("/proc/%d/ns/pid", tgid), &namespace); err != nil {
+					return nil, err
+				}
+				sessionRoots = append(sessionRoots, captureSessionRoot{TID: tid, Namespace: [2]uint64{uint64(namespace.Dev), namespace.Ino}})
+			}
 			detached, err := captureDetachedRegular(fmt.Sprintf("/proc/%d/exe", tid), threads, &mounts)
 			if err != nil {
 				return nil, err
@@ -297,6 +309,15 @@ func captureDescriptorBlockers(config captureGuardConfig, anchors captureGuardAn
 			if target == "anon_inode:[fscontext]" && len(blocked) < 16 {
 				blocked = append(blocked, captureDescriptorBlocker{TID: tid, FD: fd, Kind: "fscontext"})
 			}
+			if strings.HasPrefix(target, "socket:[") {
+				kind, err := captureSocketBlocker(tid, fd)
+				if err != nil {
+					return nil, err
+				}
+				if kind != "" && len(blocked) < 16 {
+					blocked = append(blocked, captureDescriptorBlocker{TID: tid, FD: fd, Kind: kind})
+				}
+			}
 			foreign, err := captureForeignProcDirectory(directory+"/"+entry.Name(), target, ownPID, threads, &mounts)
 			if err != nil {
 				return nil, err
@@ -315,6 +336,11 @@ func captureDescriptorBlockers(config captureGuardConfig, anchors captureGuardAn
 		birth, err := processBirth(tid)
 		if err != nil || birth != threads[tid] {
 			return nil, fmt.Errorf("descriptor admission replaced an original thread: %v", err)
+		}
+	}
+	for _, blocker := range captureMultipleSessionRoots(sessionRoots) {
+		if len(blocked) < 16 {
+			blocked = append(blocked, blocker)
 		}
 	}
 	return blocked, nil
@@ -357,6 +383,11 @@ func (guard *captureGuard) admitCheckpointDescriptors(ctx context.Context) (resu
 			observation.First = append([]captureDescriptorBlocker(nil), blocked...)
 		}
 		if time.Now().After(deadline) {
+			for _, blocker := range blocked {
+				if blocker.Kind == "nested-exec-session" {
+					return fmt.Errorf("capture descriptor state did not settle within 2s: %v; multiple cross-PID-namespace exec roots in one PID namespace are unqualified; complete additional exec/setup clients and reconnect to a service started inside its container", blocked)
+				}
+			}
 			return fmt.Errorf("capture descriptor state did not settle within 2s: %v", blocked)
 		}
 		if err := guard.freeze(false); err != nil {

@@ -1,0 +1,147 @@
+--- a/main.go
++++ b/main.go
+@@ -143,6 +143,7 @@
+ 			Name:  "syscont-mode",
+ 			Usage: "Causes Sysbox to run in \"system container\" mode. In this mode, it sets up the container to run system workloads (e.g., systemd, Docker, Kubernetes, etc.) seamlessly and securely. When set to false, Sysbox operates in \"regular container\" mode where it sets up the container strictly per its OCI spec (usually for microservices), with the exception of the Linux 'user' and 'cgroup' namespaces which Sysbox always enables for extra container isolation. (default = true)",
+ 		},
++		disableBinfmtMiscFlag,
+ 		cli.BoolFlag{
+ 			Name:  "relaxed-read-only",
+ 			Usage: "Allows Sysbox to create read-only containers while enabling read-write operations in certain mountpoints within the container. (default = false)",
+--- a/mgr.go
++++ b/mgr.go
+@@ -282,26 +282,10 @@
+ 		logrus.Info("System container mode enabled.")
+ 	}
+ 
+-	mountBinfmtMisc := false
+-	if syscontMode {
+-		binfmtMiscPresent, err := linuxUtils.KernelModSupported("binfmt_misc")
+-		if err != nil {
+-			return nil, fmt.Errorf("binfmt_misc kernel module check failed: %v", err)
+-		}
+-
+-		if binfmtMiscPresent {
+-			binfmtMiscNamespaced, err := linuxUtils.BinfmtMiscNamespacingSupported()
+-			if err != nil {
+-				return nil, fmt.Errorf("failed to check kernel support for binfmt_misc namespacing: %v", err)
+-			}
+-
+-			if binfmtMiscNamespaced {
+-				logrus.Info("binfmt_misc namespacing supported by kernel; will auto mount it in containers.")
+-				mountBinfmtMisc = true
+-			} else {
+-				logrus.Info("binfmt_misc namespacing not supported by kernel; won't auto mount it in containers.")
+-			}
+-		}
++	mountBinfmtMisc, err := autoMountBinfmtMisc(ctx, linuxUtils.KernelModSupported,
++		linuxUtils.BinfmtMiscNamespacingSupported)
++	if err != nil {
++		return nil, err
+ 	}
+ 
+ 	mgrCfg := mgrConfig{
+--- /dev/null
++++ b/binfmt_misc.go
+@@ -0,0 +1,39 @@
++package main
++
++import (
++	"fmt"
++
++	"github.com/sirupsen/logrus"
++	"github.com/urfave/cli"
++)
++
++var disableBinfmtMiscFlag = cli.BoolFlag{
++	Name:  "disable-binfmt-misc",
++	Usage: "Disable automatic binfmt_misc mounts; foreign binary format registration is unavailable (default = false)",
++}
++
++// The Factorybox reference worker disables this optional filesystem until its
++// kernel handler state has an independent checkpoint/restore qualification.
++func autoMountBinfmtMisc(ctx *cli.Context, module func(string) (bool, error),
++	namespaced func() (bool, error)) (bool, error) {
++	if !ctx.GlobalBoolT("syscont-mode") || ctx.GlobalBool("disable-binfmt-misc") {
++		return false, nil
++	}
++	present, err := module("binfmt_misc")
++	if err != nil {
++		return false, fmt.Errorf("binfmt_misc kernel module check failed: %v", err)
++	}
++	if !present {
++		return false, nil
++	}
++	supported, err := namespaced()
++	if err != nil {
++		return false, fmt.Errorf("failed to check kernel support for binfmt_misc namespacing: %v", err)
++	}
++	if supported {
++		logrus.Info("binfmt_misc namespacing supported by kernel; will auto mount it in containers.")
++	} else {
++		logrus.Info("binfmt_misc namespacing not supported by kernel; won't auto mount it in containers.")
++	}
++	return supported, nil
++}
+--- /dev/null
++++ b/binfmt_misc_test.go
+@@ -0,0 +1,59 @@
++package main
++
++import (
++	"errors"
++	"strings"
++	"testing"
++
++	"github.com/urfave/cli"
++)
++
++func TestFactoryboxBinfmtMiscPolicy(t *testing.T) {
++	for _, tc := range []struct {
++		name                 string
++		args                 []string
++		present, namespaced  bool
++		moduleErr, nsErr     error
++		want                 bool
++		moduleCalls, nsCalls int
++		wantError            string
++	}{
++		{name: "default supported", present: true, namespaced: true, want: true, moduleCalls: 1, nsCalls: 1},
++		{name: "explicit opt out", args: []string{"--disable-binfmt-misc"}, present: true, namespaced: true},
++		{name: "regular container", args: []string{"--syscont-mode=false"}, present: true, namespaced: true},
++		{name: "module absent", moduleCalls: 1},
++		{name: "not namespaced", present: true, moduleCalls: 1, nsCalls: 1},
++		{name: "module error", moduleErr: errors.New("probe denied"), moduleCalls: 1, wantError: "kernel module check failed: probe denied"},
++		{name: "namespace error", present: true, nsErr: errors.New("probe denied"), moduleCalls: 1, nsCalls: 1, wantError: "namespacing: probe denied"},
++		{name: "opt out skips failing probes", args: []string{"--disable-binfmt-misc"}, moduleErr: errors.New("must not probe"), nsErr: errors.New("must not probe")},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			moduleCalls, nsCalls := 0, 0
++			app := cli.NewApp()
++			app.Flags = []cli.Flag{cli.BoolTFlag{Name: "syscont-mode"}, disableBinfmtMiscFlag}
++			app.Action = func(ctx *cli.Context) error {
++				got, err := autoMountBinfmtMisc(ctx, func(name string) (bool, error) {
++					moduleCalls++
++					if name != "binfmt_misc" {
++						t.Fatalf("unexpected module probe %q", name)
++					}
++					return tc.present, tc.moduleErr
++				}, func() (bool, error) {
++					nsCalls++
++					return tc.namespaced, tc.nsErr
++				})
++				if got != tc.want {
++					t.Fatalf("mount decision %t, want %t", got, tc.want)
++				}
++				return err
++			}
++			err := app.Run(append([]string{"sysbox-mgr"}, tc.args...))
++			if tc.wantError == "" && err != nil || tc.wantError != "" && (err == nil || !strings.Contains(err.Error(), tc.wantError)) {
++				t.Fatalf("unexpected policy error %v, want %q", err, tc.wantError)
++			}
++			if moduleCalls != tc.moduleCalls || nsCalls != tc.nsCalls {
++				t.Fatalf("probe calls module=%d namespaces=%d, want %d/%d", moduleCalls, nsCalls, tc.moduleCalls, tc.nsCalls)
++			}
++		})
++	}
++}

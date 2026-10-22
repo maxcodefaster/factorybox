@@ -342,7 +342,7 @@ func TestCaptureActor(t *testing.T) {
 					}
 				}
 				mountContexts, state.MountContextFD, state.MountContexts = nil, 0, 0
-			case "make-tcp-pair":
+			case "make-tcp-pair", "make-tcp-pending", "make-transient-tcp-pending":
 				if state.TCPClient != 0 {
 					t.Error("owned TCP fixture already exists")
 					return
@@ -374,12 +374,39 @@ func TestCaptureActor(t *testing.T) {
 					t.Error(err)
 					return
 				}
+				if request != "make-tcp-pair" {
+					state.TCPClient, state.TCPListener = tcp, listener
+					if request == "make-transient-tcp-pending" {
+						go func() {
+							time.Sleep(1500 * time.Millisecond)
+							mutex.Lock()
+							defer mutex.Unlock()
+							accepted, _, err := unix.Accept4(listener, unix.SOCK_CLOEXEC)
+							if err != nil {
+								t.Error(err)
+								return
+							}
+							state.TCPServer = accepted
+						}()
+					}
+					break
+				}
 				accepted, _, err := unix.Accept4(listener, unix.SOCK_CLOEXEC)
 				if err != nil {
 					t.Error(err)
 					return
 				}
 				state.TCPClient, state.TCPServer, state.TCPListener = tcp, accepted, listener
+			case "close-tcp-pair":
+				for _, fd := range []int{state.TCPClient, state.TCPServer, state.TCPListener} {
+					if fd != 0 {
+						if err := unix.Close(fd); err != nil {
+							t.Error(err)
+							return
+						}
+					}
+				}
+				state.TCPClient, state.TCPServer, state.TCPListener = 0, 0, 0
 			case "open-cgroup-limit":
 				if cgroupLimit != nil {
 					t.Error("cgroup limit descriptor already open")
@@ -866,7 +893,7 @@ func TestRetainedCaptureNative(t *testing.T) {
 			return
 		}
 		if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0,
-			"lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
+			"index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
 			t.Error("restore owned source fixture mount for exact cleanup", err)
 		}
 	})

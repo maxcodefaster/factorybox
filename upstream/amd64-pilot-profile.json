@@ -1,0 +1,327 @@
+{
+  "schema": 1,
+  "name": "factorybox-pilot-linux-amd64",
+  "status": "pilot-reference",
+  "pilot_functional_qualified": true,
+  "matched_speed_target_met": true,
+  "production_qualified": false,
+  "platform": {
+    "os": "linux",
+    "architecture": "amd64",
+    "page_size": 4096,
+    "kernel": "7.2.8-9-omarchy"
+  },
+  "worker_build": "factorybox-build-worker-c9a0e13ce158453db409f5076edcea7b",
+  "worker_image": "factorybox-worker-c9a0e13ce158453db409f5076edcea7b@sha256:e292c1e66d350c6f0a768b59512bac012ecf380b585f0717ecaf0f112f3c335d",
+  "worker_image_id": "sha256:e292c1e66d350c6f0a768b59512bac012ecf380b585f0717ecaf0f112f3c335d",
+  "reproduction_build": "factorybox-build-worker-f822f34670104e6c8c7af3f518db4627",
+  "package_sha256": "08979176fe269250ef423a18b86cfaa3d9237c24e3164361f31e4ead24f8dce3",
+  "cli_version": "v0.1.0",
+  "cli_sha256": "479a692b06c3ff4c2ed867e60b3ada78d5261c2c488401c5d8428dd1f269d6d1",
+  "local_json_schema": 1,
+  "base_source_lock_sha256": "59bd940557b87d8e38758b38cc2adbef463e91165e905b4251c7189770844d23",
+  "go_source_sha256": "9716de54f1f4206b776b2d35d3a34ff3a99b06b66533e7bef6b30f80af4e6a53",
+  "binary_sha256": {
+    "criu": "cccbbab851e500e6fc3e5ac63d6be28f376c10630080ba9904b2fdc81bd1f7ee",
+    "sysbox-fs": "bf5493e6afa11a4756efeba7c9ca3f8588cdcb86d3cb49568ff1be8910bc267d",
+    "sysbox-mgr": "7eb83927a8c739ec55a026e7aa1e1964f29840c061c44ba8a614f91852d1cced",
+    "sysbox-runc": "4b9588e71fdbe87cfedaf6f29bab2a8af0da76262dcd7ee61b9304f3715b3bc2"
+  },
+  "native_base_build": "factorybox-build-native-base-b8dc7327368e4b9bab47bca533070f4a",
+  "sysbox_build": "factorybox-build-sysbox-b86e971efe9b46989e6809996b358f0a",
+  "criu_build": "factorybox-build-criu-retained-67076a2ded4549ab9114b28a0f975325",
+  "component_reproductions": {
+    "sysbox": {
+      "artifact": "factorybox-build-sysbox-repro-eb4e293349ee4d7f98306544d99e5b25",
+      "result_sha256": "4090d26af84f2eea3ec830960c66ae253c6335179422a08467560f1c8061b08a"
+    },
+    "criu": {
+      "artifact": "factorybox-build-criu-retained-44e22c219f774997ad876356457ba09f",
+      "result_sha256": "e5667946304699124045d79e40c66cf4882ed6d62f4bcb589952aed741af77dd"
+    }
+  },
+  "additional_criu_patches": [
+    {
+      "path": "upstream/patches/criu-retained-context-candidate.patch",
+      "build_name": "retained.patch",
+      "sha256": "f98c5e81291479ff744d96efe5d98473e232982ae7b853e6faf25a8880af50a8"
+    },
+    {
+      "path": "upstream/patches/criu-retained-early-hold-candidate.patch",
+      "build_name": "early-hold.patch",
+      "sha256": "cd5a53e90f8a946c1cc93e470a39513a1bb6d8dfe8acae43777b426a80e0374b"
+    },
+    {
+      "path": "upstream/patches/criu-retained-exact-wait-candidate.patch",
+      "build_name": "exact-wait.patch",
+      "sha256": "624fad1b58fc2481df17056509582a09e328d6244fcbe5a30f83eab71eb36415"
+    },
+    {
+      "path": "upstream/patches/criu-retained-exit-hold-candidate.patch",
+      "build_name": "exit-hold.patch",
+      "sha256": "48d4d8b3cd7deb774aab8979f691e2cefd774fc0d8d80c12795ab07f3bb54bdd"
+    },
+    {
+      "path": "upstream/patches/criu-retained-exit-socket-candidate.patch",
+      "build_name": "exit-hold-socket.patch",
+      "sha256": "3612de895a69e2d2c1376b27f22065c8f94693990a5f1b57550714e0a81cf729"
+    },
+    {
+      "path": "upstream/patches/criu-nested-overlay-candidate.patch",
+      "build_name": "nested-overlay.patch",
+      "sha256": "363df289fd5d10d188360ff675d9564b3fb9a60803a432ed33d929fe27b4b1ed"
+    },
+    {
+      "path": "upstream/patches/criu-nested-overlay-stable-path-candidate.patch",
+      "build_name": "nested-overlay-stable-path.patch",
+      "sha256": "a4804b70d54b448631553a275619360a0658dcca7c6b429cd59bdbfc64ef04eb"
+    },
+    {
+      "path": "upstream/patches/criu-nested-overlay-shared-root-candidate.patch",
+      "build_name": "nested-overlay-shared-root.patch",
+      "sha256": "d4ab25651b5ebe71ca75a3813b58f42b75333fecf47839b068a910f537859f59"
+    }
+  ],
+  "additional_criu_overlay": {
+    "path": "upstream/candidates/criu-exit-observer.h",
+    "sha256": "414b50311c5be64871b1dacf916c2bcfff5dca2ae4de0e98a7b396d8b098be61"
+  },
+  "manager_options": [
+    "--disable-shiftfs",
+    "--disable-inner-image-preload",
+    "--disable-binfmt-misc"
+  ],
+  "factory_consumer_storage_driver": "overlay2",
+  "consumer_env": {
+    "GODEBUG": "multipathtcp=0",
+    "UV_USE_IO_URING": "0"
+  },
+  "oci_seccomp_deny": [
+    "io_uring_setup",
+    "io_uring_enter",
+    "io_uring_register"
+  ],
+  "checkpoint_watch_search_annotation": "io.factorybox.checkpoint.irmap-scan-paths",
+  "factory_agent_watch_search_paths": [
+    "/workspace",
+    "/root",
+    "/tmp",
+    "/opt/factory/opencode/server/config"
+  ],
+  "sandbox_worker_limits": {
+    "cpus": 3,
+    "memory_bytes": 3221225472,
+    "maximum_live_sandboxes": 2
+  },
+  "theia_limits": {
+    "cpus": 1,
+    "memory_bytes": 805306368
+  },
+  "lifecycle_deadline_seconds": 420,
+  "trust_boundary": "separate workers per customer or trust domain",
+  "supported_recovery": "Fully committed pauses, persistent complete store, same live host boot and qualified platform, old worker fenced/removed, fresh worker/services; independently imported filesystem/RAM backing.",
+  "selected_improvements": [
+    "One source payload read removed with complete target verification and mount/inode admission",
+    "Private Docker Overlay2 on the fully qualified Factory composition",
+    "Existing immutable-base API composed for independent fresh starts"
+  ],
+  "unqualified": [
+    "VM isolation",
+    "Arbitrary Kubernetes nodes or mount/TTY/exec topologies",
+    "Multiple foreign-parent non-init exec roots in one PID namespace",
+    "Guard loss before cure authorization and earlier controller-loss windows",
+    "Unsaved-running-RAM recovery",
+    "Host-reboot, cross-node, hardware or lost-storage recovery",
+    "External model inference/provider reconnection and external side effects",
+    "Global shared-image store, lazy/delta/SHM candidates",
+    "Production image reduction and public distribution/license approval",
+    "Latency percentiles or stable sub-three-second p95"
+  ],
+  "baseline_profile": {
+    "path": "upstream/amd64-profile.json",
+    "sha256": "7b8497199e35fbdfd7407b4a25a5c0b7290371d31d8dddfd075e6560f7bd3131"
+  },
+  "fixture_declaration": {
+    "path": "tests/pilot-fixture-extensions.json",
+    "sha256": "3a38d939b016bab692662365589c85290e4af4d178458e73c63328c192181b3e"
+  },
+  "qualification_report": "docs/pilot-validation.md",
+  "gates": {
+    "attached-exec": {
+      "artifact": "factorybox-consumer-worker-loss-0caf42c882724c9bafe0bf3b09999ea7",
+      "result_sha256": "23594b239a5cfe8172b526a422308cb1c004667e24c1bc111521a2316744a863"
+    },
+    "comparison": {
+      "artifact": "factorybox-lifecycle-comparison-b73cf2a287f242c99ee0f8ee6348ff83",
+      "result_sha256": "86c99dceb527deb40f083604923d38c9313a55364ca7defed1d3ea1eb0d0a127"
+    },
+    "compose-example": {
+      "artifact": "factorybox-worker-example-ef2308c7d09b430595d5581a214e9c06",
+      "result_sha256": "7f6907499dd57633b2237e46f70e90c247d79648786a90a2cd2bd2133ed03a98"
+    },
+    "factory-abrupt-loss": {
+      "artifact": "factorybox-consumer-worker-loss-97b8ba1399b84279bdc05f042ad40023",
+      "result_sha256": "c6bc41ac89439895b7adffb8b39df595d3d27073ca20527e3d3f5161cd161fba"
+    },
+    "factory-incomplete-pause": {
+      "artifact": "factorybox-consumer-worker-loss-bd3793325d49471db9b2ec25500a5041",
+      "result_sha256": "471a72a0ed1e77f934b73c085b1792febd17c66666a1fd2b2e8a9986503dd90d"
+    },
+    "factory-planned-loss": {
+      "artifact": "factorybox-consumer-worker-loss-80a765bb06af4beb88b909811a5a78ca",
+      "result_sha256": "f240a430525863b71c74d66c660f292f43cf28e56efa255ac897d5339ecb33ad"
+    },
+    "factory-preparation": {
+      "artifact": "factorybox-consumer-worker-loss-51e94fe86ab44ec09cb25291085be860",
+      "result_sha256": "4b4517833ad28594fd4b863e964750fece23c1fb45257d0730b976fd60926f19"
+    },
+    "integration-docker-controller": {
+      "artifact": "factorybox-devx-lifecycle-0f87706a6ece4661bdeaaafcbda42691",
+      "result_sha256": "f36804c0d00b0f766bf41f2ec3716b965fb8502f4ababbe37d33edff0b9dfe97"
+    },
+    "integration-docker-daemon": {
+      "artifact": "factorybox-devx-lifecycle-129d47d1a396400fb73770419068eb70",
+      "result_sha256": "1ff63a7cde307df5d0eeb668e4d792aeef3ef57c4acfcd283f125eff2c6f28a4"
+    },
+    "integration-docker-guard": {
+      "artifact": "factorybox-devx-lifecycle-535d6e72979d4ceebcb412ac21451678",
+      "result_sha256": "c08350ef8ac0231198c5349497534ea8476d5afe4e805123be386cd51f58346e"
+    },
+    "integration-docker-helper": {
+      "artifact": "factorybox-devx-lifecycle-eab0d4492dbc4250970f6aac78a97074",
+      "result_sha256": "be1510319864952963130a294222f4263199f1bae8e29dbd929d7ebcf6d76da4"
+    },
+    "integration-docker-pause": {
+      "artifact": "factorybox-devx-lifecycle-151aaed70cbb40519c37cebf3a01d46b",
+      "result_sha256": "3034a1e6d9a6f152014299e884a99ce133a47872cb004ea8c42bfbe9c15a58a0"
+    },
+    "integration-docker-root": {
+      "artifact": "factorybox-devx-lifecycle-e627dce97fff423aa74a933df244184d",
+      "result_sha256": "af6665d8a24e017532af16dc2a4c4362b99562426ec26b07cd48f84a4450dc99"
+    },
+    "integration-factory-agent": {
+      "artifact": "factorybox-consumer-worker-loss-00169ac3133a4b7fbac7c379b6befa9c",
+      "result_sha256": "91242e83e9bbadf39c49d9d5a4707193b5182ccb59d937557bb50af2922a6a01"
+    },
+    "integration-libcontainer": {
+      "artifact": "factorybox-upstream-0727661ef6d64862bcb7241aa3e174b0",
+      "result_sha256": "d76cbe6dc2d5e21c3f5bc3903f77cdcca6f659f823f166794d9fa205d46f7922"
+    },
+    "integration-minimal-planned-loss": {
+      "artifact": "factorybox-consumer-worker-loss-489e8a575ad846dea3a670d2189dd56d",
+      "result_sha256": "44f361bd06c1461bf46f7ac07e9595cccc55536d2d2d44b3d283ba7bb03cb921"
+    },
+    "integration-retained-child": {
+      "artifact": "factorybox-runtime-retained-34eae42dd9714312b987eb4dcbb1b410",
+      "result_sha256": "382bb04fbef5c53c2d981fc782c27077e4ebed4f3342d7196953636148f22c25"
+    },
+    "integration-retained-churn": {
+      "artifact": "factorybox-runtime-retained-0ff16e5b06fe4d4c91654a2122644c2c",
+      "result_sha256": "c7fa6b16abcf5fb552cdc13eb7dde1d2946bd834266fe01e3bd7262f117d88c3"
+    },
+    "integration-retained-controller": {
+      "artifact": "factorybox-runtime-retained-3992b8942c1146ab8b2a2a67ce463098",
+      "result_sha256": "c254f6fdce47b44583dbcd997d1722410b70ddb1ffe0038d09765274fc6b4b2a"
+    },
+    "integration-retained-corruption": {
+      "artifact": "factorybox-runtime-retained-ad0eb87a35e94cbcaf6a7d58eb4f2c11",
+      "result_sha256": "cdd370f7c6177becc01d29b05bfca538ee4d67e937373ac71c4bac9f8ecafae8"
+    },
+    "integration-retained-guard": {
+      "artifact": "factorybox-runtime-retained-2f1bd8606c484df1ae5c25fbe54ce9d6",
+      "result_sha256": "e986a4e862daeb056901f0d0de8860f1373152d9d3f594fb363cacb3259136e8"
+    },
+    "integration-runc-integration": {
+      "artifact": "factorybox-upstream-6d037ceae11a417899ec519a1edacd8c",
+      "result_sha256": "5833dd096f1471d493cecb9c2c0f71f568a9563ed5aea1f6ce7ef84d4178e4f4"
+    },
+    "minimal-incomplete-pause": {
+      "artifact": "factorybox-consumer-worker-loss-5250a96123544bce884b7424b201b4f9",
+      "result_sha256": "f8061af673a70da30af405d9a545b2151c3c1d18d48b054007c3bf5702511547"
+    },
+    "minimal-preparation": {
+      "artifact": "factorybox-consumer-worker-loss-3cd3e1440a174f829d856bba6a857f01",
+      "result_sha256": "5c92cabfa61dbedac0ccf56102a9e341eabf55a93272604031a7b9e9e05b022a"
+    },
+    "native-admission": {
+      "artifact": "factorybox-runtime-4083bde0ead6492cbc9aa1905a61037b",
+      "result_sha256": "c8e050cc8082a88c1a31e19af2e7668b1da7d741ce1149a44d87f5c8befd67a2"
+    },
+    "native-auxiliary": {
+      "artifact": "factorybox-runtime-d781633e50e54193bcc98212466caf55",
+      "result_sha256": "55d3c1d9de4c5a727b521fa0695e2c6037e1871fa128d97e70c95b333cb6fa65"
+    },
+    "native-base": {
+      "artifact": "factorybox-runtime-549ef29a91144d62abce2e6b298b5d10",
+      "result_sha256": "498c7787482c1c1920e6e8e007615ab3ecb91fcfd37fc60e745714c39ba965b5"
+    },
+    "native-base-pause": {
+      "artifact": "factorybox-runtime-c4119d4046f5465a819fef636e60b9ff",
+      "result_sha256": "5b8893496da1ac3ddad3fdbe6a3286ff6894db8e9651246930f8c64b47faf78e"
+    },
+    "native-capture": {
+      "artifact": "factorybox-runtime-07f1734aa08c423397bb0093245895d9",
+      "result_sha256": "2e4ea10b96fd223977fc5197937506709217069a5dbd537b217bc235cf95e250"
+    },
+    "native-criu-core": {
+      "artifact": "factorybox-criu-core-0769dd1a021d491d8f4c77aa363d48a5",
+      "result_sha256": "6bebd42bc5f7ede531ed0c19e30d09bc3dfab1e71b3eebe64e39790e5bed9557"
+    },
+    "native-delegation": {
+      "artifact": "factorybox-runtime-8e9673782f8643738e8e12e82cf7db3e",
+      "result_sha256": "5579589c677f3c018b1ca5a7645207adb86aea01394172593e7e2bb91787da15"
+    },
+    "native-guard": {
+      "artifact": "factorybox-runtime-9c18c4a7f95c466f9d4b977e827a547e",
+      "result_sha256": "2aeb871718cbcd38f0b6a1733e3bfa278a4f903189bfd4d75fded81f10f72ab3"
+    },
+    "native-lifecycle": {
+      "artifact": "factorybox-runtime-1deaeb97a9374aad8f1709612e8222b7",
+      "result_sha256": "4c35cbdfe39f3d7676a25d3e036dcb081a5d9729e8eea87906d67f099bfbc086"
+    },
+    "native-mountfd": {
+      "artifact": "factorybox-runtime-d14368040d314fb4ae01b733ef4806c0",
+      "result_sha256": "eb037286b8d4a187e6d9b2adb2ec85fced66b2db169b4e2a243452e282091a7f"
+    },
+    "native-namespaces": {
+      "artifact": "factorybox-runtime-06c3a3d9b4a344699272798e7a2ac346",
+      "result_sha256": "808887442ca9def12398269d714d9b6ba19fb494bd1c63070f7e43dd8c391d9e"
+    },
+    "native-overlay": {
+      "artifact": "factorybox-runtime-acc9ff8463e14fc6a61cac7b1c3a557d",
+      "result_sha256": "1594e1a6bd91d425fc445e9fcbd04f239f6e9509a5e41feb37b2a341888b61b3"
+    },
+    "native-pause": {
+      "artifact": "factorybox-runtime-8241c4e1bd7e4c91af036c037e68b356",
+      "result_sha256": "5c4baa743db4383ac81d52c0149ee4da12ffbb6cb6b91850db59acd7c8354647"
+    },
+    "native-time": {
+      "artifact": "factorybox-runtime-b20b567657ba414d88226cc76eb84f9e",
+      "result_sha256": "4c6e859531255fbd467a212019470957e257ffb84810f5ec2cc93070ebba58b1"
+    },
+    "native-worker-loss": {
+      "artifact": "factorybox-runtime-10d54aabd2574f829a6c4e0e488266ff",
+      "result_sha256": "acdc7b04651464d981b17cd9a27d730985f418ac27e1640643f31818f7578b91"
+    },
+    "portable": {
+      "artifact": "factorybox-checks-4e30afdbb335400a8fd49392b7f0b90a",
+      "result_sha256": "cb6b2a787003595743582ad55de47c8e1ab6bd0b50ca767d28b796ccd18595ec"
+    },
+    "recovery-negative": {
+      "artifact": "factorybox-worker-restart-probe-cbe150aa0a294304a5a77a87291e4146",
+      "result_sha256": "ec4354ae3746cd0651144ad5080048486e914a3cad91747a289069e2e7701df9"
+    },
+    "sysbox-basic": {
+      "artifact": "factorybox-bats-43e40ea96667466d9a64e936b0cfd065",
+      "result_sha256": "262474e44c02d879128236bb02779a55e33a487fcf85cb8e1eaed58d34a4096e"
+    },
+    "sysbox-modules": {
+      "artifact": "factorybox-upstream-716f9a8228c541ec85bc217921669a6f",
+      "result_sha256": "e2b2dbbdf78f58c4d36471e49372646b0c8af25d8c274bb187127f6350ef02d8"
+    },
+    "sysbox-systemd": {
+      "artifact": "factorybox-bats-61c38bd02f914609b5c31e40c7b750fe",
+      "result_sha256": "48e9e9f189e5d260712fa5bcaf4329caf1e1e1a26d46fb9e8e2ad244ae12f6ee"
+    }
+  }
+}

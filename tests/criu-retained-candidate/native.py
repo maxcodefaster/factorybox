@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,17 +11,20 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import lifecycle_native
+import build_config
 import criu_candidate
 import native_base
 import reference
 import reference_lifecycle
 import sources
+import verify_fixture_extensions
 
 root = reference.ROOT
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--candidate", required=True)
 parser.add_argument("--native-base-build", required=True)
 parser.add_argument("--sysbox-build", required=True)
+parser.add_argument("--candidate-platform", choices=["linux/amd64"])
 parser.add_argument("--corruption-control", action="store_true")
 parser.add_argument("--pause", action="store_true")
 parser.add_argument("--grant-control", action="store_true")
@@ -42,9 +46,20 @@ candidate_name = options.candidate
 corruption_control = options.corruption_control
 candidate, criu, _, _ = criu_candidate.load(candidate_name)
 base_name = options.native_base_build
-image, base = native_base.load(base_name)
+target = options.candidate_platform or "linux/arm64"
+host = json.loads(reference.docker(["info", "--format", "{{json .}}" ]))
+native_base.require_native_host(target, host)
+image, base = native_base.load(base_name, candidate_platform=options.candidate_platform)
 sysbox_name = options.sysbox_build
 sysbox_path, sysbox = reference_lifecycle.component_build(sysbox_name, "factorybox-build-sysbox-")
+if any(row.get("platform", "linux/arm64") != target for row in [sysbox, criu]):
+    raise ValueError("recovery components differ from the explicit native target")
+compile_options = []
+if options.candidate_platform:
+    if not re.fullmatch(r"[A-Za-z0-9_.+-]+", host["KernelVersion"]):
+        raise ValueError("unsupported candidate kernel release encoding")
+    compile_options = ["-tags=factorybox_candidate_amd64", "-ldflags=-X=" +
+                       "factorybox/internal/platform.candidateKernel=" + host["KernelVersion"]]
 owner = uuid.uuid4().hex
 name = "factorybox-runtime-retained-" + owner
 archive = reference.new_artifact(name)
@@ -55,15 +70,16 @@ for directory in ["internal", "cmd/factorybox"]:
     shutil.copytree(root / directory, context / directory)
 for file in ["go.mod", "go.sum"]:
     shutil.copyfile(root / file, context / file)
+fixture_patches = verify_fixture_extensions.apply_context_patches(root, context, archive)
 source_sha = sources.tree_sha(context)
-env = dict(os.environ, GOOS="linux", GOARCH="arm64", CGO_ENABLED="0")
+env = dict(os.environ, GOOS="linux", GOARCH=build_config.architecture(target), CGO_ENABLED="0")
 for file, package, test in [
     ("factorybox", "./cmd/factorybox", False),
     ("lifecycle.test", "./internal/lifecycle", True),
     ("sysboxcapture.test", "./internal/sysboxcapture", True),
 ]:
     command = ["go", "test", "-c"] if test else ["go", "build"]
-    subprocess.run([*command, "-trimpath", "-buildvcs=false", "-o", str(archive / file), package],
+    subprocess.run([*command, "-trimpath", "-buildvcs=false", *compile_options, "-o", str(archive / file), package],
                    cwd=context, env=env, check=True, timeout=120)
 for script in ["lifecycle-native.sh", "private-cgroup-delegation.sh", "capture-archive.sh"]:
     shutil.copyfile(root / "tests" / script, archive / script)
@@ -74,13 +90,13 @@ for file in ["sysbox-runc", "sysbox-fs", "sysbox-mgr"]:
         sysbox_path / "output" / file, components / file, root, sysbox["binary_sha256"][file])
 reference.artifact_storage.share_frozen_input(
     candidate / "criu", components / "criu", root, criu["binary_sha256"])
-busybox = json.loads((root / "upstream/test-inputs.json").read_text())["busybox-arm64"]
+busybox = json.loads((root / "upstream/test-inputs.json").read_text())["busybox-" + build_config.architecture(target)]
 rootfs = root / ".cache/downloads" / busybox["archive"]
 assert reference.sha(rootfs) == busybox["sha256"]
 inputs = {p.name: reference.sha(p) for p in archive.iterdir() if p.is_file()}
 component_hashes = {p.name: reference.sha(p) for p in components.iterdir()}
 command = [
-    *reference.DOCKER, "run", "--pull=never", "--name", name,
+    *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
     "--label", "com.factorybox.run=" + owner, "--privileged", "--cgroupns=private",
     "--cpus=3", "--memory=3g", "--pids-limit=512", "--network=none",
     "--env", "FACTORYBOX_NATIVE_LIFECYCLE=1", "--env", "FACTORYBOX_UPSTREAM_CONTAINER=1",
@@ -131,6 +147,7 @@ if options.guard_loss:
 result = {
     "owner": owner, "container_name": name, "volume_name": name, "command": command,
     "candidate": candidate_name, "candidate_sha256": criu["binary_sha256"],
+    "platform": target, "native_lifecycle_qualified": False, "compile_options": compile_options,
     "exit_hold_candidate": bool(criu.get("exit_hold_candidate")),
     "corruption_control": corruption_control,
     "pause": options.pause,
@@ -141,6 +158,7 @@ result = {
     "controller_loss": options.controller_loss,
     "guard_loss": options.guard_loss,
     "inputs_sha256": inputs, "component_sha256": component_hashes, "source_sha256": source_sha,
+    "fixture_context_patches": fixture_patches,
     "scope": "Actual CRIU kill during pages dump; only the original independent guard may authorize "
              "process cure and source release. Complete 32-MiB RAM, TCP, previous committed fork "
              "and original running-source assertions remain required. Process-tree candidate.",
@@ -167,7 +185,8 @@ try:
     result["passed"] = (
         done.returncode == 0 and result["inputs_unchanged"] and
         not result["container_state"]["OOMKilled"] and
-        result["passed_tests"] == 9 and result["passed_subtests"] == 40 and
+        result["passed_tests"] == 1 + lifecycle_native.EXPECTED_ADAPTER_TESTS and
+        result["passed_subtests"] == lifecycle_native.EXPECTED_ADAPTER_SUBTESTS and
         "--- PASS: TestInterruptedCaptureNative " in text and
         "--- SKIP:" not in text and "--- FAIL:" not in text)
     if options.grant_control:
@@ -215,11 +234,12 @@ try:
             "rolled-back original TCP sockets are not bidirectionally usable" not in text)
         result["mechanism_passed"] = (
             result["diagnostic"]["passed"] and result["network_unchanged"] and result["inputs_unchanged"] and
-            result["passed_tests"] == (9 if done.returncode == 0 else 8) and
-            result["passed_subtests"] == 40 and
+            result["passed_tests"] == lifecycle_native.EXPECTED_ADAPTER_TESTS + (1 if done.returncode == 0 else 0) and
+            result["passed_subtests"] == lifecycle_native.EXPECTED_ADAPTER_SUBTESTS and
             "previous committed checkpoint remained independently usable after actual CRIU interruption" in text and
             not result["container_state"]["OOMKilled"])
 except Exception as error:
+    result["passed"] = False
     result["error"] = str(error)
 finally:
     preserve = False
@@ -239,6 +259,7 @@ finally:
         except Exception as error:
             result["cleanup_error"] = str(error)
     result["mechanism_passed"] = bool(result["mechanism_passed"] and result["cleanup"])
+    result["passed"] = bool(result["passed"] and result["cleanup"])
     (archive / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps({"evidence": str(archive), "passed": result["passed"],
                       "mechanism_passed": result["mechanism_passed"], "cleanup": result["cleanup"]}), flush=True)

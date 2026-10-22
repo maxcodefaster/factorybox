@@ -1,0 +1,11 @@
+ARG NATIVE_BASE
+FROM ${NATIVE_BASE}
+ARG SOURCE_DATE_EPOCH=0
+USER root
+COPY --chmod=0700 bundle/ /opt/factorybox/
+RUN chmod 0755 /opt/factorybox/factorybox /opt/factorybox/components/* \
+    && chmod 0600 /opt/factorybox/components.json /opt/factorybox/build.json
+LABEL io.factorybox.worker="unselected-candidate"
+STOPSIGNAL SIGTERM
+ENTRYPOINT ["/opt/factorybox/factorybox", "worker"]
+CMD ["--store", "/var/lib/sysbox/store", "--components", "/opt/factorybox/components", "--manifest", "/opt/factorybox/components.json"]

@@ -49,6 +49,62 @@ type ImmutableAlias struct {
 // before an application starts. The destination must be inside a root-owned
 // mode-0700 directory and must not already exist. Failed preparation is retained.
 func PrepareFilesystemBase(ctx context.Context, source, destination string) (FilesystemTree, error) {
+	return prepareFilesystemBase(ctx, source, destination, nil, nil)
+}
+
+// RecoverFilesystemBase reimports the canonical file backing after its old
+// worker mount has disappeared. Only complete target content/metadata matching
+// the saved checkpoint can establish a new immutable identity. Old mount IDs
+// and aliases are never treated as authority for the fresh base.
+func RecoverFilesystemBase(ctx context.Context, saved FilesystemTree, destination string) (FilesystemTree, error) {
+	base := saved.Immutable
+	if saved.Name != "lower" || base == nil || !cleanAbsolute(base.Root) ||
+		len(saved.SHA256) != 64 || strings.Trim(saved.SHA256, "0123456789abcdef") != "" ||
+		saved.Entries <= 0 || saved.HashedBytes < 0 || saved.FileBytes < saved.HashedBytes ||
+		base.SHA256 != saved.SHA256 || base.Entries != saved.Entries ||
+		base.FileBytes != saved.FileBytes || base.HashedBytes != saved.HashedBytes {
+		return FilesystemTree{}, fmt.Errorf("base recovery requires its complete saved immutable-tree manifest")
+	}
+	if err := immutableParents(base.Root); err != nil {
+		return FilesystemTree{}, err
+	}
+	root, err := openDirectory(base.Root)
+	if err != nil {
+		return FilesystemTree{}, err
+	}
+	defer root.Close()
+	var stat unix.Stat_t
+	var current, parentMount unix.Statx_t
+	if err := unix.Fstat(int(root.Fd()), &stat); err != nil {
+		return FilesystemTree{}, err
+	}
+	if uint64(stat.Dev) != base.Device || stat.Ino != base.Inode || stat.Mode != base.Mode ||
+		stat.Uid != base.UID || stat.Gid != base.GID || stat.Mtim.Sec != base.MtimeSec ||
+		stat.Mtim.Nsec != base.MtimeNano || stat.Ctim.Sec != base.CtimeSec || stat.Ctim.Nsec != base.CtimeNano {
+		return FilesystemTree{}, fmt.Errorf("persisted base inode or metadata changed")
+	}
+	parent, err := openDirectory(filepath.Dir(base.Root))
+	if err != nil {
+		return FilesystemTree{}, err
+	}
+	err = unix.Statx(int(root.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &current)
+	if err == nil {
+		err = unix.Statx(int(parent.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &parentMount)
+	}
+	if err := errors.Join(err, parent.Close()); err != nil {
+		return FilesystemTree{}, err
+	}
+	if current.Mask&unix.STATX_MNT_ID == 0 || parentMount.Mask&unix.STATX_MNT_ID == 0 ||
+		current.Mnt_id == 0 || current.Mnt_id != parentMount.Mnt_id {
+		return FilesystemTree{}, fmt.Errorf("persisted base has an unexpected covering mount")
+	}
+	// The expected digest describes data, not the vanished kernel objects.
+	// No old immutable pointer may escape on a failed new preparation.
+	saved.Immutable, saved.Alias = nil, nil
+	return prepareFilesystemBase(ctx, base.Root, destination, &saved, root)
+}
+
+func prepareFilesystemBase(ctx context.Context, source, destination string, expected *FilesystemTree, anchored *os.File) (FilesystemTree, error) {
 	var tree FilesystemTree
 	if !cleanAbsolute(source) || !cleanAbsolute(destination) || source == destination ||
 		strings.HasPrefix(destination, source+"/") || strings.HasPrefix(source, destination+"/") {
@@ -57,12 +113,21 @@ func PrepareFilesystemBase(ctx context.Context, source, destination string) (Fil
 	if err := immutableParents(destination); err != nil {
 		return tree, err
 	}
-	root, err := openDirectory(source)
-	if err != nil {
-		return tree, err
+	root := anchored
+	if root == nil {
+		var err error
+		root, err = openDirectory(source)
+		if err != nil {
+			return tree, err
+		}
+		defer root.Close()
 	}
-	defer root.Close()
-	tree, err = cloneFilesystemTree(ctx, root, destination)
+	if expected != nil {
+		if err := admitFilesystemCopySource(ctx, root); err != nil {
+			return tree, err
+		}
+	}
+	tree, err := cloneFilesystemTreeExpected(ctx, root, destination, expected)
 	if err != nil {
 		return tree, err
 	}

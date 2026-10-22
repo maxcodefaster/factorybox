@@ -17,6 +17,17 @@ import sources
 ROOT = reference.ROOT
 
 
+def native_platform(base, criu, candidate_platform, host):
+    target = candidate_platform or "linux/arm64"
+    machine = {"linux/arm64": {"aarch64", "arm64"},
+               "linux/amd64": {"x86_64", "amd64"}}
+    if (target not in machine or base.get("platform", "linux/arm64") != target or
+            criu.get("platform", "linux/arm64") != target):
+        raise ValueError("CRIU and base builds must match the explicit native target")
+    native_base.require_native_host(target, host)
+    return target
+
+
 def archive_volume(output, name, owner, image, result):
     container = json.loads(reference.docker(["container", "inspect", name]))[0]
     if container["Config"].get("Labels", {}).get("com.factorybox.run") != owner:
@@ -36,13 +47,14 @@ def archive_volume(output, name, owner, image, result):
         "--cpus=1", "--memory=256m", "--pids-limit=16", "--read-only",
         "--cap-drop=ALL", "--cap-add=DAC_READ_SEARCH", "--security-opt=no-new-privileges",
         "--mount", f"type=volume,source={name},target=/input,readonly",
-        "--mount", f"type=bind,source={output},target=/output",
         "--entrypoint", "/bin/tar", image, "--numeric-owner", "-C", "/input",
-        "-cpf", "/output/native.tar", "--exclude=./zdtm", ".",
+        "-cpf", "-", "--exclude=./zdtm", ".",
     ]
     try:
-        with (output / "archive.log").open("x") as log:
-            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60)
+        # The invoking host user writes the archive. The restricted reader needs
+        # no write capability or writable host bind, including on native Linux.
+        with (output / "archive.log").open("x") as log, (output / "native.tar").open("xb") as archive:
+            subprocess.run(command, stdout=archive, stderr=log, check=True, timeout=60)
         result["archive_sha256"] = reference.sha(output / "native.tar")
     finally:
         reference.owned_delete("container", helper, owner)
@@ -54,6 +66,8 @@ def main():
     inputs.add_argument("--criu-build")
     inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
     parser.add_argument("--native-base-build", required=True)
+    parser.add_argument("--candidate-platform", choices=["linux/amd64"],
+                        help="Run native core tests on an explicitly unqualified platform")
     parser.add_argument("--test", help="One selected C case for diagnosis")
     options = parser.parse_args()
     spec = json.loads((ROOT / "tests/criu-core-cases.json").read_text())
@@ -62,7 +76,7 @@ def main():
         if options.test not in expected:
             parser.error("--test must name one declared core case")
         expected = [options.test]
-    image, base = native_base.load(options.native_base_build)
+    image, base = native_base.load(options.native_base_build, candidate_platform=options.candidate_platform)
     lock = ROOT / "upstream/lock.json"
     if options.retained_candidate:
         build, criu, component, unchanged = criu_candidate.load(options.retained_candidate)
@@ -75,6 +89,8 @@ def main():
         tree = ROOT / ".cache/sources/criu"
         sources.validate_inputs(component)
         unchanged = sources.check_source(tree, ROOT / ".cache/downloads" / component["archive"], component)
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
+    target = native_platform(base, criu, options.candidate_platform, host)
     owner = uuid.uuid4().hex
     name = "factorybox-criu-core-" + owner
     output = reference.new_artifact(name)
@@ -90,6 +106,9 @@ def main():
         "schema": 1, "owner": owner, "container_name": name, "volume_name": name,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "passed": False, "cleanup": False, "production_qualified": False,
+        "platform": target, "candidate_platform": bool(options.candidate_platform),
+        "native_lifecycle_qualified": False,
+        "host": {key: host[key] for key in ["OSType", "Architecture", "KernelVersion"]},
         "criu_build": options.criu_build or options.retained_candidate,
         "retained_candidate": bool(options.retained_candidate), "criu_sha256": criu["binary_sha256"],
         "native_base_build": options.native_base_build, "image": image,
@@ -110,7 +129,7 @@ def main():
     failure = None
     try:
         command = [
-            *reference.DOCKER, "run", "--pull=never", "--name", name,
+            *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
             "--label", "com.factorybox.run=" + owner, "--privileged",
             "--cgroupns=private", "--network=none", "--cpus=3", "--memory=3g", "--pids-limit=256",
             "--ulimit", "nofile=4096:4096", "--env", "FACTORYBOX_CRIU_CORE=1",
@@ -124,7 +143,8 @@ def main():
             "--entrypoint", "/bin/sh", image, "-ec",
             "mount --bind /proc/sys/vm /proc/sys/vm\n"
             "mount -o remount,bind,ro /proc/sys/vm\n"
-            "exec /usr/bin/python3 /run-tests.py" + (" --test=" + options.test if options.test else ""),
+            "exec /usr/bin/python3 /run-tests.py --platform=" + target +
+            (" --test=" + options.test if options.test else ""),
         ]
         result["command"] = command
         reference_lifecycle.write_json(output / "intent.json", result)
@@ -143,7 +163,8 @@ def main():
         native = json.loads((output / "native-result.json").read_text())
         result["native"] = native
         result["passed"] = (done.returncode == 0 and not state["OOMKilled"] and
-                            native["passed"] and native["cases"] == expected)
+                            native["passed"] and native["cases"] == expected and
+                            native["platform"] == target and native["page_size"] == 4096)
         if not result["passed"]:
             raise ValueError("selected upstream CRIU C/R qualification failed")
     except Exception as error:

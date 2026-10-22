@@ -10,13 +10,21 @@ import devx_project_images
 
 
 class ImageIdentityTests(unittest.TestCase):
-    def inspect(self, request, digests, *, architecture="arm64"):
+    def inspect(self, request, digests, *, architecture="arm64", platform="linux/arm64"):
         data = [{
             "Architecture": architecture, "Os": "linux", "Id": "sha256:" + "a" * 64,
             "RepoDigests": digests, "Config": {}, "Size": 1,
         }]
         with patch.object(devx_inputs.reference, "docker", return_value=json.dumps(data)):
-            return devx_inputs.inspect_image(request)
+            return devx_inputs.inspect_image(request, platform=platform)
+
+    def test_explicit_amd64_still_requires_the_actual_image_architecture(self):
+        digest = "@sha256:" + "a" * 64
+        image = "node" + digest
+        actual = self.inspect(image, [image], architecture="amd64", platform="linux/amd64")
+        self.assertEqual(actual["architecture"], "amd64")
+        with self.assertRaises(ValueError):
+            self.inspect(image, [image], architecture="arm64", platform="linux/amd64")
 
     def test_docker_familiar_name_retains_exact_digest(self):
         digest = "@sha256:" + "a" * 64
@@ -93,6 +101,25 @@ class ConsumerArchiveTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "cache evicted"):
                     devx_inputs.load(name)
                 self.assertEqual(inspect.call_count, 1)
+
+    def test_frozen_rootfs_requires_a_matching_platform_and_each_consumer_role(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            name, archive, result = self.prepared(root)
+            result["platform"] = "linux/amd64"
+            for image in result["images"].values():
+                image["architecture"] = "amd64"
+            receipt = archive / "result.json"
+            receipt.write_text(json.dumps(result))
+            with patch.object(devx_inputs, "ROOT", root):
+                with self.assertRaises(ValueError):
+                    devx_inputs.load(name, rootfs=True)
+                directory, _ = devx_inputs.load(name, rootfs=True, platform="linux/amd64")
+                self.assertEqual(directory, archive)
+                result["images"]["developer-ide"]["architecture"] = "arm64"
+                receipt.write_text(json.dumps(result))
+                with self.assertRaises(ValueError):
+                    devx_inputs.load(name, rootfs=True, platform="linux/amd64")
 
 
 class ProjectArchiveTests(unittest.TestCase):

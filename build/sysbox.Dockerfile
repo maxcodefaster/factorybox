@@ -67,7 +67,8 @@ RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/ro
 WORKDIR /src/sysbox-mgr
 RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
-    CGO_ENABLED=1 go build -mod=readonly -buildvcs=false -trimpath \
+    go test -mod=readonly -tags idmapped_mnt . -run '^TestFactoryboxBinfmtMiscPolicy$' -count=1 \
+    && CGO_ENABLED=1 go build -mod=readonly -buildvcs=false -trimpath \
       -tags 'idmapped_mnt netgo osusergo' \
       -ldflags '-extldflags -static -X main.version=0.7.1-experiment -X main.commitId=2d45af01bcfd8641e6641f76104c6003bf501cd7' \
       -o /out/sysbox-mgr .

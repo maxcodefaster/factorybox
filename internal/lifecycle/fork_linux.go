@@ -27,20 +27,21 @@ type ForkOrigin struct {
 }
 
 type forkIntent struct {
-	Version       int        `json:"version"`
-	TargetID      string     `json:"target_id"`
-	Owner         string     `json:"owner"`
-	BootID        string     `json:"boot_id"`
-	RuntimeSHA256 string     `json:"runtime_sha256"`
-	CriuSHA256    string     `json:"criu_sha256"`
-	ManagerRoot   string     `json:"manager_root"`
-	Origin        ForkOrigin `json:"origin"`
-	Source        Record     `json:"source"`
-	Checkpoint    Checkpoint `json:"checkpoint"`
-	OCI           []byte     `json:"oci"`
-	State         []byte     `json:"state"`
-	FsState       []byte     `json:"fs_state"`
-	CriuConfig    []byte     `json:"criu_config"`
+	Version       int             `json:"version"`
+	TargetID      string          `json:"target_id"`
+	Owner         string          `json:"owner"`
+	BootID        string          `json:"boot_id"`
+	RuntimeSHA256 string          `json:"runtime_sha256"`
+	CriuSHA256    string          `json:"criu_sha256"`
+	ManagerRoot   string          `json:"manager_root"`
+	Origin        ForkOrigin      `json:"origin"`
+	Source        Record          `json:"source"`
+	Checkpoint    Checkpoint      `json:"checkpoint"`
+	OCI           []byte          `json:"oci"`
+	State         []byte          `json:"state"`
+	FsState       []byte          `json:"fs_state"`
+	CriuConfig    []byte          `json:"criu_config"`
+	Recovery      *RecoveryOrigin `json:"recovery,omitempty"`
 }
 
 type forkPreparation struct {
@@ -125,7 +126,14 @@ func (e *Engine) Fork(ctx context.Context, sourceID, snapshotID, targetID string
 	if err != nil {
 		return View{}, err
 	}
-	record, err := e.read(targetID)
+	if intent.Recovery != nil {
+		return View{}, fmt.Errorf("target belongs to a persisted-pause recovery request")
+	}
+	return e.finishFork(ctx, lock, operation, object, intent, metadataVerified)
+}
+
+func (e *Engine) finishFork(ctx context.Context, lock *os.File, operation, object string, intent forkIntent, metadataVerified bool) (View, error) {
+	record, err := e.read(intent.TargetID)
 	if err == nil {
 		if record.Owner != intent.Owner || !reflect.DeepEqual(record.Fork, &intent.Origin) ||
 			record.InputSHA256 != sum(intent.OCI) {
@@ -143,7 +151,7 @@ func (e *Engine) Fork(ctx context.Context, sourceID, snapshotID, targetID string
 	if err := e.forkOverlay(bundle, operation, intent); err != nil {
 		return View{}, err
 	}
-	record, err = e.prepareRecord(targetID, bundle, object, intent.OCI, intent.Owner, &intent.Origin)
+	record, err = e.prepareRecord(intent.TargetID, bundle, object, intent.OCI, intent.Owner, &intent.Origin)
 	if err != nil {
 		return View{Record: record}, err
 	}
@@ -173,6 +181,14 @@ func (e *Engine) readForkIntent(operation, sourceID, snapshotID, targetID string
 		intent.Checkpoint.RuntimeSHA256 != intent.RuntimeSHA256 || intent.Checkpoint.CriuSHA256 != intent.CriuSHA256 ||
 		len(intent.OCI) == 0 || len(intent.State) == 0 || len(intent.FsState) == 0 {
 		return intent, fmt.Errorf("fork intent differs from its original request or pinned recipe")
+	}
+	if intent.Recovery != nil {
+		if err := e.validateRecoveryRequest(intent.Recovery.Request, targetID); err != nil ||
+			intent.Recovery.Request.SourceID != sourceID || intent.Recovery.Request.SnapshotID != snapshotID ||
+			intent.Recovery.Request.SourceOwner != intent.Source.Owner || intent.Recovery.ImportedAt == "" ||
+			!intent.Checkpoint.SourceStopped {
+			return intent, fmt.Errorf("recovery intent differs from its file-only source: %v", err)
+		}
 	}
 	for name, blob := range map[string][]byte{
 		"source-state.json": intent.State, "sysbox-state.json": intent.FsState, "criu.conf": intent.CriuConfig,
@@ -288,10 +304,11 @@ func (e *Engine) prepareForkBacking(ctx context.Context, lock *os.File, operatio
 	if _, err := e.root.Lstat(materialized); !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("fork preparation is incomplete or uncertain; refusing to overwrite its backing: %v", err)
 	}
-	generation, _ := checkpointPath(intent.Origin.SourceID, intent.Origin.CheckpointID)
+	generation := forkInputGeneration(intent)
 	// A new intent's complete images and metadata were verified under this
 	// same exclusive lock. Retry verifies them again. Materialization below
-	// verifies every source tree once and every target against that digest.
+	// admits every source mount and verifies each independent target against
+	// the complete saved content/metadata digest before runtime creation.
 	// No persisted marker substitutes for fresh verification in a later call.
 	if !metadataVerified {
 		if err := e.verifyCheckpointMetadata(ctx, intent.Source, intent.Checkpoint.ID, generation, intent.Checkpoint); err != nil {
@@ -344,21 +361,25 @@ func (e *Engine) prepareForkBacking(ctx context.Context, lock *os.File, operatio
 }
 
 func (e *Engine) copyForkImages(ctx context.Context, lock *os.File, generation, destination string) error {
+	return e.copyForkImagesTo(ctx, lock, generation, e, lock, destination)
+}
+
+func (e *Engine) copyForkImagesTo(ctx context.Context, sourceLock *os.File, generation string, targetEngine *Engine, targetLock *os.File, destination string) error {
 	source, err := e.root.Open(generation + "/images")
 	if err != nil {
 		return err
 	}
 	defer source.Close()
-	if err := e.root.Mkdir(destination+"/images", 0700); err != nil {
+	if err := targetEngine.root.Mkdir(destination+"/images", 0700); err != nil {
 		return err
 	}
-	target, err := e.root.Open(destination + "/images")
+	target, err := targetEngine.root.Open(destination + "/images")
 	if err != nil {
 		return err
 	}
 	defer target.Close()
 	command := exec.CommandContext(ctx, "cp", "-a", "--reflink=auto", "--", "/proc/self/fd/3/.", "/proc/self/fd/4/")
-	command.ExtraFiles = []*os.File{source, target, lock}
+	command.ExtraFiles = []*os.File{source, target, sourceLock, targetLock}
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("copy private fork images: %w: %.4096s", err, output)
 	}
@@ -367,7 +388,7 @@ func (e *Engine) copyForkImages(ctx context.Context, lock *os.File, generation, 
 		return err
 	}
 	for _, entry := range entries {
-		file, err := e.root.Open(destination + "/images/" + entry.Name())
+		file, err := targetEngine.root.Open(destination + "/images/" + entry.Name())
 		if err != nil {
 			return err
 		}
@@ -450,8 +471,11 @@ func (e *Engine) forkOverlay(bundle, operation string, intent forkIntent) error 
 	if err != nil || len(entries) != 0 {
 		return fmt.Errorf("fork rootfs mountpoint is not empty: %v", err)
 	}
+	// Sysbox remounts this upper layer with mapped lowers in the child's mount
+	// namespace. Require the mount-local setting even when the worker's overlay
+	// module enables exclusive indexed uppers by default.
 	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0,
-		"lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
+		"index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
 		return err
 	}
 	return sysboxcapture.CheckOverlayLayout(bundle)

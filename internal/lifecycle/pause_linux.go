@@ -12,16 +12,17 @@ import (
 )
 
 type PauseOperation struct {
-	SnapshotID  string         `json:"snapshot_id"`
-	RequestedAt string         `json:"requested_at"`
-	CompletedAt string         `json:"completed_at,omitempty"`
-	RejectedAt  string         `json:"rejected_at,omitempty"`
-	Error       string         `json:"error,omitempty"`
-	SourcePID   int            `json:"source_pid"`
-	Before      SandboxMemory  `json:"before"`
-	After       SandboxMemory  `json:"after"`
-	Snapshot    SnapshotMemory `json:"snapshot"`
-	Resume      *Operation     `json:"resume,omitempty"`
+	SnapshotID       string         `json:"snapshot_id"`
+	CheckpointSHA256 string         `json:"checkpoint_sha256,omitempty"`
+	RequestedAt      string         `json:"requested_at"`
+	CompletedAt      string         `json:"completed_at,omitempty"`
+	RejectedAt       string         `json:"rejected_at,omitempty"`
+	Error            string         `json:"error,omitempty"`
+	SourcePID        int            `json:"source_pid"`
+	Before           SandboxMemory  `json:"before"`
+	After            SandboxMemory  `json:"after"`
+	Snapshot         SnapshotMemory `json:"snapshot"`
+	Resume           *Operation     `json:"resume,omitempty"`
 }
 
 func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
@@ -120,6 +121,11 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 	if err != nil {
 		return View{Record: record, Runtime: state}, err
 	}
+	identity, err := json.Marshal(captured)
+	if err != nil {
+		return View{Record: record, Runtime: state}, err
+	}
+	record.Pause.CheckpointSHA256 = sum(identity)
 	record.Pause.Snapshot, record.Pause.After, record.Pause.CompletedAt = snapshotMemory, after, now()
 	record.Phase = "paused"
 	return View{Record: record, Runtime: state}, e.write(record)

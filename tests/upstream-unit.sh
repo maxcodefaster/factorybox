@@ -78,7 +78,7 @@ done
 docker info > /output/docker-info.txt
 if test "${FACTORYBOX_UPSTREAM_SUITE:-all}" = all; then
   test -n "${FACTORYBOX_TEST_ALPINE_IMAGE:-}"
-  docker pull "$FACTORYBOX_TEST_ALPINE_IMAGE" > /output/alpine-pull.txt 2>&1
+  docker load --input=/alpine.tar > /output/alpine-load.txt 2>&1
   docker tag "$FACTORYBOX_TEST_ALPINE_IMAGE" alpine:latest
   docker image inspect alpine:latest > /output/alpine-inspect.json
 fi

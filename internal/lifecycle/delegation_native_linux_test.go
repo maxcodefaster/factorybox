@@ -16,6 +16,17 @@ func TestDelegatedCgroupForkNative(t *testing.T) {
 	if os.Getenv("FACTORYBOX_NATIVE_DELEGATION") != "1" {
 		t.Skip("requires the owned delegated-cgroup checkpoint fixture")
 	}
+	delegatedCgroupForkNative(t, "cpuset cpu io memory pids", false)
+}
+
+func TestAuxiliaryDelegatedCgroupForkNative(t *testing.T) {
+	if os.Getenv("FACTORYBOX_NATIVE_AUXILIARY_DELEGATION") != "1" {
+		t.Skip("requires this worker's complete cgroup-v2 controller fixture")
+	}
+	delegatedCgroupForkNative(t, "cpuset cpu io memory hugetlb pids rdma misc dmem", true)
+}
+
+func delegatedCgroupForkNative(t *testing.T, controllers string, auxiliary bool) {
 	engine, bundle := nativeEngine(t, "/bin/env FACTORYBOX_CAPTURE_ACTOR=1 /bin/capture-actor -test.run=^TestCaptureActor$ -test.timeout=0")
 	binary, err := os.ReadFile(os.Args[0])
 	if err != nil {
@@ -89,7 +100,7 @@ for controller in cpuset cpu io memory pids; do
 done
 for branch in first second; do
   mkdir "/sys/fs/cgroup/docker/$branch"
-  /bin/sleep 300 </dev/null >/dev/null 2>&1 &
+  /bin/sleep inf </dev/null >/dev/null 2>&1 &
   printf '%s\n' "$!" > "/sys/fs/cgroup/docker/$branch/cgroup.procs"
 done
 printf '67108864\n' > /sys/fs/cgroup/docker/first/memory.max
@@ -99,16 +110,81 @@ printf '48\n' > /sys/fs/cgroup/docker/second/pids.max
 printf '50000 100000\n' > /sys/fs/cgroup/docker/first/cpu.max
 printf '25000 100000\n' > /sys/fs/cgroup/docker/second/cpu.max
 `
+	script = strings.ReplaceAll(script, "for controller in cpuset cpu io memory pids; do", "for controller in "+controllers+"; do")
 	_, setupErr := engine.command(ctx, control, "exec", source.Record.RuntimeID, "/bin/sh", "-ec", script)
 	closeErr := control.Close()
 	if setupErr != nil || closeErr != nil {
 		details, readErr := os.ReadFile(bundle + "/rootfs/state/delegation-setup.log")
 		t.Fatalf("prepare delegated cgroups: %v %v; workload log=%s (%v)", setupErr, closeErr, details, readErr)
 	}
+	auxiliaryLimits := map[string]map[string]string{}
+	if auxiliary {
+		auxiliaryLimits = map[string]map[string]string{
+			"first":  {"hugetlb.2MB.max": "4194304", "hugetlb.2MB.rsvd.max": "2097152", "hugetlb.1GB.max": "1073741824", "hugetlb.1GB.rsvd.max": "1073741824"},
+			"second": {"hugetlb.2MB.max": "8388608", "hugetlb.2MB.rsvd.max": "4194304", "hugetlb.1GB.max": "2147483648", "hugetlb.1GB.rsvd.max": "1073741824"},
+		}
+		for branch, limits := range auxiliaryLimits {
+			path := cgroupRoot + "/" + source.Record.RuntimeID + "/docker/" + branch
+			for property, value := range limits {
+				if err := os.WriteFile(path+"/"+property, []byte(value), 0600); err != nil {
+					t.Fatal("owned hugepage limit setup without page allocation", err)
+				}
+			}
+			for _, property := range []string{"rdma.max", "misc.max", "dmem.max"} {
+				data, err := os.ReadFile(path + "/" + property)
+				if err != nil {
+					t.Fatal("read actual auxiliary controller limit", err)
+				}
+				limits[property] = strings.TrimSpace(string(data))
+			}
+		}
+	}
+	checkAuxiliaryLimits := func(id string) {
+		t.Helper()
+		for branch, limits := range auxiliaryLimits {
+			for property, expected := range limits {
+				data, err := os.ReadFile(cgroupRoot + "/" + id + "/docker/" + branch + "/" + property)
+				if err != nil || strings.TrimSpace(string(data)) != expected {
+					t.Fatal("auxiliary controller limit changed", id, branch, property, string(data), expected, err)
+				}
+			}
+		}
+	}
 	before, err = readCaptureActor(source.Runtime.PID, "open-cgroup-limit")
 	if err != nil || before.CgroupLimit != "67108864" {
 		t.Fatal("open delegated controller descriptor", before.CgroupLimit, err)
 	}
+	observedPIDs := map[string]bool{}
+	logMembership := func(phase string, ids ...string) {
+		t.Helper()
+		for _, id := range ids {
+			for _, leaf := range []string{"init.scope", "docker/first", "docker/second"} {
+				members, err := os.ReadFile(cgroupRoot + "/" + id + "/" + leaf + "/cgroup.procs")
+				t.Logf("%s %s/%s members=%q error=%v", phase, id, leaf, members, err)
+				if err != nil || len(strings.Fields(string(members))) != 1 {
+					t.Fatalf("%s lost its delegated leaf process: %s/%s: %q: %v", phase, id, leaf, members, err)
+				}
+				for _, pid := range strings.Fields(string(members)) {
+					observedPIDs[pid] = true
+					group, groupErr := os.ReadFile("/proc/" + pid + "/cgroup")
+					status, statusErr := os.ReadFile("/proc/" + pid + "/status")
+					var identity []string
+					for _, line := range strings.Split(string(status), "\n") {
+						if strings.HasPrefix(line, "Name:") || strings.HasPrefix(line, "State:") ||
+							strings.HasPrefix(line, "PPid:") || strings.HasPrefix(line, "NSpid:") {
+							identity = append(identity, line)
+						}
+					}
+					t.Logf("member %s cgroup=%q identity=%q errors=%v/%v", pid, group, identity, groupErr, statusErr)
+				}
+			}
+		}
+		for pid := range observedPIDs {
+			stat, err := os.ReadFile("/proc/" + pid + "/stat")
+			t.Logf("%s retained pid=%s stat=%q error=%v", phase, pid, stat, err)
+		}
+	}
+	logMembership("before checkpoint", source.Record.RuntimeID)
 	snapshot := strings.Repeat("e", 32)
 	start := time.Now()
 	captured, err := engine.Checkpoint(ctx, "delegated", snapshot)
@@ -116,11 +192,15 @@ printf '25000 100000\n' > /sys/fs/cgroup/docker/second/cpu.max
 		t.Fatal("capture delegated subtree", err)
 	}
 	t.Logf("delegated cgroup checkpoint=%s", time.Since(start))
+	logMembership("after checkpoint", source.Record.RuntimeID)
 	start = time.Now()
 	forked, err := forkNativeCLI(engine, "delegated", snapshot, "delegated-fork")
 	if err != nil {
 		t.Fatal("restore delegated cgroup subtree", err)
 	}
+	logMembership("after fork", source.Record.RuntimeID, forked.Record.RuntimeID)
+	checkAuxiliaryLimits(source.Record.RuntimeID)
+	checkAuxiliaryLimits(forked.Record.RuntimeID)
 	t.Cleanup(func() {
 		if _, err := engine.Delete(ctx, "delegated-fork"); err != nil {
 			t.Error(err)
@@ -136,7 +216,7 @@ printf '25000 100000\n' > /sys/fs/cgroup/docker/second/cpu.max
 		for _, suffix := range []string{"", "/docker"} {
 			path := cgroupRoot + "/" + id + suffix + "/cgroup.subtree_control"
 			data, err := os.ReadFile(path)
-			if err != nil || strings.TrimSpace(string(data)) != "cpuset cpu io memory pids" {
+			if err != nil || strings.TrimSpace(string(data)) != controllers {
 				t.Fatal("delegated controllers changed", id, suffix, string(data), err)
 			}
 			data, err = os.ReadFile(cgroupRoot + "/" + id + suffix + "/cgroup.procs")
@@ -227,6 +307,7 @@ printf '25000 100000\n' > /sys/fs/cgroup/docker/second/cpu.max
 	if err != nil {
 		t.Fatal("resume original delegated cgroup subtree", err)
 	}
+	checkAuxiliaryLimits(resumed.Record.RuntimeID)
 	if resumed.Record.RuntimeID != forked.Record.RuntimeID ||
 		!reflect.DeepEqual(resumed.Record.Cgroup, forked.Record.Cgroup) {
 		t.Fatal("resume replaced the original delegated cgroup identity")
@@ -237,9 +318,9 @@ printf '25000 100000\n' > /sys/fs/cgroup/docker/second/cpu.max
 	}
 	for _, suffix := range []string{"", "/docker"} {
 		path := cgroupRoot + "/" + resumed.Record.RuntimeID + suffix
-		controllers, err := os.ReadFile(path + "/cgroup.subtree_control")
-		if err != nil || strings.TrimSpace(string(controllers)) != "cpuset cpu io memory pids" {
-			t.Fatal("resume changed delegated controllers", suffix, string(controllers), err)
+		observedControllers, err := os.ReadFile(path + "/cgroup.subtree_control")
+		if err != nil || strings.TrimSpace(string(observedControllers)) != controllers {
+			t.Fatal("resume changed delegated controllers", suffix, string(observedControllers), err)
 		}
 		members, err := os.ReadFile(path + "/cgroup.procs")
 		if err != nil || len(strings.Fields(string(members))) != 0 {
@@ -298,6 +379,15 @@ printf '25000 100000\n' > /sys/fs/cgroup/docker/second/cpu.max
 	childActor, err := readCaptureActor(child.Runtime.PID, "get")
 	if err != nil || !reflect.DeepEqual(resumedActor, childActor) {
 		t.Fatal("fork of resumed delegated runtime lost complete RAM or its controller descriptor", err)
+	}
+	checkAuxiliaryLimits(resumed.Record.RuntimeID)
+	checkAuxiliaryLimits(child.Record.RuntimeID)
+	if auxiliary {
+		if err := os.WriteFile(cgroupRoot+"/"+child.Record.RuntimeID+"/docker/first/hugetlb.2MB.max", []byte("16777216"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		checkAuxiliaryLimits(resumed.Record.RuntimeID)
+		t.Log("all nine worker controllers, finite 2-MiB/1-GiB hugepage limits without page allocation, actual RDMA/misc/dmem limits and independent resumed-child mutation passed")
 	}
 	if _, err := readCaptureActor(child.Runtime.PID, "advance"); err != nil {
 		t.Fatal(err)

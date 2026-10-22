@@ -107,6 +107,14 @@ func (f *fixture) attachIDE(source lifecycle.View) {
 	if err := os.WriteFile("/output/theia-request.json.partial", request, 0600); err != nil {
 		f.t.Fatal(err)
 	}
+	outputInfo, err := os.Stat("/output")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	outputOwner := outputInfo.Sys().(*syscall.Stat_t)
+	if err := os.Chown("/output/theia-request.json.partial", int(outputOwner.Uid), int(outputOwner.Gid)); err != nil {
+		f.t.Fatal(err)
+	}
 	if err := os.Rename("/output/theia-request.json.partial", "/output/theia-request.json"); err != nil {
 		f.t.Fatal(err)
 	}

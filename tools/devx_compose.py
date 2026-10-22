@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import uuid
 
+import build_config
 import devx_inputs
 import devx_project_images
 import native_base
@@ -24,10 +25,14 @@ def main():
     parser.add_argument("--consumer-inputs", required=True)
     parser.add_argument("--project-images", required=True)
     parser.add_argument("--native-base-build", required=True, help="Exact native archive helper image")
+    parser.add_argument("--candidate-platform", choices=["linux/amd64"])
     options = parser.parse_args()
-    _, consumers = devx_inputs.load(options.consumer_inputs)
-    archive_image, _ = native_base.load(options.native_base_build)
-    project_archive, projects = devx_project_images.load(options.project_images)
+    target = options.candidate_platform or "linux/arm64"
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
+    native_base.require_native_host(target, host)
+    _, consumers = devx_inputs.load(options.consumer_inputs, platform=target)
+    archive_image, _ = native_base.load(options.native_base_build, candidate_platform=options.candidate_platform)
+    project_archive, projects = devx_project_images.load(options.project_images, platform=target)
     owner = uuid.uuid4().hex
     name = "factorybox-devx-compose-" + owner
     archive = reference.new_artifact(name)
@@ -49,6 +54,8 @@ def main():
         "project_archive_sha256": projects["archive_sha256"],
         "example": upstream_unit.context_manifest(archive / "example"),
         "passed": False, "cleanup": False, "production_qualified": False,
+        "platform": target, "candidate_platform": bool(options.candidate_platform),
+        "native_lifecycle_qualified": False,
         "scope": "Component conformance using real private Docker, Compose, Dev Containers CLI, "
                  "project hooks and Node app RAM. Not a Sysbox/Factorybox checkpoint/fork/resume, "
                  "Theia or active Connector-control proof.",
@@ -57,7 +64,7 @@ def main():
     volumes = []
     failure = None
     try:
-        env = dict(os.environ, GOOS="linux", GOARCH="arm64", CGO_ENABLED="0")
+        env = dict(os.environ, GOOS="linux", GOARCH=build_config.architecture(target), CGO_ENABLED="0")
         subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-o", str(worker),
                         "./tests/devx-worker"], cwd=ROOT, env=env, check=True, timeout=60)
         registry = archive / "devx-registry"
@@ -67,10 +74,11 @@ def main():
             worker, registry, archive / "devx-compose-check.sh", archive / "devx-observation.cjs",
             archive / "project-images.json"]}
         command = [
-            *reference.DOCKER, "run", "--pull=never", "--name", name,
+            *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
             "--label", "com.factorybox.run=" + owner, "--privileged", "--cgroupns=private",
             "--network=none", "--cpus=3", "--memory=3g", "--pids-limit=512",
             "--env", "FACTORYBOX_DEVX_WORKER=1",
+            "--env", "FACTORYBOX_NATIVE_PLATFORM=" + target,
             "--mount", f"type=bind,source={worker},target=/devx-worker,readonly",
             "--mount", f"type=bind,source={registry},target=/devx-registry,readonly",
             "--mount", f"type=bind,source={archive / 'devx-observation.cjs'},target=/devx-observation.cjs,readonly",

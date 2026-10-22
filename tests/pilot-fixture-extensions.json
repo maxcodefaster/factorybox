@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "previous_manifest": "tests/amd64-fixture-compatibility.json",
+  "baseline_artifact": "factorybox-pilot-baseline-8829afb65616415585502684623e6e5c",
+  "baseline_source_manifest_sha256": "f107b3d61864c1de47a08c219b24afb637634a444f53e74f592c8ac882d22ec2",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "context_patches": [
+    {
+      "patch": "tests/compatibility/retained-pidfd-eintr.patch",
+      "patch_sha256": "3c3ebd1e02a7a061bb38e9cc037c518bb2a03630e188091e86ca5dbd12ebd650",
+      "file": "internal/lifecycle/capture_retained_native_linux_test.go",
+      "before_sha256": "65e5e85c23b0ab2fe2ffaeade3cf04fd60f892ce3ebdd82f97e0a2f66fa513d1",
+      "after_sha256": "99d98e5c6c536b590402d08baafcfb8e30b0090dfc76ec8cfc26aba729258d95",
+      "reason": "Only in a fresh native context, retry pidfd poll on EINTR against the original absolute 100-ms observation deadline. Keep all original helper-liveness, source-freeze, retained-mapping and no-receipt assertions. A signal-interrupted poll is not a helper exit. The source-tree test and frozen C9 build context remain byte-identical."
+    }
+  ],
+  "files": {
+    "tests/devx-lifecycle-body.sh": {
+      "before_sha256": "473e69701e3e4d1535ff726dac824ac4e4795528c08abf82ab3089d08bc1314f",
+      "after_sha256": "b2070390a6d4b2c4a9b3d7998fa073c00050526d9495d7603619684dfd71afae",
+      "reason": "Only copy the additional real-agent tool fixture when its explicit optional flag is set. All original setup, lifecycle assertions, resource ceilings and deadlines remain."
+    },
+    "tests/wait-sysbox.sh": {
+      "before_sha256": "97518c2112972ec12fecd4284a05bfabac7043b3790c0ad961f27233a9e97ea0",
+      "after_sha256": "c47dc8c6f19862966e7ce433004cb0caf09ee7d7a313319978d46677126ae32b",
+      "reason": "After the existing failed startup verdict only, retain bounded owned-service thread/child diagnostics. Keep the original 60-second readiness requirement and failure. This does not resolve or waive the retained filesystem-service timeout."
+    },
+    "tests/criu-retained-candidate/native.py": {
+      "before_sha256": "60935a028de7272eda8e20473060a42f96fb8a1f6eb2800cdafcdab6d1ce7053",
+      "intermediate_sha256": ["999b48ee34f3d66aa652a7c691e5007e6c78dbce7aa3ae299bb6cc165539d31a"],
+      "after_sha256": "4b1957f718b498f1683a1913960094d8652319f084096365e1c5cee9fdd3461e",
+      "reason": "First require the original complete interrupted-capture suite plus additional filesystem-materialization/copy-time corruption and bounded checkpoint-config tests (8/40 to 11/61 adapters). Then apply and archive the exact declared EINTR compatibility patch only to a new test context. Preserve the source-tree test, every original exit/no-skip/grant/network/prior-checkpoint/cleanup assertion and vet."
+    },
+    "tests/devx-lifecycle/lifecycle_linux_test.go": {
+      "before_sha256": "04e8df9cb1e309819ef905fa15f51a0e4a2082fba6b6ec3d6efea9bd06791343",
+      "after_sha256": "78880e010d2560f98b6fcbdc7bb48eec95c8f174cdf02eeb312ec3c01ca0a15c",
+      "reason": "Keep every original Factory assertion and operation in its original order. Add optional active-agent result/independence checks, bounded declared watch roots and an explicit delivered-worker configuration path. The old packaged CLI uses that same verified worker's explicit lifecycle paths for comparison. Preserve source only in separate whole-worker-loss probes; ordinary complete lifecycle cleanup remains. Account worker/service startup separately from rootfs/base preparation when those services already run. Original RAM, immutable-base, filesystem, descendant, IDE and deadline assertions are unchanged."
+    },
+    "tests/devx-lifecycle/opencode_linux_test.go": {
+      "before_sha256": "cfd2c971c6b299cef5c3e9cb2e74496e45dd1466ec05e982d9eca2c46d661459",
+      "after_sha256": "3437b9dbe2ac8c73019f181b8b08543a4c0432799b7d189c87ded879cfa03428",
+      "reason": "After every original real OpenCode readiness assertion, additionally invoke the optional running-tool RAM/watch/result proof. The original API response assertions remain byte-identical."
+    }
+  }
+}

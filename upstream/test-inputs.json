@@ -3,10 +3,20 @@
     "image": "docker.io/library/alpine:3.24.2@sha256:260479a1cfaf304c4c20da7f8405d3ce313513dcd534bb743257bdd2fe0f3e2d",
     "source": "Same immutable consumer image as the minimal Dev Container; aliased only inside the owned test daemon"
   },
+  "alpine-amd64": {
+    "image": "docker.io/library/alpine:3.24.2@sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395",
+    "source": "AMD64 child of official Alpine 3.24.2 index sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6; acquisition receipt factorybox-amd64-alpine-input-6f5ca27a527f4a618474f03954856b87"
+  },
   "busybox-arm64": {
     "archive": "sysbox-test-busybox-arm64-8141f5b047a1fbeefd842388244c045825a61c90.tar.gz",
     "sha256": "499bcf3c8ead8ef2570f7ee8e4ab5a4489647d67dd1c1b425fdbd4a74f4b4386",
     "url": "https://raw.githubusercontent.com/docker-library/busybox/8141f5b047a1fbeefd842388244c045825a61c90/latest/glibc/arm64v8/rootfs.tar.gz",
     "source": "Pinned sysbox-runc tests/integration/multi-arch.bash arm64 rootfs"
+  },
+  "busybox-amd64": {
+    "archive": "sysbox-test-busybox-amd64-9c2d0c6fbaaf2ca1b4c19027fa515d9e797e7199.tar.gz",
+    "sha256": "80bfbb8a41a2b27d93763e96f5bdccb8ca289387946e406e6f24053f6a8e8494",
+    "url": "https://raw.githubusercontent.com/docker-library/busybox/9c2d0c6fbaaf2ca1b4c19027fa515d9e797e7199/latest/glibc/amd64/rootfs.tar.gz",
+    "source": "Pinned sysbox-runc tests/integration/multi-arch.bash amd64 rootfs"
   }
 }

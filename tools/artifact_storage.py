@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bound generated test storage and compact explicitly selected offline payloads."""
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -86,7 +87,28 @@ def share_frozen_input(source, destination, root, expected_sha256):
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     if digest != expected_sha256 or identity(source) != before:
         raise ValueError("shared build input differs from its pinned digest")
-    os.link(source, destination, follow_symlinks=False)
+    try:
+        os.link(source, destination, follow_symlinks=False)
+    except OSError as error:
+        if error.errno not in {errno.EPERM, errno.EACCES, errno.EXDEV}:
+            raise
+        # Native Linux protects hardlinks to another user's build outputs.
+        # Copy into a new file rather than changing frozen ownership or a
+        # global kernel setting; retain the same whole-file digest checks.
+        try:
+            with destination.open("xb") as output, source.open("rb") as stream:
+                shutil.copyfileobj(stream, output)
+            with destination.open("rb") as stream:
+                copied_digest = hashlib.file_digest(stream, "sha256").hexdigest()
+            if identity(source) != before or copied_digest != expected_sha256:
+                raise ValueError("frozen build input changed while copying")
+            destination.chmod(source.stat().st_mode & 0o555)
+        except FileExistsError:
+            raise
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+        return
     try:
         linked = identity(destination)
         if linked[:4] != before[:4]:

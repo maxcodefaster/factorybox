@@ -1,0 +1,37 @@
+--- a/criu/cgroup-props.c
++++ b/criu/cgroup-props.c
+@@ -48,6 +48,13 @@
+ 	"pids.max",
+ 	"cpu.max",
+ 	"memory.max",
++	"hugetlb.2MB.max",
++	"hugetlb.2MB.rsvd.max",
++	"hugetlb.1GB.max",
++	"hugetlb.1GB.rsvd.max",
++	"rdma.max",
++	"misc.max",
++	"dmem.max",
+ };
+ // clang-format on
+ 
+--- a/criu/cgroup.c
++++ b/criu/cgroup.c
+@@ -1751,6 +1751,8 @@
+ 		off2 += sprintf(path + off, "/%s", e->dir_name);
+ 		for (j = 0; j < e->n_properties; ++j) {
+ 			CgroupPropEntry *p = e->properties[j];
++			bool resource_lines = !strcmp(p->name, "rdma.max") || !strcmp(p->name, "misc.max") ||
++					      !strcmp(p->name, "dmem.max");
+ 
+ 			if (!strcmp(p->name, "freezer.state")) {
+ 				add_freezer_state_for_restore(p, path, off2);
+@@ -1775,7 +1777,8 @@
+ 				continue;
+ 			}
+ 
+-			if (restore_cgroup_prop(p, path, off2, false, false) < 0)
++			/* These v2 controllers accept one resource limit per write. */
++			if (restore_cgroup_prop(p, path, off2, resource_lines, false) < 0)
+ 				return -1;
+ 		}
+ 	skip:

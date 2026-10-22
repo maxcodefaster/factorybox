@@ -78,4 +78,5 @@ func (f *fixture) harnessReady(phase string, view lifecycle.View) {
 	if err := os.WriteFile(path, append(data, '\n'), 0600); err != nil {
 		f.t.Fatal(err)
 	}
+	f.agentFlowReady(phase, view)
 }

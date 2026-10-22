@@ -10,7 +10,10 @@
         "upstream/patches/criu-detached-proc-root.patch": "4e9c031dd304baf421230f107297579b1fca1908c17135278197bac99f4bcc07",
         "upstream/patches/criu-delegation-after-cgroupns.patch": "79755ab41d523a048acab76ca1f5629b170ddc7a5564f31bee741ba1728441d7",
         "upstream/patches/criu-v2-memory-limit.patch": "92bdd132094b31d6c8688452849b2c260a63ff1abd2c3e893c5e549e12ae1700",
-        "upstream/patches/criu-detached-proc-self-fd.patch": "3b0b08d2dfaef24dbb6ab1604e4b2d410aebcad8261d533a7d53c7a01541766d"
+        "upstream/patches/criu-detached-proc-self-fd.patch": "3b0b08d2dfaef24dbb6ab1604e4b2d410aebcad8261d533a7d53c7a01541766d",
+        "upstream/patches/criu-nested-shared-proc.patch": "256cb9b012c71f52f3053de3bd036f0e5a3ce10e86e620910ac161517e6c22df",
+        "upstream/patches/criu-nested-zombie-pid.patch": "46272d2035c6a9aa7ebbc30bf645203d7a28fa4331a664ace6da0043a9ca12b9",
+        "upstream/patches/criu-cgroup-v2-auxiliary-limits.patch": "568004206b39baa2bce3d5223e41c45fab2aff136a9540159b97c87aaa2c1025"
       },
       "overlays": {},
       "patches": [
@@ -20,7 +23,10 @@
         "upstream/patches/criu-detached-proc-root.patch",
         "upstream/patches/criu-delegation-after-cgroupns.patch",
         "upstream/patches/criu-v2-memory-limit.patch",
-        "upstream/patches/criu-detached-proc-self-fd.patch"
+        "upstream/patches/criu-detached-proc-self-fd.patch",
+        "upstream/patches/criu-nested-shared-proc.patch",
+        "upstream/patches/criu-nested-zombie-pid.patch",
+        "upstream/patches/criu-cgroup-v2-auxiliary-limits.patch"
       ],
       "prefix": "criu-086df34a2da27125fa05e66ba4d6b63cbb220b2e",
       "prepared_files_sha256": {
@@ -408,8 +414,8 @@
         "criu/bfd.c": "28c7466b9eba550bac0740c6d0827a3d7bb617eac9e6cf01b8aee09c50c52c2f",
         "criu/bitmap.c": "adb8536810f1214c38db50f62371b8a870a5c28ae59d9bfd3bd72ce90ce6794d",
         "criu/bpfmap.c": "5fc6d85b7a6919d51f8b5f583abb53e65d7098ab5d6205f0000753bb1057f07a",
-        "criu/cgroup-props.c": "b3662c632619984dc1d01e291302339f8b494b189ba6bc4e1641432ec22ea804",
-        "criu/cgroup.c": "4ae33a8445260fa81e6d6bc9f629e902aab730bc611de3b81497a39de5d0dd19",
+        "criu/cgroup-props.c": "abd4a3fec9846539aea56d48ffc7095ae5a109d26f02370ca0f130f6136fad63",
+        "criu/cgroup.c": "a2d8418810b5bd45081cb458650058454d5072dd3f86cb8bbbc96feb800c226f",
         "criu/clone-noasan.c": "08ce6c89da1660251f77e55e45938301e76db7e1ee4c1f129a0b467cb2b1d143",
         "criu/config.c": "dfcffaabd502f13ca095ef33cfcc01d32bf6f6d36eb0bdab009d0935e3dc60dd",
         "criu/cow-capture.c": "f05b55e0e4a7ea211805e8a4ac439e705ae8720ecb13218597cc75322de3f434",
@@ -417,7 +423,7 @@
         "criu/cr-dedup.c": "364f319fbe12edc0e8b6c0167a0f455f8db566e94e7716d989327da78c726e35",
         "criu/cr-dump.c": "cfaca23f52d813d0787e257a2047a155529c413f9eba4def0f91c20056237edc",
         "criu/cr-errno.c": "bc257bb96c11610edb62b921d8211a116840d99f566214a49d4c7b7e061a74a8",
-        "criu/cr-restore.c": "aa02a49711dc2eb1e69f36ab7697f15b2a9a72bc44f088e038d2c2df761c6979",
+        "criu/cr-restore.c": "efa8b71865bbbc267813e136fde641ae2725bf2f5b7295b6258ea158555ebfcc",
         "criu/cr-service.c": "a73bfe48b97c5afe14d07f5e853dd609338ffa6fd120c0aab3179d29de223ef6",
         "criu/crtools.c": "59a306d3f36f7a5a412331406825f6c01abfbdae171e45e79382f33e3d60f57f",
         "criu/eventfd.c": "cc2b5bb98888b54bcb799537324783c73d97cb7b010ee503dd107e520bd3ce80",
@@ -510,7 +516,7 @@
         "criu/include/mount-v2.h": "554fbda7bae9934e18f939d00b461d26a0d0296d442e561c41254533da10f4e9",
         "criu/include/mount.h": "4988a63d44ab3a22feb39372b199704dd4ad21cc06972a8575a70a0e610f55ae",
         "criu/include/namespaces.h": "cb868d94b5279bc55e8bfd3b73ac3c756a80406026fa842a662a87fcb9f9903c",
-        "criu/include/nested-ns.h": "2b21a8746ba803bb8ab36660f02263e4ed7a2636a793f081f051eae9309428fc",
+        "criu/include/nested-ns.h": "81054c51b308b14707dd977ee9fa8e582b7fafc8bad044db5de60bd81323963e",
         "criu/include/net-clm-conntrack.h": "ceff4c32ecec98a89f1c4fb13f80a4e7d9e008a07338ad45f93a6b60cd88340d",
         "criu/include/net.h": "56116af7f649e9b0086149a8ddb669737c990dd2dc6ac248964984f5fe7a34ed",
         "criu/include/netfilter.h": "3b0f6c9ee6bf5bd726cb60d2ea131503eb6129e08d5c7cc223c22ca0b6a66a97",
@@ -538,7 +544,7 @@
         "criu/include/proc_parse.h": "15923db6fc7cf328a3016085548036bd02285c737e2ba5928e42b28a1fb8b20b",
         "criu/include/protobuf-desc.h": "4289955a16789aa1d5812f5e1ca20d1ca15e7b0b144e6e840e1f82719f6365ba",
         "criu/include/protobuf.h": "500e4cccd955304ef63f08e84fb896d4d34a8a6f114abdc7f068fb1e802dadb8",
-        "criu/include/pstree.h": "2e9b29c40a10f813e922d9717e4116cc08c8bf3bd282772ef8b472fc8ee99544",
+        "criu/include/pstree.h": "94b0761f604b8e21ba9880dd77626af4daf5414c672671ca8e93173b115cd506",
         "criu/include/ptrace-compat.h": "a0178eec8e768b706464a14716c20acc11bf1de5f7ae139dbc2856844189b6db",
         "criu/include/rbtree.h": "a867223778717a4adfdbe058a5b62879758496664b0967450beb8b53c3781267",
         "criu/include/restore.h": "5b2f0bef0eb3579b50ac137eae55ca561e27d4086d6d7a3c368c12d5c041a97a",
@@ -598,9 +604,9 @@
         "criu/mount-v2.c": "8aff4d173ccddcfa66cb2c5e0b928e10cb3914d92c4d10b6b2e1fef3921f6599",
         "criu/mount.c": "f946e524c41eb50d69db050ab791920073de217cdbe2d689d561c8ba32828408",
         "criu/namespaces.c": "e22c91c118f212229e5a1fadc14a7a079b73e4e7e9c535d06295aed474207b17",
-        "criu/nested-mnt.c": "05fdb425c8608e8e03b0c08d20bfc7536b3a64efc9a85857ba9d3c72bd22b8a5",
+        "criu/nested-mnt.c": "02c950ace4694b5e918dfc4ccfb3dc8acad72d1983c77eb49de1ee27ca509d5b",
         "criu/nested-net.c": "0a2140bee02de2c1d5533d5ed51455fe78349508ee0b2f2df2cf7b4922258700",
-        "criu/nested-ns.c": "5748b7723ea328d62211ce21fd5c264f398a50fc66ed5893220736d870358e65",
+        "criu/nested-ns.c": "da77aa6a7f66f74b5d0ac45e65716df3608629908f5e7cdd49bd48c4a68e23b4",
         "criu/nested-pstree.c": "e666b055dc68154cdf12259c2a6e319ddd9c5182e7863c85b4c81cfe0a25a97c",
         "criu/nested-runtime.c": "740baad250c66124342f1ec8e4e01d3b1ef460e84f511e9ef6169d8bf542b480",
         "criu/nested-userns.c": "12c3d0de226e19c8e4cdd02dbd70d3f7535c0302bede275c1e6c590be0aaaeb1",
@@ -631,7 +637,7 @@
         "criu/proc_parse.c": "0845f7e4e4dbdcdedc326cf71ec9c09fbb90af6f699eaea03fed9c5daf3f224e",
         "criu/protobuf-desc.c": "37d9a4c25b1505c15215b3dd1a57cc07090c429ecf7ff6cef86100ce3a80284d",
         "criu/protobuf.c": "bb98793e51c135757e3ee80db685292d5a54be14c35fe15adc2556eb797908d8",
-        "criu/pstree.c": "49b1dc498c6008798ed9f33bad32867e13e0ead298f68f8ca6aaa320415a2704",
+        "criu/pstree.c": "944780b54ff44f4bd3cc0c8731ee0ace1addf634a343de990a81315738bcb872",
         "criu/rbtree.c": "2424e5201b5a03bd324e9e7d9e43da1d9d962cea25220d05019d9730c18e727d",
         "criu/rst-malloc.c": "d623d7be0560686d6efaf8140253a7759872889d6e390cfaa60041eef11edecf",
         "criu/seccomp.c": "0de21dd440b2589ee354fb5644c8772ce3e6828663d81e943bd994e231f5f221",
@@ -718,7 +724,7 @@
         "images/pidns.proto": "22e982f2c5617ef1d1db4533236bb8ec946d2e4ded530b82e100dcf3c3b50eae",
         "images/pipe-data.proto": "6363b0ce09269fb3387c4a069cd102cd9b3bf9543d4fe7750754825866ed549e",
         "images/pipe.proto": "ea6b2a6061ab26a28b2cfc849e1e94ecccd2cf79bc5662e570d55e15302152f6",
-        "images/pstree.proto": "055d6bde5ce2994414407a9a189c713d1d84221958c1b26eab1f6b0063133ac9",
+        "images/pstree.proto": "32fb9620dd5a56a6ab0b9bfe88603f776aea228235e9e431d6b05b1a652cb184",
         "images/regfile.proto": "c6e516288a169fda2edb72ba9f84da8308dea36e9e75cb637e26aaac092c0b67",
         "images/remap-file-path.proto": "ab2ff01bcea5771718d41c949d653d5e06d4f991fd5a6d82b4ca40444bd6d7d3",
         "images/rlimit.proto": "60f39a803de5b7e2a0eca34dfb290abb523156c3cb5568d9634ca376512d1672",
@@ -919,11 +925,13 @@
       "archive": "sysbox-mgr-2d45af01.tar.gz",
       "commit": "2d45af01bcfd8641e6641f76104c6003bf501cd7",
       "local_inputs_sha256": {
-        "upstream/patches/sysbox-mgr-test-diagnostics.patch": "1c11808cc65c17123e2e1502ec061bf5f427b5e2eed6e04ea8d99d4ddc0f1987"
+        "upstream/patches/sysbox-mgr-test-diagnostics.patch": "1c11808cc65c17123e2e1502ec061bf5f427b5e2eed6e04ea8d99d4ddc0f1987",
+        "upstream/patches/sysbox-mgr-binfmt-policy.patch": "e9e9dc6c48947f180fcda726c31de02410f0c4bb01d7a6df8f4f4f5e52d4a90a"
       },
       "overlays": {},
       "patches": [
-        "upstream/patches/sysbox-mgr-test-diagnostics.patch"
+        "upstream/patches/sysbox-mgr-test-diagnostics.patch",
+        "upstream/patches/sysbox-mgr-binfmt-policy.patch"
       ],
       "prefix": "sysbox-mgr-2d45af01bcfd8641e6641f76104c6003bf501cd7",
       "repository": "nestybox/sysbox-mgr",
@@ -971,7 +979,8 @@
         "upstream/patches/sysbox-runc-factorybox-restore.patch": "77001ca91e2109509ecc995993fbdb73885cadb0c92b222922d70b42786a7758",
         "upstream/patches/sysbox-runc-restore-receipt.patch": "b997efb01f5850d0d08ba04f51f84545f862b7f2656d5ae1dd83b64a5147355f",
         "upstream/patches/sysbox-runc-factorybox-resume.patch": "7da699508761d0c60b46fe4c777c34c50a6f3bf5713669bc5e98c3298c9f5459",
-        "upstream/patches/sysbox-runc-restore-delegation-leaf.patch": "c739e8a7ee05f73b5ea16c5b45f231ab079b50851871a8d042647829a6145aad"
+        "upstream/patches/sysbox-runc-restore-delegation-leaf.patch": "c739e8a7ee05f73b5ea16c5b45f231ab079b50851871a8d042647829a6145aad",
+        "upstream/patches/sysbox-runc-factorybox-overlay-index.patch": "af6fce9e0cf5ffc4ebf97f5ed268c8a15a1b0bfbda8c5f8e4e10c9f9c637646c"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -1001,7 +1010,8 @@
         "upstream/patches/sysbox-runc-factorybox-restore.patch",
         "upstream/patches/sysbox-runc-restore-receipt.patch",
         "upstream/patches/sysbox-runc-factorybox-resume.patch",
-        "upstream/patches/sysbox-runc-restore-delegation-leaf.patch"
+        "upstream/patches/sysbox-runc-restore-delegation-leaf.patch",
+        "upstream/patches/sysbox-runc-factorybox-overlay-index.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
@@ -1030,7 +1040,7 @@
         "libcontainer/factorybox_restore_root_linux_test.go": "fd88c29e90203fa119cdab4149056a47fb6513c217e0508a2d566db17336d3e3",
         "main.go": "b88ed6bbd8de228d4363d92c3b053365e9097418fbf42bd446f09680b961bd17",
         "libcontainer/experiment_seccomp_linux.go": "09547f4889b780c25a73a8eb11732fe3fdf8e54ec82073edce6123bb47727f7f",
-        "libcontainer/factoryboxrestore/factorybox_rootfs_linux.go": "307a1b1cf240d92cb9edfdc19e9a5f8a40d47d2dd4986a934dc0ba61b6817a9d",
+        "libcontainer/factoryboxrestore/factorybox_rootfs_linux.go": "2f9d5efa1e7324ddbbb777224dccd59845ea41b7bc6d74dc968fe8b5c4aaa036",
         "libcontainer/factorybox_restore_cgroup_linux.go": "cec1f923bafee61a32bce65feebca1603e795c37ee9e845d41271b1b3660d04c",
         "factorybox_restore_receipt.go": "2e55536c7807779d87b715bd5457d329ee4bf6f86b942ddfbdc577122b046e83",
         "factorybox_restore_receipt_test.go": "9577b54e7da495b8d861f1a10c8ce0d05e229a2637832264c89fc1405c3fffcd",

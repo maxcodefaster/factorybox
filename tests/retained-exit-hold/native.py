@@ -14,12 +14,16 @@ import reference
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--native-base-build", required=True)
+parser.add_argument("--candidate-platform", choices=["linux/amd64"])
 parser.add_argument("--mode", choices=["pidfd", "exit-stop", "child-exit-stop", "child-cancel",
                                       "child-job-stop"], required=True)
 parser.add_argument("--observer-socket", action="store_true",
                     help="Apply the ordered socket EOF fix to the same observer used by CRIU")
 options = parser.parse_args()
-image, _ = native_base.load(options.native_base_build)
+target = options.candidate_platform or "linux/arm64"
+host = json.loads(reference.docker(["info", "--format", "{{json .}}" ]))
+native_base.require_native_host(target, host)
+image, _ = native_base.load(options.native_base_build, candidate_platform=options.candidate_platform)
 owner = uuid.uuid4().hex
 name = "factorybox-exit-hold-" + owner
 archive = reference.new_artifact(name)
@@ -41,6 +45,7 @@ inputs = {p.name: reference.sha(p) for p in archive.iterdir() if p.is_file()}
 result = {
     "owner": owner, "container_name": name, "mode": options.mode,
     "native_base_build": options.native_base_build, "inputs_sha256": inputs,
+    "platform": target, "native_lifecycle_qualified": False,
     "observer_socket": options.observer_socket,
     "passed": False, "cleanup": False, "production_qualified": False,
     "scope": "One actual timed source in its own private cgroup, held by an actual "
@@ -49,7 +54,7 @@ result = {
              "freeze under a real 100ms observer delay. No CRIU, Docker or runtime qualification.",
 }
 command = [
-    *reference.DOCKER, "run", "--pull=never", "--name", name,
+    *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
     "--label", "com.factorybox.run=" + owner, "--privileged", "--cgroupns=private",
     "--cpus=3", "--memory=3g", "--pids-limit=64", "--network=none", "--read-only",
     "--env", "FACTORYBOX_UPSTREAM_CONTAINER=1", "--tmpfs", "/tmp:rw,exec,size=32m",

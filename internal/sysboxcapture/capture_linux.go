@@ -81,6 +81,10 @@ func Capture(request Request) (Result, error) {
 		return result, err
 	}
 	config := container.Config()
+	checkpointConfiguration, err := checkpointConfigurationFromLabels(config.Labels)
+	if err != nil {
+		return result, err
+	}
 	owner := ""
 	for _, label := range config.Labels {
 		if strings.HasPrefix(label, "io.factorybox.owner=") {
@@ -134,7 +138,7 @@ func Capture(request Request) (Result, error) {
 	if err := writePrivate(request.Generation+"/runtime/"+request.RuntimeID+"/state.json", shadow); err != nil {
 		return result, err
 	}
-	if err := writePrivate(request.Generation+"/criu.conf", []byte("nested-ns\nsysbox-oom-floor\n")); err != nil {
+	if err := writePrivate(request.Generation+"/criu.conf", checkpointConfiguration); err != nil {
 		return result, err
 	}
 	if err := os.Mkdir(result.Images, 0700); err != nil {

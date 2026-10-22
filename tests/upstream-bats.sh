@@ -52,7 +52,10 @@ for attempt in $(seq 1 100); do
 done
 test -S /run/sysbox/sysmgr.sock
 test -S /run/sysbox/sysfs-seccomp.sock
-export TARGET_ARCH=arm64
+case "${FACTORYBOX_NATIVE_PLATFORM:-}" in
+  linux/arm64|linux/amd64) export TARGET_ARCH="${FACTORYBOX_NATIVE_PLATFORM#linux/}" ;;
+  *) echo 'an explicit native platform is required' >&2; exit 1 ;;
+esac
 suite="${FACTORYBOX_BATS_SUITE:?}"
 case "$suite" in
   lifecycle) selected=/tests/tests/lifecycle/basic.bats ;;
@@ -75,18 +78,26 @@ case "$suite" in
     docker image inspect ghcr.io/nestybox/ubuntu-focal-systemd:latest \
       ghcr.io/nestybox/ubuntu-focal-systemd-docker:latest > /output/test-images.json
     python3 - <<'PY'
-import json, pathlib
+import json, os, pathlib
 expected = json.loads(pathlib.Path("/expected-images.json").read_text())
 loaded = json.loads(pathlib.Path("/output/test-images.json").read_text())
 assert len(expected) == len(loaded) == 2
 for wanted, actual in zip(expected, loaded):
     assert wanted["id"] == actual["Id"], "loaded image configuration changed"
     assert wanted["alias"] in actual["RepoTags"], "upstream alias changed"
-    assert actual["Architecture"] == "arm64" and actual["Os"] == "linux"
+    assert actual["Architecture"] == os.environ["TARGET_ARCH"] and actual["Os"] == "linux"
 PY
     selected=/tests/tests/apps/l1/systemd.bats ;;
   *) exit 1 ;;
 esac
+if test "${FACTORYBOX_SYSTEMD_NETWORK_PROFILE:-}" = 1; then
+  test "$suite" = systemd
+  FACTORYBOX_BATS_DOCKER_REAL=$(command -v docker)
+  export FACTORYBOX_BATS_DOCKER_REAL
+  mkdir /run/factorybox-bats-bin
+  install -m 0755 /systemd-docker-cli.sh /run/factorybox-bats-bin/docker
+  export PATH="/run/factorybox-bats-bin:$PATH"
+fi
 arguments=(--tap)
 if test -n "${FACTORYBOX_BATS_TEST:-}"; then
   arguments+=(--filter "$FACTORYBOX_BATS_TEST")
@@ -97,4 +108,9 @@ timeout --signal=TERM --kill-after=5s 330s bats "${arguments[@]}" "$selected" \
 status=$?
 set -e
 printf '%s\n' "$status" > /output/tests.exit-code
+if test "$status" -ne 0 && test "$suite" = systemd; then
+  docker inspect sys-cont-systemd > /output/failed-systemd-container.json 2>&1 || true
+  docker exec sys-cont-systemd systemctl --failed --no-pager > /output/failed-systemd-units.txt 2>&1 || true
+  docker exec sys-cont-systemd journalctl -b --no-pager -n 160 > /output/failed-systemd-journal.txt 2>&1 || true
+fi
 exit "$status"

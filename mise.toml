@@ -7,7 +7,7 @@ GOTOOLCHAIN = "local"
 GOMAXPROCS = "2"
 
 [tasks.check]
-run = ["mise exec -- go test ./cmd/... ./internal/... ./tests/...", "mise exec -- python3 -m unittest discover -s tools -p 'test_*.py'"]
+run = "python3 tools/check.py"
 
 [tasks.build]
 run = "go build -trimpath -buildvcs=false -o dist/factorybox ./cmd/factorybox"

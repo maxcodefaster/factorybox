@@ -32,12 +32,12 @@ var digest = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var tokenID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 type Config struct {
-	Root          string
-	Runtime       string
-	RuntimeSHA256 string
-	Criu          string
-	CriuSHA256    string
-	ManagerRoot   string
+	Root          string `json:"root"`
+	Runtime       string `json:"runtime"`
+	RuntimeSHA256 string `json:"runtime_sha256"`
+	Criu          string `json:"criu"`
+	CriuSHA256    string `json:"criu_sha256"`
+	ManagerRoot   string `json:"manager_root"`
 }
 
 type Operation struct {
@@ -92,7 +92,7 @@ func Open(config Config) (_ *Engine, resultErr error) {
 	}
 	info, err := platform.Current()
 	if err == nil {
-		err = info.CheckReference()
+		err = info.CheckExecution()
 	}
 	if err != nil {
 		return nil, err
@@ -450,6 +450,9 @@ func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner st
 	}
 	if _, exists := annotations[ownerAnnotation]; exists {
 		return record, fmt.Errorf("reserved Factorybox ownership annotation")
+	}
+	if _, err := sysboxcapture.CheckpointConfiguration(annotations); err != nil {
+		return record, err
 	}
 	base, err := e.recordBase(id, bundle, origin, annotations)
 	if err != nil {

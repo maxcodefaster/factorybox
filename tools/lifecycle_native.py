@@ -14,12 +14,13 @@ import criu_candidate
 import reference
 import reference_lifecycle
 import upstream_unit
+import build_config
 
 ROOT = reference.ROOT
 EXPECTED_TESTS = 6
 EXPECTED_CAPTURE_SUBTESTS = 17
-EXPECTED_ADAPTER_TESTS = 8
-EXPECTED_ADAPTER_SUBTESTS = 40
+EXPECTED_ADAPTER_TESTS = 11
+EXPECTED_ADAPTER_SUBTESTS = 61
 
 
 def builder_command(build, components, archive, name, *, component_inputs):
@@ -63,14 +64,14 @@ def archive_capture(archive, name, owner, result, image):
         "--cap-drop=ALL", "--cap-add=DAC_READ_SEARCH", "--security-opt=no-new-privileges",
         "--env", "FACTORYBOX_CAPTURE_ARCHIVE=1",
         "--mount", f"type=volume,source={name},target=/input,readonly",
-        "--mount", f"type=bind,source={archive / 'output'},target=/output",
         "--mount", f"type=bind,source={archive / 'capture-archive.sh'},target=/archive.sh,readonly",
         "--entrypoint", "/bin/bash", image, "/archive.sh",
     ]
     result["archive_command"] = command
     try:
-        with (archive / "archive.log").open("x") as log:
-            done = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=180)
+        with (archive / "archive.log").open("x") as log, \
+                (archive / "output/capture-source.tar").open("xb") as stream:
+            done = subprocess.run(command, stdout=stream, stderr=log, timeout=180)
         state = json.loads(reference.docker(["container", "inspect", helper]))[0]["State"]
         if done.returncode or state["OOMKilled"]:
             raise ValueError("capture source archive failed")
@@ -82,18 +83,22 @@ def archive_capture(archive, name, owner, result, image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "auxiliary", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss"], default="lifecycle")
     inputs = parser.add_mutually_exclusive_group()
     inputs.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
     inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for checkpoint-based suites")
     parser.add_argument("--test", help="One exact native diagnostic test")
+    parser.add_argument("--candidate-platform", choices=["linux/amd64"],
+                        help="Use a separate unqualified test build pinned to this Docker host's kernel")
     options = parser.parse_args()
     if options.test and not re.fullmatch(r"TestNative[A-Za-z0-9_]+", options.test):
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
-    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss"]
+    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "auxiliary", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss"]
+    if options.suite == "auxiliary" and options.candidate_platform != "linux/amd64":
+        parser.error("auxiliary-controller regression requires this explicit AMD64 worker profile")
     if capture_mode and (not (options.criu_build or options.retained_candidate) or options.test):
         parser.error("checkpoint-based suites require a CRIU input and run their complete selected suite")
     if (options.criu_build or options.retained_candidate) and not capture_mode:
@@ -101,6 +106,19 @@ def main():
     component_inputs = capture_mode or bool(options.native_base_build)
     build, components = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
+    target = options.candidate_platform or "linux/arm64"
+    if components.get("platform", "linux/arm64") != target:
+        raise ValueError("Sysbox build differs from the explicit native target")
+    if options.candidate_platform and not options.native_base_build:
+        parser.error("candidate tests require an exact public native base build")
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
+    native_base.require_native_host(target, host)
+    compile_options = []
+    if options.candidate_platform:
+        if not re.fullmatch(r"[A-Za-z0-9_.+-]+", host["KernelVersion"]):
+            raise ValueError("unsupported candidate kernel release encoding")
+        compile_options = ["-tags=factorybox_candidate_amd64", "-ldflags=-X=" +
+                           "factorybox/internal/platform.candidateKernel=" + host["KernelVersion"]]
     owner = uuid.uuid4().hex
     name = "factorybox-runtime-" + owner
     archive = reference.new_artifact(name)
@@ -139,6 +157,11 @@ def main():
                   "incomplete evidence without publishing a checkpoint. Its previous committed "
                   "checkpoint must still produce an independently useful recovery fork. No diagnostic thaw."
                   if options.suite == "interruption" else
+                  "All nine controllers available on this AMD64 worker, finite 2-MiB/1-GiB hugepage "
+                  "limits without page allocation, actual RDMA/misc/dmem limits and independent "
+                  "fork, pause/resume and resumed-child limit mutation. Original five-controller "
+                  "assertions remain a separate unchanged baseline. No hugepage or GPU/RDMA workload qualification."
+                  if options.suite == "auxiliary" else
                   "Minimal parent plus two populated delegated cgroups with the same controller "
                   "set as the real private Docker tree. Public checkpoint/fork, RAM-releasing pause, "
                   "resume into the original delegated cgroup and an independent fork of that resumed "
@@ -184,6 +207,10 @@ def main():
                   "No CRIU capture; not checkpoint/fork/pause/resume qualification."),
         "immutable_base": options.suite in ["base", "base-pause"],
         "passed": False, "cleanup": False, "production_qualified": False,
+        "platform": target, "candidate_platform": bool(options.candidate_platform),
+        "native_lifecycle_qualified": False,
+        "host": {key: host[key] for key in ["OSType", "Architecture", "KernelVersion"]},
+        "compile_options": compile_options,
     }
     if options.suite == "overlay":
         result.update(diagnostic_only=True, driver_selected=False)
@@ -197,16 +224,16 @@ def main():
         for module_file in ["go.mod", "go.sum"]:
             shutil.copyfile(ROOT / module_file, context / module_file)
         result["source_context"] = upstream_unit.context_manifest(context)
-        env = dict(os.environ, GOOS="linux", GOARCH="arm64", CGO_ENABLED="0")
+        env = dict(os.environ, GOOS="linux", GOARCH=build_config.architecture(target), CGO_ENABLED="0")
         binary = archive / "lifecycle.test"
-        subprocess.run(["go", "test", "-c", "-trimpath", "-buildvcs=false",
+        subprocess.run(["go", "test", "-c", "-trimpath", "-buildvcs=false", *compile_options,
                         "-o", str(binary), "./internal/lifecycle"],
                        cwd=context, env=env, check=True, timeout=120)
         cli = archive / "factorybox"
-        subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", "-o", str(cli),
+        subprocess.run(["go", "build", "-trimpath", "-buildvcs=false", *compile_options, "-o", str(cli),
                         "./cmd/factorybox"], cwd=context, env=env, check=True, timeout=120)
         if capture_mode:
-            subprocess.run(["go", "test", "-c", "-trimpath", "-buildvcs=false",
+            subprocess.run(["go", "test", "-c", "-trimpath", "-buildvcs=false", *compile_options,
                             "-o", str(archive / "sysboxcapture.test"),
                             "./internal/sysboxcapture"], cwd=context, env=env, check=True, timeout=120)
         for script in ["lifecycle-native.sh", "private-cgroup-delegation.sh"]:
@@ -240,6 +267,8 @@ def main():
                 else:
                     criu_build, criu = reference_lifecycle.component_build(
                         options.criu_build, "factorybox-build-criu-")
+                if criu.get("platform", "linux/arm64") != target:
+                    raise ValueError("CRIU build differs from the explicit native target")
                 if reference.sha(criu_build / "criu") != criu["binary_sha256"]:
                     raise ValueError("rebuilt CRIU executable changed")
                 reference.artifact_storage.share_frozen_input(
@@ -247,7 +276,8 @@ def main():
                 result["criu_build"] = options.criu_build or options.retained_candidate
             result["component_sha256"] = {p.name: reference.sha(p) for p in inputs.iterdir()}
             if options.native_base_build:
-                image, base_result = native_base.load(options.native_base_build)
+                image, base_result = native_base.load(options.native_base_build,
+                                                     candidate_platform=options.candidate_platform)
                 result["native_base_build"] = options.native_base_build
                 result["native_base_image_config"] = base_result["image_config"]
                 result["native_base_packages_sha256"] = base_result["packages_sha256"]
@@ -259,13 +289,14 @@ def main():
             image = name + "@" + json.loads((archive / "builder-metadata.json").read_text())[
                 "containerimage.digest"]
         result["builder_image_manifest"] = image
-        busybox = json.loads((ROOT / "upstream/test-inputs.json").read_text())["busybox-arm64"]
+        busybox = json.loads((ROOT / "upstream/test-inputs.json").read_text())[
+            "busybox-" + build_config.architecture(target)]
         rootfs = ROOT / ".cache/downloads" / busybox["archive"]
         if reference.sha(rootfs) != busybox["sha256"]:
             raise ValueError("pinned native rootfs changed")
         result["busybox_rootfs_sha256"] = busybox["sha256"]
         command = [
-            *reference.DOCKER, "run", "--pull=never", "--name", name,
+            *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
             "--label", "com.factorybox.run=" + owner, "--privileged", "--cgroupns=private",
             "--cpus=" + ("1" if options.suite == "guard" else "3"),
             "--memory=" + ("256m" if options.suite == "guard" else "3g"),
@@ -280,6 +311,7 @@ def main():
             "--env", "FACTORYBOX_NATIVE_NAMESPACES=" + ("1" if options.suite == "namespaces" else "0"),
             "--env", "FACTORYBOX_NATIVE_TIME=" + ("1" if options.suite == "time" else "0"),
             "--env", "FACTORYBOX_NATIVE_DELEGATION=" + ("1" if options.suite == "delegation" else "0"),
+            "--env", "FACTORYBOX_NATIVE_AUXILIARY_DELEGATION=" + ("1" if options.suite == "auxiliary" else "0"),
             "--env", "FACTORYBOX_NATIVE_MOUNT_FD=" + ("1" if options.suite == "mountfd" else "0"),
             "--env", "FACTORYBOX_NATIVE_OVERLAY=" + ("1" if options.suite == "overlay" else "0"),
             "--env", "FACTORYBOX_NATIVE_INTERRUPTION=" + ("1" if options.suite == "interruption" else "0"),
@@ -335,16 +367,16 @@ def main():
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
             result["source_context_unchanged"] and
-            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (4 if options.suite == "admission" else 3 if options.suite == "namespaces" else 1) if capture_mode else
+            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (6 if options.suite == "admission" else 3 if options.suite == "namespaces" else 1) if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["pause", "base-pause"] or result["passed_subtests"] == 6 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "interruption" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
-            (options.suite != "admission" or result["passed_subtests"] == 11 + EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "admission" or result["passed_subtests"] == 17 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "worker-loss" or result["passed_subtests"] == 3 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "namespaces" or result["passed_subtests"] == 1 + EXPECTED_ADAPTER_SUBTESTS) and
-            (options.suite not in ["time", "delegation"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite not in ["time", "delegation", "auxiliary"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "mountfd" or result["passed_subtests"] == 2 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "overlay" or result["passed_subtests"] == 4 + EXPECTED_ADAPTER_SUBTESTS) and
             result.get("components_unchanged", True) and
@@ -375,6 +407,7 @@ def main():
         except Exception as error:
             result["cleanup_error"] = str(error)
             failure = failure or error
+        result["passed"] = bool(result["passed"] and result["cleanup"] and failure is None)
         reference_lifecycle.write_json(archive / "result.json", result)
         print(json.dumps({"evidence": str(archive), **result}), flush=True)
         reference.artifact_storage.compact_closed_run(archive, ROOT)

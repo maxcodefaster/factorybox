@@ -14,6 +14,7 @@ import uuid
 import devx_inputs
 import devx_project_images
 import criu_candidate
+import build_config
 import native_base
 import reference
 import reference_lifecycle
@@ -23,6 +24,49 @@ import upstream_bats
 import upstream_unit
 
 ROOT = reference.ROOT
+
+
+def runtime_input(name, host, components, candidate):
+    """Select actual packaged bytes, including an unchanged comparison build."""
+    if not re.fullmatch(r"factorybox-build-runtime-[0-9a-f]{32}", name):
+        raise ValueError("expected one exact completed runtime build")
+    archive, result = reference_lifecycle.component_build(name, "factorybox-build-runtime-")
+    bundle = archive / "bundle"
+    if archive.is_symlink() or bundle.is_symlink() or not result.get("inputs_unchanged"):
+        raise ValueError("runtime build has no unchanged frozen inputs")
+    for file in ["profile.json", "manifest.json", "factorybox"]:
+        if (bundle / file).is_symlink():
+            raise ValueError("runtime bundle contains a symlink")
+    if reference.sha(bundle / "profile.json") != result["profile_sha256"]:
+        raise ValueError("runtime profile changed")
+    profile = json.loads((bundle / "profile.json").read_text())
+    manifest = json.loads((bundle / "manifest.json").read_text())
+    platform = profile["platform"]
+    if (platform["os"] != host["OSType"] or platform["architecture"] != "amd64" or
+            host["Architecture"] not in {"amd64", "x86_64"} or
+            platform["kernel"] != host["KernelVersion"] or
+            (profile["status"] == "candidate") != candidate or
+            profile["status"] not in {"candidate", "reference"}):
+        raise ValueError("runtime profile differs from the exact native execution mode")
+    expected = result["binary_sha256"]
+    if (manifest["binary_sha256"] != expected or
+            manifest["profile_sha256"] != result["profile_sha256"] or
+            set(expected) != {"factorybox", *components} or
+            any(expected[key] != digest for key, digest in components.items())):
+        raise ValueError("runtime components differ from the selected native components")
+    for file, digest in expected.items():
+        if (bundle / file).is_symlink() or reference.sha(bundle / file) != digest:
+            raise ValueError("runtime executable changed: " + file)
+    if upstream_unit.context_manifest(archive / "context") != result["source_context"]:
+        raise ValueError("runtime frozen source changed")
+    if re.fullmatch(r"[A-Za-z0-9_.-]+", profile["name"]) is None:
+        raise ValueError("runtime package name is not local")
+    if reference.sha(archive / (profile["name"] + ".tar")) != result["package_sha256"]:
+        raise ValueError("runtime package changed")
+    return bundle / "factorybox", {"build": name, "binary_sha256": expected["factorybox"],
+                                    "package_sha256": result["package_sha256"],
+                                    "profile_sha256": result["profile_sha256"],
+                                    "source_context": result["source_context"]}
 
 
 def require_no_retained_worker():
@@ -148,7 +192,8 @@ def main():
     inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
     parser.add_argument("--theia-image", help="Optional exact cached IDE digest for the separate native RPC peer")
     parser.add_argument("--opencode", action="store_true", help="Optional supplied OpenCode 2 consumer; no inference")
-    parser.add_argument("--suite", choices=["lifecycle", "projection", "docker-interruption"],
+    parser.add_argument("--opencode-flow", action="store_true", help="Real held shell tool and result ingestion using a local deterministic model")
+    parser.add_argument("--suite", choices=["lifecycle", "minimal", "projection", "docker-interruption"],
                         default="lifecycle")
     parser.add_argument("--docker-fault-process", choices=["root", "dockerd"], default="root",
                         help="Exact process whose own page dump must be interrupted")
@@ -156,7 +201,15 @@ def main():
                         help="Lifecycle operation whose actual page dump must be interrupted")
     parser.add_argument("--docker-fault-component", choices=["tracer", "helper", "controller", "guard"], default="tracer",
                         help="Exact component to kill; guard loss follows accepted cure grant")
+    parser.add_argument("--candidate-platform", choices=["linux/amd64"],
+                        help="Explicit native test build pinned to this host's kernel; unqualified")
+    parser.add_argument("--ordinary-build", action="store_true",
+                        help="Verify normal platform admission without the candidate tag; requires the explicit AMD64 target")
+    parser.add_argument("--runtime-build", help="Test exact packaged CLI bytes from a completed runtime build")
     options = parser.parse_args()
+    options.opencode = options.opencode or options.opencode_flow
+    if options.ordinary_build and not options.candidate_platform:
+        parser.error("--ordinary-build requires the explicit --candidate-platform linux/amd64 target")
     if options.docker_fault_process != "root" and options.suite != "docker-interruption":
         parser.error("--docker-fault-process requires --suite docker-interruption")
     if options.docker_fault_operation != "checkpoint" and options.suite != "docker-interruption":
@@ -167,16 +220,28 @@ def main():
         parser.error("the helper-loss proof currently requires checkpoint")
     if options.suite == "projection" and (options.theia_image or options.opencode):
         parser.error("projection is a minimal namespace regression without application consumers")
+    if options.suite == "minimal" and (options.theia_image or options.opencode):
+        parser.error("minimal exercises the exact minimal example without IDE/harness consumers")
     if options.suite == "docker-interruption" and not options.retained_candidate:
         parser.error("Docker interruption requires the explicitly unselected retained-context candidate")
     if options.suite == "docker-interruption" and (options.theia_image or options.opencode):
         parser.error("Docker interruption exercises core recovery without optional IDE/harness consumers")
     require_no_retained_worker()
-    ide_image = devx_inputs.inspect_image(options.theia_image) if options.theia_image else None
+    target = options.candidate_platform or "linux/arm64"
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
+    native_base.require_native_host(target, host)
+    compile_options = []
+    if options.candidate_platform and not options.ordinary_build:
+        if not re.fullmatch(r"[A-Za-z0-9_.+-]+", host["KernelVersion"]):
+            raise ValueError("unsupported candidate kernel release encoding")
+        compile_options = ["-tags=factorybox_candidate_amd64", "-ldflags=-X=" +
+                           "factorybox/internal/platform.candidateKernel=" + host["KernelVersion"]]
+    ide_image = devx_inputs.inspect_image(options.theia_image, platform=target) if options.theia_image else None
     ide_admission = theia_admission.qualify(ide_image) if ide_image else None
-    consumer_archive, consumers = devx_inputs.load(options.consumer_inputs, rootfs=True)
-    project_archive, projects = devx_project_images.load(options.project_images)
-    image, _ = native_base.load(options.native_base_build)
+    consumer_archive, consumers = devx_inputs.load(options.consumer_inputs, rootfs=True, platform=target)
+    example = "minimal" if options.suite == "minimal" else "factory"
+    project_archive, projects = devx_project_images.load(options.project_images, platform=target, example=example)
+    image, _ = native_base.load(options.native_base_build, candidate_platform=options.candidate_platform)
     sysbox_archive, sysbox = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
     if options.retained_candidate:
@@ -184,6 +249,8 @@ def main():
     else:
         criu_archive, criu = reference_lifecycle.component_build(
             options.criu_build, "factorybox-build-criu-")
+    if any(component.get("platform", "linux/arm64") != target for component in [sysbox, criu]):
+        raise ValueError("developer lifecycle component platforms differ from the native target")
     if options.docker_fault_component == "guard" and not criu.get("exit_hold_candidate"):
         parser.error("the guard-loss proof requires the pinned exit-observer candidate")
     owner = uuid.uuid4().hex
@@ -193,15 +260,26 @@ def main():
     output.mkdir(parents=True)
     scripts = ["devx-lifecycle.sh", "devx-lifecycle-body.sh", "devx-sandbox.sh", "devx-devcontainer.sh",
                "private-cgroup-delegation.sh", "global-sysctl-observation.py", "wait-sysbox.sh"]
+    if options.suite == "minimal":
+        scripts.append("minimal-sandbox.sh")
     if options.opencode:
         scripts.append("opencode-probe.cjs")
     for script in scripts:
         shutil.copyfile(ROOT / "tests" / script, archive / script)
+    if options.opencode_flow:
+        shutil.copytree(ROOT / "tests/opencode-flow", archive / "opencode-flow")
+        path = archive / "devx-sandbox.sh"
+        text = path.read_text()
+        anchor = 'if test "${FACTORYBOX_DEVX_OPENCODE:-}" = 1; then'
+        if text.count(anchor) != 1: raise ValueError("OpenCode service admission anchor changed")
+        path.write_text(text.replace(anchor,
+            'export FACTORY_OPENCODE_CONFIG="$(cat /opt/factorybox/opencode-flow/config.json)"\n'
+            '/usr/local/bin/node /opt/factorybox/opencode-flow/model.cjs > /var/log/factorybox-model.log 2>&1 &\n' + anchor))
     shutil.copyfile(ROOT / "tools/devx_lifecycle.py", archive / "runner.py")
     if ide_image:
         shutil.copyfile(ROOT / "tools/theia_peer.py", archive / "theia-peer.py")
         shutil.copyfile(ROOT / "tests/reference/fixture/theia-client.cjs", archive / "theia-client.cjs")
-    shutil.copytree(ROOT / "examples/factory", archive / "example")
+    shutil.copytree(ROOT / "examples" / example, archive / "example")
     reference_lifecycle.write_json(archive / "project-images.json", [
         {"image": row["image"], "canonical_image": row["canonical_image"]}
         for row in projects["images"]])
@@ -220,6 +298,7 @@ def main():
     result = {
         "schema": 1, "owner": owner, "container_name": name, "volume_name": name, "suite": options.suite,
         "opencode": options.opencode,
+        "opencode_flow": options.opencode_flow,
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "consumer_inputs": options.consumer_inputs, "project_images": options.project_images,
         "sysbox_build": options.sysbox_build, "criu_build": options.criu_build or options.retained_candidate,
@@ -230,6 +309,10 @@ def main():
         "project_images_sha256": projects["archive_sha256"],
         "example": upstream_unit.context_manifest(archive / "example"),
         "passed": False, "cleanup": False, "production_qualified": False,
+        "platform": target, "candidate_platform": bool(options.candidate_platform and not options.ordinary_build),
+        "ordinary_build": options.ordinary_build,
+        "native_lifecycle_qualified": False, "compile_options": compile_options,
+        "host": {key: host[key] for key in ["OSType", "Architecture", "KernelVersion"]},
         "scope": "Public Factorybox CLI and real Sysbox/CRIU with private Docker vfs, "
                  "Compose, Dev Containers CLI, the real Factory Connector parent/child and app "
                  "RAM/filesystem independence across forks, descendants and pause/resume. "
@@ -249,14 +332,20 @@ def main():
     if options.suite == "projection":
         result["scope"] = ("Bounded native regression for exact IDE namespace/root selection and "
                            "live bind-mounted read/write. No Sysbox workload, IDE server or lifecycle qualification.")
+    if options.suite == "minimal":
+        result["scope"] = ("Exact minimal Dev Container example with the real Dev Containers CLI and "
+                           "private Docker vfs. A test-only 32-MiB RAM actor verifies independent RAM/files "
+                           "through checkpoints, forks, source deletion, pause/resume and a resumed-source fork. "
+                           "The frozen consumer rootfs supplies Docker/Node/CLI tools; no Factory Connector, "
+                           "authority, Compose, IDE or agent process is started.")
     if options.suite == "docker-interruption":
         result["docker_fault_process"] = options.docker_fault_process
         result["docker_fault_operation"] = options.docker_fault_operation
         result["docker_fault_component"] = options.docker_fault_component
-        target = ("root process" if options.docker_fault_process == "root" else "dockerd child")
+        fault_target = ("root process" if options.docker_fault_process == "root" else "dockerd child")
         result["scope"] = ("Real private Docker vfs, Compose, Dev Containers CLI and Factory Connector. "
                            f"Kills only the pinned CRIU {options.docker_fault_component} during {options.docker_fault_operation}, "
-                           f"after the {target}'s own page image begins. "
+                           f"after the {fault_target}'s own page image begins. "
                            "Requires authorized cure, original stable process identities, unchanged running "
                            "containers/app state, a new Docker exec, mutation/capture/fork of the cured source, "
                            "RAM/filesystem independence and a usable prior immutable checkpoint. "
@@ -264,7 +353,7 @@ def main():
                            "No other process target, helper/guard loss, browser, inference or latency distribution qualification.")
         if options.docker_fault_component == "helper":
             result["scope"] = (
-                f"Real private Docker/Compose/Dev Container tree; pinned retained helper death during {target} page dump. "
+                f"Real private Docker/Compose/Dev Container tree; pinned retained helper death during {fault_target} page dump. "
                 "The healthy tracer must publish a verified complete checkpoint and leave the original source useful. "
                 "That checkpoint must fork independently, then source mutation, fresh capture/fork and the prior "
                 "checkpoint fork must still work. No tracer-plus-helper double loss, guard loss, pause, IDE, "
@@ -292,29 +381,44 @@ def main():
         context = archive / "context"
         source_directories = ["cmd/factorybox", "internal", "tests/devx-actor", "tests/devx-lifecycle",
                               "tests/devx-registry", "tests/ide-filesystem"]
+        if options.suite == "minimal":
+            source_directories.append("tests/minimal-actor")
         for directory in source_directories:
             shutil.copytree(ROOT / directory, context / directory)
         for file in ["go.mod", "go.sum"]:
             shutil.copyfile(ROOT / file, context / file)
         result["source_context"] = upstream_unit.context_manifest(context)
-        env = dict(os.environ, GOOS="linux", GOARCH="arm64", CGO_ENABLED="0")
-        for target, package, test in [
+        env = dict(os.environ, GOOS="linux", GOARCH=build_config.architecture(target), CGO_ENABLED="0")
+        packaged_runtime = None
+        if options.runtime_build:
+            selected_components = {**sysbox["binary_sha256"], "criu": criu["binary_sha256"]}
+            packaged_runtime, result["runtime_input"] = runtime_input(
+                options.runtime_build, host, selected_components, bool(compile_options))
+        for output_name, package, test in [
             ("factorybox", "./cmd/factorybox", False),
             ("devx-actor", "./tests/devx-actor", False),
             ("devx-registry", "./tests/devx-registry", False),
             ("devx-lifecycle.test", "./tests/devx-lifecycle", True),
+            *([("minimal-actor", "./tests/minimal-actor", False)] if options.suite == "minimal" else []),
             *([("ide-filesystem", "./tests/ide-filesystem", False)]
               if peer or options.suite == "projection" else []),
         ]:
+            if output_name == "factorybox" and packaged_runtime:
+                reference.artifact_storage.share_frozen_input(
+                    packaged_runtime, archive / output_name, ROOT,
+                    result["runtime_input"]["binary_sha256"])
+                continue
             command = ["go", "test", "-c"] if test else ["go", "build"]
-            command += ["-trimpath", "-buildvcs=false"]
-            subprocess.run([*command, "-o", str(archive / target), package],
+            command += ["-trimpath", "-buildvcs=false", *compile_options]
+            subprocess.run([*command, "-o", str(archive / output_name), package],
                            cwd=context, env=env, check=True, timeout=90)
         result["inputs_sha256"] = {
             path.name: reference.sha(path) for path in archive.iterdir() if path.is_file()}
+        if options.opencode_flow:
+            result["opencode_flow_inputs"] = upstream_unit.context_manifest(archive / "opencode-flow")
         result["component_sha256"] = {p.name: reference.sha(p) for p in components.iterdir()}
         command = [
-            *reference.DOCKER, "run", "--pull=never", "--name", name,
+            *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
             "--label", "com.factorybox.run=" + owner, "--privileged", "--cgroupns=private",
             "--cpus=3", "--memory=3g", "--pids-limit=512", "--network=none",
             "--env", "FACTORYBOX_UPSTREAM_CONTAINER=1", "--env", "FACTORYBOX_DEVX_LIFECYCLE=1",
@@ -327,8 +431,12 @@ def main():
             command += ["--env", "FACTORYBOX_DEVX_THEIA=1", "--env", "FACTORYBOX_DEVX_RUN=" + owner]
         if options.opencode:
             command += ["--env", "FACTORYBOX_DEVX_OPENCODE=1"]
+        if options.opencode_flow:
+            command += ["--env", "FACTORYBOX_DEVX_OPENCODE_FLOW=1"]
         if options.suite == "projection":
             command += ["--env", "FACTORYBOX_DEVX_PROJECTION=1"]
+        if options.suite == "minimal":
+            command += ["--env", "FACTORYBOX_DEVX_MINIMAL=1"]
         if options.suite == "docker-interruption":
             command += ["--env", "FACTORYBOX_DEVX_CRIU_FAULT=" + options.docker_fault_process,
                         "--env", "FACTORYBOX_DEVX_CRIU_FAULT_OPERATION=" + options.docker_fault_operation,
@@ -349,8 +457,13 @@ def main():
             "project-images.json", "wait-sysbox.sh"]]
         if peer or options.suite == "projection":
             mounts.append((archive / "ide-filesystem", "/ide-filesystem", True))
+        if options.suite == "minimal":
+            mounts += [(archive / file, "/" + file, True)
+                       for file in ["minimal-actor", "minimal-sandbox.sh"]]
         if options.opencode:
             mounts.append((archive / "opencode-probe.cjs", "/opencode-probe.cjs", True))
+        if options.opencode_flow:
+            mounts.append((archive / "opencode-flow", "/opencode-flow", True))
         for source, destination, readonly in mounts:
             command += ["--mount", f"type=bind,source={source},target={destination}" +
                         (",readonly" if readonly else "")]
@@ -378,12 +491,17 @@ def main():
                 for path, expected in result["component_sha256"].items()) and
             upstream_unit.context_manifest(archive / "example") == result["example"] and
             upstream_unit.context_manifest(context) == result["source_context"])
+        if options.opencode_flow:
+            result["inputs_unchanged"] = result["inputs_unchanged"] and (
+                upstream_unit.context_manifest(archive / "opencode-flow") == result["opencode_flow_inputs"])
         text = (archive / "stdout.txt").read_text()
         collect_observations(output, result)
         expected = {
             "prepared-start-first-use", "fork-first-use", "source-advance", "branch-advance", "source-independent",
             "fork-of-fork-first-use", "resume-first-use", "fork-of-resumed-first-use"}
         test_name = "TestNativeDeveloperLifecycle"
+        if options.suite == "minimal":
+            test_name = "TestNativeMinimalLifecycle"
         if options.suite == "docker-interruption":
             expected = {"prepared-start-first-use", "recovered-source-advance", "fork-after-interruption-first-use",
                         "recovered-branch-advance", "recovered-source-independent",

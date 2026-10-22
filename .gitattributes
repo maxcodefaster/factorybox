@@ -2,3 +2,5 @@
 upstream/patches/*.patch -whitespace
 upstream/licenses/** -whitespace
 tests/reference/fixture/theia-client.cjs -whitespace
+# Unified-diff context prefixes precede Go tabs; retain the qualified patch bytes.
+tests/compatibility/retained-pidfd-eintr.patch whitespace=-space-before-tab

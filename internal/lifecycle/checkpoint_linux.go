@@ -371,8 +371,8 @@ func (e *Engine) verifyCheckpointMetadata(ctx context.Context, record Record, id
 	return nil
 }
 
-// A fork verifies filesystem payloads once at the materialization boundary,
-// before creating backing. Its intent still binds the complete published RAM,
+// A fork verifies filesystem payloads at the independent materialization
+// boundary, before runtime creation. Its intent binds the complete published RAM,
 // filesystem manifest and source-release outcome before any external create.
 func (e *Engine) publishedCheckpointMetadata(ctx context.Context, record Record, id, relative string) (Checkpoint, error) {
 	if err := privateDirectory(filepath.Join(e.config.Root, relative)); err != nil {

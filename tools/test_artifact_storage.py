@@ -11,6 +11,38 @@ import reference
 
 
 class ArtifactStorageTests(unittest.TestCase):
+    def test_protected_hardlink_copy_preserves_bytes_and_rejects_source_changes(self):
+        import errno
+        import hashlib
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build = root / "artifacts/factorybox-build-sysbox-frozen"
+            build.mkdir(parents=True)
+            (build / "result.json").write_text('{"passed": true}')
+            source = build / "sysbox-runc"
+            source.write_bytes(b"immutable component")
+            source.chmod(0o755)
+            target = root / "artifacts/new/sysbox-runc"
+            target.parent.mkdir()
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            with mock.patch.object(artifact_storage.os, "link", side_effect=PermissionError(errno.EPERM, "protected")):
+                artifact_storage.share_frozen_input(source, target, root, digest)
+                self.assertEqual(target.read_bytes(), source.read_bytes())
+                self.assertNotEqual(target.stat().st_ino, source.stat().st_ino)
+                self.assertEqual(target.stat().st_mode & 0o777, 0o555)
+                with self.assertRaises(FileExistsError):
+                    artifact_storage.share_frozen_input(source, target, root, digest)
+                self.assertEqual(target.read_bytes(), b"immutable component")
+                target.unlink()
+                original_copy = artifact_storage.shutil.copyfileobj
+                def changed(stream, output):
+                    original_copy(stream, output)
+                    source.write_bytes(b"changed component")
+                with mock.patch.object(artifact_storage.shutil, "copyfileobj", side_effect=changed):
+                    with self.assertRaisesRegex(ValueError, "changed while copying"):
+                        artifact_storage.share_frozen_input(source, target, root, digest)
+                self.assertFalse(target.exists())
+
     def test_completed_component_inputs_share_verified_bytes_without_another_disk_copy(self):
         import hashlib
         with tempfile.TemporaryDirectory() as directory:

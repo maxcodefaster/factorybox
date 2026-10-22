@@ -12,6 +12,7 @@ import uuid
 import reference
 import reference_lifecycle
 import sources
+import build_config
 
 ROOT = reference.ROOT
 COMPONENTS = ["sysbox-runc", "sysbox-fs", "sysbox-ipc", "sysbox-libs", "sysbox-mgr"]
@@ -19,6 +20,7 @@ COMPONENTS = ["sysbox-runc", "sysbox-fs", "sysbox-ipc", "sysbox-libs", "sysbox-m
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    build_config.add_arguments(parser)
     parser.add_argument("--clean", action="store_true",
                         help="Disable layer reuse and use new empty Go module/build caches")
     parser.add_argument("--compare", help="Require outputs identical to one exact successful build")
@@ -29,6 +31,8 @@ def main():
             options.compare, "factorybox-build-sysbox-")
         if comparison["dockerfile_sha256"] != reference.sha(ROOT / "build/sysbox.Dockerfile"):
             parser.error("--compare requires the same pinned build recipe")
+        if comparison.get("platform", "linux/arm64") != options.platform:
+            parser.error("--compare requires the same compilation platform")
         for name, expected in comparison["binary_sha256"].items():
             if reference.sha(previous / "output" / name) != expected:
                 raise ValueError("comparison binary changed: " + name)
@@ -47,6 +51,7 @@ def main():
         "source_lock_sha256": reference.sha(lock_path),
         "dockerfile_sha256": reference.sha(ROOT / "build/sysbox.Dockerfile"),
         "clean": options.clean, "comparison_build": options.compare,
+        "platform": options.platform, "native_lifecycle_qualified": False,
         "passed": False, "production_qualified": False,
         "scope": "Native component compilation, a natural-module libcontainer test compile gate "
                  "and selected inherited regression tests. "
@@ -78,7 +83,7 @@ def main():
             json.dumps(context_files, indent=2, sort_keys=True) + "\n")
         command = [
             *reference.DOCKER, "build", "--provenance=false", "--progress=plain",
-            "--platform=linux/arm64", "-f", str(ROOT / "build/sysbox.Dockerfile"),
+            *build_config.arguments(options), "-f", str(ROOT / "build/sysbox.Dockerfile"),
             "--output", "type=local,dest=" + str(output), str(context),
         ]
         if options.clean:

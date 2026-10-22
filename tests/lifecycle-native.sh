@@ -25,7 +25,7 @@ tar -xzf /busybox-rootfs.tar.gz -C /busybox
 . /delegate.sh > /output/cgroup-delegation.txt
 if test "${FACTORYBOX_NATIVE_TEST:-}" != TestNativeEmptyCgroupRetirement; then
 # Factorybox captures complete manager volumes; no outer-rootfs export is needed.
-/out/sysbox-mgr --disable-shiftfs --disable-inner-image-preload --data-root /var/lib/sysbox/manager \
+/out/sysbox-mgr --disable-shiftfs --disable-inner-image-preload --disable-binfmt-misc --data-root /var/lib/sysbox/manager \
   --log /output/sysbox-mgr.log > /output/sysbox-mgr-stdio.log 2>&1 &
 manager=$!
 /out/sysbox-fs --mountpoint /var/lib/sysbox/fs --log /output/sysbox-fs.log \
@@ -60,6 +60,9 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
   if test "${FACTORYBOX_NATIVE_DELEGATION:-}" = 1; then
     test_pattern='^TestDelegatedCgroupForkNative$'
   fi
+  if test "${FACTORYBOX_NATIVE_AUXILIARY_DELEGATION:-}" = 1; then
+    test_pattern='^TestAuxiliaryDelegatedCgroupForkNative$'
+  fi
   if test "${FACTORYBOX_NATIVE_MOUNT_FD:-}" = 1; then
     test_pattern='^TestDetachedMountForkNative$'
   fi
@@ -73,7 +76,7 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
     test_pattern='^TestCaptureWorkerLossNative$'
   fi
   if test "${FACTORYBOX_NATIVE_FILESYSTEM_ADMISSION:-}" = 1; then
-    test_pattern='^Test(Filesystem|Descriptor|ProcDirectory|DetachedFile)AdmissionNative$'
+    test_pattern='^Test((Filesystem|Descriptor|ProcDirectory|DetachedFile|SocketQueue)Admission|CaptureSocketDescriptor)Native$'
   fi
 fi
 set +e
@@ -101,4 +104,8 @@ for file in /var/lib/sysbox/factorybox-lifecycle-*/controller*/objects/*/record.
     printf '%s %s\n' "$index.json" "$file" >> /output/controller-metadata/index.txt
   fi
 done
+# Native Linux output files are created by the fixture's root, while the
+# invoking user owns this output directory. Transfer only generated evidence;
+# never visit guest roots or change frozen inputs.
+find /output -maxdepth 1 -type f -name 'interruption-*' -exec chown --reference=/output -- {} +
 exit "$status"

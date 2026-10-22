@@ -40,7 +40,7 @@ func nativeEngine(t *testing.T, program string) (*Engine, string) {
 		t.Fatalf("prepare rootfs: %s: %v", out, err)
 	}
 	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0,
-		"lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
+		"index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {

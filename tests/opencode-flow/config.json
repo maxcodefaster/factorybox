@@ -1,0 +1,21 @@
+{
+  "model": "factorybox/probe",
+  "update": "disable",
+  "share": "disabled",
+  "snapshots": false,
+  "warming": false,
+  "permissions": [{"action": "*", "resource": "*", "effect": "allow"}],
+  "providers": {
+    "factorybox": {
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {"baseURL": "http://127.0.0.1:4097/v1", "apiKey": "local-fixture-only"},
+      "models": {
+        "probe": {
+          "name": "Factorybox deterministic local test",
+          "capabilities": {"tools": true, "input": ["text"], "output": ["text"]},
+          "limit": {"context": 32768, "output": 2048}
+        }
+      }
+    }
+  }
+}

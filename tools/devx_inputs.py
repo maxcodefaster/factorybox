@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import uuid
 
+import build_config
 import reference
 import reference_lifecycle
 
@@ -38,10 +39,11 @@ def canonical_digest(image):
     return repository + "@" + digest
 
 
-def inspect_image(image):
+def inspect_image(image, *, platform="linux/arm64"):
     canonical = canonical_digest(image)
+    architecture = build_config.architecture(platform)
     data = json.loads(reference.docker(["image", "inspect", image]))[0]
-    if (data["Architecture"] != "arm64" or data["Os"] != "linux" or
+    if (data["Architecture"] != architecture or data["Os"] != "linux" or
             canonical not in [canonical_digest(ref) for ref in data.get("RepoDigests", [])]):
         raise ValueError("consumer image digest or native platform differs")
     config = data["Config"]
@@ -54,23 +56,26 @@ def inspect_image(image):
     }
 
 
-def load(name, *, rootfs=False):
+def load(name, *, rootfs=False, platform="linux/arm64"):
+    architecture = build_config.architecture(platform)
     if not re.fullmatch(r"factorybox-devx-inputs-[0-9a-f]{32}", name):
         raise ValueError("requires one exact successful developer-input artifact")
     archive = ROOT / "artifacts" / name
     result = json.loads((archive / "result.json").read_text())
     if not result.get("passed") or not result.get("cleanup"):
         raise ValueError("developer inputs did not pass preparation and cleanup")
+    if result.get("platform", "linux/arm64") != platform:
+        raise ValueError("developer inputs differ from the explicit native platform")
     if set(result["selected_images"]) != set(ROLES) or set(result["images"]) != set(ROLES):
         raise ValueError("developer inputs do not contain the exact consumer roles")
     for role, image in result["selected_images"].items():
         canonical_digest(image)
         saved = result["images"][role]
-        if (saved["image"] != image or saved["architecture"] != "arm64" or saved["os"] != "linux" or
+        if (saved["image"] != image or saved["architecture"] != architecture or saved["os"] != "linux" or
                 not re.fullmatch(r"sha256:[0-9a-f]{64}", saved["id"])):
             raise ValueError("recorded consumer image identity or platform differs")
         if not rootfs:
-            current = inspect_image(image)
+            current = inspect_image(image, platform=platform)
             if current["id"] != saved["id"]:
                 raise ValueError("consumer image changed since its preparation")
     if rootfs:
@@ -90,6 +95,8 @@ def main():
                         help="Read-only JSON containing Factory's published role digest references")
     parser.add_argument("--pull-missing", action="store_true",
                         help="Allow acquiring exactly those pinned references; never choose another image")
+    parser.add_argument("--platform", choices=build_config.PLATFORMS, default="linux/arm64",
+                        help="Exact consumer image platform; preparation is not lifecycle qualification")
     options = parser.parse_args()
     source_input = options.factory_artifacts.read_bytes()
     supplied = json.loads(source_input)
@@ -104,6 +111,7 @@ def main():
     result = {
         "schema": 1, "owner": owner, "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "passed": False, "cleanup": False, "production_qualified": False,
+        "platform": options.platform, "native_lifecycle_qualified": False,
         "source_artifacts_sha256": hashlib.sha256(source_input).hexdigest(),
         "selected_images": selected, "versions_script_sha256": reference.sha(archive / "versions.sh"),
         "scope": "Exact existing Factory consumer artifacts and runtime rootfs only. "
@@ -116,14 +124,14 @@ def main():
         result["images"] = {}
         for role, image in selected.items():
             try:
-                inspected = inspect_image(image)
+                inspected = inspect_image(image, platform=options.platform)
             except subprocess.CalledProcessError:
                 if not options.pull_missing:
                     raise
                 with (archive / (role + "-pull.log")).open("x") as log:
-                    subprocess.run([*reference.DOCKER, "pull", "--platform=linux/arm64", image],
+                    subprocess.run([*reference.DOCKER, "pull", "--platform=" + options.platform, image],
                                    stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
-                inspected = inspect_image(image)
+                inspected = inspect_image(image, platform=options.platform)
             result["images"][role] = inspected
         reference_lifecycle.write_json(archive / "intent.json", result)
         print(json.dumps({"preparing": str(archive)}), flush=True)
@@ -180,9 +188,10 @@ def main():
                 any(m["Type"] == "volume" for m in container.get("Mounts", []))):
             raise ValueError("rootfs export unexpectedly started a process or created an anonymous volume")
         rootfs = archive / "runtime-rootfs.tar"
-        with (archive / "export.log").open("x") as log:
-            subprocess.run([*reference.DOCKER, "container", "export", "--output", str(rootfs), export_name],
-                           stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
+        result["export_command"] = [*reference.DOCKER, "container", "export", export_name]
+        with rootfs.open("xb") as payload, (archive / "export.log").open("x") as log:
+            subprocess.run(result["export_command"], stdout=payload, stderr=log,
+                           check=True, timeout=120)
         result["rootfs_tar_sha256"] = file_sha(rootfs)
         result["rootfs_tar_bytes"] = rootfs.stat().st_size
         result["passed"] = True

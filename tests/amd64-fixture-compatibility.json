@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "before_revision": "8042377e9cda746ac38728113a66d195a2980342",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "files": {
+    "internal/lifecycle/delegation_native_linux_test.go": {
+      "before_sha256": "e72db666982105049c1f390b59aebb6d5368c48cfb8fb442b72cbb4e8d6ddfa0",
+      "after_sha256": "1ea6cdf556c2387c40d3cfe714b05a4dd0af7f12c04012e6caea89a18aeba04a",
+      "reason": "Use BusyBox sleep inf's existing retry loop for two lifetime sentinels: the finite AMD64 sleep intentionally exits on CRIU's EINTR. Preserve every original controller, limit, membership, descriptor, RAM, resume and fork assertion and add leaf-presence checks before/after checkpoint. Keep exact original PID/namespace observations and all deadlines. This does not qualify transparent finite nanosleep preservation; the failing original runs remain retained. Retain the original exact five-controller invocation and every original assertion in a shared helper; add a separate nine-controller invocation with finite hugepage limits, actual RDMA/misc/dmem values and independence checks through fork, resume and resumed-child fork. No hugepages are allocated."
+    },
+    "tests/lifecycle-native.sh": {
+      "before_sha256": "cf0ee47803e86ee2e2ac37e7853c5a33cc7e9f0165068236ef8397ba7f62ea42",
+      "after_sha256": "10303c0d99b259c483505a8abeb78388230943b4794da5db37328424104bc5d2",
+      "reason": "Explicitly disable automatic binfmt_misc mounts in the reference manager. Foreign binary handler registration is outside the selected native AMD64 checkpoint contract; unsupported mounts remain rejected. All original lifecycle assertions and deadlines remain. Transfer only newly generated top-level interruption evidence to the invoking output-directory owner so the host can verify it on native Linux; never change guest inputs or assertions. Include the added real TCP-queue and MPTCP admission regressions without removing any original case. Add a separate complete-worker-controller delegation selection while retaining the original five-controller suite."
+    },
+    "tests/devx-lifecycle-body.sh": {
+      "before_sha256": "7bbe6a650d73d6e6bb93572137153eef69d5160138fec89286207abf0da18c06",
+      "after_sha256": "473e69701e3e4d1535ff726dac824ac4e4795528c08abf82ab3089d08bc1314f",
+      "reason": "Use the same explicit binfmt_misc manager policy as the native runtime path. Preserve all developer lifecycle, RAM-release, independent branch, IDE and cleanup assertions and the 390/420-second deadlines. Transfer only newly generated top-level output files to the invoking directory owner before host evaluation. Share the original OCI/base preparation with a separate minimal Dev Container selection. Preserve every original Factory assertion, consumer command, deadline and selected Factory setup; the minimal suite has separate additional assertions and no Connector/IDE process."
+    },
+    "tests/criu-core.py": {
+      "before_sha256": "9fb24f78eebddac35bd9339dcf8b99fd010ce0fe6abbf5f933a030808c697180",
+      "after_sha256": "e22e67d333c172c870ed064b12d568a60382756ffc1041b3a0a247d8bbb029de",
+      "reason": "Select the native architecture explicitly; retain private PID/cgroup, 4096-byte page, credential, two-cycle and final upstream PASS checks."
+    },
+    "tests/upstream-unit.sh": {
+      "before_sha256": "11411c372cd05c454daa2a43b5910db2ae5434f271d9205a5761cd54be0298e9",
+      "after_sha256": "118c1c6714bf96af3849d85cb4e7e42503a06a19574a9ac26545bb5d7abf8f9f",
+      "reason": "Load a verified immutable Alpine archive into the private test daemon before assigning its original alpine:latest test alias; native tests run offline. All original Go tests and vet remain enabled."
+    },
+    "tests/capture-archive.sh": {
+      "before_sha256": "043ca0c99d70cea7c6e83d9a0e3f455da944c1453c309c01d8305b955fc6d305",
+      "after_sha256": "22b4ebce3fe81d9f05456a469e0e38283f9ad6da8f356ef84d965c519b3a7145",
+      "reason": "Stream the same stopped-volume archive to the invoking host user's file; the restricted reader no longer needs a writable host bind. Preserve the path count in archive.log."
+    },
+    "internal/lifecycle/engine_linux_test.go": {
+      "before_sha256": "22a28155e73903c9a369a6c8533f930037ce21efa8d3c029477d7157869947ec",
+      "after_sha256": "980497fb7861a416e9e61243d137fbb83f0a8079f2198099317d142004ca954b",
+      "reason": "Set mount-local index=off for Sysbox's shared-upper remount instead of inheriting the host overlay module default; preserve every lifecycle assertion."
+    },
+    "internal/lifecycle/base_native_linux_test.go": {
+      "before_sha256": "17ec32518c4f1b6dfb1786b05dfb7ee154716da8ca17e289d00a921bd9aec3d3",
+      "after_sha256": "2268c3dfb4b10209234f82303c9ac6e2fe6c47573c40ecd3a26247f800dcfeaf",
+      "reason": "Use the same explicit mount-local index setting for the immutable-base fixture; preserve every assertion."
+    },
+    "internal/lifecycle/capture_native_linux_test.go": {
+      "before_sha256": "fae566c248391e3b033a93783f2a19441340a62564a8f476ad66033425a47073",
+      "after_sha256": "25091444a47038125cab13a1989e84557b3097997e0d17daa2afd1ca0f053667",
+      "reason": "Use the same explicit mount-local index setting when reconstructing the fixture's root; preserve every RAM, filesystem, lineage and deletion assertion. Add independent commands for held/transient unaccepted TCP connections and closing owned TCP descriptors. Existing actor commands and every original assertion remain unchanged."
+    },
+    "tests/devx-compose-check.sh": {
+      "before_sha256": "413e5820b362c7c09b87f3142a3011d24ac7c88aab6719c2ff8d97550c1b883b",
+      "after_sha256": "df683e4fd42840fa6d363788bbb518ae55a928816b78ffa05aa3cd7881f06287",
+      "reason": "Select the runner-validated native image platform explicitly for offline pulls and exact digest/architecture assertions; preserve all original private Docker/Compose/Dev Container/app checks."
+    },
+    "tests/devx-lifecycle/lifecycle_linux_test.go": {
+      "before_sha256": "0512ca2d2205c42054fbf845201541b9aed323d84cd4b2fa92d51c3e7c68bab5",
+      "after_sha256": "04e8df9cb1e309819ef905fa15f51a0e4a2082fba6b6ec3d6efea9bd06791343",
+      "reason": "Select the seccomp architecture from the actual compiled native Go target; reject unknown architectures and preserve the original io_uring denial and every lifecycle, RAM, source independence and deadline assertion. Use the same mount-local overlay index=off policy required for Sysbox shared-upper mounts on this worker; no global module setting changes. Explicitly configure GODEBUG=multipathtcp=0 for this ordinary-TCP consumer profile: the actual first checkpoint rejected unsupported MPTCP protocol 262. No socket is skipped or host sysctl changed. Share the original OCI/base preparation with a separate minimal Dev Container selection. Preserve every original Factory assertion, consumer command, deadline and selected Factory setup; the minimal suite has separate additional assertions and no Connector/IDE process."
+    },
+    "tests/upstream-bats.sh": {
+      "before_sha256": "d321da2ea0423f6b2cde730cdcb9882ba6b6d6f5f0f48196f797cf461d9363ab",
+      "after_sha256": "4a2dbb7753cdff5e9a3d2c57bc208ceca5f4bb5da26f3ea8ccfc35cf78014a9f",
+      "reason": "Select the exact runner-validated native target for original upstream helpers and loaded image architecture checks. Preserve every original Bats assertion and skip condition. After a failed systemd file, collect only the existing private-daemon test container status/failed units/journal for diagnosis; no original assertion or skip condition changes. An explicit systemd-only networkless Docker service profile binds a separate immutable daemon config through a guarded CLI wrapper; it preserves all original test bodies, mount arguments, assertions and skips and does not qualify legacy iptables NAT."
+    },
+    "tests/upstream-bats-images.sh": {
+      "before_sha256": "dc29f8517c4ea0d403dfbaf6cc3ddb69ada5042f0ef9d30bd18e92f1457bbdce",
+      "after_sha256": "e5facc361bdd2c14f22c1ad90586426ffe71d77b30473f4e82f422de8692b807",
+      "reason": "Acquire and verify each pinned image for the explicit native target instead of a fixed ARM64 platform; retain digest, alias, capability and archive checks. Permit offline load of a host-verified exact digest archive while retaining every original per-image private-daemon digest/platform/alias assertion. For Docker 29 OCI save into the private Docker 20 store, verify the original digest against the raw manifest and acquire facts, then require that exact manifest configuration in the private loaded image. Preserve every original digest, architecture, alias and capability assertion. Transfer only the newly generated image archive to the invoking output owner before hashing it."
+    },
+    "tests/devx-sandbox.sh": {
+      "before_sha256": "de781bb5d5b6a1a58a1d04e8a01b3078b6d2c26176d49236bdd29b3d3f015e97",
+      "after_sha256": "ad7417855c6c2cd7868559668f7d14b95a96900e58ef71b2530226bc5aa29d0b",
+      "reason": "Initialize the copied fixture repository with its invoking root owner before transferring it to workspace UID 1000; avoid Git dubious-ownership refusal without disabling ownership checks or changing the original consumer assertions."
+    },
+    "tests/criu-retained-candidate/native.py": {
+      "before_sha256": "dcc0a382f9c85123ab7bbb606826443f0a90266c0b6ff63e93baf9afb83e66e5",
+      "after_sha256": "60935a028de7272eda8e20473060a42f96fb8a1f6eb2800cdafcdab6d1ce7053",
+      "reason": "Compile and run for an explicit matching native AMD64 target linked to its exact kernel; preserve all original recovery, network and grant controls. An evaluation error or cleanup failure must clear the pass verdict."
+    },
+    "tests/retained-exit-hold/native.py": {
+      "before_sha256": "a104fe7d1d0f0f6c7886650afacb952041c1ed9cb64884767a44d644c3c6ed23",
+      "after_sha256": "8eb066c7411960f4462c3aef9950f657f1237b429d9b8e7398aa44286ae6ca1c",
+      "reason": "Admit an explicit matching native AMD64 base and run the unchanged C observer/source assertions and original deadlines."
+    },
+    "tests/devx-lifecycle/theia_linux_test.go": {
+      "before_sha256": "d8c42f6c94247ece22d0a98e5e2976509b818f13c488fd6448d5ef1f273f5b68",
+      "after_sha256": "62804710f347046d58cd6e06b8882927054247cf03c6e55e151db45cfb785ff9",
+      "reason": "Transfer the newly generated private Theia request to the invoking output-directory owner before its original atomic publication; keep mode 0600 and every original identity/RPC/projection assertion."
+    },
+    "tools/test_devx_storage.py": {
+      "before_sha256": "4d743af7ed311d88adcb098b54dbd39db82c28b0ce6de6dd1ee37503b5ff8657",
+      "after_sha256": "a24ad51d47cb103b53b3b8602b7f14f0fb81454762ce754fd3ff01f59eff40e4",
+      "reason": "Supply a matching simulated host in two existing runner unit tests so they remain portable and never query a live Docker host; preserve all original failure/admission assertions."
+    }
+  }
+}

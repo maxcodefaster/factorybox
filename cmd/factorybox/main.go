@@ -17,12 +17,12 @@ func main() {
 		return
 	}
 	if os.Args[1] == "version" {
-		fmt.Println("factorybox development; runtime extraction in progress")
+		fmt.Println("factorybox v0.1.0")
 		return
 	}
 	info, err := platform.Current()
 	if err == nil {
-		err = info.CheckReference()
+		err = info.CheckExecution()
 	}
 	report := struct {
 		Platform            platform.Info `json:"platform"`
@@ -32,8 +32,8 @@ func main() {
 		Error               string        `json:"error,omitempty"`
 	}{
 		Platform: info, MatchesReference: err == nil,
-		Scope: "Platform inspection only. Runtime extraction and native lifecycle qualification " +
-			"are incomplete. Filesystem, ownership, lease and userfaultfd checks are separately required.",
+		Scope: "Platform tuple inspection only. Component identities, filesystem, ownership, " +
+			"resource boundaries and lifecycle qualification require separate evidence.",
 	}
 	if err != nil {
 		report.Error = err.Error()

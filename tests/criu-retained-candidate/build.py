@@ -2,6 +2,7 @@
 import copy
 import argparse
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -101,9 +102,10 @@ recipe["source_recipe_sha256"] = sources.recipe_sha(component)
 (archive / "criu-build.json").write_text(json.dumps(recipe, indent=2) + "\n")
 unchanged = sources.check_source(context, root / ".cache/downloads" / original["archive"], component)
 context_sha = sources.tree_sha(context)
-image, base = native_base.load(options.native_base_build)
+image, base = native_base.load(options.native_base_build, for_build=True)
 command = [
     *reference.DOCKER, "run", "--pull=never", "--name", name,
+    "--user", f"{os.getuid()}:{os.getgid()}",
     "--label", "com.factorybox.run=" + owner, "--cpus=2", "--memory=1g",
     "--pids-limit=128", "--network=none", "--read-only", "--cgroupns=private",
     "--cap-drop=ALL", "--security-opt=no-new-privileges",
@@ -121,6 +123,7 @@ command = [
 result = {
     "owner": owner, "command": command, "builder": image,
     "native_base_build": options.native_base_build,
+    "platform": base.get("platform", "linux/arm64"), "native_lifecycle_qualified": False,
     "base_source_lock_sha256": reference.sha(root / "upstream/lock.json"),
     "source_lock_sha256": reference.sha(archive / "source-lock.json"),
     "patch_sha256": reference.sha(archive / "retained.patch"),

@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ def main():
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build")
     parser.add_argument("--compare", help="Require a binary identical to one exact successful CRIU build")
     options = parser.parse_args()
-    builder, base_result = (native_base.load(options.native_base_build)
+    builder, base_result = (native_base.load(options.native_base_build, for_build=True)
                             if options.native_base_build else (BUILDER, None))
     component = json.loads((ROOT / "upstream/lock.json").read_text())["components"]["criu"]
     build_inputs = ROOT / "upstream/criu-build.json"
@@ -53,6 +54,8 @@ def main():
     result = {
         "schema": 1, "owner": owner, "container_name": name, "builder": builder,
         "native_base_build": options.native_base_build,
+        "platform": base_result.get("platform", "linux/arm64") if base_result else "linux/arm64",
+        "native_lifecycle_qualified": False,
         "comparison_build": options.compare,
         "source_date_epoch": recipe["source_date_epoch"],
         "build_inputs_sha256": reference.sha(build_inputs),
@@ -70,6 +73,7 @@ def main():
             tree, ROOT / ".cache/downloads" / component["archive"], component)
         command = [
             *reference.DOCKER, "run", "--pull=never", "--name", name,
+            "--user", f"{os.getuid()}:{os.getgid()}",
             "--label", "com.factorybox.run=" + owner,
             "--cpus=2", "--memory=1g", "--pids-limit=128", "--network=none",
             "--read-only", "--cgroupns=private", "--cap-drop=ALL",
@@ -131,6 +135,7 @@ def main():
         except Exception as error:
             result["cleanup_error"] = str(error)
             failure = failure or error
+        result["passed"] = bool(result["passed"] and result["cleanup"] and failure is None)
         (output / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps({"evidence": str(output), **result}), flush=True)
     if failure:

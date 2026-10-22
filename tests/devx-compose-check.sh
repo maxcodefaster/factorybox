@@ -2,6 +2,10 @@
 # Component conformance before the full Sysbox/CRIU composition.
 set -eu
 test "${FACTORYBOX_DEVX_WORKER:-}" = 1
+case "${FACTORYBOX_NATIVE_PLATFORM:-}" in
+  linux/amd64|linux/arm64) ;;
+  *) echo 'an explicit native platform is required' >&2; exit 1 ;;
+esac
 test "$(cat /proc/1/cgroup)" = '0::/factorybox-devx-controller'
 mkdir -p /run/private-docker
 node /devx-observation.cjs before
@@ -50,14 +54,14 @@ for attempt in $(seq 1 150); do
   sleep 0.1
 done
 docker info > /output/docker-info.txt
-node -e 'for(const pin of JSON.parse(require("node:fs").readFileSync("/project-images.json"))) require("node:child_process").execFileSync("docker",["pull","--platform=linux/arm64",pin.image],{stdio:"inherit"})' > /output/image-pull.txt 2>&1
+node -e 'for(const pin of JSON.parse(require("node:fs").readFileSync("/project-images.json"))) require("node:child_process").execFileSync("docker",["pull","--platform="+process.env.FACTORYBOX_NATIVE_PLATFORM,pin.image],{stdio:"inherit"})' > /output/image-pull.txt 2>&1
 node - <<'JS'
 const fs = require('node:fs');
 const cp = require('node:child_process');
 const pins = JSON.parse(fs.readFileSync('/project-images.json', 'utf8'));
 const observed = pins.map(pin => {
   const data = JSON.parse(cp.execFileSync('docker', ['image', 'inspect', pin.image]))[0];
-  if (!data.RepoDigests.includes(pin.canonical_image) || data.Architecture !== 'arm64' || data.Os !== 'linux') {
+  if (!data.RepoDigests.includes(pin.canonical_image) || data.Architecture !== process.env.FACTORYBOX_NATIVE_PLATFORM.split('/')[1] || data.Os !== 'linux') {
     throw new Error('offline project image lost its exact digest or platform');
   }
   return { image: pin.image, id: data.Id, repoDigests: data.RepoDigests };

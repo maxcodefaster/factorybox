@@ -1,0 +1,16 @@
+--- a/criu/nested-mnt.c
++++ b/criu/nested-mnt.c
+@@ -730,6 +730,13 @@
+ 	    !(rsti(item)->clone_flags & CLONE_NEWPID) || nested_ns_skip_mntns(item))
+ 		return 0;
+ 
++	/* A new PID namespace can share its parent's mount namespace and
++	 * ancestor proc view. Remounting proc would change that shared view.
++	 * Only a separately restored mount namespace needs a fresh proc. */
++	if (item->parent && item->parent->ids &&
++	    item->ids->mnt_ns_id == item->parent->ids->mnt_ns_id)
++		return 0;
++
+ 	nsid = lookup_ns_by_id(item->ids->mnt_ns_id, &mnt_ns_desc);
+ 	if (!nsid)
+ 		return -1;

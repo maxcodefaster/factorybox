@@ -10,13 +10,14 @@ import subprocess
 import uuid
 
 import artifact_storage
+import build_config
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REFERENCE = ROOT / "tests/reference"
 OUTPUT = ROOT / "dist/reference/linux-arm64"
 BASE = "runtime-fork-criu-probe:raw-eager-base"
 BASE_ID = "sha256:041140e968e8efdbc6b2f33651f84bc19c13593c6d3f527e90af648f967dd52f"
-DOCKER = ["docker", "--context", "orbstack"]
+DOCKER = build_config.docker_command()
 
 
 def new_artifact(name):

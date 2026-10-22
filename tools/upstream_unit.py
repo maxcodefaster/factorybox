@@ -12,6 +12,8 @@ import urllib.request
 
 import reference
 import reference_lifecycle
+import build_config
+import native_base
 
 ROOT = reference.ROOT
 
@@ -58,12 +60,24 @@ def main():
     parser.add_argument("--suite", choices=["all", "runc", "libcontainer", "fs", "ipc", "mgr", "idmap",
                                             "runc-integration"], default="all")
     parser.add_argument("--test", help="One exact upstream integration test name")
+    parser.add_argument("--candidate-platform", choices=["linux/amd64"],
+                        help="Run native upstream tests on an explicitly unqualified platform")
+    parser.add_argument("--network", choices=["default", "host"], default="default",
+                        help="Builder dependency network only")
+    parser.add_argument("--bounded-build", action="store_true",
+                        help="Require BuildKit RUN limits of 3 CPU and 3 GiB")
     options = parser.parse_args()
     if options.test and (options.suite != "runc-integration" or
                          not re.fullmatch(r"Test[A-Za-z0-9_]+", options.test)):
         parser.error("--test requires --suite runc-integration and one exact Test name")
     build, build_result = reference_lifecycle.component_build(
         options.sysbox_build, "factorybox-build-sysbox-")
+    target = options.candidate_platform or "linux/arm64"
+    if build_result.get("platform", "linux/arm64") != target:
+        raise ValueError("Sysbox build differs from the explicit native target")
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
+    native_base.require_native_host(target, host)
+    options.platform = target
     owner = uuid.uuid4().hex
     name = "factorybox-upstream-" + owner
     archive = reference.new_artifact(name)
@@ -72,6 +86,9 @@ def main():
     result = {"schema": 1, "owner": owner, "container_name": name,
               "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "passed": False, "cleanup": False, "production_qualified": False,
+              "platform": target, "candidate_platform": bool(options.candidate_platform),
+              "native_lifecycle_qualified": False,
+              "host": {key: host[key] for key in ["OSType", "Architecture", "KernelVersion"]},
               "suite": options.suite,
               "test": options.test,
               "scope": ("Pinned libcontainer unit package only; executes the independently compiled binary."
@@ -95,11 +112,14 @@ def main():
         if context_manifest(build / "context") != expected:
             raise ValueError("verified build context changed")
         result["component_build"] = options.sysbox_build
+        result["source_lock_sha256"] = build_result["source_lock_sha256"]
+        result["context_manifest_sha256"] = reference.sha(build / "context-manifest.json")
         for script in ["upstream-unit.sh", "private-cgroup-delegation.sh"]:
             shutil.copyfile(ROOT / "tests" / script, archive / script)
         result["test_script_sha256"] = reference.sha(archive / "upstream-unit.sh")
         result["delegation_setup_sha256"] = reference.sha(archive / "private-cgroup-delegation.sh")
-        busybox = json.loads((ROOT / "upstream/test-inputs.json").read_text())["busybox-arm64"]
+        busybox = json.loads((ROOT / "upstream/test-inputs.json").read_text())[
+            "busybox-" + build_config.architecture(target)]
         rootfs = ROOT / ".cache/downloads" / busybox["archive"]
         if not rootfs.exists():
             with urllib.request.urlopen(busybox["url"], timeout=30) as response:
@@ -108,24 +128,50 @@ def main():
             raise ValueError("upstream Busybox test rootfs differs")
         result["busybox_rootfs_sha256"] = busybox["sha256"]
         command = [*reference.DOCKER, "build", "--provenance=false", "--progress=plain",
-                   "--platform=linux/arm64", "--target", "build",
+                   *build_config.arguments(options), "--target", "build",
                    "--output", "type=image,compression=uncompressed",
                    "--tag", name, "--iidfile", str(archive / "builder-id.txt"),
                    "--metadata-file", str(archive / "builder-metadata.json"),
                    "-f", str(dockerfile), str(build / "context")]
+        result["builder_command"] = command
         with (archive / "builder.log").open("x") as log:
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
         result["builder_image_config"] = (archive / "builder-id.txt").read_text().strip()
         metadata = json.loads((archive / "builder-metadata.json").read_text())
         image = name + "@" + metadata["containerimage.digest"]
         result["builder_image_manifest"] = image
-        command = [*reference.DOCKER, "run", "--pull=never", "--name", name,
+        inspected = json.loads(reference.docker(["image", "inspect", image]))[0]
+        native_base.verify_image({"image": image, "image_config": result["builder_image_config"],
+                                  "platform": target}, inspected)
+        # Cache mounts used by the component build are not part of its image.
+        # Materialize verified Go dependencies before entering the offline test
+        # container, using a separate recipe and leaving the component recipe intact.
+        dependency_recipe = ROOT / "build/upstream-unit.Dockerfile"
+        shutil.copyfile(dependency_recipe, archive / "upstream-unit.Dockerfile")
+        result["dependency_recipe_sha256"] = reference.sha(archive / "upstream-unit.Dockerfile")
+        command = [*reference.DOCKER, "build", "--provenance=false", "--progress=plain",
+                   *build_config.arguments(options), "--build-arg", "BUILDER_IMAGE=" + image,
+                   "--output", "type=image,compression=uncompressed", "--tag", name + "-offline",
+                   "--metadata-file", str(archive / "offline-metadata.json"),
+                   "-f", str(archive / "upstream-unit.Dockerfile"), str(build / "context")]
+        result["dependency_command"] = command
+        with (archive / "dependencies.log").open("x") as log:
+            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
+        metadata = json.loads((archive / "offline-metadata.json").read_text())
+        image = name + "-offline@" + metadata["containerimage.digest"]
+        inspected = json.loads(reference.docker(["image", "inspect", image]))[0]
+        native_base.verify_image({"image": image, "image_config": inspected["Id"],
+                                  "platform": target}, inspected)
+        result["offline_image"] = image
+        command = [*reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
                    "--label", "com.factorybox.run=" + owner, "--privileged",
+                   "--network=none",
                    "--cgroupns=private", "--cpus=2", "--memory=2g", "--pids-limit=512",
                    "--env", "FACTORYBOX_UPSTREAM_CONTAINER=1",
                    "--env", "FACTORYBOX_UPSTREAM_SUITE=" + options.suite,
                    "--env", "FACTORYBOX_UPSTREAM_TEST=" + (options.test or ""),
                    "--env", "GOMAXPROCS=2", "--env", "GOFLAGS=-p=2",
+                   "--env", "GOPROXY=off", "--env", "GOTOOLCHAIN=local",
                    "--mount", f"type=bind,source={build / 'context'},target=/input,readonly",
                    "--mount", f"type=bind,source={output},target=/output",
                    "--mount", f"type=bind,source={archive / 'upstream-unit.sh'},target=/run-tests.sh,readonly",
@@ -142,10 +188,34 @@ def main():
             command[command.index("--entrypoint"):command.index("--entrypoint")] = [
                 "--mount", f"type=volume,source={scratch_name},target=/var/lib/sysbox"]
         if options.suite == "all":
-            alpine = json.loads((ROOT / "upstream/test-inputs.json").read_text())["alpine"]["image"]
+            alpine = json.loads((ROOT / "upstream/test-inputs.json").read_text())[
+                "alpine" if target == "linux/arm64" else "alpine-amd64"]["image"]
             result["private_docker_alpine"] = alpine
+            reference.docker(["pull", "--platform=" + target, alpine], timeout=120)
+            inspected = json.loads(reference.docker(["image", "inspect", alpine]))[0]
+            if (alpine.split("@", 1)[1] not in [digest.split("@", 1)[1]
+                    for digest in inspected.get("RepoDigests", [])] or
+                    inspected["Os"] != "linux" or
+                    inspected["Architecture"] != build_config.architecture(target)):
+                raise ValueError("private Docker Alpine image identity/platform differs")
+            alias = "factorybox-upstream-alpine:" + owner
+            reference.docker(["image", "tag", alpine, alias])
+            try:
+                with (archive / "alpine.tar").open("xb") as stream:
+                    subprocess.run([*reference.DOCKER, "image", "save", alias],
+                                   stdout=stream, check=True, timeout=60)
+            finally:
+                tagged = json.loads(reference.docker(["image", "inspect", alias]))[0]
+                if tagged["Id"] != inspected["Id"]:
+                    raise ValueError("private Docker transport alias identity changed")
+                reference.docker(["image", "rm", alias])
+            result["private_docker_alpine_archive_sha256"] = reference.sha(archive / "alpine.tar")
+            # Docker save/load retains repository tags, not registry digests.
+            # The immutable archive above transports the verified digest's bytes.
+            result["private_docker_alpine_loaded_tag"] = alias
             command[command.index("--entrypoint"):command.index("--entrypoint")] = [
-                "--env", "FACTORYBOX_TEST_ALPINE_IMAGE=" + alpine]
+                "--env", "FACTORYBOX_TEST_ALPINE_IMAGE=" + result["private_docker_alpine_loaded_tag"],
+                "--mount", f"type=bind,source={archive / 'alpine.tar'},target=/alpine.tar,readonly"]
         result["command"] = command
         reference_lifecycle.write_json(archive / "intent.json", result)
         print(json.dumps({"running": str(archive)}), flush=True)
@@ -201,6 +271,7 @@ def main():
         except Exception as error:
             result["cleanup_error"] = str(error)
             failure = failure or error
+        result["passed"] = bool(result["passed"] and result["cleanup"] and failure is None)
         reference_lifecycle.write_json(archive / "result.json", result)
         print(json.dumps({"evidence": str(archive), **result}), flush=True)
     if failure:

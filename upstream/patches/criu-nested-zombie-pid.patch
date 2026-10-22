@@ -1,0 +1,219 @@
+--- a/images/pstree.proto
++++ b/images/pstree.proto
+@@ -15,4 +15,6 @@
+ 	 * high number keeps the field from colliding with the ones the
+ 	 * upstream criu keeps adding to this message. */
+ 	optional uint32			own_pid		= 1000;
++	/* Validated against the actual zombie and parent PID namespaces on dump. */
++	optional bool			zombie_parent_pidns = 1001;
+ }
+--- a/criu/include/pstree.h
++++ b/criu/include/pstree.h
+@@ -27,6 +27,7 @@
+ 	 * living in the one of the root task of the dump.
+ 	 */
+ 	pid_t own_ns_pid;
++	bool zombie_parent_pidns;
+ 
+ 	int nr_threads;	     /* number of threads */
+ 	struct pid *threads; /* array of threads */
+--- a/criu/pstree.c
++++ b/criu/pstree.c
+@@ -227,6 +227,7 @@
+ 	item->pid->ns[0].virt = -1;
+ 	item->pid->real = -1;
+ 	item->own_ns_pid = 0;
++	item->zombie_parent_pidns = false;
+ 	item->pid->state = TASK_UNDEF;
+ 	item->pid->stop_signo = -1;
+ 	item->born_sid = -1;
+@@ -325,6 +326,16 @@
+ 		e.n_threads = item->nr_threads;
+ 		e.has_own_pid = false;
+ 		e.own_pid = 0;
++		e.has_zombie_parent_pidns = false;
++		e.zombie_parent_pidns = false;
++		if (nested_ns_enabled() && item->pid->state == TASK_DEAD) {
++			if (nested_ns_dump_zombie_parent(item) != 1) {
++				pr_err("Nested zombie requires its verified parent PID namespace\n");
++				goto err;
++			}
++			e.has_zombie_parent_pidns = true;
++			e.zombie_parent_pidns = true;
++		}
+ 
+ 		/*
+ 		 * A task living in a pid namespace nested in the one of
+@@ -603,6 +614,7 @@
+ 	if (e->pid > *pid_max)
+ 		*pid_max = e->pid;
+ 	pi->own_ns_pid = e->has_own_pid ? e->own_pid : e->pid;
++	pi->zombie_parent_pidns = e->has_zombie_parent_pidns && e->zombie_parent_pidns;
+ 	pi->pgid = e->pgid;
+ 	if (e->pgid > *pid_max)
+ 		*pid_max = e->pgid;
+--- a/criu/include/nested-ns.h
++++ b/criu/include/nested-ns.h
+@@ -78,6 +78,10 @@
+ pid_t nested_ns_dump_vpid(pid_t real, pid_t fallback);
+ int nested_ns_dump_session(pid_t real, int *pgid, int *sid);
+ pid_t nested_ns_dump_own_pid(pid_t real, pid_t fallback);
++int nested_ns_dump_zombie_parent(struct pstree_item *item);
++
++/* PID visible to the actual restored parent, including validated zombies. */
++pid_t nested_ns_child_pid(struct pstree_item *item);
+ 
+ /*
+  * Restore side
+--- a/criu/nested-ns.c
++++ b/criu/nested-ns.c
+@@ -59,9 +59,57 @@
+ 	return nested_ns_task_nested(pstree_item_by_real(real));
+ }
+ 
++int nested_ns_dump_zombie_parent(struct pstree_item *item)
++{
++	struct stat child, parent;
++	int fd;
++
++	if (!item->parent)
++		return 0;
++	fd = open_pid_proc(item->pid->real);
++	if (fd < 0 || fstatat(fd, "ns/pid", &child, 0)) {
++		pr_perror("Can't identify zombie PID namespace");
++		return -1;
++	}
++	fd = open_pid_proc(item->parent->pid->real);
++	if (fd < 0 || fstatat(fd, "ns/pid", &parent, 0)) {
++		pr_perror("Can't identify zombie parent PID namespace");
++		return -1;
++	}
++	return child.st_dev == parent.st_dev && child.st_ino == parent.st_ino;
++}
++
++static unsigned int task_pidns_id(struct pstree_item *item)
++{
++	if (item->ids)
++		return item->ids->pid_ns_id;
++	if (item->pid->state == TASK_DEAD && item->zombie_parent_pidns &&
++	    item->parent && item->parent->ids)
++		return item->parent->ids->pid_ns_id;
++	return 0;
++}
++
+ static bool task_in_nested_pidns(struct pstree_item *item)
+ {
+-	return item->ids && root_item->ids && item->ids->pid_ns_id != root_item->ids->pid_ns_id;
++	unsigned int id = task_pidns_id(item);
++
++	return id && root_item->ids && id != root_item->ids->pid_ns_id;
++}
++
++pid_t nested_ns_child_pid(struct pstree_item *item)
++{
++	if (!nested_ns_enabled())
++		return vpid(item);
++	if (!item->ids && item->pid->state == TASK_DEAD &&
++	    item->own_ns_pid != vpid(item) && !item->zombie_parent_pidns) {
++		pr_err("Nested zombie image lacks its verified parent PID namespace\n");
++		return 0;
++	}
++	if (item->own_ns_pid && item->parent && item->parent->ids &&
++	    item->parent->pid->state != TASK_HELPER &&
++	    item->parent->ids->pid_ns_id == task_pidns_id(item))
++		return item->own_ns_pid;
++	return vpid(item);
+ }
+ 
+ /*
+@@ -601,6 +649,9 @@
+ 	if (!nested_ns_enabled())
+ 		return 1;
+ 
++	if (nested_ns_child_pid(item) <= 0)
++		return -1;
++
+ 	if (nested_ns_pid_can_not_be_set(item))
+ 		return 0;
+ 
+@@ -647,11 +698,8 @@
+ 	 * level of the helper one is requested instead, as it is the
+ 	 * one settable by it.
+ 	 */
+-	if (item->own_ns_pid && item->own_ns_pid != pid &&
+-	    item->parent && item->parent->ids &&
+-	    item->parent->pid->state != TASK_HELPER &&
+-	    item->parent->ids->pid_ns_id == item->ids->pid_ns_id)
+-		set_tid[0] = item->own_ns_pid;
++	if (nested_ns_child_pid(item) != vpid(item))
++		set_tid[0] = nested_ns_child_pid(item);
+ 
+ 	return 1;
+ }
+@@ -675,12 +723,7 @@
+ 	 * nested_ns_set_tid): it sees itself at its pid of the helper
+ 	 * one, the vpid.
+ 	 */
+-	if (item->ids && item->own_ns_pid && item->parent && item->parent->ids &&
+-	    item->parent->pid->state != TASK_HELPER &&
+-	    item->parent->ids->pid_ns_id == item->ids->pid_ns_id)
+-		expected = item->own_ns_pid;
+-	else
+-		expected = vpid(item);
++	expected = nested_ns_child_pid(item);
+ 	if (expected == pid)
+ 		return true;
+ 
+@@ -717,7 +760,7 @@
+ 	 * restored to see it at.
+ 	 */
+ 	leader = pstree_item_by_virt(item->sid);
+-	if (leader && leader->ids && leader->ids->pid_ns_id == item->ids->pid_ns_id) {
++	if (leader && task_pidns_id(leader) && task_pidns_id(leader) == task_pidns_id(item)) {
+ 		if (sid == leader->own_ns_pid)
+ 			return true;
+ 		/*
+@@ -761,7 +804,7 @@
+ 	}
+ 
+ 	leader = pstree_item_by_virt(item->pgid);
+-	if (leader && leader->ids && leader->own_ns_pid && leader->ids->pid_ns_id == item->ids->pid_ns_id) {
++	if (leader && task_pidns_id(leader) && leader->own_ns_pid && task_pidns_id(leader) == task_pidns_id(item)) {
+ 		*pgid = leader->own_ns_pid;
+ 		return true;
+ 	}
+--- a/criu/cr-restore.c
++++ b/criu/cr-restore.c
+@@ -439,7 +439,9 @@
+ 			return -1;
+ 
+ 		(*n)++;
+-		*child = vpid(pi);
++		*child = nested_ns_child_pid(pi);
++		if (*child <= 0)
++			return -1;
+ 	}
+ 
+ 	return 0;
+@@ -905,8 +907,11 @@
+ 	struct pstree_item *pi;
+ 
+ 	list_for_each_entry(pi, &current->children, sibling) {
+-		pid_t pid = vpid(pi);
++		pid_t pid = nested_ns_child_pid(pi);
+ 		int status;
++
++		if (pid <= 0)
++			return -1;
+ 
+ 		switch (pi->pid->state) {
+ 		case TASK_DEAD:
+@@ -1382,6 +1387,8 @@
+ 		 * task can set (see nested_ns_set_tid()).
+ 		 */
+ 		set_tid_size = nested_ns_set_tid(item, pid, set_tid, ARRAY_SIZE(set_tid));
++		if (set_tid_size < 0)
++			goto err_unlock;
+ 
+ 		ret = clone3_with_pids_noasan(restore_task_with_children, &ca,
+ 					      (ca.clone_flags & ~(CLONE_NEWNET | CLONE_NEWCGROUP | CLONE_NEWTIME)),

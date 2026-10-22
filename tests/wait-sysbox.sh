@@ -41,6 +41,38 @@ done
 write_result false
 ps -o pid,ppid,stat,wchan:32,args -p "$manager,$filesystem" \
   > "$output/sysbox-startup-processes.txt" 2>&1 || true
+python3 - "$manager" "$filesystem" "$PPID" > "$output/sysbox-startup-tree.txt" 2>&1 <<'PY' || true
+import pathlib, sys, time
+pending = [int(value) for value in sys.argv[1:3]]
+parent = int(sys.argv[3])
+seen = set()
+deadline = time.monotonic() + 2
+threads = 0
+while pending and len(seen) < 128 and threads < 128 and time.monotonic() < deadline:
+    pid = pending.pop()
+    if pid in seen:
+        continue
+    seen.add(pid)
+    root = pathlib.Path('/proc') / str(pid)
+    try:
+        status = dict(line.split(':', 1) for line in (root / 'status').read_text().splitlines() if ':' in line)
+        if pid in [int(value) for value in sys.argv[1:3]] and int(status['PPid']) != parent:
+            print('Refusing unrelated startup process', pid)
+            continue
+        print('PROCESS', pid, (root / 'cmdline').read_bytes().replace(b'\0', b' '))
+        for thread in (root / 'task').iterdir():
+            if threads >= 128 or time.monotonic() >= deadline:
+                break
+            threads += 1
+            for name in ['wchan', 'stack', 'children']:
+                try:
+                    print(str(thread / name), (thread / name).read_text()[:65536])
+                except OSError as error:
+                    print(type(error).__name__)
+            pending.extend(int(value) for value in (thread / 'children').read_text().split())
+    except OSError as error:
+        print(type(error).__name__)
+PY
 for log in sysbox-mgr.log sysbox-fs.log sysbox-mgr-stdio.log sysbox-fs-stdio.log; do
   if test -f "$output/$log"; then tail -n 20 "$output/$log" >&2; fi
 done

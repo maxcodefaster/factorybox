@@ -33,6 +33,7 @@ type FilesystemSnapshot struct {
 	Version      int              `json:"version"`
 	Roots        []FilesystemTree `json:"roots"`
 	DurabilityUS int64            `json:"durability_us,omitempty"`
+	AdmissionUS  int64            `json:"source_admission_us,omitempty"`
 }
 
 type FilesystemTree struct {
@@ -287,9 +288,13 @@ func MaterializeFilesystemSnapshot(ctx context.Context, generation, destination 
 		strings.HasPrefix(generation, destination+"/") {
 		return nil, fmt.Errorf("filesystem materialization requires separate canonical generation and destination paths")
 	}
-	if err := VerifyFilesystemSnapshot(ctx, generation, snapshot); err != nil {
+	admissionStarted := time.Now()
+	if err := checkFilesystemSnapshot(ctx, generation, snapshot, func(ctx context.Context, root *os.File, _ FilesystemTree) error {
+		return admitFilesystemCopySource(ctx, root)
+	}); err != nil {
 		return nil, err
 	}
+	admissionUS := time.Since(admissionStarted).Microseconds()
 	parentFD, err := unix.Openat2(unix.AT_FDCWD, filepath.Dir(destination), &unix.OpenHow{
 		Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC | unix.O_NOATIME,
 		Resolve: unix.RESOLVE_NO_SYMLINKS})
@@ -313,6 +318,7 @@ func MaterializeFilesystemSnapshot(ctx context.Context, generation, destination 
 	if err != nil {
 		return nil, err
 	}
+	result.AdmissionUS = admissionUS
 	for index, tree := range result.Roots {
 		expected := snapshot.Roots[index]
 		if !sameFilesystemTree(tree, expected) {
@@ -334,9 +340,47 @@ func sameFilesystemTree(actual, expected FilesystemTree) bool {
 // VerifyFilesystemSnapshot reads every saved tree again and checks the exact
 // content/metadata digest. Saved paths must belong to this generation.
 func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *FilesystemSnapshot) error {
+	return checkFilesystemSnapshot(ctx, generation, snapshot, func(ctx context.Context, root *os.File, expected FilesystemTree) error {
+		actual, err := fingerprintTree(ctx, root, nil, false)
+		if err != nil {
+			return err
+		}
+		if !sameFilesystemTree(actual, expected) {
+			return fmt.Errorf("saved filesystem tree changed: %s", expected.Name)
+		}
+		return nil
+	})
+}
+
+func checkFilesystemSnapshot(ctx context.Context, generation string, snapshot *FilesystemSnapshot,
+	inspect func(context.Context, *os.File, FilesystemTree) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := validateFilesystemSnapshotPaths(generation, snapshot); err != nil {
+		return err
+	}
+	for _, tree := range snapshot.Roots {
+		if tree.Immutable != nil {
+			if err := VerifyImmutableTree(tree.Saved, tree); err != nil {
+				return err
+			}
+			continue
+		}
+		directory, err := openDirectory(tree.Saved)
+		if err != nil {
+			return err
+		}
+		readErr := inspect(ctx, directory, tree)
+		closeErr := directory.Close()
+		if err := errors.Join(readErr, closeErr); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateFilesystemSnapshotPaths(generation string, snapshot *FilesystemSnapshot) error {
 	if snapshot == nil || snapshot.Version != 1 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
 		return fmt.Errorf("filesystem snapshot root set is absent or invalid")
 	}
@@ -354,28 +398,85 @@ func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *
 			if tree.Name != "lower" {
 				return fmt.Errorf("only the prepared immutable lower may be shared")
 			}
-			if err := VerifyImmutableTree(tree.Saved, tree); err != nil {
-				return err
-			}
-			continue
-		}
-		directory, err := openDirectory(tree.Saved)
-		if err != nil {
-			return err
-		}
-		actual, readErr := fingerprintTree(ctx, directory, nil, false)
-		closeErr := directory.Close()
-		if err := errors.Join(readErr, closeErr); err != nil {
-			return err
-		}
-		if !sameFilesystemTree(actual, tree) {
-			return fmt.Errorf("saved filesystem tree changed: %s", tree.Name)
 		}
 	}
 	if !seen["lower"] || !seen["upper"] {
 		return fmt.Errorf("filesystem snapshot omitted an overlay layer")
 	}
 	return nil
+}
+
+// A new independent copy is verified against the complete checkpoint digest
+// before it can be returned. Reading the source payload first would repeat that
+// same content proof. Still admit every source mount before cp: a foreign mount
+// with identical contents must not be traversed or adopted. This produces no
+// digest and cannot authorize reuse or publication of an existing destination.
+func admitFilesystemCopySource(ctx context.Context, root *os.File) error {
+	var rootStat unix.Statx_t
+	if err := unix.Statx(int(root.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &rootStat); err != nil {
+		return err
+	}
+	if rootStat.Mask&unix.STATX_MNT_ID == 0 || rootStat.Mnt_id == 0 {
+		return fmt.Errorf("filesystem root mount identity is unknown")
+	}
+	entries := 0
+	var visit func(*os.File, int) error
+	visit = func(directory *os.File, depth int) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if depth > 256 || entries >= 1000000 {
+			return fmt.Errorf("filesystem tree exceeds capture bounds")
+		}
+		entries++
+		fd, err := unix.Openat(int(directory.Fd()), ".", unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NOATIME, 0)
+		if err != nil {
+			return err
+		}
+		list := os.NewFile(uintptr(fd), "filesystem source admission")
+		children, readErr := list.ReadDir(1000001)
+		closeErr := list.Close()
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return errors.Join(readErr, closeErr)
+		}
+		if closeErr != nil || len(children) > 1000000 {
+			return errors.Join(closeErr, fmt.Errorf("filesystem directory exceeds capture bounds"))
+		}
+		for _, child := range children {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			var stat unix.Statx_t
+			if err := unix.Statx(int(directory.Fd()), child.Name(), unix.AT_SYMLINK_NOFOLLOW,
+				unix.STATX_MNT_ID|unix.STATX_TYPE, &stat); err != nil {
+				return err
+			}
+			if stat.Mask&unix.STATX_MNT_ID == 0 || stat.Mnt_id != rootStat.Mnt_id {
+				return fmt.Errorf("filesystem capture crosses a foreign mount: %s", child.Name())
+			}
+			if stat.Mask&unix.STATX_TYPE == 0 {
+				return fmt.Errorf("filesystem source type is unknown")
+			}
+			if stat.Mode&unix.S_IFMT == unix.S_IFDIR {
+				fd, err := unix.Openat(int(directory.Fd()), child.Name(), unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NOATIME, 0)
+				if err != nil {
+					return err
+				}
+				directory := os.NewFile(uintptr(fd), child.Name())
+				err = visit(directory, depth+1)
+				if err := errors.Join(err, directory.Close()); err != nil {
+					return err
+				}
+			} else {
+				if entries >= 1000000 {
+					return fmt.Errorf("filesystem tree exceeds capture bounds")
+				}
+				entries++
+			}
+		}
+		return nil
+	}
+	return visit(root, 0)
 }
 
 // VerifyLiveFilesystemSnapshot requires the stopped worker-owned backing to
@@ -436,8 +537,8 @@ func cloneFilesystemTreeTo(ctx context.Context, source *os.File, destination str
 			return expected, err
 		}
 	} else {
-		// Materialization has just verified this complete source. The full
-		// target scan below compares all bytes/metadata to that same digest;
+		// Materialization has admitted the source mount topology. The full
+		// target scan below compares all bytes/metadata to the checkpoint digest;
 		// a source change during cp cannot publish a different generation.
 		expected = *known
 	}

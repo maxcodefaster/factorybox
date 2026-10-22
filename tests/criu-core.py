@@ -36,6 +36,12 @@ def hugepage_value():
         return None
 
 
+def require_platform(target, machine, page_size):
+    expected = {"linux/arm64": "aarch64", "linux/amd64": "x86_64"}
+    if target not in expected or machine != expected[target] or page_size != 4096:
+        raise ValueError("native core platform differs from the explicit 4096-byte-page target")
+
+
 def verify_descriptor(directory, case):
     name = case["name"]
     if not re.fullmatch(r"[a-z][a-z0-9_-]+", name):
@@ -202,11 +208,12 @@ def run_case(case, static, results, cycles):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test")
+    parser.add_argument("--platform", choices=["linux/arm64", "linux/amd64"], default="linux/arm64")
     options = parser.parse_args()
     if (os.getpid() != 1 or os.environ.get("FACTORYBOX_CRIU_CORE") != "1" or
-            pathlib.Path("/proc/1/cgroup").read_text().strip() != "0::/" or
-            platform.machine() != "aarch64" or os.sysconf("SC_PAGE_SIZE") != 4096):
-        raise ValueError("requires the owned private-PID/cgroup ARM64 container")
+            pathlib.Path("/proc/1/cgroup").read_text().strip() != "0::/"):
+        raise ValueError("requires the owned private-PID/cgroup container")
+    require_platform(options.platform, platform.machine(), os.sysconf("SC_PAGE_SIZE"))
     bound = pathlib.Path("/sys/fs/cgroup/memory.max").read_text().strip()
     if not bound.isdecimal() or int(bound) > 3 * 1024**3:
         raise ValueError("requires the declared finite memory limit")
@@ -221,6 +228,8 @@ def main():
     # Read-only /proc/sys/vm makes the rejected global-hugepage setup fail closed.
     # Record the existing global value, without attempting to write it.
     report = {"schema": 1, "passed": False, "flavor": "h", "cycles": spec["cycles"],
+              "platform": options.platform, "machine": platform.machine(),
+              "page_size": os.sysconf("SC_PAGE_SIZE"),
               "kernel": platform.release(), "hugepages_before": hugepage_value(),
               "cases": [], "scope": "Selected unchanged static C tests; direct host-flavor protocol. "
               "No complete ZDTM matrix, namespace flavors or Sysbox workload claim."}

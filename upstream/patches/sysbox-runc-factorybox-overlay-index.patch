@@ -1,0 +1,9 @@
+--- a/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go
++++ b/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go
+@@ -85,5 +85,5 @@
+ 	if err := os.Mkdir(work, 0700); err != nil {
+ 		return err
+ 	}
+-	return unix.Mount("overlay", config.Rootfs, "overlay", 0, "lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+work)
++	return unix.Mount("overlay", config.Rootfs, "overlay", 0, "index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+work)
+ }

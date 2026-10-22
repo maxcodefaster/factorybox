@@ -1,5 +1,5 @@
-// Package platform describes the reference platform. Passing this check alone
-// does not qualify filesystem, userfaultfd, runtime installation or recovery.
+// Package platform retains the historical tuple tests and the current execution
+// admission. A tuple match alone does not qualify a worker or its lifecycle.
 package platform
 
 import (
@@ -24,6 +24,8 @@ func Current() (Info, error) {
 	return info, err
 }
 
+// CheckReference retains the historical ARM64 research tuple and its assertions.
+// Current runtime execution uses CheckExecution.
 func (info Info) CheckReference() error {
 	if info.OS != "linux" || info.Architecture != "arm64" ||
 		info.PageSize != 4096 || info.Kernel != ReferenceKernel {
