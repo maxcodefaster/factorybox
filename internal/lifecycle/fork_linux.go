@@ -491,7 +491,7 @@ func (e *Engine) forkRestoreRequest(intent forkIntent, target Record) restoreReq
 	return restoreRequest{Version: 1, SandboxID: target.ID, Owner: target.Owner,
 		SourceID: intent.Source.RuntimeID, SourceRootfs: intent.Source.Rootfs, Root: e.config.Root,
 		Filesystem: target.InputBundle, Images: filepath.Dir(target.InputBundle) + "/images",
-		ManagerRoot: e.config.ManagerRoot, ConfigSHA256: target.ConfigSHA256, State: intent.State, FsState: intent.FsState}
+		ManagerRoot: e.config.ManagerRoot, ConfigSHA256: target.ConfigSHA256, State: intent.State, FsState: intent.FsState, HoldForActivation: true}
 }
 
 func (e *Engine) reconcileFork(ctx context.Context, lock *os.File, intent forkIntent, record Record) (View, error) {

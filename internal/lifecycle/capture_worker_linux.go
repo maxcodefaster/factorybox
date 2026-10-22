@@ -97,7 +97,9 @@ func captureWorkerServe() (resultErr error) {
 		resultErr = errors.Join(resultErr,
 			captureGuardWrite(anchors.evidence, "capture-worker-outcome.json", outcome))
 	}()
-	if err := prepareCaptureTimers(request, anchors, requestFile); err != nil {
+	guardControl := os.NewFile(9, "original capture and timer exit guard")
+	defer guardControl.Close()
+	if err := prepareCaptureTimers(request, anchors, requestFile, guardControl); err != nil {
 		return err
 	}
 	network, err := sysboxcapture.BeginCaptureNetwork(request.Guard.PID, request.Guard.Start,
@@ -161,6 +163,9 @@ func captureWorkerServe() (resultErr error) {
 	}
 	if request.Guard.StopSource {
 		return captureStopSource(request.Guard, anchors, captured)
+	}
+	if err := activateCaptureTimers(request, anchors, requestFile, guardControl); err != nil {
+		return err
 	}
 	return captureGuardCaptureReturned(request.Guard, anchors)
 }

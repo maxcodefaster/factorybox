@@ -122,7 +122,7 @@ def main():
     if remainder:
         result['scope'] = 'Real one-second signal handler, uncaptured native control and delivered prepared wait. Original non-NULL remainder must describe interruption time before the handler, with raw EINTR and the original register/flags/stack/read-only request checks. Not production qualification.'
     if protection:
-        result['scope'] = 'Real caught signal handler protects its dedicated remainder page after a one-second delay. Native control and prepared wait must both retain raw EINTR and all original ABI checks, with the kernel-compatible copy ordered before handler protection. Not production qualification.'
+        result['scope'] = 'Real caught signal handler protects its dedicated remainder page after a one-second delay. Native control and delivered source checkpoint, fork and resume must all retain raw EINTR and all original ABI checks, with the kernel-compatible copy ordered before handler protection. Native activated private wait required; not production qualification.'
     if kernel_prototype:
         result['scope'] = 'Test-only single-thread native kernel-wait activation after actual delivered source checkpoint, fork and resume, including a signal queued while frozen after syscall-entry activation, with the production independent tracer-exit guard. Original interruption-time deadline, handler-protection/EINTR/ABI assertions retained. Restores already exposed their ppoll continuation before test activation. Current CLI unchanged; no production pre-exposure integration, multi-thread, failure repair or production qualification.'
         result['prototype_inputs'] = prototype_inputs
@@ -274,6 +274,8 @@ def main():
             proof = json.loads(proof_path.read_text())
             if any(proof.get(key) is not True for key in ['passed', 'uncaptured_control', 'copy_before_handler_protection', 'raw_eintr_and_abi']):
                 raise ValueError('timer remainder copy-order proof incomplete')
+            if not kernel_prototype and set(proof.get('cases', {})) != {'uncaptured', 'prepared', 'fork', 'resumed'}:
+                raise ValueError('delivered source/fork/resume remainder proof incomplete')
             result['proof_sha256'] = reference.sha(proof_path)
             if kernel_prototype:
                 activation = output / 'kernel-activation-prototype.json'

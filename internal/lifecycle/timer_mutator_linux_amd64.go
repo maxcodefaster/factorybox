@@ -206,6 +206,21 @@ func prepareTimerTarget(trace *timerTrace, state timerstate.State) (timerPrepare
 	if r.Cs != 0x33 || int64(r.Rax) != -516 || (r.Orig_rax != 35 && r.Orig_rax != 230 && r.Orig_rax != 219) {
 		return prepared, fmt.Errorf("relative timer CPU restart state differs from its kernel plan")
 	}
+	address, previous, staged, err := timerPrivateFrame(trace.pid, r.Rip)
+	if err != nil {
+		return prepared, err
+	}
+	if address != 0 {
+		if staged || r.Rip != address+170 || r.Rdx != address+4096+40 || r.R10 != binary.LittleEndian.Uint64(previous[32:]) {
+			return prepared, fmt.Errorf("recaptured private native timer differs from its exact wait")
+		}
+		if err := binary.Read(bytes.NewReader(previous[128:344]), binary.LittleEndian, &r); err != nil {
+			return prepared, err
+		}
+		prepared.Reused, prepared.Address = true, address
+		prepared.Original = r
+		prepared.Mask = binary.LittleEndian.Uint64(previous[104:])
+	}
 	maps, err := timerMappings(trace.pid)
 	if err != nil {
 		return prepared, err
@@ -250,7 +265,7 @@ func prepareTimerTarget(trace *timerTrace, state timerstate.State) (timerPrepare
 	binary.LittleEndian.PutUint64(frame[16:], uint64(expires))
 	binary.LittleEndian.PutUint64(frame[24:], uint64(state.Clock))
 	binary.LittleEndian.PutUint64(frame[32:], state.Remainder)
-	binary.LittleEndian.PutUint64(frame[104:], trace.mask)
+	binary.LittleEndian.PutUint64(frame[104:], prepared.Mask)
 	copy(frame[80:88], redzone)
 	if state.Remainder == 0 {
 		binary.LittleEndian.PutUint64(frame[96:], 1)
@@ -432,11 +447,15 @@ func runTimerMutator() (resultErr error) {
 		if !exists {
 			return fmt.Errorf("timer target is outside original source inventory")
 		}
-		if err := timerNoPendingCaughtSignal(state.PID); err != nil {
-			return err
-		}
 		target, err := prepareTimerTarget(trace, state)
 		if err != nil {
+			return err
+		}
+		// An exact previously activated private timer is already at its
+		// native kernel interruption, with all source threads ptrace-stopped.
+		// Preserve a newly queued signal behind the blocked staging mask;
+		// activation installs the original mask only at native syscall entry.
+		if err := timerNoPendingCaughtSignal(state.PID); err != nil && !target.Reused {
 			return err
 		}
 		if !target.Reused {
@@ -466,6 +485,9 @@ func runTimerMutator() (resultErr error) {
 			if err != nil || address != target.Address {
 				return fmt.Errorf("owned timer private mapping differs: %x %v", address, err)
 			}
+		}
+		{
+			address := target.Address
 			payload := make([]byte, 8192)
 			copy(payload, timerContinuationAMD64)
 			copy(payload[4096:], target.Frame)
@@ -476,8 +498,10 @@ func runTimerMutator() (resultErr error) {
 			if err != nil || !bytes.Equal(actual, payload) {
 				return fmt.Errorf("timer private mapping verification failed: %v", err)
 			}
-			if _, err := timerRemote(trace, unix.SYS_MPROTECT, []uint64{address, 4096, unix.PROT_READ | unix.PROT_EXEC}, events); err != nil {
-				return err
+			if !target.Reused {
+				if _, err := timerRemote(trace, unix.SYS_MPROTECT, []uint64{address, 4096, unix.PROT_READ | unix.PROT_EXEC}, events); err != nil {
+					return err
+				}
 			}
 			actual, err = timerMemoryRead(trace.pid, target.RequestAddress, 16)
 			if err != nil || !bytes.Equal(actual, target.RequestBytes) {

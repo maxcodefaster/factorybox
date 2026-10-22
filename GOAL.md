@@ -329,3 +329,19 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Aktivierung muss vor dem Auftauen integriert und unter Fehlern sowie
   wiederholtem Capture/Recovery geprüft werden. Der Restzeit-Kopierfehler und
   das vollständige Produktionsziel bleiben offen.
+- Kandidat `edd5cff5a26a4488b2fd11de136434ac` nutzt die Restore-Sperre jetzt
+  im ausgelieferten Fork-/Resume-Lifecycle. Ein zweiter unabhängig bewachter
+  Mutator aktiviert den ursprünglichen Kernel-Wait vor Freigabe der Quelle
+  beziehungsweise des wiederhergestellten Tasks. Der Restzeit-Kopierfehler
+  besteht im neuen Vier-Fälle-Test einschließlich Fork und Resume nicht mehr;
+  native Kontrolle, ursprüngliche ABI-Prüfungen und 250-ms-Grenze bleiben.
+  Alle vier Signalgrenzen sowie die vollständigen vier Stilllegungstests
+  bestehen auf denselben Paketbytes. Ein zunächst abgelehntes Signal beim
+  erneuten Capture bleibt als negativer Beleg erhalten; die Korrektur gilt
+  ausschließlich für den exakt verifizierten privaten nativen Timer.
+  Geordnete Quell-/Fixture-Patches, exakte Vorher-/Nachher-Hashes und der
+  geprüfte Index liegen unter
+  `factorybox-timer-activation-notes-e5db5e8880b4482097744cd35aadf8f2`.
+  Unterbrochene Aktivierungs-/Mutationsreparatur, breitere Signalzustände,
+  Lebensdauer alter privater Seiten sowie sämtliche übrigen Freigabearbeiten
+  bleiben offen. Das vollständige Goal bleibt aktiv; Produktionsfreigabe false.

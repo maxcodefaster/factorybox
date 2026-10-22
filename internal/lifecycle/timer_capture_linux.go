@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -180,9 +181,7 @@ func readCaptureTimerRequest() (captureRequest, captureGuardAnchors, *os.File, e
 	return request, anchors, file, nil
 }
 
-func prepareCaptureTimers(request captureRequest, anchors captureGuardAnchors, sealed *os.File) error {
-	guardControl := os.NewFile(9, "original timer exit guard")
-	defer guardControl.Close()
+func prepareCaptureTimers(request captureRequest, anchors captureGuardAnchors, sealed, guardControl *os.File) error {
 	plan, err := readTimerPlan(request, anchors)
 	if err != nil {
 		return err
@@ -259,9 +258,129 @@ func prepareCaptureTimers(request captureRequest, anchors captureGuardAnchors, s
 	return captureGuardCaptureReturned(request.Guard, anchors)
 }
 
+// The second child has a distinct independent exit watch. The first preparer
+// has already exited and all CRIU tracees have returned to their frozen group.
+func activateCaptureTimers(request captureRequest, anchors captureGuardAnchors, sealed, guardControl *os.File) error {
+	if err := captureGuardCaptureReturned(request.Guard, anchors); err != nil {
+		return err
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	sockets, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	client, child := os.NewFile(uintptr(sockets[0]), "timer activation controller"), os.NewFile(uintptr(sockets[1]), "timer activation child")
+	defer client.Close()
+	defer child.Close()
+	command := exec.Command(executable, "_timer-activate")
+	command.Env = []string{"LANG=C", "GOMAXPROCS=1", "GOMEMLIMIT=64MiB"}
+	command.ExtraFiles = []*os.File{sealed, anchors.group, anchors.pid, anchors.evidence, anchors.root, child}
+	command.Stdout, command.Stderr = os.Stderr, os.Stderr
+	if err := command.Start(); err != nil {
+		return err
+	}
+	waited := false
+	defer func() {
+		if !waited {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+	}()
+	data, err := captureGuardRead(int(client.Fd()), 2000)
+	var ready timerMutatorReady
+	if err != nil || json.Unmarshal(data, &ready) != nil || ready.Token != request.Guard.Token || ready.PID != command.Process.Pid || ready.ParentPID != os.Getpid() {
+		return fmt.Errorf("activation readiness differs from its original child: %v", err)
+	}
+	if err := captureGuardWrite(anchors.evidence, "timer-activation-mutator-ready.json", ready); err != nil {
+		return err
+	}
+	if _, err := guardControl.Write([]byte("timer-activation-watch:" + request.Guard.Token)); err != nil {
+		return err
+	}
+	ack, err := captureGuardRead(int(guardControl.Fd()), 2000)
+	if err != nil || string(ack) != "timer-activation-watched:"+request.Guard.Token {
+		return fmt.Errorf("activation exit guard did not arm: %s: %v", ack, err)
+	}
+	if _, err := client.Write([]byte("activate:" + request.Guard.Token)); err != nil {
+		return err
+	}
+	err = command.Wait()
+	waited = true
+	if err != nil {
+		return fmt.Errorf("guarded timer activation: %w", err)
+	}
+	data, err = captureReadFile(anchors.evidence, "timer-activation-complete.json", timerPlanLimit)
+	var complete struct {
+		Token  string `json:"token"`
+		Passed bool   `json:"passed"`
+	}
+	if err != nil || json.Unmarshal(data, &complete) != nil || complete.Token != request.Guard.Token || !complete.Passed {
+		return fmt.Errorf("activation lacks its exact completed hold: %v", err)
+	}
+	return captureGuardCaptureReturned(request.Guard, anchors)
+}
+
+func (e *Engine) activateRestoredTimers(record Record, pid int) (resultErr error) {
+	guard, err := e.startCaptureGuard(record, pid)
+	if err != nil {
+		return err
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			resultErr = errors.Join(resultErr, guard.finish(true))
+		}
+	}()
+	if err := guard.capturePhase(true); err != nil {
+		return err
+	}
+	request := captureRequest{Guard: guard.config}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	fd, err := unix.MemfdCreate("factorybox-restored-timer-request", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
+	if err != nil {
+		return err
+	}
+	sealed := os.NewFile(uintptr(fd), "sealed restored timer request")
+	defer sealed.Close()
+	if _, err := sealed.Write(data); err != nil {
+		return err
+	}
+	if _, err := unix.FcntlInt(sealed.Fd(), unix.F_ADD_SEALS, captureRequestSeals); err != nil {
+		return err
+	}
+	birth, err := processBirth(os.Getpid())
+	if err != nil {
+		return err
+	}
+	if err := captureGuardWrite(guard.anchor.evidence, "capture-worker-intent.json", captureWorkerIntent{Token: guard.config.Token, PID: os.Getpid(), Start: birth, SourcePID: pid}); err != nil {
+		return err
+	}
+	if err := activateCaptureTimers(request, guard.anchor, sealed, guard.socket); err != nil {
+		return err
+	}
+	if err := guard.capturePhase(false); err != nil {
+		return err
+	}
+	if err := guard.freeze(false); err != nil {
+		return err
+	}
+	resultErr = guard.finish(false)
+	finished = true
+	return resultErr
+}
+
 // TimerWorkerCommand is a private sealed-descriptor entry point, like the
 // capture worker. The public CLI does not construct requests from user paths.
 func TimerWorkerCommand(args []string) (bool, error) {
+	if len(args) == 1 && args[0] == "_timer-activate" {
+		return true, runTimerActivation()
+	}
 	if len(args) != 1 || args[0] != "_timer-prepare" {
 		return false, nil
 	}

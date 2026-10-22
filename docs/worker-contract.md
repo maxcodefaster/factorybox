@@ -229,6 +229,19 @@ this protocol or integrated timer activation. The remainder copy-order defect
 and the remaining release gates still block qualification. See the
 [restore hold proof](production-progress.md#holding-restored-tasks-before-application-continuation).
 
+The subsequent candidate
+`factorybox-build-worker-edd5cff5a26a4488b2fd11de136434ac` enables that sealed
+hold for ordinary fork and resume. It verifies the held paused runtime receipt,
+activates each staged private timer under an independent tracer-exit guard,
+then thaws and publishes the ordinary completion. Retained-source checkpoint
+also activates before source release. The protected-remainder regression now
+passes for source checkpoint, fork and resume; all four signal boundaries and
+the original full retirement suite pass on the same package. These results
+supersede the earlier public-path copy-order failure for these tested cases.
+Interrupted activation repair, broader pending-signal states, continuation-page
+lifetime and the remaining release gates still block production qualification.
+See the [integrated activation evidence](production-progress.md#activating-native-waits-before-source-and-restore-release).
+
 ## Recovering a committed pause after worker replacement
 
 Before removing the old worker, retain its successful pause response and

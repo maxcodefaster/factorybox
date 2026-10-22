@@ -470,6 +470,20 @@ func captureGuardServe() (resultErr error) {
 				return err
 			}
 			name, acknowledgement = "guard-timer-watched.json", "timer-watched:"
+		case "timer-activation-watch:" + config.Token:
+			if !unsafe {
+				return fmt.Errorf("timer activation has no exclusive transaction")
+			}
+			if timerWatch != nil {
+				if err := timerWatch.closeHeld(); err != nil {
+					return err
+				}
+			}
+			timerWatch, err = armCaptureTimerWatchPhase(config, anchor, "timer-activation-")
+			if err != nil {
+				return err
+			}
+			name, acknowledgement = "guard-timer-activation-watched.json", "timer-activation-watched:"
 		case "capture-enter:" + config.Token:
 			if unsafe {
 				return fmt.Errorf("guard capture is already in flight")

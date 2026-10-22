@@ -25,13 +25,21 @@ type captureTimerWatch struct {
 	pidfd   int
 	active  bool
 	events  chan os.Signal
+	prefix  string
 }
 
 func armCaptureTimerWatch(config captureGuardConfig, anchors captureGuardAnchors) (_ *captureTimerWatch, resultErr error) {
+	return armCaptureTimerWatchPhase(config, anchors, "timer-")
+}
+
+func armCaptureTimerWatchPhase(config captureGuardConfig, anchors captureGuardAnchors, prefix string) (_ *captureTimerWatch, resultErr error) {
+	if prefix != "timer-" && prefix != "timer-activation-" {
+		return nil, fmt.Errorf("unknown timer guard phase")
+	}
 	if err := captureGuardValidate(config, anchors); err != nil {
 		return nil, err
 	}
-	data, err := captureReadFile(anchors.evidence, "timer-mutator-ready.json", 4096)
+	data, err := captureReadFile(anchors.evidence, prefix+"mutator-ready.json", 4096)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +92,7 @@ func armCaptureTimerWatch(config captureGuardConfig, anchors captureGuardAnchors
 	if err != nil {
 		return nil, err
 	}
-	watch := &captureTimerWatch{config: config, anchors: anchors, ready: ready, pidfd: fd, events: make(chan os.Signal, 1)}
+	watch := &captureTimerWatch{config: config, anchors: anchors, ready: ready, pidfd: fd, events: make(chan os.Signal, 1), prefix: prefix}
 	signal.Notify(watch.events, unix.SIGCHLD)
 	defer func() {
 		if resultErr != nil {
@@ -109,7 +117,7 @@ func (watch *captureTimerWatch) holdBeforeExit() {
 		if _, err := captureGuardHold(watch.config, watch.anchors); err == nil {
 			return
 		} else if !wrote {
-			_ = captureGuardWrite(watch.anchors.evidence, "timer-exit-hold-unconfirmed.json", map[string]any{"token": watch.config.Token, "error": err.Error(), "mutator_tid": watch.ready.TID})
+			_ = captureGuardWrite(watch.anchors.evidence, watch.prefix+"exit-hold-unconfirmed.json", map[string]any{"token": watch.config.Token, "error": err.Error(), "mutator_tid": watch.ready.TID})
 			wrote = true
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -147,14 +155,18 @@ func (watch *captureTimerWatch) poll() error {
 			return err
 		}
 		complete := false
-		if data, err := captureReadFile(watch.anchors.evidence, "timer-prepare-complete.json", timerPlanLimit); err == nil {
+		completion := "timer-prepare-complete.json"
+		if watch.prefix == "timer-activation-" {
+			completion = "timer-activation-complete.json"
+		}
+		if data, err := captureReadFile(watch.anchors.evidence, completion, timerPlanLimit); err == nil {
 			var receipt struct {
 				Token  string `json:"token"`
 				Passed bool   `json:"passed"`
 			}
 			complete = json.Unmarshal(data, &receipt) == nil && receipt.Token == watch.config.Token && receipt.Passed && captureGuardCaptureReturned(watch.config, watch.anchors) == nil
 		}
-		if err := captureGuardWrite(watch.anchors.evidence, "timer-mutator-exit-held.json", map[string]any{
+		if err := captureGuardWrite(watch.anchors.evidence, watch.prefix+"mutator-exit-held.json", map[string]any{
 			"token": watch.config.Token, "mutator_tid": watch.ready.TID, "exit_event": message, "source_held": true, "preparation_complete": complete}); err != nil {
 			return err
 		}
@@ -173,7 +185,7 @@ func (watch *captureTimerWatch) closeHeld() error {
 			// The guard must not disappear and auto-detach an unconfirmed
 			// mutator. Preserve the live hold even if diagnostics fail.
 			watch.holdBeforeExit()
-			_ = captureGuardWrite(watch.anchors.evidence, "timer-mutator-watch-error.json", map[string]any{"token": watch.config.Token, "error": err.Error()})
+			_ = captureGuardWrite(watch.anchors.evidence, watch.prefix+"mutator-watch-error.json", map[string]any{"token": watch.config.Token, "error": err.Error()})
 		}
 		if watch.active {
 			time.Sleep(5 * time.Millisecond)

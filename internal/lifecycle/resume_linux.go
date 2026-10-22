@@ -42,7 +42,7 @@ func (e *Engine) resumeRequest(record Record) resumeRequest {
 	snapshot := record.Pause.SnapshotID
 	return resumeRequest{Version: 1, SandboxID: record.ID, Owner: record.Owner, Root: e.config.Root,
 		Filesystem: record.InputBundle, Images: e.config.Root + "/objects/" + record.ID + "/resumes/" + snapshot + "/images",
-		ManagerRoot: e.config.ManagerRoot, SnapshotID: snapshot, ConfigSHA256: record.ConfigSHA256, RuntimeCreated: record.RuntimeCreated}
+		ManagerRoot: e.config.ManagerRoot, SnapshotID: snapshot, ConfigSHA256: record.ConfigSHA256, RuntimeCreated: record.RuntimeCreated, HoldForActivation: true}
 }
 
 func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) {
@@ -254,6 +254,9 @@ func (e *Engine) resumeRuntime(ctx context.Context, lock *os.File, record Record
 	if record.Phase != "resuming" || record.Pause == nil || record.Pause.Resume == nil || !record.Pause.Resume.Attempted {
 		return fmt.Errorf("resume requires persisted attempted intent")
 	}
+	if !request.HoldForActivation {
+		return fmt.Errorf("resume requires its pre-activation hold")
+	}
 	if err := e.requireEmptyCgroup(record); err != nil {
 		return err
 	}
@@ -286,6 +289,6 @@ func (e *Engine) resumeRuntime(ctx context.Context, lock *os.File, record Record
 	if _, err := unix.FcntlInt(file.Fd(), unix.F_ADD_SEALS, captureRequestSeals); err != nil {
 		return err
 	}
-	_, err = e.commandFiles(ctx, lock, []*os.File{file}, "--criu", e.config.Criu, "factorybox-resume", record.RuntimeID)
-	return err
+	relative := strings.TrimPrefix(filepath.Dir(request.Images), e.config.Root+"/")
+	return e.heldRestore(ctx, lock, record, request, file, relative, "resume")
 }

@@ -3,6 +3,7 @@
 package lifecycle
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -52,6 +53,10 @@ func (e *Engine) restoreCompleted(ctx context.Context, lock *os.File, target Rec
 }
 
 func (e *Engine) operationCompleted(ctx context.Context, lock *os.File, target Record, request any, receipt string) (restoreResult, *RuntimeState, error) {
+	return e.operationCompletedStatus(ctx, lock, target, request, receipt, "running")
+}
+
+func (e *Engine) operationCompletedStatus(ctx context.Context, lock *os.File, target Record, request any, receipt, expectedStatus string) (restoreResult, *RuntimeState, error) {
 	var result restoreResult
 	if err := e.readCheckpointJSON(receipt, &result); err != nil {
 		return result, nil, fmt.Errorf("restore completion is unconfirmed; refusing another restore: %w", err)
@@ -65,7 +70,7 @@ func (e *Engine) operationCompleted(ctx context.Context, lock *os.File, target R
 		return result, nil, fmt.Errorf("restore receipt differs from its exact request")
 	}
 	state, err := e.state(ctx, target, lock)
-	if err != nil || state == nil || state.Status != "running" || state.PID != result.PID {
+	if err != nil || state == nil || state.Status != expectedStatus || state.PID != result.PID {
 		return result, state, errors.Join(err, fmt.Errorf("restore receipt does not identify its running original target"))
 	}
 	created, createdErr := time.Parse(time.RFC3339Nano, state.Created)
@@ -85,6 +90,9 @@ func (e *Engine) restore(ctx context.Context, lock *os.File, target Record, requ
 		request.Filesystem+"/rootfs" != target.Rootfs || request.ConfigSHA256 != target.ConfigSHA256 ||
 		request.ManagerRoot != e.config.ManagerRoot || !digest.MatchString(e.config.CriuSHA256) {
 		return fmt.Errorf("restore requires its exact persisted target creation")
+	}
+	if !request.HoldForActivation {
+		return fmt.Errorf("restore requires its pre-activation hold")
 	}
 	if err := e.validateCgroup(target); err != nil {
 		return err
@@ -121,10 +129,113 @@ func (e *Engine) restore(ctx context.Context, lock *os.File, target Record, requ
 	if _, err := unix.FcntlInt(file.Fd(), unix.F_ADD_SEALS, captureRequestSeals); err != nil {
 		return err
 	}
-	if _, err := e.commandFiles(ctx, lock, []*os.File{file}, "--criu", e.config.Criu,
-		"factorybox-restore", target.RuntimeID); err != nil {
+	object, _ := objectPath(target.ID)
+	if err := e.heldRestore(ctx, lock, target, request, file, object, "restore"); err != nil {
 		return err
 	}
 	_, _, err = e.restoreCompleted(ctx, lock, target, request)
 	return err
+}
+
+type restoreHoldReady struct {
+	Version    int    `json:"version"`
+	RequestSHA string `json:"request_sha256"`
+	RuntimeID  string `json:"runtime_id"`
+	PID        int    `json:"pid"`
+	Start      string `json:"process_start"`
+	Tracer     int    `json:"criu_tracer_pid"`
+	Frozen     bool   `json:"frozen_before_resume"`
+	CRIUOrigin bool   `json:"criu_returned_to_original_worker"`
+}
+
+func (e *Engine) heldRestore(ctx context.Context, lock *os.File, target Record, request any, sealed *os.File, relative, operation string) error {
+	data, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	sockets, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	client, child := os.NewFile(uintptr(sockets[0]), "restore activation controller"), os.NewFile(uintptr(sockets[1]), "restore activation runtime")
+	defer client.Close()
+	defer child.Close()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := e.commandFiles(ctx, lock, []*os.File{sealed, child}, "--criu", e.config.Criu, "factorybox-"+operation, target.RuntimeID)
+		done <- err
+	}()
+	waited := false
+	defer func() {
+		if !waited {
+			cancel()
+			<-done
+		}
+	}()
+	packet, err := captureGuardRead(int(client.Fd()), 15000)
+	if err != nil {
+		return fmt.Errorf("restore did not enter its pre-resume hold: %w", err)
+	}
+	child.Close()
+	var ready restoreHoldReady
+	decoder := json.NewDecoder(bytes.NewReader(packet))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&ready); err != nil || ready.Version != 1 || ready.RequestSHA != sum(data) || ready.RuntimeID != target.RuntimeID || ready.PID <= 1 || ready.Tracer <= 1 || !ready.Frozen || !ready.CRIUOrigin {
+		return fmt.Errorf("restore pre-resume identity differs: %v", err)
+	}
+	if err := e.validateCgroup(target); err != nil {
+		return err
+	}
+	group, err := captureGuardOpen(cgroupRoot + "/" + target.RuntimeID)
+	if err != nil {
+		return err
+	}
+	defer group.Close()
+	events, err := captureGuardEvents(group)
+	if err != nil || events["frozen"] != 1 || events["populated"] != 1 {
+		return fmt.Errorf("restored group is not held: %v", err)
+	}
+	birth, err := processBirth(ready.PID)
+	if err != nil || birth != ready.Start {
+		return fmt.Errorf("held restored task birth changed: %v", err)
+	}
+	pidfd, err := unix.PidfdOpen(ready.PID, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(pidfd)
+	status, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", ready.PID))
+	if err != nil || !bytes.Contains(status, []byte(fmt.Sprintf("TracerPid:\t%d\n", ready.Tracer))) {
+		return fmt.Errorf("restored task lost its original CRIU tracer: %v", err)
+	}
+	actual, err := os.Stat(fmt.Sprintf("/proc/%d/exe", ready.Tracer))
+	expected, expectedErr := os.Stat(e.config.Criu)
+	if err != nil || expectedErr != nil || !os.SameFile(actual, expected) {
+		return fmt.Errorf("held restore tracer differs from pinned CRIU")
+	}
+	if _, err := client.Write([]byte("held:" + ready.RequestSHA)); err != nil {
+		return err
+	}
+	err = <-done
+	waited = true
+	if err != nil {
+		return err
+	}
+	result, state, err := e.operationCompletedStatus(ctx, lock, target, request, relative+"/"+operation+"-held.json", "paused")
+	if err != nil {
+		return err
+	}
+	if result.PID != ready.PID || result.ProcessStart != ready.Start || state.PID != ready.PID {
+		return fmt.Errorf("held restore receipt changed its originally pinned process")
+	}
+	events, err = captureGuardEvents(group)
+	if err != nil || events["frozen"] != 1 || events["populated"] != 1 {
+		return fmt.Errorf("restore detached without retaining its exact freeze: %v", err)
+	}
+	if err := e.activateRestoredTimers(target, ready.PID); err != nil {
+		return err
+	}
+	return e.publishCheckpoint(relative, operation+"-result.json", result)
 }

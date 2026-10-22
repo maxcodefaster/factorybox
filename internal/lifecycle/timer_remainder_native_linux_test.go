@@ -128,7 +128,7 @@ func TestNativeTimerRemainder(t *testing.T) {
 			for deadline := time.Now().Add(time.Second); ; {
 				data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", view.Runtime.PID))
 				fields := strings.Fields(string(data))
-				active := len(fields) > 2 && (mode == "uncaptured" && (fields[0] == "230" || fields[0] == "219") || mode == "prepared" && fields[0] == "271")
+				active := len(fields) > 2 && (mode == "uncaptured" && (fields[0] == "230" || fields[0] == "219") || mode == "prepared" && nativeTimerActivatedWait(view.Runtime.PID, fields))
 				if err == nil && active {
 					break
 				}

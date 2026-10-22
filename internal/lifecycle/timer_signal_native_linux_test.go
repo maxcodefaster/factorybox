@@ -150,7 +150,7 @@ func TestNativeTimerSignalBoundary(t *testing.T) {
 					fields := strings.Fields(string(data))
 					// Support the old absolute-wait control and the new atomic-mask
 					// wait. Both must satisfy the same raw EINTR/ABI assertions.
-					active := len(fields) > 2 && ((fields[0] == "271" && fields[1] == "0x0" && fields[2] == "0x0") || (fields[0] == "230" && fields[1] == "0x1" && fields[2] == "0x1"))
+					active := nativeTimerActivatedWait(view.Runtime.PID, fields)
 					if err == nil && active {
 						break
 					}
@@ -259,8 +259,8 @@ func TestNativeTimerSignalBoundary(t *testing.T) {
 				}
 				data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", view.Runtime.PID))
 				fields := strings.Fields(string(data))
-				if err != nil || len(fields) == 0 || fields[0] != "271" {
-					t.Fatal("second capture is not an actual frozen ppoll continuation", string(data), err)
+				if err != nil || !nativeTimerActivatedWait(view.Runtime.PID, fields) {
+					t.Fatal("second capture is not an actual frozen native timer continuation", string(data), err)
 				}
 				groupData, err := os.ReadFile(guardGroupPath(view.Record) + "/cgroup.events")
 				group, parseErr := parseCgroupCounters(string(groupData))
@@ -275,7 +275,7 @@ func TestNativeTimerSignalBoundary(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				beforeSignal = map[string]any{"source_frozen": true, "existing_ppoll": true, "source_status_after_queue": string(pending)}
+				beforeSignal = map[string]any{"source_frozen": true, "existing_native_wait": true, "source_status_after_queue": string(pending)}
 				for _, fd := range captureFDs {
 					if err := unix.PidfdSendSignal(fd, unix.SIGCONT, nil, 0); err != nil {
 						t.Fatal(err)

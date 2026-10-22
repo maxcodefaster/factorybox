@@ -73,7 +73,7 @@ func TestNativeTimerRemainderProtection(t *testing.T) {
 	proofs := map[string]any{}
 	activations := map[string]any{}
 	kernelPrototype := os.Getenv("FACTORYBOX_TIMER_KERNEL_PROTOTYPE") == "1"
-	modes := []string{"uncaptured", "prepared"}
+	modes := []string{"uncaptured", "prepared", "fork", "resumed"}
 	if kernelPrototype {
 		modes = []string{"uncaptured", "frozen-control", "prepared", "fork", "resumed", "queued"}
 	}
@@ -85,7 +85,7 @@ func TestNativeTimerRemainderProtection(t *testing.T) {
 				for deadline := time.Now().Add(time.Second); ; {
 					data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", view.Runtime.PID))
 					fields := strings.Fields(string(data))
-					active := len(fields) > 4 && (!prepared && fields[0] == "230" && fields[1] == "0x1" && fields[2] == "0x0" || prepared && fields[0] == "271")
+					active := len(fields) > 4 && (!prepared && fields[0] == "230" && fields[1] == "0x1" && fields[2] == "0x0" || prepared && nativeTimerActivatedWait(view.Runtime.PID, fields))
 					if err == nil && active {
 						return
 					}

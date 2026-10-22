@@ -1834,6 +1834,116 @@ qualify pending signals, multiple threads and private-page lifetime. Capacity,
 worker-replacement, full-consumer and full upstream suites have not all been
 rerun on this optional-hold candidate.
 
+## Activating native waits before source and restore release
+
+Candidate `factorybox-build-worker-edd5cff5a26a4488b2fd11de136434ac`
+integrates the verified backend hold into the delivered fork and resume paths.
+Its unselected image is
+`factorybox-worker-edd5cff5a26a4488b2fd11de136434ac@sha256:94c31a712db57280c16a6747baaf5fc822f3ac73b85bc4b9a2dd06077cd5a048`;
+package SHA-256 is
+`025808f13a2e54853f43dacadbf4e230700160a3b1d90385095378d1b9b83af8`.
+It reuses the exact pinned Sysbox and CRIU components from the preceding hold
+candidate. No host runtime, kernel, global configuration or sysctl changes are
+needed. Production qualification remains false.
+
+Ordinary restore/resume requests now require the sealed activation hold. The
+controller verifies the original request hash, process birth, CRIU tracer and
+frozen cgroup before acknowledging detach. It accepts the separate held receipt
+only with the same paused runtime identity. A new capture guard pins that exact
+restored task and record. A sealed activation child runs while every application
+thread is ptrace-stopped, then returns the original group to its frozen,
+untraced state. Only after activation succeeds does the controller thaw and
+publish the ordinary completion receipt. An absent receipt still refuses a
+second restore. Earlier persisted resume intents that name a different request
+recipe remain refused; no silent rewrite or migration of archived inputs occurs.
+
+Retained-source capture also activates before thaw. Its control descriptor now
+lives for the complete capture worker. The independent guard can drain the first
+preparer's exit watch and arm a second, distinct activation watch with separate
+readiness, intent, completion and exit receipts. The second child is watched
+before it can ptrace a source thread. An unconfirmed mutation remains held;
+this change does not claim automatic repair of a partially interrupted activation.
+
+The activation child replaces only the exact verified private RX page and frame.
+The original application text, read-only request and syscall ABI remain intact.
+It uses the same 323 native-helper bytes as the prior independent experiment,
+SHA-256 `02f23238267d39195a106632b38e3b1c4ba58fa6d7d95adeae531e5ad553e15f`.
+Their current source, compiler and extraction hashes and exact embedded-byte
+comparison are retained in
+`factorybox-timer-kernel-code-build-5a7261055d9c47fdbc115cdf65d4cc43`.
+The child's syscall stops install the original signal mask at native relative
+`clock_nanosleep` entry. A real kernel wait or its stopped kernel return is
+confirmed before release. Interrupted native waits retain a verified restart
+block and deadline, with measured namespace offsets and the existing 250-ms
+bound. A deadline already elapsed at the clock-return stop restores the saved
+application return context while the task remains stopped.
+
+A recapture of an active private native wait verifies its exact code, frame,
+syscall boundary and remainder pointer. It reuses those two pages and the
+original saved application context. The first integrated candidate
+`c72e64f64c4f45c79b054255ab671799` still rejects a newly queued caught signal at
+that recapture boundary. Its failure and unresolved pause/delete refusal remain
+in `factorybox-checkpoint-retirement-e9c8bde87ea942f48de90a9192a55a3e`.
+The correction admits that signal only after every source thread is stopped and
+the exact previously activated private wait has been verified. Its blocked staging
+mask retains the signal until the next native syscall-entry handoff. Unidentified
+application waits retain the conservative caught-signal refusal.
+
+On the final package:
+
+- `factorybox-checkpoint-retirement-4e8110f84c2e4994a1a16c83623f016b`
+  passes the protected-remainder control, source checkpoint, fork and resume.
+  The real one-second handler makes the dedicated remainder page read-only;
+  every raw EINTR, register/flags/stack and read-only-request assertion remains.
+  Differences from the original interruption-time estimate are 40,711 ns for
+  the control and 410,173 to 528,136 ns for the three lifecycle cases. These
+  are individual observations, not distribution or platform guarantees.
+- `factorybox-checkpoint-retirement-864067ea35604aea9b0d782db0a24618`
+  passes all four signal cases, including a signal queued after preparation
+  and one queued during an actual frozen native-wait recapture.
+- `factorybox-checkpoint-retirement-617e8a2a5ed04dcc8375ca4cacab9d35`
+  passes the unchanged full four-test retirement suite, including the original
+  direct-syscall NULL-remainder regression and the actor case.
+- `factorybox-checkpoint-retirement-57301903c3474da49300796ed814fe42`
+  passes both original one-second-handler interruption-time remainder cases.
+- `factorybox-checkpoint-retirement-29b44797aa144931aae589448eeceaa5`
+  preserves the native normal/SIGKILL tracer-exit hold proof. It exercises the
+  shared watch implementation; it is not a partial activation repair proof.
+- `factorybox-checkpoint-retirement-91172c0cd23f4ba0a5b88d429aef8494`
+  passes all five raw backend hold cases again: fork, resume, their socket
+  disconnects and a foreign acknowledgement. Ordinary deletion continues to
+  refuse the exact unresolved negative records without changing their bytes.
+
+The three signal/remainder fixtures now observe the verified private native
+wait instead of ppoll. The protected-remainder suite additionally requires fork
+and resume. Exact before/after hashes and reconstructed ordered patches are in
+`factorybox-timer-activation-notes-e5db5e8880b4482097744cd35aadf8f2`.
+Their synthetic applications and every existing ABI, copy-order, protection,
+deadline and handler-result assertion remain. The original required timer test
+is byte-identical. All final native runs use the same test executable,
+SHA-256 `da68f4cf7447b0e329c7f36cb23929216e45879379c4ecd74c649712425bf5b8`.
+
+The notes also reverify the original chat handoff, its eight human decisions,
+twelve visible assistant updates and frozen document/evidence hashes. Closed,
+identical immutable component inputs share storage with the verified receipt
+`factorybox-storage-share-inputs-6bd3523ead1e46289e090e8bd1337374`, reclaiming
+443,244,544 allocated bytes. Source, results, logs and selected inputs remain.
+Closed native probe executables have complete verified decompression receipts.
+Portable Go tests with vet, consumer compilation, Python checks and immutable
+reference/overlay verification pass in
+`factorybox-checks-5e6c6f46b23147af8a21f83714f59507`; final documentation diffs
+also pass whitespace validation. Every final native run confirms owned outer
+cleanup, unchanged source inputs and unchanged global sysctls.
+
+The tested public-path copy-order defect is corrected. Broader signal states,
+partial mutation repair, controller/tracer loss at each activation boundary,
+multiple simultaneous native thread waits, completed private-page lifetime and
+full-consumer repeated capture/recovery still require qualification. The current
+two-page reuse covers an active recaptured wait; it does not prove bounded memory
+over arbitrarily many different completed waits. Capacity, planned/abrupt worker
+replacement, full consumers and required upstream suites must pass on final
+delivered bytes. Epoch retirement and every remaining release gate stay open.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
