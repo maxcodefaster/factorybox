@@ -267,3 +267,17 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   `factorybox-checkpoint-retirement-notes-890fbf4221d14ee3b7cf7a13859d6ea2` gesichert.
   Die vollständige Stilllegungs-Suite bleibt fehlgeschlagen. Warteaufruf-Verhalten,
   Epochen-Stilllegung und alle übrigen Abnahmen bleiben offen.
+- Der Wartefehler ist nun auch ohne BusyBox durch ein natives AMD64-Programm
+  mit tatsächlich schreibgeschützter Zeitangabe und ohne Restzeit-Zeiger
+  reproduziert. Die neue erforderliche Regression prüft außerdem Register,
+  Flags, Stack, unveränderte Zeitangabe und die ursprüngliche Ablaufzeit von
+  Quelle und Fork. Sie scheitert auf dem vorhandenen Paket bereits am vorzeitig
+  beendeten Quellprozess; spätere Assertions bleiben damit ungeprüft.
+  Ein rein lesender temporärer BPF-Iterator kann auf diesem Kernel den genauen
+  Restart-Typ, Clock und Ablaufzeit auslesen. Geburtszeit, PID-Namespace-Trennung
+  und Freigabe jedes eigenen Programms sind nativ geprüft. Die aktuellen
+  Stilllegungstests mit RAM-Aktoren bestehen weiter; beide Warte-Tests schlagen
+  fehl. Belege und geordnete Fixture-Hashes liegen unter
+  `factorybox-timer-restart-diagnosis-b0e8c3c680174fd4853859b109b97073`.
+  Eine Laufzeitkorrektur oder ausgewählte neue Kernel-Abhängigkeit ist damit
+  noch nicht geliefert. Das vollständige Produktionsziel bleibt aktiv.

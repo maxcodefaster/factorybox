@@ -198,7 +198,11 @@ completed retirement.
 This implementation is not qualified. The required immutable-base test still
 fails because the pinned BusyBox `sleep 300` exits after CRIU interrupts its
 relative wait. The failure is retained alongside passing RAM-actor retirement
-tests. Selection recovery across epochs, full-consumer retirement, exhaustion
+tests. A required direct-syscall regression reproduces the premature exit with
+read-only input and a NULL remainder pointer; source/fork register and original
+deadline assertions remain blocked by that first failure. Read-only kernel
+restart-state diagnostics are not a runtime timer correction. Selection recovery
+across epochs, full-consumer retirement, exhaustion
 faults and epoch retirement remain unverified or unimplemented. See the exact
 [progress and failed-suite evidence](production-progress.md#experimental-checkpoint-retirement-and-an-unresolved-interrupted-sleep).
 

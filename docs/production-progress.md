@@ -1208,6 +1208,80 @@ reference/imported-overlay verification pass in
 `factorybox-checks-7fb683fad48548f2a5f7911f318502a4`. This does not change the
 failed native retirement-suite verdict.
 
+## Kernel restart-state diagnosis and a direct syscall regression
+
+The frozen kernel stack only shows return-to-user signal/restart handling. It
+does not identify the original syscall hidden behind `restart_syscall` 219.
+`tests/timer-probe/probe.py` adds an opt-in, read-only diagnostic using one
+temporary BPF task iterator on this exact AMD64 kernel. It filters the requested
+PID in the caller's PID namespace, matches kernel birth time to the pinned live
+process, and reads its actual restart block. No source task memory is written.
+All iterator/link/program descriptors close, and querying the exact program ID
+confirms its disappearance. No BPF object is pinned or persistent event hook
+installed.
+
+Native controls identify `hrtimer_nanosleep_restart`, kernel Clock 1, the user
+remainder pointer and the original monotonic expiry. A separate PID namespace
+with its own PID 1 returns its own `do_no_restart_syscall`, rather than adopting
+the frozen sandbox's PID 1. This establishes readable restart state on this host;
+it does not implement or qualify timer restoration.
+
+The new required `TestNativeCheckpointRetirementTimerState` uses a tiny static
+AMD64 task calling `clock_nanosleep` directly. Its request is verified in an
+actually read-only mapping and its remainder pointer is NULL. The probe still
+finds the original clock/expiry, so an optional userspace remainder cannot be
+the sole source of recovery data. The task checks general registers, flags,
+stack and unchanged request bytes after return, then writes a monotonic
+completion timestamp. Source and fork must both finish at the original kernel
+deadline within 250 ms. Restarting the original twelve-second duration is not
+accepted. These downstream checks remain unrun because the original source
+already exits prematurely after checkpoint.
+
+The full four-test native suite
+`factorybox-checkpoint-retirement-567a4d3dd96c45f4bd7112c5581af5ad` retains the
+same two passing retirement/RAM-actor controls and both required wait failures.
+This reproduces the defect independently of BusyBox. Source/fork timer restart,
+read-only/NULL-pointer safety, real signal/error cases, repeated capture and later
+pause/resume/recovery still need implementation and proof. Runtime components
+and delivered candidate bytes remain unchanged. No timer correction, new
+production BPF requirement or changed admission policy is selected.
+
+Native observations, exact result hashes, ordered before/after fixture patches
+and frozen current diagnostic sources are in
+`factorybox-timer-restart-diagnosis-b0e8c3c680174fd4853859b109b97073`.
+The complete retirement caller automatically includes all four required tests
+and mounts the diagnostic helper. Its isolated diagnostic form is
+`tools/bounded_store_native.py --worker-build BUILD --suite retirement-base-diagnostic --timer-probe`.
+Portable checks with vet, consumer compilation and immutable reference/overlay
+verification pass in `factorybox-checks-cc09595f4ea5461e9daf97b5c3ae3268`;
+the full native suite remains failed and production qualification remains false.
+
+The exact assembled regression ELF also passes an ordinary uncaptured control
+in `factorybox-timer-abi-control-010baec04c184d808ab42d2663d4f6d8`. It reaches
+its own general-register/flags/stack/request-byte checks, writes the complete
+timestamp and exits zero after the requested twelve seconds. Caller time is
+12.360 s including container startup. This validates the test task itself;
+source/fork timer restoration is still unproved. The first control attempt
+`factorybox-timer-abi-control-ef669d6780f14920909b2395f0c11f8d` retains its
+output-permission failure and exact recipe hashes. Running the cap-free ordinary
+control as its output directory's existing host UID/GID corrects that fixture
+permission without changing the ELF or any assertion.
+
+Immutable input sharing creates further artifact headroom without regenerating
+or discarding payloads. Receipt
+`factorybox-storage-share-sources-d11b4cd13f9f42808d7e4ad182146365` shares 31,620
+byte-, metadata- and mtime-identical files of completed passing source inputs,
+then rechecks every original source manifest and result. It reclaims
+281,903,104 allocated bytes. Receipt
+`factorybox-storage-share-cache-data-59a569db4a7249e6b481617b927cc69d` shares 1,480
+identical content-addressed data objects in three completed standalone Go CLI
+caches, reclaiming 265,650,176 allocated bytes. Action indexes and all original
+source/package/binary/result hashes remain unchanged. No cache object is removed
+or rebuilt, and the historical experiment stays cold.
+Repeating source sharing against the already shared canonical inputs makes zero
+file changes and revalidates the original manifests/results in
+`factorybox-storage-share-sources-212967ac54764adb8616361fe2ba1ae8`.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

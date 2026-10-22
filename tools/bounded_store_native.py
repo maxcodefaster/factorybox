@@ -22,7 +22,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
     parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic'], default='capacity')
+    parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     args = parser.parse_args()
+    if args.timer_probe and args.suite == 'capacity':
+        parser.error('--timer-probe requires a retirement suite')
+    if args.suite == 'retirement':
+        args.timer_probe = True  # The complete required suite includes the timer regression.
     _, worker = build_worker.load(args.worker_build)
     native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
@@ -40,6 +45,8 @@ def main():
     shutil.copyfile(__file__, artifact / 'runner.py')
     setup = 'checkpoint-retirement-setup.sh' if retirement else 'bounded-store-setup.sh'
     shutil.copyfile(reference.ROOT / 'tests' / setup, artifact / 'setup.sh')
+    if args.timer_probe:
+        shutil.copyfile(reference.ROOT / 'tests/timer-probe/probe.py', artifact / 'timer-probe.py')
     manifest = upstream_unit.context_manifest(source)
     core = lambda rows: {k: v for k, v in rows.items() if not k.endswith('_test.go')}
     if core(manifest) != core(worker['source_context']):
@@ -58,9 +65,11 @@ def main():
                        'pause/resume, actual guest ENOSPC, distinct host/internal admission, external writable bind '
                        'refusal and preserved prior checkpoint. Not worker replacement, broad consumer or production qualification.'}
     if retirement:
-        result['scope'] = 'Delivered CLI recovery selections, released selection replay, committed-pause protection, live independent fork/resume after checkpoint retirement, foreign mount/successor refusal, actual SIGKILL during partial deletion, retry with unknown entry refusal and verified immutable base alias cleanup. Not epoch retirement or production qualification.'
+        result['scope'] = 'Delivered CLI recovery selections, released selection replay, committed-pause protection, live independent fork/resume after checkpoint retirement, foreign mount/successor refusal, actual SIGKILL during partial deletion, retry with unknown entry refusal, verified immutable base alias cleanup and a required read-only-request/NULL-remainder relative wait through source/fork with preserved syscall registers and original deadline. Not epoch retirement or production qualification.'
     if args.suite == 'retirement-base-diagnostic':
         result['scope'] = 'Isolated retained-sleep and immutable-alias diagnostic only; does not qualify the full required retirement suite.'
+    if args.timer_probe:
+        result['timer_probe_sha256'] = reference.sha(artifact / 'timer-probe.py')
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = container = preserve = False
     identity = None
@@ -83,10 +92,15 @@ def main():
         if retirement:
             command += ['--env', 'FACTORYBOX_NATIVE_RETIREMENT=1', '--env', 'FACTORYBOX_NATIVE_BOUNDED_LOSS=1']
         if args.suite == 'retirement-base-diagnostic':
-            command += ['--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeCheckpointRetirementImmutableAlias$']
+            pattern = '^TestNativeCheckpointRetirementImmutableAlias$'
+            if args.timer_probe:
+                pattern += '|^TestNativeCheckpointRetirementTimerState$'
+            command += ['--env', 'FACTORYBOX_RETIREMENT_TEST=' + pattern]
         for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                        (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
             command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
+        if args.timer_probe:
+            command += ['--mount', f'type=bind,source={artifact / "timer-probe.py"},target=/timer-probe.py,readonly']
         capacity = 1 << 30 if retirement else 512 << 20
         command += [worker['image'], '--store-id', owner, '--bounded-root', '/var/lib/sysbox/fixed-store', '--bounded-bytes', str(capacity)]
         result['command'] = command
@@ -103,7 +117,7 @@ def main():
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
         prefix = 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = 3 if args.suite == 'retirement' else 1
+        count = 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -115,6 +129,7 @@ def main():
                                'partial_retry_completed', 'descendant_useful_after_source_delete'],
                 'retirement-base': ['exact_alias_retired', 'shared_base_preserved', 'source_running'],
                 'retirement-base-actor': ['exact_alias_retired', 'shared_base_preserved', 'source_running'],
+                'timer-state': ['read_only_request', 'null_remainder', 'syscall_registers_preserved', 'source_and_fork_original_deadline'],
             }
             result['proof_sha256'] = {}
             for proof_name, keys in required.items():
@@ -165,6 +180,8 @@ def main():
             result['inputs_unchanged'] = (upstream_unit.context_manifest(source) == manifest and
                                           reference.sha(artifact / 'runner.py') == result['runner_sha256'] and
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])
+            if args.timer_probe:
+                result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(artifact / 'timer-probe.py') == result['timer_probe_sha256']
             result['passed'] = (result['passed'] and result['cleanup'] and result['inputs_unchanged'] and
                                 result['global_sysctls_after'] == result['global_sysctls_before'])
             result['outer_seconds'] = time.monotonic()-started

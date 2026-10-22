@@ -370,10 +370,50 @@ func testNativeCheckpointRetirementImmutableAlias(t *testing.T, actor bool) {
 	if err := captureNativeFreeze(source.Record, true); err != nil {
 		t.Fatal(err)
 	}
+	controlFrozen := true
+	defer func() {
+		if controlFrozen {
+			if err := captureNativeFreeze(source.Record, false); err != nil {
+				t.Error("release exact fixture control freeze", err)
+			}
+		}
+	}()
+	if !actor {
+		stack, stackErr := os.ReadFile("/proc/" + strconv.Itoa(source.Runtime.PID) + "/stack")
+		t.Logf("[DEBUG-retirement-base] frozen-stack=%s err=%v", stack, stackErr)
+		if _, err := os.Stat("/timer-probe.py"); err == nil {
+			probe := exec.Command("python3", "/timer-probe.py", strconv.Itoa(source.Runtime.PID))
+			output, probeErr := probe.CombinedOutput()
+			t.Logf("[DEBUG-retirement-base] read-only-restart-probe=%s err=%v", output, probeErr)
+			if probeErr != nil {
+				t.Fatal("read-only kernel restart diagnostic failed")
+			}
+			var observed struct {
+				Names        []string `json:"restart_function_names"`
+				Clock        int      `json:"clock_id"`
+				BirthMatches bool     `json:"birth_matches"`
+				Expires      int64    `json:"expires_ns"`
+				Now          int64    `json:"observed_monotonic_ns"`
+			}
+			if err := json.Unmarshal(output, &observed); err != nil || !observed.BirthMatches ||
+				!reflect.DeepEqual(observed.Names, []string{"hrtimer_nanosleep_restart"}) || observed.Clock != 1 ||
+				observed.Expires-observed.Now < int64(290*time.Second) || observed.Expires-observed.Now > int64(300*time.Second) {
+				t.Fatal("restart diagnostic did not identify the exact sleeping task and remaining deadline", err)
+			}
+			nested := exec.Command("unshare", "--pid", "--fork", "--mount-proc", "python3", "/timer-probe.py", "--own-init-control", "1")
+			other, nestedErr := nested.CombinedOutput()
+			t.Logf("[DEBUG-retirement-base] same-pid-different-namespace-control=%s err=%v", other, nestedErr)
+			if err := json.Unmarshal(other, &observed); err != nil || nestedErr != nil || !observed.BirthMatches ||
+				reflect.DeepEqual(observed.Names, []string{"hrtimer_nanosleep_restart"}) {
+				t.Fatal("restart diagnostic adopted the other namespace's sleeping PID 1", err, nestedErr)
+			}
+		}
+	}
 	time.Sleep(100 * time.Millisecond)
 	if err := captureNativeFreeze(source.Record, false); err != nil {
 		t.Fatal(err)
 	}
+	controlFrozen = false
 	time.Sleep(100 * time.Millisecond)
 	control := boundedLossView(t, "state", sourceID)
 	afterFreezeSyscall, _ := os.ReadFile("/proc/" + strconv.Itoa(source.Runtime.PID) + "/syscall")
