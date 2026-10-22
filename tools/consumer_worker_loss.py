@@ -11,6 +11,7 @@ import time
 import uuid
 
 import build_worker
+import consumer_test_inputs
 import devx_inputs
 import devx_project_images
 import devx_lifecycle
@@ -72,6 +73,7 @@ def pump_peer(peer, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build",required=True)
+    parser.add_argument("--probe-input-build",help="Exact already native-tested helper bytes; complete test/core source must match")
     parser.add_argument("--consumer-inputs",required=True)
     parser.add_argument("--project-images",required=True)
     parser.add_argument("--example",choices=["minimal","factory"],required=True)
@@ -272,12 +274,23 @@ traceDependency({event: 'module-loaded'});
             service = external_lifecycle.Service(artifact, result, disconnect=options.external_disconnect)
         if options.opencode_flow:
             result["opencode_flow_inputs"] = upstream_unit.context_manifest(artifact/"opencode-flow")
-        env = dict(os.environ,GOOS="linux",GOARCH="amd64",CGO_ENABLED="0")
-        for file,package,test in [("consumer-worker.test","./tests/devx-lifecycle",True),("devx-actor","./tests/devx-actor",False),
-                                  ("devx-registry","./tests/devx-registry",False),("minimal-actor","./tests/minimal-actor",False),
-                                  ("ide-filesystem","./tests/ide-filesystem",False)]:
-            command = ["go","test","-c","-tags=factorybox_worker_probe"] if test else ["go","build"]
-            subprocess.run([*command,"-trimpath","-buildvcs=false","-o",str(artifact/file),package],cwd=source,env=env,check=True,timeout=120)
+        inputs_started = time.monotonic()
+        if options.probe_input_build:
+            inputs_path, input_build = consumer_test_inputs.load(options.probe_input_build, options.worker_build, result["source_context"])
+            for file, digest in input_build["binary_sha256"].items():
+                reference.artifact_storage.share_frozen_input(inputs_path/file,artifact/file,reference.ROOT,digest)
+            result["probe_input_build"] = {"artifact": options.probe_input_build, "result_sha256": reference.sha(inputs_path/"result.json"),
+                                          "native_proof": input_build["native_proof"], "native_result_sha256": input_build["native_result_sha256"]}
+        else:
+            env = dict(os.environ,GOOS="linux",GOARCH="amd64",CGO_ENABLED="0")
+            for file,package,test in [("consumer-worker.test","./tests/devx-lifecycle",True),("devx-actor","./tests/devx-actor",False),
+                                      ("devx-registry","./tests/devx-registry",False),("minimal-actor","./tests/minimal-actor",False),
+                                      ("ide-filesystem","./tests/ide-filesystem",False)]:
+                command = ["go","test","-c","-tags=factorybox_worker_probe"] if test else ["go","build"]
+                subprocess.run([*command,"-trimpath","-buildvcs=false","-o",str(artifact/file),package],cwd=source,env=env,check=True,timeout=120)
+        result["probe_input_preparation"] = {"mode": "verified_native_inputs" if options.probe_input_build else "compile",
+                                             "seconds": time.monotonic()-inputs_started,
+                                             "scope": "Host-side Go test-helper input preparation only; workload preparation and lifecycle timings remain separate."}
         binary = baseline_binary or worker_path/"image-context/bundle/factorybox"
         cli_sha=baseline_receipt["binary_sha256"] if baseline_receipt else worker["bundle_sha256"]["factorybox"]
         reference.artifact_storage.share_frozen_input(binary,artifact/"factorybox",reference.ROOT,cli_sha)

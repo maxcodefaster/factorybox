@@ -736,6 +736,35 @@ reconciliation assertions. Portable checks pass in
 parent remains failed; the original busy-overlay, nested PID collision and
 historical startup timeout remain unresolved.
 
+## Repeated-run inputs within the evidence budget
+
+`factorybox-build-consumer-tests-1f25fb5df92841db81e7abc881d33fda` freezes the
+exact five Go helper executables already used by the complete passing Factory
+proof `factorybox-consumer-worker-loss-22b67525b1284ca0ae9207b7ce94d011`.
+Compacted helpers are reconstructed with their complete original decoded
+hashes; the original encodings and proofs stay intact. The new completed input
+build keeps these copies read-only and binds their hashes to that native proof,
+the exact worker ID and the complete Go core/test source manifest. A later run
+may share them through verified immutable hardlinks only when that whole source
+manifest still matches. Changed assertions require freshly compiled inputs.
+There is no application state, prepared workload, checkpoint or base reuse.
+
+Portable checks pass in `factorybox-checks-eaddde8f595942749d399a4ef31279fc`.
+Negative file-based regressions reject changed test source even with unchanged
+runtime code, changed/writable/redirected helper files, another worker, an
+incomplete producer proof and a changed original result receipt. Vet and every
+original native assertion remain enabled. The default consumer runner still
+compiles its inputs; reuse requires the explicit `--probe-input-build` option.
+
+Both complete examples pass through this input path: Factory in
+`factorybox-consumer-worker-loss-c22671efce1249b8a67d85b1bb5eabec`, native
+114.35 s and outer probe 121.633 s; minimal in
+`factorybox-consumer-worker-loss-8628cc42d11a486386bce08fe089f4b0`.
+Each checks its complete lifecycle with fresh owned containers/volumes and
+exact cleanup. Host-side test-helper preparation is recorded separately from
+workload preparation and native lifecycle timings. This is test storage and
+preparation reuse, not a measured runtime optimization or production selection.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
