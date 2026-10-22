@@ -361,6 +361,35 @@ sys.stdout.buffer.write(b'b'*(1<<20))
             self.assertEqual(source.read_bytes(), content)
 
     @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_explicit_decoded_bound_preserves_physical_budget_and_default_refusal(self):
+        import sys
+        command = [sys.executable, "-B", "-S", "-c", "import sys;sys.stdout.buffer.write(b'z'*(3<<20))"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for bound in [None, 4 << 20]:
+                archive = root / "artifacts" / str(bound)
+                archive.mkdir(parents=True)
+                raw = archive / "failed-volume-0.tar"
+                with (archive / "log").open("xb") as log, \
+                        mock.patch.object(artifact_storage, "ARTIFACT_LIMIT", 2 << 20):
+                    if bound is None:
+                        with self.assertRaisesRegex(ValueError, "observation bound|decoded archive differs"):
+                            artifact_storage.archive_stream(command, raw, root, log, maximum=8 << 20,
+                                                            timeout=5)
+                        self.assertEqual(sorted(p.name for p in archive.iterdir()), ["log"])
+                    else:
+                        record = artifact_storage.archive_stream(command, raw, root, log, maximum=8 << 20,
+                                                                 timeout=5, decoded_limit=bound)
+                        self.assertEqual(record["decoded_limit_bytes"], bound)
+                        self.assertEqual(record["original"]["bytes"], 3 << 20)
+                        self.assertLess(record["encoded"]["bytes"], 2 << 20)
+                        artifact_storage.verify_compacted(raw, record["original"])
+            for bound in [0, -1, True, "1", (64 << 30) + 1]:
+                with self.subTest(bound=bound), self.assertRaisesRegex(ValueError, "observation bound"):
+                    artifact_storage.archive_stream(command, raw, root, None, maximum=8 << 20,
+                                                    timeout=5, decoded_limit=bound)
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
     def test_failed_source_stream_cannot_publish_an_archive_receipt(self):
         import sys
         with tempfile.TemporaryDirectory() as directory:

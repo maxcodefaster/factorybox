@@ -3,10 +3,14 @@
 import argparse
 import datetime
 import json
+from pathlib import Path
 import re
+import shutil
 import subprocess
+import sys
 import uuid
 
+import build_worker
 import native_base
 import reference
 import reference_lifecycle
@@ -69,12 +73,16 @@ def main():
     parser.add_argument("--ide", action="store_true",
                         help="Reconcile only this failed run's owned Theia workspace")
     options = parser.parse_args()
-    if not re.fullmatch(r"factorybox-devx-lifecycle-[0-9a-f]{32}", options.run):
+    if not re.fullmatch(r"factorybox-(?:devx-lifecycle|consumer-worker-loss)-[0-9a-f]{32}", options.run):
         raise ValueError("requires one exact developer lifecycle run")
+    consumer = options.run.startswith("factorybox-consumer-worker-loss-")
+    if consumer and options.ide:
+        raise ValueError("consumer worker reconciliation does not select IDE resources")
     archive = reference.ROOT / "artifacts" / options.run
     original = json.loads((archive / "result.json").read_text())
     owner = original["owner"]
-    if options.run != "factorybox-devx-lifecycle-" + owner or original.get("passed"):
+    prefix = "factorybox-consumer-worker-loss-" if consumer else "factorybox-devx-lifecycle-"
+    if options.run != prefix + owner or original.get("passed"):
         raise ValueError("run has no matching unresolved retained volume")
     resource_name, volume, saved_root = options.run, options.run, archive
     if options.ide:
@@ -93,19 +101,41 @@ def main():
     reference.owned_delete("container", resource_name + "-archive-0", owner)
     output = saved_root / "reconciliations" / uuid.uuid4().hex
     output.mkdir(parents=True)
+    inputs = output / "inputs"
+    inputs.mkdir()
+    input_sha256 = {}
+    for module in [sys.modules[__name__], reference, reference.artifact_storage, upstream_bats, build_worker]:
+        path = Path(module.__file__)
+        shutil.copyfile(path, inputs / path.name)
+        input_sha256[path.name] = reference.sha(inputs / path.name)
     result = {
         "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "run": options.run, "owner": owner, "cleanup": False, "passed": False,
         "resource": "ide" if options.ide else "worker", "volume_name": volume,
         "original_result_sha256": reference.sha(archive / "result.json"),
+        "inputs_sha256": input_sha256,
         "scope": "Independent cleanup observation. Original failed lifecycle result remains unchanged.",
     }
     print(json.dumps({"archiving": str(output)}), flush=True)
     try:
         if volume_present(volume, owner):
-            image, _ = native_base.load(original["native_base_build"])
+            archive_options = {}
+            if consumer:
+                _, worker = build_worker.load(original["worker_build"])
+                image = worker["image"]
+                if image != original["worker_image"] or worker["image_id"] != original["worker_image_id"]:
+                    raise ValueError("retained consumer worker image differs from its build")
+                size = original.get("bounded_store_bytes", 0)
+                if type(size) is not int or size and (size % (1 << 30) or not 4 << 30 <= size <= 32 << 30):
+                    raise ValueError("retained consumer store has invalid declared capacity")
+                if size:
+                    archive_options["decoded_limit"] = size + (1 << 30)
+            else:
+                image, _ = native_base.load(original["native_base_build"])
             upstream_bats.archive_stopped_volumes(output, resource_name, owner, [volume], image,
-                                                 result, timeout=600, compressed=True)
+                                                 result, timeout=600, compressed=True, **archive_options)
+            if reference.sha(archive / "result.json") != result["original_result_sha256"]:
+                raise ValueError("original failed result changed before retained volume removal")
             reference.owned_delete("volume", volume, owner)
         else:
             # Docker may complete removal after its caller times out. Absence

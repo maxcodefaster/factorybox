@@ -355,8 +355,12 @@ def compact_closed_run(directory, root):
     return report
 
 
-def archive_stream(command, path, root, log, *, maximum, timeout):
+def archive_stream(command, path, root, log, *, maximum, timeout, decoded_limit=None):
     """Save a stopped source's complete tar stream without a raw disk copy."""
+    if decoded_limit is None:
+        decoded_limit = ARTIFACT_LIMIT
+    if type(decoded_limit) is not int or not 0 < decoded_limit <= 64 << 30:
+        raise ValueError("decoded observation bound must be positive and at most 64 GiB")
     supplied_root, path = Path(root).absolute(), Path(path).absolute()
     if not path.is_relative_to(supplied_root / "artifacts"):
         raise ValueError("stream archive must belong to this repository's artifacts")
@@ -445,7 +449,7 @@ def archive_stream(command, path, root, log, *, maximum, timeout):
             def hash_decoded_bytes():
                 while data := decoder.stdout.read(1 << 20):
                     observed["decoded_bytes"] += len(data)
-                    if observed["decoded_bytes"] > ARTIFACT_LIMIT:
+                    if observed["decoded_bytes"] > decoded_limit:
                         raise ValueError("decoded archive exceeds its original observation bound")
                     decoded.update(data)
                 decoder.stdout.close()
@@ -460,8 +464,8 @@ def archive_stream(command, path, root, log, *, maximum, timeout):
                         if expired.is_set():
                             raise subprocess.TimeoutExpired(command, timeout)
                         count += len(data)
-                        if count > ARTIFACT_LIMIT:
-                            raise ValueError("decoded archive stream exceeds its 64-GiB observation bound")
+                        if count > decoded_limit:
+                            raise ValueError(f"decoded archive stream exceeds its {decoded_limit}-byte observation bound")
                         digest.update(data)
                         encoder.stdin.write(data)
                         if time.monotonic() - last_progress >= 10:
@@ -505,6 +509,7 @@ def archive_stream(command, path, root, log, *, maximum, timeout):
             "original": {"file": path.name, "bytes": count, "sha256": digest.hexdigest()},
             "encoded": {"file": encoded.name, "bytes": partial.stat().st_size, "sha256": encoded_sha},
             "codec_parameters": ["-T1", "-1", "--long=27"],
+            "decoded_limit_bytes": decoded_limit,
             "whole_decompressed_payload_verified": True,
             "original_stream_hashed": True, "pipelined_disk_verification": True,
             "seconds": time.monotonic() - started,

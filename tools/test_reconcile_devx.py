@@ -212,6 +212,62 @@ class ReconcileTests(unittest.TestCase):
             self.invoke(stderr="permission denied")
 
 
+class ConsumerReconcileTests(unittest.TestCase):
+    def test_bounded_consumer_requires_exact_image_and_complete_archive_before_volume_removal(self):
+        for failure in [None, "archive", "image", "capacity"]:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                owner = "a" * 32
+                run = "factorybox-consumer-worker-loss-" + owner
+                source = root / "artifacts" / run
+                source.mkdir(parents=True)
+                original = {"owner": owner, "passed": False, "cleanup": False,
+                            "retained_volumes": [run], "worker_build": "frozen-worker",
+                            "worker_image": "pinned-image", "worker_image_id": "pinned-id",
+                            "bounded_store_bytes": 32 << 30}
+                if failure == "capacity":
+                    original["bounded_store_bytes"] += 1
+                before = json.dumps(original).encode()
+                (source / "result.json").write_bytes(before)
+                worker = {"image": "foreign" if failure == "image" else "pinned-image",
+                          "image_id": "pinned-id"}
+                actions = []
+                def retain(*args, **kwargs):
+                    actions.append("archive")
+                    self.assertEqual(args[1:5], (run, owner, [run], "pinned-image"))
+                    self.assertEqual(kwargs, {"timeout": 600, "compressed": True,
+                                              "decoded_limit": 33 << 30})
+                    if failure == "archive":
+                        raise ValueError("incomplete archive")
+                def remove(kind, name, saved_owner):
+                    actions.append((kind, name, saved_owner))
+                observed = [{"Name": run, "Labels": {"com.factorybox.run": owner}}]
+                with mock.patch.object(reconcile_devx.reference, "ROOT", root), \
+                        mock.patch.object(reconcile_devx.reference, "docker", return_value=json.dumps(observed)), \
+                        mock.patch.object(reconcile_devx.reference, "owned_delete", side_effect=remove), \
+                        mock.patch.object(reconcile_devx.build_worker, "load", return_value=(None, worker)) as load, \
+                        mock.patch.object(reconcile_devx.native_base, "load") as native, \
+                        mock.patch.object(reconcile_devx.upstream_bats, "archive_stopped_volumes", side_effect=retain), \
+                        mock.patch.object(sys, "argv", ["reconcile_devx", run]), mock.patch("builtins.print"):
+                    if failure:
+                        with self.assertRaises(ValueError):
+                            reconcile_devx.main()
+                    else:
+                        reconcile_devx.main()
+                    native.assert_not_called()
+                    load.assert_called_once_with("frozen-worker")
+                self.assertEqual((source / "result.json").read_bytes(), before)
+                receipt = json.loads(next((source / "reconciliations").glob("*/result.json")).read_text())
+                self.assertEqual(receipt["cleanup"], failure is None)
+                volume_action = ("volume", run, owner)
+                if failure is None:
+                    self.assertEqual(actions[-2:], ["archive", volume_action])
+                else:
+                    self.assertNotIn(volume_action, actions)
+                    if failure != "archive":
+                        self.assertNotIn("archive", actions)
+
+
 class IdeReconcileTests(unittest.TestCase):
     def test_failed_ide_cleanup_archives_and_removes_only_its_exact_resources(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -136,7 +136,8 @@ def limit_archive_process(maximum):
     resource.setrlimit(resource.RLIMIT_FSIZE, (maximum, maximum))
 
 
-def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, timeout=60, compressed=False):
+def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, timeout=60, compressed=False,
+                           decoded_limit=None):
     result["failed_volume_archives"] = {}
     for index, volume in enumerate(volumes):
         saved = json.loads(reference.docker(["volume", "inspect", volume]))[0]
@@ -168,7 +169,8 @@ def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, tim
             if compressed:
                 with (archive / (filename + ".log")).open("x") as log:
                     record = reference.artifact_storage.archive_stream(
-                        command, archive / filename, ROOT, log, maximum=maximum, timeout=timeout)
+                        command, archive / filename, ROOT, log, maximum=maximum, timeout=timeout,
+                        decoded_limit=decoded_limit)
                 result["failed_volume_archives"][volume] = record["original"]
                 continue
             # Keep the binary stream off the Mac bind share and Docker logs.

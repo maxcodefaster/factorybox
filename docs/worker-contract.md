@@ -325,6 +325,17 @@ watchers or guarantee arbitrary watch topology recovery.
 
 ## Builds and evidence
 
+The full-consumer bounded-store path is not qualified yet. Its first minimal
+native run passes all eight original lifecycle phases, then fails worker Stop
+with `device or resource busy`. A delivered-worker minimizer proves that a
+single completed immutable base leaves a canonical read-only self-bind which
+prevents ordinary bounded-filesystem unmount; an empty worker stops cleanly.
+Keep all backing and identity records when Stop is unconfirmed. Retention
+requires a complete verified archive before an exactly owned stopped volume
+may be removed. The optional larger decoded-stream observation allowance does
+not enlarge the physical artifact budget. See
+[the bounded-consumer result](production-progress.md#first-full-minimal-consumer-on-the-bounded-store).
+
 `tools/build_worker.py` takes exact completed native-base, Sysbox and CRIU
 build IDs. It freezes the Go sources, toolchain and source lock, checks module
 inputs offline, assembles a deterministic package and builds a local image

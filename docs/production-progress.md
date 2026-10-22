@@ -2170,6 +2170,80 @@ Grant-in-flight/delegated timer recovery, partial mutation repair, broader
 thread/signal states, completed-page lifetime and every other production gate
 remain open. This proof establishes a safe hold at this declared boundary.
 
+## First full minimal consumer on the bounded store
+
+`tools/consumer_worker_loss.py --bounded-bytes` now runs the existing consumer
+fixtures inside the delivered bounded store. It accepts an explicit whole-GiB
+capacity from 4 through 32 GiB and verifies the actual store/image owner,
+direct-I/O attachment, bounded device, independent host device and capacity
+policy before and after the native probe. The successful source Start must use
+the admitted bundle and rootfs under that store.
+
+Only new owned fixture copies have their path literals relocated. The three
+original Go test files and original setup script remain unchanged. The exact
+before/after hashes, both ordinary and empty-features setup variants and patch
+reconstruction are declared in `tests/compatibility/consumer-bounded-paths.json`
+and frozen in `factorybox-consumer-bounded-fixture-inputs-aa12d887090b4a95b9f20047b075a66e`.
+Every original assertion, the 420-second deadline and resource ceiling remains
+in force. Six portable cases cover both reconstructions, changed/hardlinked or
+closed inputs, exact capacity and source-placement refusals.
+
+The first full minimal run,
+`factorybox-consumer-worker-loss-d2cccba26a6f41a786881468dfc1bb7c`, executes
+all eight original useful-work phases successfully in 55.75 seconds on the
+unchanged `37dd732100cd45be93cc7a123ee39f1a` package. Its actual direct-I/O image
+is 34,359,738,368 bytes; the filesystem reports 33,501,757,440 usable bytes and
+available space decreases from 33,484,865,536 to 28,581,412,864 bytes. The store
+and host devices are distinct. This is one functional observation, not a
+performance distribution or full bounded-consumer qualification.
+
+The overall result is failed: the worker does not exit successfully and its
+final log reports `device or resource busy`. Its first archive also fails
+because the 32-GiB loop image plus tar metadata exceeds the archive pipeline's
+default 32-GiB decoded-stream observation bound. The old error incorrectly
+names 64 GiB; the original failed result remains unchanged.
+
+The independent stop minimizer,
+`factorybox-bounded-base-stop-13bfb7df062040409deb49f7da6c0dc6`, reproduces
+the failure with two sequential delivered workers and 512-MiB stores, without
+a sandbox: the empty control exits 0; one public `prepare-base` on a single
+text file makes Stop exit 1. The extra mount is the canonical read-only
+self-bind identified by the completed base manifest. Both minimizer cases
+are cleaned up, with the failed store completely archived and verified.
+No production fix is selected by this result.
+
+For retention, the archive pipeline accepts a caller-declared decoded-stream
+bound, capped at 64 GiB. Only known bounded consumer stores select their image
+size plus 1 GiB of tar allowance; the default remains 32 GiB. This changes no
+physical artifact or host-free-space budget. The encoder still has its original
+physical cap, and the complete stored compressed file is decoded, counted and
+hashed against the original tar stream before volume removal is allowed.
+Portable tests exercise default refusal, an explicit larger observation bound,
+physical limits, corruption and archive-before-removal ordering. A candidate
+raw-hole scan was rejected after an actual preallocated-file test showed that
+GNU tar still included the allocated zero extents.
+
+The exact stopped consumer volume is subsequently archived in independent
+reconciliation `b363fd99aee146009a4098648245ae8d`. The complete
+34,360,786,944-byte tar stream has SHA-256
+`7f54acdc6f471c40f10a7cd29fee0a954b88023e4dbcf909f1ef1ea47f91f1cd`;
+the stored compressed file is fully decoded and matched before removal of the
+exact owned volume. That reconciliation passes cleanup while the original
+native result remains failed with its original cleanup=false record intact.
+
+`factorybox-storage-share-closed-inputs-e97bc649657d4b74872cc1d1646f6957`
+fully verifies 570 compiled inputs and shares 292 identical closed-run inputs,
+reclaiming 1,364,025,344 allocated bytes. Original results, logs, archives,
+encoding receipts and input contents remain intact; original and shared mtimes
+are recorded. No current unresolved failure or frozen source is removed.
+
+Portable checks including vet and all immutable reference checks pass in
+`factorybox-checks-1b2245e284e3423181a3cc3ad81546a8`. The fixture bridge,
+native negative results, retention and ordered source patches are indexed in
+`factorybox-bounded-consumer-notes-f11aa1b429604122afcad7bad16e89cc`.
+Clean bounded-store shutdown and the complete Factory/Theia/agent and worker-loss
+acceptance runs remain required. Production qualification remains false.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

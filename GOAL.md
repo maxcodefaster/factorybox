@@ -393,3 +393,15 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   An dieser Grenze fehlt ein Cure-Auftrag; Verlust nach dessen Annahme,
   automatische Mutationsreparatur und das vollständige Produktionsziel bleiben
   offen.
+- Die vorhandenen vollständigen Verbraucher-Fixtures können jetzt mit exakt
+  deklarierten Pfadpatches im begrenzten Store laufen; Originale, Assertions,
+  Vet und Ressourcen-/Zeitgrenzen bleiben erhalten. Der erste minimale Lauf
+  besteht alle acht Lifecycle-Phasen, scheitert danach aber beim Worker-Stop.
+  Ein kleiner nativer Vergleich belegt die Ursache: leerer Worker endet mit 0,
+  genau eine vorbereitete Basis hinterlässt ihren schreibgeschützten Self-Bind
+  und führt zu EBUSY/Exit 1. Der Gesamtlauf bleibt fehlgeschlagen.
+  Die Sicherung berücksichtigt nun explizit die bekannte Imagegröße plus
+  Tar-Zugabe, ohne das physische Artefaktbudget zu erhöhen. Belege und exakte
+  Patches: `factorybox-bounded-consumer-notes-f11aa1b429604122afcad7bad16e89cc`.
+  Sauberer Stop, vollständige begrenzte Factory-/Theia-/Agenten- und
+  Worker-Verlustläufe sowie sämtliche weiteren Freigabegates bleiben offen.

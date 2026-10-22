@@ -1,4 +1,6 @@
 import json
+import hashlib
+import os
 import pathlib
 import functools
 import resource
@@ -12,6 +14,52 @@ import upstream_bats
 
 
 class BatsEvidenceTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(os, "posix_fallocate"), "requires preallocated file support")
+    def test_stopped_volume_archive_round_trips_preallocated_store_bytes(self):
+        if "GNU tar" not in subprocess.check_output(["tar", "--version"], text=True):
+            self.skipTest("worker archive recipe requires GNU tar")
+        owner, name, volume = "a" * 32, "exact-fixture", "exact-volume"
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            source, archive, restored = (root / name for name in ["source", "archive", "restored"])
+            for directory in [source, archive, restored]:
+                directory.mkdir()
+            payload = source / "store.img"
+            with payload.open("xb") as stream:
+                os.posix_fallocate(stream.fileno(), 0, 8 << 20)
+                for offset in [0, (4 << 20) + 197, (8 << 20) - 513]:
+                    stream.seek(offset)
+                    stream.write(bytes(range(256)) * 2)
+            payload.chmod(0o600)
+            os.utime(payload, (1700000000, 1700000000))
+            original = hashlib.sha256(payload.read_bytes()).hexdigest()
+            def docker(args):
+                if args[:2] == ["volume", "inspect"]:
+                    return json.dumps([{"Labels": {"com.factorybox.run": owner}}])
+                if args[:2] == ["container", "ls"]:
+                    return ""
+                raise AssertionError("unexpected Docker call")
+            run = subprocess.run
+            def save(command, **kwargs):
+                # Exercise the actual archive recipe on an owned directory.
+                args = command[command.index("--numeric-owner"):]
+                args[args.index("/input")] = str(source)
+                return run(["tar", *args], **kwargs)
+            result = {}
+            with mock.patch.object(upstream_bats.reference, "docker", side_effect=docker), \
+                    mock.patch.object(upstream_bats.reference, "owned_delete"), \
+                    mock.patch.object(upstream_bats, "archive_file_limit", return_value=32 << 20), \
+                    mock.patch.object(upstream_bats.subprocess, "run", side_effect=save):
+                upstream_bats.archive_stopped_volumes(archive, name, owner, [volume], "image", result)
+            row = result["failed_volume_archives"][volume]
+            run(["tar", "-xpf", str(archive / row["file"]), "-C", str(restored)], check=True)
+            copy = restored / payload.name
+            self.assertEqual(copy.stat().st_size, payload.stat().st_size)
+            self.assertEqual(copy.stat().st_mode, payload.stat().st_mode)
+            self.assertEqual(copy.stat().st_mtime_ns, payload.stat().st_mtime_ns)
+            self.assertEqual(hashlib.sha256(copy.read_bytes()).hexdigest(), original)
+            self.assertEqual(hashlib.sha256(payload.read_bytes()).hexdigest(), original)
+
     def test_failure_stop_requires_exact_owner_before_and_after_stopping(self):
         owner, name = "a" * 32, "exact-fixture"
         running = {"Name": "/" + name, "Config": {"Labels": {"com.factorybox.run": owner}},

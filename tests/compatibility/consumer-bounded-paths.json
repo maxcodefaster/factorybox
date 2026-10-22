@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "before_artifact": "factorybox-consumer-bounded-fixture-inputs-aa12d887090b4a95b9f20047b075a66e",
+  "worker_bounded_root": "/var/lib/sysbox/fixed-store",
+  "worker_store": "/var/lib/sysbox/fixed-store/data/store",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Only owned fixture-copy path literals relocate into the delivered bounded store. Original source, timeout, resource limits, every assertion and consumer behavior are unchanged. Setup has separately pinned ordinary and empty-features variants.",
+  "files": [
+    {
+      "file": "tests/devx-lifecycle/lifecycle_linux_test.go",
+      "features": null,
+      "before_sha256": "78880e010d2560f98b6fcbdc7bb48eec95c8f174cdf02eeb312ec3c01ca0a15c",
+      "after_sha256": "a35d563aec59068da2d2ea5af29ce5d48a6d85d1e5bb512fb82ee45b4f908e0f",
+      "old_path": "/var/lib/sysbox/devx",
+      "new_path": "/var/lib/sysbox/fixed-store/data/store/devx",
+      "replacements": 2
+    },
+    {
+      "file": "tests/devx-lifecycle/warm_preparation_probe_linux_test.go",
+      "features": null,
+      "before_sha256": "0964cdf1cd8402408549205e8e0e11f35bbe147abc3cf43e943057bae259b959",
+      "after_sha256": "6262926656c8b060249a025d2502616dbe1594b5ae44c2898c7f523eb443c5ec",
+      "old_path": "/var/lib/sysbox/devx",
+      "new_path": "/var/lib/sysbox/fixed-store/data/store/devx",
+      "replacements": 1
+    },
+    {
+      "file": "tests/devx-lifecycle/worker_loss_linux_test.go",
+      "features": null,
+      "before_sha256": "3f9d9c9ff10004810771fb2b3038eb1d01c4c69246425456bcbedf48313a8cb9",
+      "after_sha256": "2a0173de84806b614105eb0cbb6656f835bd119f13c5b79ca0893a6070e4a638",
+      "old_path": "/var/lib/sysbox/consumer-pause.json",
+      "new_path": "/var/lib/sysbox/fixed-store/data/store/consumer-pause.json",
+      "replacements": 1
+    },
+    {
+      "file": "tests/consumer-worker-setup.sh",
+      "features": false,
+      "before_sha256": "5c84cf76788f3d60f00713356da9ab2d3c0304dc8a48542c6fb68eb3450c13d7",
+      "after_sha256": "20260e7275e1c7d03449d4422d036871b679b989047d6e9f19e89b0bc0ce8ba9",
+      "old_path": "/var/lib/sysbox/devx",
+      "new_path": "/var/lib/sysbox/fixed-store/data/store/devx",
+      "replacements": 3
+    },
+    {
+      "file": "tests/consumer-worker-setup.sh",
+      "features": true,
+      "before_sha256": "98b5acbda8fbea81506ac82b97c64d62891420a4690b17d13e47ce926c94d81b",
+      "after_sha256": "e147a50492f050d203842ca3e1c2d75d10aada95b0f2fe37aba11d1e804f1acf",
+      "old_path": "/var/lib/sysbox/devx",
+      "new_path": "/var/lib/sysbox/fixed-store/data/store/devx",
+      "replacements": 4
+    }
+  ]
+}

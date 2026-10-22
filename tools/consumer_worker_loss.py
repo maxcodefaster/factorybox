@@ -12,6 +12,7 @@ import uuid
 
 import build_worker
 import consumer_test_inputs
+import consumer_bounded_store
 import devx_inputs
 import devx_project_images
 import devx_lifecycle
@@ -74,6 +75,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build",required=True)
     parser.add_argument("--probe-input-build",help="Exact already native-tested helper bytes; complete test/core source must match")
+    parser.add_argument("--bounded-bytes",type=int,help="Explicit 4-32 GiB fixed store; relocate only new fixture copies and verify actual delivered capacity")
     parser.add_argument("--consumer-inputs",required=True)
     parser.add_argument("--project-images",required=True)
     parser.add_argument("--example",choices=["minimal","factory"],required=True)
@@ -89,6 +91,9 @@ def main():
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
+    if options.bounded_bytes is not None and (options.bounded_bytes % (1 << 30) or not 4 << 30 <= options.bounded_bytes <= 32 << 30 or
+            options.baseline_runtime_build or options.probe not in {"lifecycle", "worker-loss", "incomplete-pause", "warm-preparation"}):
+        parser.error("bounded consumers require 4-32 whole GiB and a selected-runtime lifecycle/recovery fixture")
     if options.external_disconnect and (not options.external_provider_proof or options.probe != "lifecycle"):
         parser.error("the completed-response disconnect is a separate complete external-agent lifecycle")
     if options.external_provider_proof and (options.example != "factory" or not options.opencode_flow or
@@ -144,6 +149,7 @@ def main():
               "external_provider_enabled":bool(options.external_provider_proof),
               "consumer_empty_features":options.consumer_empty_features,
               "consumer_request_profile":options.consumer_request_profile,
+              "bounded_store_bytes":options.bounded_bytes,
               "probe":options.probe,
               "baseline_input":baseline_receipt,"lifecycle_criu_sha256":effective_criu,
               "consumer_inputs":options.consumer_inputs,"project_images":options.project_images,
@@ -239,6 +245,8 @@ traceDependency({event: 'module-loaded'});
     for directory in ["internal","cmd/factorybox","tests/devx-lifecycle","tests/devx-actor","tests/devx-registry","tests/minimal-actor","tests/ide-filesystem","tests/provider-fixture"]:
         shutil.copytree(reference.ROOT/directory,source/directory)
     for file in ["go.mod","go.sum"]: shutil.copyfile(reference.ROOT/file,source/file)
+    if options.bounded_bytes is not None:
+        result["bounded_fixture"] = consumer_bounded_store.apply_fixture(artifact, source, options.consumer_empty_features)
     if options.consumer_request_profile:
         path=source/"tests/devx-actor/main_linux.go"
         text=path.read_text()
@@ -344,10 +352,15 @@ traceDependency({event: 'module-loaded'});
             for source_path,target,readonly in mounts:
                 command += ["--mount",f"type=bind,source={source_path},target={target}"+(",readonly" if readonly else "")]
             command += ["--entrypoint","/opt/factorybox/factorybox",worker["image"],"worker","--store-id",owner]
+            if options.bounded_bytes is not None:
+                command += ["--bounded-root", consumer_bounded_store.BOUNDED_ROOT, "--bounded-bytes", str(options.bounded_bytes)]
             record["command"] = command
             containers.append(container)
             identity = reference.docker(command)
             record["startup"] = ready(container,owner,identity,deadline)
+            if options.bounded_bytes is not None:
+                capacity = json.loads(reference.docker(["exec", identity, "/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox", "capacity"]))
+                record["bounded_store_before"] = consumer_bounded_store.verify_capacity(record["startup"]["status"], capacity, options.bounded_bytes, owner)
             provider = provider_peer.Peer(container,identity,owner,phase_artifact,output,result["external_provider"]["gateway_sha256"]) if service else None
             if provider: providers.append(provider)
             probe_command = [*reference.DOCKER,"exec",identity,"/bin/bash","/consumer-worker-setup.sh"]
@@ -410,6 +423,11 @@ traceDependency({event: 'module-loaded'});
                         if provider:
                             provider.close()
                             record["external_provider"] = provider.result
+                        if options.bounded_bytes is not None:
+                            capacity = json.loads(reference.docker(["exec", identity, "/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox", "capacity"]))
+                            record["bounded_store_after"] = consumer_bounded_store.verify_capacity(record["startup"]["status"], capacity, options.bounded_bytes, owner)
+                            if phase == "prepare":
+                                record["bounded_source"] = consumer_bounded_store.verify_source(json.loads((output / "cli-02-start.json").read_text()))
                         reference.docker(["container","stop","--time=15",identity],timeout=20)
                 finally:
                     if probe.poll() is None:
@@ -447,7 +465,9 @@ traceDependency({event: 'module-loaded'});
                 if not owned_provider.closed: owned_provider.close(aborted=True)
             if attempted and not result["passed"]:
                 try:
-                    upstream_bats.archive_stopped_volumes(artifact,name,owner,[name],worker["image"],result,timeout=600,compressed=True)
+                    upstream_bats.archive_stopped_volumes(
+                        artifact,name,owner,[name],worker["image"],result,timeout=600,compressed=True,
+                        decoded_limit=options.bounded_bytes + (1 << 30) if options.bounded_bytes else None)
                 except Exception as error:
                     preserve=True;result["archive_error"]=str(error);result["retained_volumes"]=[name]
             if attempted and not preserve: reference.owned_delete("volume",name,owner)
