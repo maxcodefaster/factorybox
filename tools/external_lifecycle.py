@@ -68,12 +68,15 @@ def prepare(artifact, proof_name, worker_image, result):
 
 
 class Service:
-    def __init__(self, artifact, result):
+    def __init__(self, artifact, result, disconnect=False):
+        self.artifact, self.disconnect = artifact, disconnect
         self.directory = tempfile.TemporaryDirectory(prefix="fbl-")
         self.output = artifact / "external-provider"
         self.output.mkdir(mode=0o700)
         self.relay = model_relay.Relay(Path(self.directory.name) / "provider.sock", self.output,
-                                       result["external_provider"]["model"], max_requests=8)
+                                       result["external_provider"]["model"], max_requests=8,
+                                       disconnect_response=2 if disconnect else None)
+        result["external_provider"]["disconnect_completed_response"] = 2 if disconnect else None
         os.chmod(Path(self.directory.name) / "provider.sock", 0o666)
         self.thread = threading.Thread(target=self.relay.serve_forever, daemon=True)
         self.thread.start()
@@ -89,3 +92,21 @@ class Service:
     def require_requests(self):
         if len(self.relay.records) < 2 or not all(row["passed"] for row in self.relay.records):
             raise ValueError("actual external inference is missing or failed; retain every attempt")
+        records = sorted(self.relay.records, key=lambda row: row["number"])
+        dropped = [row for row in records if row.get("injected_disconnect")]
+        if not self.disconnect:
+            if dropped or not all(row["delivered"] for row in records):
+                raise ValueError("a provider response was lost outside the declared fault case")
+            return
+        if (len(records) < 3 or len(dropped) != 1 or dropped[0]["number"] != 2 or dropped[0]["delivered"] or
+                any(not row["delivered"] for row in records if row["number"] != 2) or
+                records[1]["request_sha256"] != records[2]["request_sha256"] or
+                records[1]["session"] != records[2]["session"]):
+            raise ValueError("the completed-response fault lacks its exact client inference replay")
+        completed = json.loads((self.artifact / "prepare-output/opencode-result-source.json").read_text())["result"]
+        request = json.loads((self.output / "02.request.json").read_text())
+        actual_tool_results = json.dumps([item.get("content") for item in request["messages"] if item["role"] == "tool"])
+        if completed["nonce"] not in actual_tool_results or completed["ram_sha256"] not in actual_tool_results:
+            raise ValueError("the lost response was not to this actual completed shell result")
+        self.result["external_provider"]["exact_client_inference_replay_verified"] = True
+        self.result["external_provider"]["actual_completed_tool_result_in_lost_exchange"] = True

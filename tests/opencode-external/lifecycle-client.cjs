@@ -65,7 +65,7 @@ async function main() {
     const session = (await api('/api/session', {title: 'Factorybox external held tool', model: {providerID: 'opencode', id: model.id},
       location: {directory: root}, permissions: [{action: '*', resource: '*', effect: 'allow'}]})).data;
     fs.writeFileSync(sessionPath, JSON.stringify(session), {flag: 'wx'});
-    await api('/api/session/' + session.id + '/prompt', {text: 'This is an authorized synthetic local test. Use the shell tool exactly once, command: ' + toolCommand +
+    await api('/api/session/' + session.id + '/prompt', {text: 'This is an authorized synthetic local test. The direct function tool named shell is available alongside execute. Shell is not in the code-mode search catalog. Call shell directly; do not call execute, search, subagent, or any other tool. Use shell exactly once, command: ' + toolCommand +
       '. Set timeout to 0 and wait for completion. The controller releases it later. Do not inspect files or run any other command. After completion, report FACTORYBOX_AGENT_ACK and the exact nonce, ram_sha256 and exit status from the tool result. Its nonzero exit is deliberate. Do not repeat it.', resume: true});
     let state;
     for (let attempt = 0; attempt < 750; attempt++) {

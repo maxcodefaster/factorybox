@@ -108,6 +108,59 @@ closed gateway lifetimes pass. The native prepare/recovery tests take 58.68
 and 65.33 seconds; outer setup adds about 8.9 seconds to the prepare probe.
 Abrupt worker loss and injected provider faults are still separate gates.
 
+The first abrupt-case attempt,
+`factorybox-consumer-worker-loss-167e4e64219446bd9686be3a6cc5050d`, fails before
+any checkpoint or intentional worker loss. Its first provider request is byte
+identical to the two successful runs, including the direct `shell` tool and
+system prompt. The real model instead invokes `execute` to search a separate
+code-mode catalog, which has browser tools and no shell. It repeats catalog
+searches rather than starting the requested held tool. A fourth inference
+returns HTTP 429, with the provider body reporting an unavailable endpoint.
+The arm deadline fails; an active request prevents a clean gateway shutdown,
+so the fixture also refuses normal release. No capture proceeds. Exact owned
+cleanup and unchanged global sysctls pass; the complete failure dump remains
+available through its encoding and lossless repack
+`factorybox-storage-repack-cd42f368c0074adba8482dd250845de6`.
+This attempt does not test abrupt worker recovery. The next independent
+attempt clarifies the actual direct-shell versus code-mode distinction in
+the synthetic prompt. It does not hide failed requests or relax the one-shell,
+RAM, watch, result, deadline or gateway-exit assertions.
+
+The independent clarified-prompt run
+`factorybox-consumer-worker-loss-457fe987231b45e9b037625adb9c5def` passes the
+actual abrupt case. The old worker receives SIGKILL only after its confirmed
+pause and gateway release, and exits 137. Its separate IDE is already gone.
+The replacement worker completes all original recovery, replay, post-recovery
+checkpoint/fork, independent mutation, source-deletion and real-agent assertions.
+The prepare probe takes 88.827 seconds before intentional loss; the recovery
+probe takes 94.502 seconds. Three actual provider exchanges take 29.041,
+14.008 and 23.401 seconds. Both workers, all helper processes and owned volumes
+are removed. This remains same-host, same-boot recovery from the complete store.
+
+The completed-response fault passes its complete ordinary lifecycle in
+`factorybox-consumer-worker-loss-236f0b01d84a41bf8828a43ac3896fb3`.
+After the source's actual shell result reaches the provider, the relay buffers
+its HTTP-200 completion and closes the client transport without delivering it.
+OpenCode retries inference with the exact same request bytes and session.
+The relay performs no inference retry. The next response is delivered; the
+agent ingests the actual nonce, changed RAM hash and exit 37. All three
+independent environments retain exactly one shell invocation. All original
+checkpoint/fork/fork-of-fork/pause/RAM-release/resume/fork-of-resumed and separate
+Theia assertions pass. The host verifies that the lost exchange contained the
+completed source tool's actual nonce and RAM hash. Later branch completions also
+pass. This is one concrete lost-completion case, not an exactly-once guarantee
+for arbitrary remote tool side effects or in-flight TCP restoration.
+
+The real Unix-HTTP regression retains the absent-fault red check
+`factorybox-checks-abf89540117042558abb4df32e58932e`. A subsequent test helper
+mistake, treating HTTPConnection as a context manager, remains in
+`factorybox-checks-bec1b3e1ebd346cb8181f76ef0b23429`. Correct bounded closure
+then passes all six portable gates in
+`factorybox-checks-627156309b59468b821255c2fd01d489`. Its transport regression
+checks the dropped response after actual synthetic upstream completion,
+successful delivery before/afterward, exactly three upstream calls for three
+client requests and unchanged replay bytes.
+
 ## Fresh start, first bounded consumer patch
 
 The original Dev Containers **0.89.0** feature-control function fetches an
@@ -270,8 +323,8 @@ PID 2, under nested init 1328. The conflicting occupant is not yet identified.
 
 ## Release work still required
 
-Abrupt external-agent worker replacement, injected connection faults and uncertainty
-handling; resolution of the new PID collision; a predetermined
+Broader cancellation and uncertain external side-effect handling; resolution
+of the new PID collision; a predetermined
 repeated performance comparison; verified base reuse in the supplied
 operational path; store quotas/admission and low-disk cases; dependency-checked
 checkpoint/epoch retirement; explanation of the preserved Sysbox-fs timeout;

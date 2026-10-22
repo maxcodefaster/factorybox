@@ -8,6 +8,7 @@ import http.server
 import json
 from pathlib import Path
 import socketserver
+import socket
 import threading
 import time
 import urllib.error
@@ -19,12 +20,15 @@ import free_model_probe
 class Relay(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
 
-    def __init__(self, socket, output, model, max_requests=8):
+    def __init__(self, socket, output, model, max_requests=8, disconnect_response=None):
+        if disconnect_response not in (None, 2):
+            raise ValueError("the optional fault drops only the second completed response")
         self.output = Path(output)
         self.model = model
         self.remaining = max_requests
         self.records = []
         self.lock = threading.Lock()
+        self.disconnect_response = disconnect_response
         super().__init__(str(socket), Handler)
 
     def record(self, value):
@@ -65,7 +69,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        record = {"started": time.time(), "passed": False, "inference_retry": False}
+        record = {"started": time.time(), "passed": False, "delivered": False, "inference_retry": False}
         try:
             size = int(self.headers.get("Content-Length", "0"))
             if self.headers.get("Transfer-Encoding") or not 0 < size <= free_model_probe.LIMIT:
@@ -100,16 +104,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 (self.server.output / f"{number:02}.response").write_bytes(response)
                 record.update(status=upstream.code, seconds=time.monotonic() - started, response_bytes=len(response),
                               response_sha256=hashlib.sha256(response).hexdigest(), passed=upstream.code == 200)
+                if upstream.headers.get("Retry-After") is not None:
+                    record["retry_after"] = upstream.headers["Retry-After"][:128]
+                if number == self.server.disconnect_response and upstream.code == 200:
+                    record["injected_disconnect"] = True
+                    self.close_connection = True
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                    return
                 self.send_response(upstream.code)
                 self.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
                 self.send_header("Content-Length", str(len(response)))
                 self.end_headers()
                 self.wfile.write(response)
+                record["delivered"] = True
         except Exception as error:
             record["passed"] = False
             record["error_type"] = type(error).__name__
             record["error"] = str(error)
-            self.reject("bounded inference relay refused or failed", 502)
+            try:
+                self.reject("bounded inference relay refused or failed", 502)
+            except (BrokenPipeError, ConnectionResetError) as delivery:
+                record["error_response_delivery"] = type(delivery).__name__
         finally:
             self.server.record(record)
 

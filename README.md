@@ -67,11 +67,12 @@ adds private Docker, Compose, Dev Containers, a separate Theia IDE and real
 OpenCode. Its active shell tool preserves private RAM and file watches across
 fork/resume, produces different branch results and returns its real exit status
 to the agent. The original lifecycle proofs use a deterministic local model peer.
-A complete lifecycle and planned worker replacement now also pass with pinned
+A complete lifecycle and planned/abrupt worker replacement now also pass with pinned
 OpenCode and a real external free model. Each capture requires the optional
 provider gateway to exit; later inference connects through a fresh gateway.
-Injected provider faults and uncertain external side effects remain release
-tests. See the [current evidence](docs/production-progress.md).
+A lost completed model response also recovers without another shell invocation.
+Broader cancellation and uncertain external side effects remain release tests.
+See the [current evidence](docs/production-progress.md).
 Theia remains a separate reconnecting consumer rather than part of sandbox RAM.
 
 ```mermaid

@@ -164,8 +164,10 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   externem Modell und laufendem Vordergrund-Werkzeug besteht einmal, mit
   16 MiB privatem RAM, Dateiwatch und unabhängiger Ergebnis-/Exitverarbeitung
   in Quelle und Nachkommen. Gateway-Prozess und Verbindungen enden jeweils
-  vor Capture. Geplanter vollständiger Worker-Ersatz besteht ebenfalls.
-  Harter Abbruch und injizierte Verbindungsfehler bleiben offen.
+  vor Capture. Geplanter und harter vollständiger Worker-Ersatz bestehen.
+  Ein absichtlich verlorener Modellabschluss besteht mit bytegenauer
+  Wiederholung der Inferenzanfrage und ohne zusätzliche Shell-Ausführung.
+  Der frühere Fehlversuch vor Werkzeugstart bleibt als Fehler ausgewiesen.
 - Ein exakt gehashter optionaler Dev-Containers-Patch vermeidet einen unnötigen
   Katalogabruf ohne Features. Beide vollständigen Beispiele und neun Prüfungen
   der originalen/gepatchten Feature-Kontrolle bestehen. Erste einzelne

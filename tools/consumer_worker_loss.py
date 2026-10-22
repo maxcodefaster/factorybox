@@ -80,12 +80,15 @@ def main():
     parser.add_argument("--theia-image")
     parser.add_argument("--opencode-flow",action="store_true",help="Preserve the real agent's running local tool and consume its actual result")
     parser.add_argument("--external-provider-proof",help="Use the actual admitted free model and helper from this exact native gateway proof")
+    parser.add_argument("--external-disconnect",action="store_true",help="Drop the second completed provider response once; require exact client replay and no repeated shell")
     parser.add_argument("--consumer-empty-features",action="store_true",help="Candidate exact consumer patch: omit the feature-control lookup for zero features only")
     parser.add_argument("--consumer-request-profile",action="store_true",help="Optional copied Factory example telemetry around its first dependency fetches")
     parser.add_argument("--probe",choices=["worker-loss","incomplete-pause","attached-exec","topology","lifecycle","warm-preparation"],default="worker-loss")
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
+    if options.external_disconnect and (not options.external_provider_proof or options.probe != "lifecycle"):
+        parser.error("the completed-response disconnect is a separate complete external-agent lifecycle")
     if options.external_provider_proof and (options.example != "factory" or not options.opencode_flow or
             options.probe not in {"lifecycle", "worker-loss"} or options.baseline_runtime_build or options.consumer_request_profile):
         parser.error("external inference requires the complete Factory agent lifecycle or committed-pause worker-loss case")
@@ -266,7 +269,7 @@ traceDependency({event: 'module-loaded'});
     try:
         if options.external_provider_proof:
             external_lifecycle.prepare(artifact, options.external_provider_proof, worker["image_id"], result)
-            service = external_lifecycle.Service(artifact, result)
+            service = external_lifecycle.Service(artifact, result, disconnect=options.external_disconnect)
         if options.opencode_flow:
             result["opencode_flow_inputs"] = upstream_unit.context_manifest(artifact/"opencode-flow")
         env = dict(os.environ,GOOS="linux",GOARCH="amd64",CGO_ENABLED="0")
