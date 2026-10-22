@@ -1,0 +1,38 @@
+# Factorybox
+
+Factorybox preserves complete Linux development environments across independent
+branches, pauses and supported worker replacement.
+
+## Language
+
+**Sandbox**:
+One running or saved application environment with its own process and filesystem
+state. Its descendants can continue independently of their original source.
+
+**Worker**:
+One privileged administrative boundary assigned to one customer or trust domain.
+Its lifetime is separate from the lifetimes of the environments it preserves.
+
+**Worker epoch**:
+One identified worker lifetime. Replacing a worker starts a new epoch without
+making an old live process identity reusable.
+
+**Persistent store**:
+The owned data required to preserve and recover environments after supported
+worker replacement. Deleting a sandbox does not imply retiring its stored data.
+
+**Store capacity**:
+The maximum storage assigned to the persistent store, including its own recovery
+space. It is distinct from the free space available elsewhere on the host.
+
+**Host free-space floor**:
+The host space that must remain available when Factorybox admits new allocation.
+It is an admission condition, not the persistent store's capacity.
+
+**Recovery reserve**:
+Storage allocated in advance for completing or rolling back a specific owned
+operation when ordinary storage allocation is refused.
+
+**Committed pause**:
+A durable complete saved state from which the source environment can be resumed
+after the supported loss of its worker.

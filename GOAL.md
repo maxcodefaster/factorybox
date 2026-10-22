@@ -222,3 +222,12 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Dateisystem wird die Operation abgelehnt. Beide normalen Schreibkontrollen,
   begrenzte Datenmenge und exaktes Aufräumen bestehen. Eine integrierte harte
   Speichergrenze bleibt deshalb offen; der Befund wird nicht als Freigabe gewertet.
+- Ein festes 96-MiB-Dateisystem besteht den isolierten echten Platzmangel,
+  die zweite Schreibablehnung, Rückabwicklung aus einer eigenen Reserve,
+  Datenerhalt über erneutes Einhängen und die exakte Loop-Freigabe. Der erste
+  fehlgeschlagene Versuch und seine geordnete Korrektur bleiben erhalten.
+  Der daraus extrahierte Go-Baustein `internal/storefs` besteht vier native
+  Prüfungen ohne Skips, einschließlich veränderter Image-/Mount-Identitäten,
+  exklusivem Besitz und unsicherer Initialisierung. Die Verbindung zu Worker,
+  Gäste-Speicherpfaden, Aufnahmeprüfung und Wiederherstellung nach Worker-Ersatz
+  steht noch aus. Der neue Speicherweg ist nicht ausgewählt oder freigegeben.

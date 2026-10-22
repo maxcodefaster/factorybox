@@ -914,6 +914,83 @@ TypeError. Exact label/name-checked container cleanup succeeds; the original
 failed result and output remain. No loop device, filesystem or mount is created,
 and no backend is selected from this incomplete check.
 
+## Fixed filesystem primitive and extracted storage component
+
+The isolated fixed-filesystem prototype uses the existing native image's
+formatter and the host's standard loop/ext4 support. It creates one owned
+96-MiB image, one exact autoclear loop association and one private mount.
+It installs no host runtime, module or kernel and issues no modprobe, quota
+switch or global sysctl write. Opening the existing loop-control device in the
+first probe autoloads the already installed loop module; the receipt records
+the module's observed transition from absent to present. Later probes leave
+that observed state unchanged. No unrelated loop association is detached.
+
+The first native result
+`factorybox-fixed-store-native-3dfd7bf0509244e9b541807f5f904969` fails its second
+allocation canary: a refused one-MiB write leaves room for a smaller file.
+Its complete failed image remains recoverable from the original verified
+archive. The ordered correction in
+`factorybox-fixed-store-prototype-6e41d3a5817c4c7388cf6d91a612f417/0001-fill-remaining-blocks.patch`
+adds a 4096-byte filling phase, retaining every original canary, reserve,
+retained-data, remount, backing-size and cleanup assertion. Its receipt records
+exact before/after and patch hashes. Archived inputs are unchanged.
+
+`factorybox-fixed-store-native-bff3b05e697842539a6f610faf01fd04` passes the
+corrected primitive. Its backing file remains exactly 100,663,296 bytes;
+the filesystem reports 90,116,096 bytes of capacity. After 79,687,680 written
+pressure bytes, available space is zero and a second 4096-byte allocation
+returns actual ENOSPC. Truncating and syncing the private eight-MiB reserve
+permits a new rollback receipt. Old data and that receipt survive clean remount.
+The exact original loop association is released through autoclear and the
+private device node is removed. Native time is 3.192 s and outer time 4.235 s.
+These are one primitive observation, not application/lifecycle performance.
+
+The new runtime package `internal/storefs` extracts image creation and guarded
+attachment from that behavior. Creation executes an exactly hashed formatter
+descriptor against an exclusive image descriptor, uses an owner UUID, preserves
+the 12-GiB host free-space floor and refuses existing files. Partial creation
+remains for explicit reconciliation rather than automatic reformatting. Image
+inode, owner, size, link count and superblock UUID are checked before attachment.
+The image has its own exclusive lock; an independent bounded loop inventory
+refuses an already associated image. Only an empty private target may be mounted.
+Mount identity and capacity remain checked; cleanup uses exact autoclear rather
+than forcing detach. The lock remains held if another descriptor prevents
+release, and exact cleanup can finish on a later call after that descriptor closes.
+
+`factorybox-storefs-native-d5b81f94c08c4df8999dad26f4659012` passes all four native
+component tests with zero skips. They exercise real fixed-filesystem ENOSPC and
+reserve rollback, data persistence across detach/reattach, duplicate owner and
+orphan association refusal, hardlink/symlink backing substitution, preservation
+of a substituted mount, last-reference lease retention and cleanup retry, wrong
+formatter refusal before creation, and preservation/refusal of an uncertain
+initialization. The tests build from frozen new component source with vet.
+The existing worker image supplies only its tools/libraries; this does not
+claim the new component is in that delivered worker or qualified for Sysbox.
+The retained earlier three-test pass is
+`factorybox-storefs-native-7580e8457ffa42b78b29f9f3d8fe8e5f`.
+
+The first three native tests already pass in
+`factorybox-storefs-native-1d88407107f94276b42405ce22492e2c`, but its host runner
+then shadows the container name with a proof name. The exact ownership check
+refuses that mistaken identity, so the parent remains failed with cleanup false.
+Separate receipt `factorybox-storefs-runner-cleanup-5e86c22fa67b49068a9e46a2791d5a56`
+verifies the stopped exact container, preserves the complete owned volume in a
+verified archive and removes only those resources. The original result is not
+rewritten. The caller-workflow regression in
+`factorybox-storefs-runner-regression-e8fd4d9e6f4d4a1681d853c0b29a3522` reproduces
+the precise name mismatch against the frozen original runner and passes against
+the correction. This mocked caller regression is separate from native evidence.
+
+Portable checks with vet, consumer compilation, Python tests, immutable reference
+and fixture verification pass in
+`factorybox-checks-1a81a2fe3f6a4d298ab77fb626a1d2a6`. The
+[proposed storage decision](adr/0001-bound-worker-storage-with-a-fixed-filesystem.md)
+keeps fixed store capacity distinct from host free-space admission. The new
+component is not yet connected to worker startup, lifecycle admission, guest
+writable-path placement or committed-pause worker replacement. Those integration
+and failure tests remain necessary before backend selection or production
+qualification. The prior selected runtime and reference profile are unchanged.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
