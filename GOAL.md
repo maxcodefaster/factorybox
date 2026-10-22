@@ -415,3 +415,14 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   der Korrektur alle 13 Fälle einschließlich zwölf Verweigerungen.
   Pausierte Epochen, wiederhergestellte Basislayouts, sämtliche übrigen
   Regressionsgates und das vollständige Produktionsziel bleiben offen.
+- Der vollständige Factory-/Theia-/OpenCode-Fixture-Lauf im begrenzten Store
+  besteht nun auf Paket `10aaf182ad584ceaabcd8411cdaadf82` einschließlich
+  aller acht Lifecycle-Phasen, Exit 0 und Cleanup. Die vollständige RAM-Prüfung
+  bleibt erhalten. Frühere interne Stop-Budgets von fünf und zwölf Sekunden
+  scheitern nach erfolgreicher Funktion; der aktuelle Pfad erhält 30 Sekunden
+  für die Prüfung und höchstens 45 Sekunden äußere Stop-Gnadenfrist, begrenzt
+  durch die verbleibende ursprüngliche Lifecycle-Frist von 420 Sekunden.
+  Alle 13 nativen Kern-Regressionsgates bestehen auf denselben Paketbytes.
+  Externe echte Modellabnahme, vollständiger Verbraucher-Worker-Ersatz mit
+  vorbereiteter Basis, sämtliche übrigen Freigabearbeiten und das Gesamtziel
+  bleiben offen. Die Modell-Fixture ersetzt keinen externen Anbieterbeleg.

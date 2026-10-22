@@ -696,7 +696,10 @@ func Run(ctx context.Context, config Config) (runErr error) {
 				if err != nil {
 					return err
 				}
-				exitContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				// Full consumers retain several large RAM generations. Preserve
+				// their complete verification; callers provide a 45-second Stop grace
+				// for this bounded verification and both service shutdowns.
+				exitContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				return errors.Join(engine.ReleaseDeletedEpochBases(exitContext), engine.Close())
 			}

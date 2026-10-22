@@ -326,7 +326,7 @@ traceDependency({event: 'module-loaded'});
             peer = theia_peer.Peer(container,owner,ide,phase_artifact,output,worker["image"]) if ide else None
             record = {"phase":phase,"passed":False}; result["phases"].append(record)
             command = ["run","--detach","--pull=never","--name",container,"--label","com.factorybox.run="+owner,
-                       "--privileged","--cgroupns=private","--cpus=3","--memory=3g","--pids-limit=512","--network=none",
+                       "--privileged","--cgroupns=private","--cpus=3","--memory=3g","--pids-limit=512","--network=none","--stop-timeout=45",
                        "--env","GOMAXPROCS=2","--env","GOMEMLIMIT=256MiB","--env","FACTORYBOX_DEVX_LIFECYCLE=1",
                        "--env","FACTORYBOX_DEVX_WORKER_LOSS="+("0" if options.probe in {"lifecycle","warm-preparation"} else "1"),"--env","FACTORYBOX_DEVX_RUN="+owner,
                        "--env","FACTORYBOX_CONSUMER_WORKER_PHASE="+phase,
@@ -443,7 +443,17 @@ traceDependency({event: 'module-loaded'});
                             record["bounded_before_worker_stop"] = mounts
                         if options.stop_trace_inputs:
                             record["stop_tracer"] = consumer_stop_trace.attach(identity, artifact, phase_artifact, result["stop_trace_inputs"])
-                        reference.docker(["container","stop","--time=15",identity],timeout=20)
+                        stop_started = time.monotonic()
+                        remaining = deadline - stop_started
+                        if remaining <= 2:
+                            raise TimeoutError("consumer has no remaining lifecycle budget for worker Stop")
+                        grace = min(45, int(remaining) - 1)
+                        record["worker_stop_grace_seconds"] = grace
+                        record["worker_stop_remaining_lifecycle_seconds"] = remaining
+                        try:
+                            reference.docker(["container","stop","--time=" + str(grace),identity],timeout=remaining)
+                        finally:
+                            record["worker_stop_seconds"] = time.monotonic() - stop_started
                 finally:
                     if probe.poll() is None:
                         reference.owned_delete("container",container,owner); probe.wait(timeout=10)

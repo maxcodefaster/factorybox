@@ -2301,8 +2301,74 @@ All six portable checks pass in
 The ordered source changes, intermediate failures, diagnostic inputs and storage
 maintenance receipts are indexed in
 `factorybox-bounded-base-exit-notes-bb1b671b490b4a38a0457ec1d3694b2a`.
-The remaining native regressions, full Factory/Theia consumer, paused worker
-replacement and all other release gates remain required.
+The subsequent full bounded Factory/Theia/OpenCode-fixture run,
+`factorybox-consumer-worker-loss-c0d0e22228e4497a8898c2dbb4fdc265`, passes
+all eight useful-work phases and retains its real external Theia connection
+through checkpoint/forks/pause/resume in 132.84 seconds. Its overall result
+still fails. Revalidating the larger saved RAM generations reaches the new
+Stop path's internal five-second deadline during the branch checkpoint;
+the final store unmount consequently reports EBUSY. The full stopped store is
+retained and verified as tar SHA-256
+`7fb9c231c7496d6b1e58f93a736c595f860c690906cc4615e0846891d1c75114`.
+This run uses the local model fixture, not an external provider acceptance.
+The 12-second candidate `factorybox-build-worker-023b284bde7c49408c9dcd4579342b69`
+again passes every functional phase in 199.21 seconds, but reaches the same
+deadline while verifying the final branch checkpoint in
+`factorybox-consumer-worker-loss-c6d451d55cc342a4ba805831ecb7db64`.
+Its measured Stop call takes 14.516 seconds and exits 1. The complete stopped
+store is retained as tar SHA-256
+`50597fd21c667bba6150a4aaa1264d3c0c4f21a24e327f5fd5f3d078892da056`.
+
+The next candidate budgets 30 seconds for complete exit verification and up to
+45 seconds for verification plus both service shutdowns. The consumer harness
+caps that Stop call by the remaining original 420-second lifecycle budget.
+No RAM verification, original assertion or resource ceiling is removed. This
+Candidate `factorybox-build-worker-10aaf182ad584ceaabcd8411cdaadf82` is built
+with package SHA-256
+`322ef3e414afbacbf83ea9c874dce01e88827b33c584231c48295173c974d130`.
+All six portable checks pass in
+`factorybox-checks-96f1603b268545cfb2d20a306733fb09`.
+The full bounded Factory/Theia/OpenCode-fixture lifecycle now passes in
+`factorybox-consumer-worker-loss-c62a4d9796a94bdb97c59a4ad962b429`, including
+all eight useful-work phases, the continuing external Theia connection,
+worker exit 0 and complete cleanup. The original test takes 196.47 seconds;
+the caller measures a 13.463-second Stop with 218.799 seconds left from the
+original lifecycle deadline. These are individual observations, not a
+performance distribution. All 13 native core regression gates pass on these
+same package bytes in
+`factorybox-bounded-exit-regressions-7f0c771b110c46f69403ad08bd5ab1b1`:
+retirement, signal/remainder/protection, exit guard, restore hold, orphan and
+guard loss, capacity, planned/abrupt actor worker replacement, admission and
+controller loss. Every gate retains its original assertions, reports unchanged
+inputs and global settings, and completes cleanup. Full-consumer replacement
+with a prepared base remains a separate open qualification.
+
+The seven Stop protection cases pass again on these same package bytes in
+`factorybox-bounded-base-stop-26a1c0a3bfc342f88524328823abe51f`.
+The complete bounded minimal consumer also passes again in
+`factorybox-consumer-worker-loss-3c22440d8547430896c77a9b72e3f01c`, with
+all eight original useful-work phases, worker exit 0 and cleanup. Its original
+test takes 38.66 seconds in this individual observation.
+Independent offline rebuild
+`factorybox-build-worker-c12b953a38f347f694fe6b1f89c38e7b` reproduces the
+same package SHA-256, image identity and complete image layer list. Both builds
+retain their frozen sources and recipes; this does not qualify a reduced image
+or a general platform/reliability claim.
+
+After the passing complete bounded minimal replacement proof, four superseded
+minimal store-image payloads are retired with complete stream verification,
+member hashes and durable receipts. Their full images are intentionally no
+longer reconstructable. Original sources, native results/logs, CLI manifests,
+the diagnostic trace and selected build inputs stay intact. Both current
+Factory deadline failures remain fully retained. The retirement receipts are
+`factorybox-storage-retirement-7447b96b212740e198b493e4e27dca1d`,
+`factorybox-storage-retirement-5170a9d9574b4b2c9877b363e5e41190`,
+`factorybox-storage-retirement-394acaf0496c4365b825b9817e5fb324` and
+`factorybox-storage-retirement-46dcb371a23e4e5c80960d7de95f3ab6`.
+
+The remaining native regressions, bounded paused worker replacement, external
+provider acceptance on the selected bytes and all other release gates remain
+required.
 
 ## Release work still required
 

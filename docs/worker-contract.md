@@ -336,6 +336,24 @@ may be removed. The optional larger decoded-stream observation allowance does
 not enlarge the physical artifact budget. See
 [the bounded-consumer result](production-progress.md#first-full-minimal-consumer-on-the-bounded-store).
 
+The current bounded exit candidate withdraws readiness, takes the controller
+operation lock and requires confirmed sandbox deletion before publishing a
+durable epoch fence and releasing exact checkpoint aliases and canonical base
+mounts. Completed internal timer guards have their own verified completion
+path. The base backing and checkpoint contents stay in the persistent store.
+The bounded minimal lifecycle, seven Stop protection cases and full checkpoint
+retirement suite pass on the first complete candidate. Larger Factory RAM
+generations expose an insufficient internal verification deadline.
+
+The next candidate gives complete exit verification 30 seconds. Its caller
+provides a 45-second graceful Stop window for verification and both service
+shutdowns, for example Docker's `--stop-timeout=45`. The consumer proof limits
+that call by its remaining 420-second lifecycle budget. The complete bounded
+Factory/Theia/OpenCode-fixture lifecycle passes on that candidate, including
+worker exit 0 and cleanup. All 13 native core regression gates also pass on
+those package bytes. Paused epoch drain and recovered base layouts still
+require native acceptance.
+
 `tools/build_worker.py` takes exact completed native-base, Sysbox and CRIU
 build IDs. It freezes the Go sources, toolchain and source lock, checks module
 inputs offline, assembles a deterministic package and builds a local image
