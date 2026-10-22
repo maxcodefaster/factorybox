@@ -242,6 +242,15 @@ Interrupted activation repair, broader pending-signal states, continuation-page
 lifetime and the remaining release gates still block production qualification.
 See the [integrated activation evidence](production-progress.md#activating-native-waits-before-source-and-restore-release).
 
+The same candidate also passes committed-pause recovery after both planned
+and abrupt bounded-worker replacement, actual guest ENOSPC, the 18 selected
+CRIU cases with two restore cycles each and the existing selected Sysbox Go
+and Bats suites. Original upstream skips remain visible. These checks do not
+resolve activation after a failed capture: the existing confirmed abort/cure
+paths can release a prepared continuation without entering the new activation
+phase. That path needs a native ENOSPC regression and correction before release.
+See the [additional gates and remaining abort path](production-progress.md#component-and-replacement-gates-after-timer-activation).
+
 ## Recovering a committed pause after worker replacement
 
 Before removing the old worker, retain its successful pause response and

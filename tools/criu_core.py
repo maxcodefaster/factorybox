@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import json
+from pathlib import Path
 import shutil
 import subprocess
 import tarfile
@@ -65,11 +66,15 @@ def main():
     inputs = parser.add_mutually_exclusive_group(required=True)
     inputs.add_argument("--criu-build")
     inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
+    parser.add_argument("--criu-base-lock", type=Path,
+                        help="Exact immutable selected-base lock for the retained candidate; current CRIU component must match in full")
     parser.add_argument("--native-base-build", required=True)
     parser.add_argument("--candidate-platform", choices=["linux/amd64"],
                         help="Run native core tests on an explicitly unqualified platform")
     parser.add_argument("--test", help="One selected C case for diagnosis")
     options = parser.parse_args()
+    if options.criu_base_lock and not options.retained_candidate:
+        parser.error("--criu-base-lock requires --retained-candidate")
     spec = json.loads((ROOT / "tests/criu-core-cases.json").read_text())
     expected = [c["name"] for c in spec["cases"]]
     if options.test:
@@ -79,7 +84,7 @@ def main():
     image, base = native_base.load(options.native_base_build, candidate_platform=options.candidate_platform)
     lock = ROOT / "upstream/lock.json"
     if options.retained_candidate:
-        build, criu, component, unchanged = criu_candidate.load(options.retained_candidate)
+        build, criu, component, unchanged = criu_candidate.load(options.retained_candidate, base_lock=options.criu_base_lock)
         tree, lock = build / "context", build / "source-lock.json"
     else:
         build, criu = reference_lifecycle.component_build(options.criu_build, "factorybox-build-criu-")
@@ -95,9 +100,12 @@ def main():
     name = "factorybox-criu-core-" + owner
     output = reference.new_artifact(name)
     output.mkdir()
+    shutil.copyfile(__file__, output / "runner.py")
     for source in ["criu-core.py", "criu-core-cases.json"]:
         shutil.copyfile(ROOT / "tests" / source, output / source)
     shutil.copyfile(lock, output / "source-lock.json")
+    if options.criu_base_lock:
+        shutil.copyfile(options.criu_base_lock, output / "criu-base-source-lock.json")
     # Preserve dangling and ordinary upstream symlinks across the Mac file share.
     # The native compiler receives the exact verified files on a Linux volume.
     with tarfile.open(output / "source.tar", "w", dereference=False) as archive:
@@ -114,6 +122,8 @@ def main():
         "native_base_build": options.native_base_build, "image": image,
         "native_base_packages_sha256": base["packages_sha256"],
         "source_lock_sha256": reference.sha(output / "source-lock.json"),
+        "runner_sha256": reference.sha(output / "runner.py"),
+        "criu_base_source_lock_sha256": reference.sha(output / "criu-base-source-lock.json") if options.criu_base_lock else None,
         "source_transport_sha256": reference.sha(output / "source.tar"),
         "unchanged_upstream_test_files": unchanged,
         "test_inputs_sha256": {p: reference.sha(output / p)

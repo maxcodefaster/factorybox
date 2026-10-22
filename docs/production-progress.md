@@ -1944,6 +1944,74 @@ over arbitrarily many different completed waits. Capacity, planned/abrupt worker
 replacement, full consumers and required upstream suites must pass on final
 delivered bytes. Epoch retirement and every remaining release gate stay open.
 
+## Component and replacement gates after timer activation
+
+The exact `edd5cff5a26a4488b2fd11de136434ac` package additionally passes:
+
+- Planned bounded-worker removal and committed-pause recovery in
+  `factorybox-bounded-loss-6196530fda0c4267a18c688966d780e8`.
+- Actual SIGKILL/removal and the same recovery assertions in
+  `factorybox-bounded-loss-3e40ffe4477b4fc7a95855c22347d8ec`.
+  Both preserve a complete 32-MiB private-RAM pause, verify zero resident
+  snapshot data and source anonymous memory, refuse a wrong hash, import into
+  a new epoch, verify exact replay and independently fork a resumed descendant.
+- Actual bounded guest ENOSPC and the full existing capacity assertions in
+  `factorybox-bounded-store-62e7865e3c5d4ad9979f54f1e40d5c24`.
+
+These runs verify exact cleanup, unchanged inputs and unchanged global sysctls.
+They retain their original ceilings and same-host/same-boot scope. They do not
+qualify full consumers or recovery after host restart.
+
+The pinned Sysbox component also completes the full selected Go-module command
+in `factorybox-upstream-dcdb017435b94b64a0ebcfdf56ef8f2d`: 722 passed cases,
+comprising 399 top-level tests and 323 subtests, with 18 original skips and no
+failures. The skips remain named in the result. They include cgroup v1,
+systemd, shiftfs and optional integration cases; they are not counted as passes.
+The native fixture runs offline after dependency preparation. A first attempt,
+`factorybox-upstream-b359c23021cd43d9bf29292bbd367142`, times out before any
+test starts. Read-only inspection identifies `go mod download` in sysbox-fs
+using the stale `172.17.0.1` resolver. The separate preparation recipe now binds
+the component build's immutable `build-resolv.conf` read-only at `/etc/resolv.conf`.
+The retry finishes dependency preparation in 9.4 seconds. No component binary,
+upstream assertion, frozen context or host resolver configuration changes.
+
+`factorybox-criu-core-e22b2699bd3e4f60aa60720dabe05833` passes all 18 declared
+unchanged ZDTM C cases, with two actual dump/restore cycles per case and their
+original final assertions. The native fixture verifies 1,030 upstream test files,
+4096-byte pages and unchanged zero global hugepages. The binary SHA-256 remains
+`45ba3635a5f4da5becb3c49298e00e896d6c5366d1ca3be53e813d8306b4879c`.
+This is the selected host-flavor core gate, not the complete ZDTM matrix.
+The driver now accepts an explicit `--criu-base-lock`, restricted to retained
+candidates. It verifies the same immutable old base SHA and complete unchanged
+current CRIU recipe used by the worker build, freezes that lock and its own
+runner, and records their hashes. The default strict provenance path remains.
+
+The existing upstream Bats selections pass with the exact Sysbox component
+bytes: seven executed lifecycle cases without skips in
+`factorybox-bats-8f4d454610b24427b17cd683595dca6f`, then four executed systemd
+cases and the original bionic/archlinux skips in
+`factorybox-bats-7a3ebaba95e3477895096463a1b1e079`. Their existing explicit inner
+Docker networkless profile, fixture compatibility changes and test bodies stay
+unchanged. No bridge/NAT, complete umbrella matrix or skipped case is qualified.
+Both runs verify unchanged components, inputs and observed global sysctls.
+
+Portable checks, including vet and all immutable reference/overlay checks, pass
+in `factorybox-checks-742767ed18b04840992287bbd4ffed37`. Exact ordered patches,
+the failed preparation receipt, all current results and package provenance are
+indexed in `factorybox-activation-gates-notes-f536ae18444e48369e4f946b96d31372`.
+The production runtime source and selected pilot profile are unchanged during
+this additional gate pass.
+
+A review of the remaining error paths identifies a concrete gap. Capture stages
+the timer before CRIU and filesystem capture. The new activation runs only when
+`sysboxcapture.Capture` succeeds. Existing confirmed abort, orphan and delegated
+cure paths can mark the capture safe and thaw the prepared source without that
+activation. The current successful recovery tests use the Go actor and do not
+establish the protected-remainder behavior in this failed-capture path. A new
+native regression must combine real post-admission ENOSPC, confirmed rollback
+and the same actual handler protection/ABI assertions. This remains a release
+blocker; the preceding success results do not cover it.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

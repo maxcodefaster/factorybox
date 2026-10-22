@@ -345,3 +345,17 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Unterbrochene Aktivierungs-/Mutationsreparatur, breitere Signalzustände,
   Lebensdauer alter privater Seiten sowie sämtliche übrigen Freigabearbeiten
   bleiben offen. Das vollständige Goal bleibt aktiv; Produktionsfreigabe false.
+- Auf denselben Kandidatenbytes bestehen nun auch geplanter und abrupter
+  Ersatz des begrenzten Workers, die tatsächliche Gast-Speichererschöpfung,
+  18 unveränderte CRIU-Fälle mit je zwei Restore-Zyklen, sämtliche ausgewählten
+  Sysbox-Go-Modulsuites und die bisherigen Bats-Dateien für Lifecycle/systemd.
+  Die 18 ursprünglichen Go-Skips und zwei ursprünglichen systemd-Skips bleiben
+  ausdrücklich sichtbar. Der private Offline-Build nutzt dieselbe gepinnte
+  DNS-Datei wie der Komponentenbuild; ein vorheriger Vorbereitungs-Timeout
+  bleibt fehlgeschlagen erhalten. CRIU-Core erhält den exakt geprüften alten
+  Basis-Lock explizit, ohne die CRIU-Rezeptprüfung abzuschwächen.
+  `factorybox-activation-gates-notes-f536ae18444e48369e4f946b96d31372`
+  bindet Ergebnisse, Paketbytes und Quellpatches. Eine Codeprüfung zeigt noch
+  fehlende Timer-Aktivierung in den bestätigten Abbruch-/Cure-Pfaden; deren
+  Freigabe einer vorbereiteten Fortsetzung muss mit echtem ENOSPC nativ geprüft
+  und korrigiert werden. Vollständiges Produktionsziel weiterhin aktiv.
