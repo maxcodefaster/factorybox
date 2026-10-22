@@ -765,6 +765,97 @@ exact cleanup. Host-side test-helper preparation is recorded separately from
 workload preparation and native lifecycle timings. This is test storage and
 preparation reuse, not a measured runtime optimization or production selection.
 
+## Twenty complete Factory observations on the current candidate
+
+`factorybox-factory-repeat-diagnostic-cea5bb016a7f45b5943e5d8f53bc6ce5`
+passes all twenty predetermined serial cases on worker build `5ada8cb2…`.
+Every case starts fresh owned storage and checks the complete original Factory
+lifecycle with separate bounded Theia, private Docker/Compose/Dev Containers and
+the actual OpenCode executable using the deterministic local model. Only the
+previously native-tested Go helper inputs are shared. No prepared workload or
+application base is reused. Programme inputs stay frozen throughout; the
+original 420-second deadline, two-sandbox maximum and resource limits remain.
+
+The separately hashed analysis
+`factorybox-factory-repeat-analysis-ebe551acb76a4f02be8836bc2c4710e9`
+rechecks all twenty original result receipts and selected underlying output
+files. These are descriptive observations on this shared host, without a
+matched optimization control, p95 estimate, latency guarantee or production
+selection:
+
+| Recorded boundary | Median seconds | Observed minimum–maximum seconds |
+| --- | ---: | ---: |
+| Worker readiness | 0.365 | 0.340–0.570 |
+| Fresh rootfs and verified base preparation | 24.059 | 21.246–35.829 |
+| Prepared start to first app response | 23.612 | 20.001–24.937 |
+| Prepared start to separate Theia readiness | 23.665 | 20.049–24.998 |
+| Source checkpoint command | 10.116 | 7.814–10.985 |
+| Fork to first app response | 8.341 | 7.551–9.167 |
+| Fork of fork to first app response | 8.411 | 7.945–9.772 |
+| Pause command | 9.590 | 8.857–10.835 |
+| Resume to first app response | 3.916 | 3.407–4.524 |
+| Fork of resumed source to first app response | 8.762 | 7.604–9.583 |
+| Complete native case | 116.415 | 107.860–127.170 |
+| Whole driver case, including surrounding work | 138.322 | 130.112–150.401 |
+
+Prepared-start observations exclude the separately charged worker/rootfs/base
+preparation. Fork observations follow a completed, separately charged
+checkpoint. App responses and Theia readiness have distinct measurements;
+OpenCode continuation assertions do not become external-model latency claims.
+All twenty have distinct source runtime identities. Their sixty completed held
+tool results retain the expected session, private 16-MiB tool RAM, exit 37 and
+model acknowledgement.
+
+Every pause receipt records anonymous sandbox memory and resident snapshot
+pages at zero afterwards. The sandbox cgroup still accounts for
+12,587,008–33,181,696 bytes of other memory; the worker and separate IDE also
+remain running. Complete fork, fork-of-fork, source deletion, resume and
+fork-of-resumed assertions pass. These runs do not explain the preserved
+Sysbox-fs timeout, nested-PID collision or admission-fixture busy mount. They do
+not refresh the separate real external-model proof on this candidate or replace
+the required final 100-case series per example and 24-hour soak.
+
+## Native quota primitive, still outside the runtime
+
+Read-only capability evidence
+`factorybox-storage-quota-capability-9e0224822a924d2786de25a80971da7b`
+finds already enabled, consistent full Btrfs quotas on this host, without a
+rescan in progress. No global quota switch, rescan, module installation or
+existing qgroup limit is changed.
+
+The isolated 64-MiB referenced-byte quota proof
+`factorybox-storage-quota-native-e168207f02be458cbc6012ddfe961c95`
+passes in a fresh exact labelled volume. It creates and identifies only its own
+new Btrfs subvolume, reaches actual `EDQUOT`, verifies a second quota-boundary
+allocation refusal, releases the original fully allocated private 8-MiB reserve
+using truncate and fsync, then writes a new rollback receipt. The retained file
+is unchanged. Exact subvolume deletion, absence of its root-tree item and
+absence of its qgroup accounting/limit items are all checked. Kernel accounting
+remains consistent. Native time is 12.960 s; the whole driver takes 13.944 s.
+
+The first attempt
+`factorybox-storage-quota-native-e0e4f2b896e24bc082054236b1edb509` fails its
+cleanup-wait check after the kernel has already cleaned the deleted root.
+Read-only observation `factorybox-storage-quota-cleanup-observation-c53ab1c89d17460cb7f081cfb9702c7d`
+finds an empty original volume and no corresponding root/qgroup items.
+The separately built ordered correction accepts wait `ENOENT` only together
+with these independent absence checks. It retains every original allocation,
+rollback and data assertion. The original failed result/source/logs stay
+unchanged; after the replacement passes, receipt
+`factorybox-storage-quota-cleanup-05a24126f01447f2b29d06d6e68827ae`
+records removal of only that reverified empty labelled outer volume.
+
+This is a kernel quota/reserve primitive. It is not an integrated Factorybox
+storage policy, complete lifecycle under `EDQUOT`, or proof against new nested
+subvolumes, additional mounts, concurrent writers or quota-state changes.
+`statfs` still reports the containing filesystem's roughly 998-GB size here,
+even with the 64-MiB limit, so the existing filesystem admission counters cannot
+substitute for explicit quota accounting. [Btrfs documents](https://btrfs.readthedocs.io/en/latest/btrfs-qgroup.html)
+that limits require consistent accounting; [qgroup membership](https://btrfs.readthedocs.io/en/latest/btrfs-quota.html)
+must also be established explicitly rather than inferred from directory nesting.
+The prototype and its patch remain in artifacts and are not selected runtime
+code. Hard store quotas remain release work.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
