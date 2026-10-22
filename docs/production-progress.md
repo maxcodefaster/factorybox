@@ -2125,6 +2125,51 @@ This covers one completed-process/orphan decision boundary. Guard loss,
 incomplete mutations, broader thread/signal states, private-page lifetime and
 every other production gate remain open.
 
+## Native guard loss with a surviving timer controller
+
+`factorybox-checkpoint-retirement-3fb1172a48bc43dcbdc12c41d9d125ec` passes
+the complementary delivered-CLI pause fault on the unchanged `37dd732100cd45be93cc7a123ee39f1a`
+package. The source has its exact staged 574-byte continuation, completed timer
+preparation and actual completed process capture. At the observed owned GNU cp
+boundary the real guard and capture worker receive SIGKILL. The original
+controller continues, reaps both children and reports the unconfirmed capture.
+
+Its controller outcome preserves the exact original intent and records a frozen
+source with capture still in flight. No retained-cure request exists at this
+completed-process boundary, so delegated cure refuses with the actual ENOENT.
+The source retains the same PID, birth, staged-code bytes and pending SIGUSR1
+while frozen, populated and untraced for 1,250 ms. The signal handler makes no
+progress. Repeating the exact pause refuses without changing the source record;
+deletion also refuses and preserves that record. No activation, safe-abort or
+ordinary guard completion receipt is manufactured. Synthetic evidence is copied
+before exact outer teardown; no diagnostic thaw is used.
+
+The new case shares the observed-copy fixture with the earlier Orphan case.
+All original Orphan assertion calls and its complete fault/observation body are
+preserved. Only setup paths and cleanup lifetime move into the helper, and Wait
+is wrapped to retain its completion state. The original Orphan case passes
+again in `factorybox-checkpoint-retirement-1526752d1c444792a1aa2eb344613c90`.
+Both final native runs use probe SHA-256
+`eff43c484eeca355ae119f209804e3ffc30fc63c461d7ccd616cbff7de6421de`.
+
+The first portable attempt has a missing local fixture alias and an unused
+import; it remains failed. The first native guard-loss attempt,
+`factorybox-checkpoint-retirement-0a36a9fff67a4168b7127ec37573ec62`, fails
+because the new fixture expects a filename in the raw ENOENT error. It records
+`passed: false` and the actual `no such file or directory`; later assertions
+remain unrun. The corrected oracle requires exact ENOENT and independently
+requires the grant file to remain absent before and after the decision.
+This is a fixture correction, not a runtime change.
+
+Portable checks including vet and all reference/overlay checks pass in
+`factorybox-checks-e6b774a543874cbab588283083dab8bf`. The failed attempts,
+both final native results, unchanged original assertions, exact ordered patches
+and preceding immutable-probe sharing receipt are verified in
+`factorybox-timer-guard-loss-notes-df133f48e20842a3b4327b955e72be8e`.
+Grant-in-flight/delegated timer recovery, partial mutation repair, broader
+thread/signal states, completed-page lifetime and every other production gate
+remain open. This proof establishes a safe hold at this declared boundary.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

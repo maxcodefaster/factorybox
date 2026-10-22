@@ -265,6 +265,14 @@ orphan hold boundary; guard-loss reconciliation, interrupted mutation repair
 and the other release gates remain open. See [confirmed abort activation](production-progress.md#native-timer-activation-after-confirmed-capture-abort)
 and [the native orphan hold](production-progress.md#native-orphan-hold-after-timer-preparation).
 
+The complementary native guard-loss test also passes on these same package
+bytes. After actual guard/worker SIGKILL at the completed-process copy boundary,
+the surviving original controller retains the frozen, untraced source and its
+pending SIGUSR1. Exact pause replay and deletion refuse without changing the
+record; the staged code remains unchanged. This boundary has no retained-cure
+grant, so it does not qualify delegated recovery after an accepted grant or
+automatic repair. See [the surviving-controller hold](production-progress.md#native-guard-loss-with-a-surviving-timer-controller).
+
 ## Recovering a committed pause after worker replacement
 
 Before removing the old worker, retain its successful pause response and

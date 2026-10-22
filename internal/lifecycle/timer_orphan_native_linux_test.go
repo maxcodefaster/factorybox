@@ -23,10 +23,23 @@ import (
 // Let the real guard examine a completed process cure with a dead, reaped
 // worker and controller. Holding the exact guard delays its decision without
 // changing the runtime or its evidence. The staged source must remain held.
-func TestNativeTimerOrphan(t *testing.T) {
-	if os.Getenv("FACTORYBOX_NATIVE_TIMER_ORPHAN") != "1" {
-		t.Skip("owned delivered-CLI timer orphan boundary only")
-	}
+type nativeTimerFaultFixture struct {
+	source                                            View
+	config                                            captureGuardConfig
+	worker                                            captureWorkerIntent
+	guardPID                                          int
+	sourceFD, workerFD, guardFD, controllerFD, copyFD int
+	command                                           *exec.Cmd
+	wait                                              func() error
+	read                                              func(string, any) error
+	guardDir, recordPath, snapshot                    string
+	counter                                           uint64
+	program                                           []byte
+	assembly                                          string
+}
+
+func nativeTimerCaptureFaultFixture(t *testing.T, name string) nativeTimerFaultFixture {
+	t.Helper()
 	// This isolated probe owns the entire child tree. Reap the exact orphaned
 	// worker before releasing the guard, so a zombie cannot mask the timer rule.
 	if err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0); err != nil {
@@ -34,17 +47,17 @@ func TestNativeTimerOrphan(t *testing.T) {
 	}
 	status := boundedLossStatusNow(t)
 	assembly := nativeTimerRemainderProtectionAssembly()
-	if err := os.WriteFile("/output/timer-orphan.S", []byte(assembly), 0644); err != nil {
+	if err := os.WriteFile("/output/"+name+".S", []byte(assembly), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command("cc", "-nostdlib", "-static", "-Wl,--build-id=none", "/output/timer-orphan.S", "-o", "/output/timer-orphan").CombinedOutput(); err != nil {
+	if out, err := exec.Command("cc", "-nostdlib", "-static", "-Wl,--build-id=none", "/output/"+name+".S", "-o", "/output/"+name).CombinedOutput(); err != nil {
 		t.Fatal(err, string(out))
 	}
-	program, err := os.ReadFile("/output/timer-orphan")
+	program, err := os.ReadFile("/output/" + name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	nm, err := exec.Command("nm", "-n", "/output/timer-orphan").Output()
+	nm, err := exec.Command("nm", "-n", "/output/"+name).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +74,7 @@ func TestNativeTimerOrphan(t *testing.T) {
 	if counter == 0 {
 		t.Fatal("original signal counter absent")
 	}
-	id, snapshot := "timer-orphan", strings.Repeat("f", 32)
+	id, snapshot := name, strings.Repeat("f", 32)
 	recordPath := status.Lifecycle.Root + "/objects/" + id + "/record.json"
 	cleanup := func(t *testing.T, source View) {
 		before, beforeErr := os.ReadFile(recordPath)
@@ -70,15 +83,15 @@ func TestNativeTimerOrphan(t *testing.T) {
 		if beforeErr != nil || afterErr != nil || rejected == nil || !strings.Contains(rejected.Error(), "pause/resume is unresolved") || !bytes.Equal(before, after) {
 			t.Error("unresolved pause evidence was not retained", beforeErr, afterErr, rejected)
 		}
-		boundedLossSave(t, "timer-orphan-retained.json", map[string]any{"record": json.RawMessage(after), "delete_refused": rejected != nil,
+		boundedLossSave(t, name+"-retained.json", map[string]any{"record": json.RawMessage(after), "delete_refused": rejected != nil,
 			"cleanup": "Source, unresolved pause and mounts retained until the unique owned outer worker/volume teardown. No diagnostic thaw."})
 	}
-	source := timerReaderFixtureFilesWithCleanup(t, status, id, "exec /bin/timer-orphan", false, map[string][]byte{"timer-orphan": program}, cleanup)
+	source := timerReaderFixtureFilesWithCleanup(t, status, id, "exec /bin/"+name, false, map[string][]byte{name: program}, cleanup)
 	sourceFD, err := unix.PidfdOpen(source.Runtime.PID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer unix.Close(sourceFD)
+	t.Cleanup(func() { unix.Close(sourceFD) })
 	for deadline := time.Now().Add(time.Second); ; {
 		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", source.Runtime.PID))
 		if err == nil && strings.HasPrefix(string(data), "230 0x1 0x0 ") {
@@ -99,7 +112,7 @@ func TestNativeTimerOrphan(t *testing.T) {
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	command := exec.CommandContext(ctx, "/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox", "pause", "--snapshot-id", snapshot, id)
 	command.WaitDelay = 2 * time.Second
 	var stdout, stderr bytes.Buffer
@@ -108,17 +121,17 @@ func TestNativeTimerOrphan(t *testing.T) {
 		t.Fatal(err)
 	}
 	waited := false
-	defer func() {
+	t.Cleanup(func() {
 		if !waited {
 			command.Process.Kill()
 			command.Wait()
 		}
-		for name, data := range map[string][]byte{"stdout": stdout.Bytes(), "stderr": stderr.Bytes()} {
-			if err := os.WriteFile("/output/timer-orphan-controller."+name, data, 0600); err != nil {
+		for stream, data := range map[string][]byte{"stdout": stdout.Bytes(), "stderr": stderr.Bytes()} {
+			if err := os.WriteFile("/output/"+name+"-controller."+stream, data, 0600); err != nil {
 				t.Error("retain controller output", err)
 			}
 		}
-	}()
+	})
 	guardDir := status.Lifecycle.Root + "/objects/" + id + "/captures/" + snapshot + "/guard"
 	read := func(name string, value any) error {
 		data, err := os.ReadFile(guardDir + "/" + name)
@@ -144,8 +157,7 @@ func TestNativeTimerOrphan(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	defer unix.Close(copyFD)
-	defer unix.PidfdSendSignal(copyFD, unix.SIGKILL, nil, 0)
+	t.Cleanup(func() { unix.PidfdSendSignal(copyFD, unix.SIGKILL, nil, 0); unix.Close(copyFD) })
 	var complete captureProcessCompletion
 	var prepared struct {
 		Token   string                `json:"token"`
@@ -194,14 +206,30 @@ func TestNativeTimerOrphan(t *testing.T) {
 		t.Fatal(err)
 	}
 	controllerFD := timerSignalStoppedController(t, captureWorkerIntent{PID: command.Process.Pid, Start: birth})
+	return nativeTimerFaultFixture{source: source, config: config, worker: worker, guardPID: armed.PID,
+		sourceFD: sourceFD, workerFD: workerFD, guardFD: guardFD, controllerFD: controllerFD, copyFD: copyFD,
+		command: command, wait: func() error { err := command.Wait(); waited = true; return err }, read: read,
+		guardDir: guardDir, recordPath: recordPath, snapshot: snapshot, counter: counter, program: program, assembly: assembly}
+}
+
+func TestNativeTimerOrphan(t *testing.T) {
+	if os.Getenv("FACTORYBOX_NATIVE_TIMER_ORPHAN") != "1" {
+		t.Skip("owned delivered-CLI timer orphan boundary only")
+	}
+	fixture := nativeTimerCaptureFaultFixture(t, "timer-orphan")
+	source, config, worker := fixture.source, fixture.config, fixture.worker
+	sourceFD, workerFD, guardFD, controllerFD, copyFD := fixture.sourceFD, fixture.workerFD, fixture.guardFD, fixture.controllerFD, fixture.copyFD
+	command, read, guardDir := fixture.command, fixture.read, fixture.guardDir
+	counter, program, assembly := fixture.counter, fixture.program, fixture.assembly
+	snapshot := fixture.snapshot
+	armed := struct{ PID int }{fixture.guardPID}
 	if err := unix.PidfdSendSignal(workerFD, unix.SIGKILL, nil, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := unix.PidfdSendSignal(controllerFD, unix.SIGKILL, nil, 0); err != nil {
 		t.Fatal(err)
 	}
-	waitErr := command.Wait()
-	waited = true
+	waitErr := fixture.wait()
 	if waitErr == nil || command.ProcessState.Sys().(syscall.WaitStatus).Signal() != syscall.SIGKILL {
 		t.Fatal("original controller did not die from actual SIGKILL", waitErr)
 	}

@@ -382,3 +382,14 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   liegen unter `factorybox-timer-orphan-notes-77fc993985844b24af1e9a0695dd1311`.
   Runtime- und Komponentenbytes bleiben unverändert. Guard-Verlust, automatische
   Mutationsreparatur und sämtliche weiteren Freigabearbeiten bleiben offen.
+- Der komplementäre Guard-Verlusttest besteht auf denselben Paketbytes:
+  tatsächlicher Guard-/Capture-Worker-SIGKILL nach Prozess-Capture, überlebender
+  ursprünglicher Controller, exakt erhaltene eingefrorene und untraced Quelle
+  mit ausstehendem SIGUSR1. Timer-Code und Datensatz bleiben unverändert;
+  exakte Pause-Wiederholung und Löschung werden verweigert. Der ursprüngliche
+  Orphan-Fall besteht nach dem Teilen des Testaufbaus erneut. Fehlgeschlagene
+  Fixture-Versuche, alle erhaltenen Assertions und geordnete Patches liegen
+  unter `factorybox-timer-guard-loss-notes-df133f48e20842a3b4327b955e72be8e`.
+  An dieser Grenze fehlt ein Cure-Auftrag; Verlust nach dessen Annahme,
+  automatische Mutationsreparatur und das vollständige Produktionsziel bleiben
+  offen.
