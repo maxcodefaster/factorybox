@@ -242,3 +242,14 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   erhalten. Worker-Ersatz, vollständige Verbraucher, weitere Fehlerfälle und
   finale Abnahme auf diesem integrierten Pfad bleiben offen; Produktionsfreigabe
   und Auswahl des Backends bleiben ausdrücklich falsch.
+- Geplanter und abrupter vollständiger Worker-Ersatz bestehen nun auch auf
+  dem begrenzten Image mit 32 MiB privatem Zufalls-RAM und ausschließlich
+  ausgelieferten CLI-Lifecycle-Aufrufen. Neue Epoche, identisches Image,
+  falscher Recovery-Hash, exakte Wiederholung, unabhängige Nachkommen und
+  Fork nach Resume bestehen. Doppelbesitz, geänderter Store-Besitzer und
+  geänderte Kapazität werden vor Image-Veränderung abgelehnt; ein unsicheres
+  Initialisierungsfragment bleibt byte-identisch erhalten. Native Bereinigung
+  und Host-sysctl-Vergleich bestehen. Vollständige Verbraucher und finale
+  Abnahme auf diesem Pfad bleiben offen. Checkpoint-/Epochen-Stilllegung ist
+  weiterhin zu implementieren; die Regeln für Auswahl, Besitz und beobachtete
+  Speicherfreigabe sind als vorgeschlagene Entscheidung gesichert.

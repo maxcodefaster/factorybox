@@ -96,8 +96,12 @@ headroom, separate from the host's 12 GiB plus 4 GiB checks. Both observations
 appear in `capacity`. All admitted disk-backed bundle layers and bind sources
 must reside in the bounded filesystem; initially read-only external binds are
 also refused. This profile requires existing loop/ext4 support and direct I/O.
-It has a native small-actor checkpoint/fork/pause/resume and real guest ENOSPC
-proof, but lacks full-consumer and worker-replacement qualification. It does not
+It has native small-actor checkpoint/fork/pause/resume and real guest ENOSPC
+proofs. A separate 32-MiB RAM actor passes planned and abrupt same-host worker
+replacement through the delivered CLI, including independent resumed descendants.
+It also refuses duplicate ownership, changed store identity/capacity and partial
+initialization without rewriting image bytes. Full-consumer qualification remains
+open. This profile does not
 change the pilot deployment or production selection. See
 [the exact evidence and remaining limits](production-progress.md#opt-in-bounded-worker-and-actual-guest-capacity).
 

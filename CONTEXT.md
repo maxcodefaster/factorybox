@@ -36,3 +36,15 @@ operation when ordinary storage allocation is refused.
 **Committed pause**:
 A durable complete saved state from which the source environment can be resumed
 after the supported loss of its worker.
+
+**Recovery selection**:
+A particular saved state deliberately retained as an input for recovery. Its
+retention ends only when that selection is explicitly released.
+
+**Checkpoint retirement**:
+Permanent withdrawal of a checkpoint's stored backing while its original
+request identity remains reserved. It is separate from deleting a sandbox.
+
+**Epoch retirement**:
+Permanent withdrawal of an obsolete worker lifetime's stored state after its
+live, recovery and descendant dependencies have been resolved.

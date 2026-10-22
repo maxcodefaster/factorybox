@@ -1063,9 +1063,10 @@ Ordered fixture corrections with exact before/after and patch hashes are in
 
 Portable tests with vet, the consumer compilation and immutable reference and
 overlay checks pass in `factorybox-checks-056b9122d78f42898c0b06f6bba16a6d`.
-Planned/abrupt worker replacement, all full consumers, broader exhaustion/fault
-cases, final repetitions and upstream qualification on this new profile remain
-unrun and block its selection and production qualification.
+The following worker-replacement proofs extend this small-actor scope. All full
+consumers, broader exhaustion/fault cases, final repetitions and upstream
+qualification on this new profile remain unrun and block its selection and
+production qualification.
 
 Storage maintenance preserves the required artifact headroom. A fully decoded
 and reverified closed passing archive repack reclaims 17,501,988 bytes in
@@ -1077,6 +1078,56 @@ After the exact delivered bounded-store proof passes, only its optional compiler
 cache is retired with manifest and source/package/image revalidation in
 `factorybox-storage-retire-cache-14520b6090cc4d309595c0063dcdd452` (139,550,720 bytes).
 Selected inputs, open failures and the historical experiment remain untouched.
+
+## Bounded-store worker replacement and startup refusals
+
+The exact delivered candidate `factorybox-build-worker-84e5cb48735547bfb0830e9ae4be1167`
+passes planned replacement in
+`factorybox-bounded-loss-0b294a8b8a224217bbe4b8d2c2158ab9` and abrupt replacement in
+`factorybox-bounded-loss-24d9e2c07ac642d7bbb8b61dd8b3b657`. Each uses a separately
+owned one-GiB image and the delivered CLI for every lifecycle action. The actor
+holds 32 MiB of random anonymous ballast in addition to its normal process RAM.
+The caller requires a completed pause, stops or kills the exact old worker,
+checks exit status 0 or 137 respectively and removes the entire container before
+starting its replacement. The same image inode/owner/UUID and host boot remain;
+the worker/controller epoch changes. Mount numbers can be reused in a fresh
+namespace and are verified against the current attachment rather than treated
+as a cross-worker identity.
+
+The new worker refuses a wrong saved checkpoint hash before publishing target
+backing. Exact recovery restores private RAM and files, and replay returns the
+same completed result. A checkpoint/fork of the recovered source has independent
+RAM and private file mutations. After source deletion, that child pauses,
+resumes, checkpoints and forks again. Its grandchild continues useful work after
+the child's deletion. At most two sandboxes are live, and exact cleanup completes
+in both runs. Original source pause releases 38,158,336 resident snapshot bytes
+to zero and reports zero anonymous source bytes in each run. Other cgroup memory
+remains recorded. The later descendant pause also reaches both measured zeros.
+Total caller times are 19.672 s planned and 18.072 s abrupt; these are two small
+fixture observations, not full consumer or timing qualification.
+
+`factorybox-bounded-identity-506a093cb67e496083b0e12f148c7bd7` passes delivered-worker
+startup refusals. A duplicate worker refuses the held outer lease while the
+original live readiness identity remains unchanged. With the original stopped,
+changed owner and changed fixed size each refuse before attachment. A complete
+read-only Docker archive stream hashes all 536,870,912 image bytes before and
+after each refusal; all hashes are identical. Valid reopen starts a new epoch on
+the same image and reads the original private canary. An unidentified partial
+54-byte image is refused and remains byte-identical. The native caller takes
+12.378 s and exact cleanup passes. Its archive reader subsequently gains a
+deadline that interrupts blocked reads as well as process waits. Separate real
+child-process tests check the complete exact-member hash, changed member refusal
+and termination of a producer that never writes a tar header.
+The deadline-enabled caller repeats all native assertions successfully in
+`factorybox-bounded-identity-17afd11d8c56438fa9932ec54e4db95a` in 12.245 s.
+Final portable checks, including vet, those stream tests, consumer compilation
+and unchanged imported reference/overlays, pass in
+`factorybox-checks-a8739b29e0c84fdc9e753607ae5e628b`.
+
+These tests add no production runtime changes or imported fixture edits. The
+checkpoint/epoch retirement implementation remains open. Its proposed ownership,
+selection and reclamation rules are recorded in
+[the retirement decision](adr/0002-retire-saved-state-with-explicit-selections.md).
 
 ## Release work still required
 
