@@ -372,9 +372,71 @@ These are daemon-only observations without a sandbox/rootfs workload, not
 application startup measurements or an explanation of the old timeout.
 Portable checks pass in `factorybox-checks-d0ed9c93b605423ca1f23bd482ec0b9c`.
 
-Next, retain bounded owned-child diagnostics from the actual Go worker before
-startup-failure cleanup. The old record lacks those child details. Further
-successful starts alone cannot replace the missing causal evidence.
+## Worker startup failure records
+
+The new Go worker writes a private, exclusive epoch `startup-failure.json`
+before stopping its owned services when their startup fails. Collection checks
+saved process births and ancestry, opens process directories to avoid PID reuse,
+and records procfs status, wait channel, syscall, stack and per-thread children.
+It reads no command line, environment, process memory or application files.
+Limits are 32 process attempts, 128 tasks and 256 KiB of procfs data. A two-second
+scan budget is checked between reads; it is not an interruptible kernel-read
+deadline. Missing/forbidden entries are explicit. Failure to persist diagnostics
+does not mask the original error or authorize readiness. No new signal, retry,
+SHM change or relaxed 60-second readiness limit is introduced.
+
+Candidate build `factorybox-build-worker-0e84fd1c3a86433c9b3587884fcb2721` passes,
+with CLI SHA-256
+`020d26973cf2ef924102973b00f1dd7f18fbbdb192cc6559ba9660cfd84c4575`,
+image `sha256:7a4fb100d9a26a2ccc43753decce7d057eba8c4cb2124920e7307b576aff7683`
+and package SHA-256
+`a6b9654fdda33c3629f1c8e837e0fc45f2cbb72bca8a4b3ba73a156587d4cce5`.
+It retains the unselected, read-only CRIU collision diagnostic above. This is
+the first Go implementation change in this production programme. The frozen
+pilot profile and selected C9 package remain unchanged.
+
+Native fault proof
+`factorybox-worker-startup-failure-695881d466f64f06b56d5bf1e0220d77` passes
+both a deliberately blocked filesystem service with a real child in `waitpid`
+and an early service exit. It runs the delivered Go binary with explicitly
+replaced private fixture components, leaving its delivered bundle untouched.
+Both cases exit with the original error and no readiness publication. The
+timeout report contains its live waiting parent and child before cleanup.
+Its scan takes 2.3 ms and retains 11.2 KiB of procfs data. This proves the
+recording path, not the cause of the historical real Sysbox-fs timeout.
+Exact cleanup, frozen inputs, resource ceilings and unchanged global sysctls
+pass. The portable regression also captures a real waiting parent/child,
+rejects a wrong birth and expired/byte-limited scans, and refuses to overwrite
+the first report.
+
+The final archive-first startup probe also passes both faults in
+`factorybox-worker-startup-failure-3a6238ebbbb94b5eafc212121cc2a077`.
+It waits for the post-delegation service log through Docker's file API before
+attempting its early, rejected status command. Time to worker exit is 60.811 s
+for the blocked start and 2.686 s for the deliberate service exit. These are
+fault-handling timings, not application start benchmarks. Final portable checks
+pass in `factorybox-checks-f138bef4819f47c8a40c363caffcf432`.
+
+Development fixture failures remain visible. Attempt
+`factorybox-worker-startup-failure-6090dabe2f1244ae9c023d6c99a88bc1` exits in
+Python setup before Go starts because the native base lacks `hashlib.file_digest`.
+The replacement uses bounded streaming hashing. Attempt
+`factorybox-worker-startup-failure-330477e1ec434264999f2ee3e809330b` records the
+parent and child correctly, but its shell waits through `sigsuspend`, failing
+the diagnostic test's specific `do_wait` assertion. Its complete failed store
+is retained and verified. The next fixture creates a direct `waitpid` parent;
+the assertion remains. These are fixture errors, not repaired runtime failures.
+
+Full Factory lifecycle
+`factorybox-consumer-worker-loss-02c19de9490241cbafae7b6abc75194d` also passes
+on this new binary with deterministic OpenCode, private Docker/Compose/Dev
+Containers and separate Theia. All original capture/fork/fork-of-fork/pause/
+RAM-release/resume/fork-of-resumed, independent tool/watch results and cleanup
+assertions hold. The native test takes 113.58 s; the outer probe takes 123.10 s.
+This is one regression observation, not a new platform,
+upstream-suite qualification or performance selection. Portable checks pass in
+`factorybox-checks-17f2ba3d7afc4179b9fcdf29d1cc4c02` with vet, 232 unchanged
+reference files and all four declared production fixture extensions.
 
 ## Release work still required
 

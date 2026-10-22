@@ -188,5 +188,11 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   trat dabei nicht erneut auf; Ursache und Reparatur bleiben offen.
   Weitere Factory-Initialisierung wird gemessen. Speichergrenzen, Retention,
   Starttimeout, Dauerlauf und reduzierte Auslieferung sind noch nicht erledigt.
+- Der Go-Worker zeichnet Fehler beim Dienststart vor dem Stoppen seiner
+  Dienste auf. Begrenzte Prozess-/Thread-Daten enthalten die echten eigenen
+  Kindprozesse; ursprünglicher Fehler und Bereitschaftsprüfung bleiben erhalten.
+  Absichtlicher Start-Timeout und Dienstabbruch bestehen nativ. Ein vollständiger
+  Factory-Lifecycle auf dem neuen Build besteht ebenfalls. Das ist Diagnostik,
+  keine Erklärung oder Reparatur des historischen Startfehlers.
 - [Fortschritt und genaue Belege](docs/production-progress.md). Das bestehende
-  Referenzprofil und der eigentliche Go-Laufzeitcode sind bisher unverändert.
+  Referenzprofil bleibt unverändert; der neue Go-Worker ist noch nicht freigegeben.

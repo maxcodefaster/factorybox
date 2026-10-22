@@ -54,6 +54,14 @@ early exec task can occupy the private cgroup root while PID 1 delegates its
 controllers; the worker refuses that state. The supplied integration client
 performs this two-step check without a fixed startup delay.
 
+The current production candidate adds a private `startup-failure.json` in its
+epoch when startup fails after a service was launched. It reads bounded procfs
+metadata for the exact saved services and their children before stopping them.
+The original error still determines command failure; a diagnostic never grants
+readiness. This addition is outside the frozen pilot profile. Its native fault
+and full-consumer evidence is recorded in
+[production progress](production-progress.md#worker-startup-failure-records).
+
 RAM images and filesystem copies consume persistent storage. Pause records
 report actual released anonymous memory and resident snapshot pages; a small
 controller record is not a substitute for those measurements. See the native

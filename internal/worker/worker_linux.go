@@ -473,7 +473,7 @@ func Current(runRoot string) (Status, error) {
 
 // Run must be the init process in a fresh bounded Docker worker. Its lifetime
 // owns the store lease; every recreation creates a new controller epoch.
-func Run(ctx context.Context, config Config) error {
+func Run(ctx context.Context, config Config) (runErr error) {
 	if os.Geteuid() != 0 || os.Getpid() != 1 {
 		return fmt.Errorf("worker requires root as PID 1 in a fresh bounded Docker container")
 	}
@@ -571,15 +571,29 @@ func Run(ctx context.Context, config Config) error {
 		return err
 	}
 	defer manager.stop()
+	status := Status{Schema: 1, Store: config.Store, StoreID: identity.ID, Epoch: epoch, Components: binaries,
+		Manager: manager.identity,
+		Lifecycle: lifecycle.Config{Root: root + "/controller", Runtime: config.Components + "/sysbox-runc", RuntimeSHA256: binaries["sysbox-runc"],
+			Criu: config.Components + "/criu", CriuSHA256: binaries["criu"], ManagerRoot: config.Store + "/manager"}}
+	ready := false
+	// Register after each service cleanup so failure collection runs first.
+	collectFailure := func() {
+		if !ready && runErr != nil {
+			if err := recordStartupFailure(root, status, runErr); err != nil {
+				fmt.Fprintf(log, "startup diagnostic unavailable: %v\n", err)
+			}
+		}
+	}
 	filesystem, err := startChild(config.Components+"/sysbox-fs", []string{"--mountpoint", config.Store + "/fs", "--log", root + "/filesystem.log"}, lease, log)
 	if err != nil {
+		// The manager is still owned and live when filesystem exec fails.
+		runErr = err
+		collectFailure()
 		return err
 	}
 	defer filesystem.stop()
-	status := Status{Schema: 1, Store: config.Store, StoreID: identity.ID, Epoch: epoch, Components: binaries,
-		Manager: manager.identity, Filesystem: filesystem.identity,
-		Lifecycle: lifecycle.Config{Root: root + "/controller", Runtime: config.Components + "/sysbox-runc", RuntimeSHA256: binaries["sysbox-runc"],
-			Criu: config.Components + "/criu", CriuSHA256: binaries["criu"], ManagerRoot: config.Store + "/manager"}}
+	defer collectFailure()
+	status.Filesystem = filesystem.identity
 	status.Supervisor, err = birth(os.Getpid())
 	if err != nil {
 		return err
@@ -635,6 +649,7 @@ func Run(ctx context.Context, config Config) error {
 	if err := json.NewEncoder(os.Stdout).Encode(status); err != nil {
 		return err
 	}
+	ready = true
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
