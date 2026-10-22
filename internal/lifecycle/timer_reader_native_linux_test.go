@@ -46,6 +46,10 @@ func TestNativeTimerReaderOwnInit(t *testing.T) {
 }
 
 func timerReaderFixture(t *testing.T, status boundedLossStatus, id, command string, actor bool) View {
+	return timerReaderFixtureFiles(t, status, id, command, actor, nil)
+}
+
+func timerReaderFixtureFiles(t *testing.T, status boundedLossStatus, id, command string, actor bool, files map[string][]byte) View {
 	t.Helper()
 	bundle := status.Store + "/" + id + "-bundle"
 	for _, name := range []string{"", "/upper", "/work", "/rootfs"} {
@@ -66,6 +70,14 @@ func timerReaderFixture(t *testing.T, status boundedLossStatus, id, command stri
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(bundle+"/lower/bin/capture-actor", data, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, data := range files {
+		if strings.Contains(name, "/") || name == "" || name == "." || name == ".." {
+			t.Fatal("fixture executable must have one local name")
+		}
+		if err := os.WriteFile(bundle+"/lower/bin/"+name, data, 0755); err != nil {
 			t.Fatal(err)
 		}
 	}

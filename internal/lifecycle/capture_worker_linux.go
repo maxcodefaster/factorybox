@@ -87,9 +87,6 @@ func captureWorkerServe() (resultErr error) {
 	if err := captureGuardWrite(anchors.evidence, "capture-worker-intent.json", worker); err != nil {
 		return err
 	}
-	if err := prepareCaptureTimers(request, anchors, requestFile); err != nil {
-		return err
-	}
 	var captured sysboxcapture.Result
 	defer func() {
 		outcome := map[string]any{"token": request.Guard.Token, "passed": resultErr == nil,
@@ -100,6 +97,9 @@ func captureWorkerServe() (resultErr error) {
 		resultErr = errors.Join(resultErr,
 			captureGuardWrite(anchors.evidence, "capture-worker-outcome.json", outcome))
 	}()
+	if err := prepareCaptureTimers(request, anchors, requestFile); err != nil {
+		return err
+	}
 	network, err := sysboxcapture.BeginCaptureNetwork(request.Guard.PID, request.Guard.Start,
 		filepath.Dir(request.Guard.Evidence))
 	if err != nil {

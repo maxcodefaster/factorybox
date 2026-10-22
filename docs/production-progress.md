@@ -1483,6 +1483,105 @@ All six portable gates, including enabled Go vet, Python tests and byte-exact
 reference/imported-overlay verification, pass in
 `factorybox-checks-59eb1ebbe6ab43b498fa7e6d07b29503`.
 
+## Caught signal at the timer continuation boundary
+
+The first integrated continuation has a demonstrated signal defect. Native
+`factorybox-checkpoint-retirement-b6e4d85232654573957faa728f33999b` queues a
+real SIGUSR1 after preparation completes, while the original source is frozen
+and its exact capture worker is stopped before CRIU starts. The source status
+records the pending caught signal. After pause/resume the handler runs once,
+but the original relative wait does not return EINTR: it enters the helper's
+absolute sleep and continues waiting. The uncaptured and already-active helper
+controls pass the same raw-return/register/flags/stack/request checks.
+
+The negative control repeats against the old worker's frozen non-test source
+in `factorybox-checkpoint-retirement-2e2e8d435613420a941d1dfa2c54b73d`.
+The caller's `--frozen-core` option retains the complete old source/test tree
+and overlays only current test files into a new private fixture. Its full
+non-test manifest must still equal the selected delivered worker. This is a
+current regression against exact old bytes, not a qualification exception.
+The same signal boundary fails again, with one handler and the original wait
+still active. Both old failures and their complete owned stores remain saved.
+
+Candidate `factorybox-build-worker-b675cca751d04fa4b06284f36a1b2324` changes
+the private continuation. Its package SHA-256 is
+`9732f44b9c7f46b552376bc63459eebc9a3d6f0a6db921f29a62d06341df18b7`.
+The mutator retains a blocked entry mask and saves the original application
+mask in its private frame. `ppoll` atomically installs that original mask for
+the wait. A caught signal returns raw EINTR and is never retried. Only timeout
+completion loops, rechecking the original monotonic/boottime deadline in
+at most 25-ms slices, so time spent frozen does not restart a full duration.
+Before returning to application registers, the helper restores the original
+mask. Non-NULL remainders use the original deadline and a bounded self
+`process_vm_writev` copy rather than writing through an unchecked pointer;
+that error/remainder path is implemented but still needs native proof.
+
+The source `internal/lifecycle/timer-code/continuation.S`, exact assembler
+tool identity and 571 extracted code bytes are frozen in
+`factorybox-timer-code-build-7b2dfc58013e49d0bf249e67a42759a7`.
+Code SHA-256 is
+`f82e0d96e439a58077bcebe3a64caabd4117c07c2a74e82e8dc09e8de562d287`.
+The Go array is verified against those bytes. No assembler executes at runtime,
+and the old Python experiment and its archived inputs remain unchanged.
+Capture-worker outcome recording now also covers preparation errors.
+
+Native signal proof
+`factorybox-checkpoint-retirement-8ad1cd85d5a34053861c2babf4029389` passes
+all four cases: uncaptured control, signal during an active prepared wait,
+signal at the first prepared entry before CRIU, and signal during a second
+capture of an existing `ppoll` continuation. Each requires exactly one handler,
+raw EINTR and the preserved register/flags/stack/read-only request contract.
+Both capture cases complete pause/resume using the delivered CLI.
+
+Two fixture failures remain explicit. In
+`factorybox-checkpoint-retirement-966f26a62069494a86fa47c04ac0e840` the new
+task can finish before resume publishes its required live-process receipt.
+The separate signal fixture now waits only after its original ABI checks,
+completion marker and fsync; failure exit 79 is retained. The held-success
+fixture passes the initial three cases in
+`factorybox-checkpoint-retirement-d5e2ed60f004444e974fba2ac2e9ef81`, and the
+old-byte negative control still fails with that same successful-task hold.
+The first recapture placement in
+`factorybox-checkpoint-retirement-3ddab97d4bac4176ab43bacd916eff6c` freezes
+the task before invoking pause, so normal OCI status correctly rejects it as
+already paused. The final fixture stops its own controller after the normal
+guard entered instead, confirms the exact frozen/untraced source and absence
+of a CRIU/copy child, then queues the signal. No production fault switch or
+diagnostic source thaw is used in the passing assertions.
+
+The bounded poll has a measured cost. For one prepared sleeping task, the
+old control records zero charged CPU microseconds over 2.001542017 seconds
+and 24,576 anonymous bytes. The final new signal run records 6,140 charged
+CPU microseconds over 2.001569880 seconds and 20,480 anonymous bytes. An earlier
+new run records 4,941 microseconds and 24,576 bytes over about two seconds.
+Raw cgroup counters are retained. These individual observations do not
+establish a distribution, a memory reduction, or an acceptable pressured-worker
+cost; chunked-wait timing and CPU behavior remain qualification work.
+
+The new delivered bytes also pass all four required retirement cases in
+`factorybox-checkpoint-retirement-3e22137468c644daaf38d2591ce83f1c`, repeated
+source capture and restored-child pause/resume in
+`factorybox-checkpoint-retirement-53df7c82bcf04f4ab49eb4135a450639`, and
+capacity/actual guest ENOSPC in
+`factorybox-bounded-store-b7abe41ff7744b4cb9d8c7770c675394`.
+Planned and abrupt bounded worker replacement pass on the same delivered bytes
+in `factorybox-bounded-loss-b8468034c7e14f1ca5b8b51436ef69de` and
+`factorybox-bounded-loss-86be80b052594da0ae64f3276f8cb8c1`.
+The stopped-controller, full-filesystem capture-copy SIGKILL cases for
+checkpoint and pause also pass in
+`factorybox-storage-admission-b2cbad55a2b84511a24e5edee0316d0a`.
+The controlled normal/SIGKILL tracer exit guard passes on these bytes in
+`factorybox-checkpoint-retirement-7e2090fc82844a74b0fa585c59a6ab45`.
+Portable checks including vet and immutable reference/overlay verification pass
+in `factorybox-checks-32b3b972bc9b42a08d1befdb561a926b`.
+
+Exact native results and reconstructed ordered source/fixture patches are
+indexed by `factorybox-timer-signal-notes-3e37040c96a54eacb304703e393eaa63`.
+Production qualification remains false. Non-NULL remainder and fault cases,
+broader signals and mask semantics, interrupted real preparation repair,
+multi-thread mutation, nonzero offsets, continuation lifetime and final
+consumer/upstream qualification remain open.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

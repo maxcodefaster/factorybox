@@ -210,29 +210,7 @@ func prepareTimerTarget(trace *timerTrace, state timerstate.State) (timerPrepare
 	if err != nil {
 		return prepared, err
 	}
-	for _, mapping := range maps {
-		if r.Rip < mapping.start || r.Rip >= mapping.end || mapping.permissions != "r-xp" || mapping.name != "" || mapping.end-mapping.start != 4096 {
-			continue
-		}
-		code, err := timerMemoryRead(trace.pid, mapping.start, len(timerContinuationAMD64))
-		if err != nil {
-			return prepared, err
-		}
-		if !bytes.Equal(code, timerContinuationAMD64) {
-			continue
-		}
-		frame, err := timerMemoryRead(trace.pid, mapping.start+4096, 4096)
-		if err != nil {
-			return prepared, err
-		}
-		if string(frame[:8]) != "FBXTMR01" || binary.LittleEndian.Uint64(frame[8:]) != 1 || binary.LittleEndian.Uint64(frame[24:]) != uint64(state.Clock) ||
-			binary.LittleEndian.Uint64(frame[32:]) != state.Remainder || binary.LittleEndian.Uint64(frame[96:]) != 0 || r.Rdi != uint64(state.Clock) || r.Rsi != 0 ||
-			r.Rdx != mapping.start+4096+40 || r.R10 != state.Remainder || r.Rip != mapping.start+timerSleepReturnOffset {
-			return prepared, fmt.Errorf("existing relative timer continuation differs from its captured CPU state")
-		}
-		prepared.Address, prepared.Reused, prepared.Frame = mapping.start, true, frame
-		return prepared, nil
-	}
+	_ = maps // Mapping inventory also verifies the bounded native source view.
 	if r.Rip < 2 {
 		return prepared, fmt.Errorf("timer has no native syscall return instruction")
 	}
@@ -256,8 +234,8 @@ func prepareTimerTarget(trace *timerTrace, state timerstate.State) (timerPrepare
 		return prepared, err
 	}
 	frame := make([]byte, 4096)
-	copy(frame, "FBXTMR01")
-	binary.LittleEndian.PutUint64(frame[8:], 1)
+	copy(frame, "FBXTMR02")
+	binary.LittleEndian.PutUint64(frame[8:], 2)
 	offset, err := timerOffset(trace.pid, state.Clock)
 	if err != nil {
 		return prepared, err
@@ -272,6 +250,7 @@ func prepareTimerTarget(trace *timerTrace, state timerstate.State) (timerPrepare
 	binary.LittleEndian.PutUint64(frame[16:], uint64(expires))
 	binary.LittleEndian.PutUint64(frame[24:], uint64(state.Clock))
 	binary.LittleEndian.PutUint64(frame[32:], state.Remainder)
+	binary.LittleEndian.PutUint64(frame[104:], trace.mask)
 	copy(frame[80:88], redzone)
 	if state.Remainder == 0 {
 		binary.LittleEndian.PutUint64(frame[96:], 1)
@@ -349,7 +328,7 @@ func chooseTimerAddress(pid int, reserved map[uint64]bool) (uint64, error) {
 func runTimerMutator() (resultErr error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	if len(timerContinuationAMD64) != 323 || sum(timerContinuationAMD64) != timerContinuationSHA {
+	if len(timerContinuationAMD64) == 0 || len(timerContinuationAMD64) > 4096 || sum(timerContinuationAMD64) != timerContinuationSHA {
 		return fmt.Errorf("native timer continuation code changed")
 	}
 	request, anchors, sealed, err := readCaptureTimerRequest()
@@ -517,13 +496,18 @@ func runTimerMutator() (resultErr error) {
 	}
 	for _, target := range targets {
 		trace := traces[target.State.PID]
-		if err := timerMask(trace.pid, unix.PTRACE_SETSIGMASK, &trace.mask); err != nil {
+		var blocked uint64
+		if err := timerMask(trace.pid, unix.PTRACE_GETSIGMASK, &blocked); err != nil {
 			return err
 		}
+		want := ^uint64(0) &^ (uint64(1)<<(uint(unix.SIGKILL)-1) | uint64(1)<<(uint(unix.SIGSTOP)-1))
+		if blocked != want {
+			return fmt.Errorf("timer continuation lost its blocked entry mask")
+		}
+		// The original mask is in the private frame. Keep entry blocked until
+		// ppoll atomically installs that mask while waiting. A pending caught
+		// signal must produce EINTR, including after checkpoint/restore.
 		trace.maskChanged = false
-		if err := timerNoPendingCaughtSignal(trace.pid); err != nil {
-			return err
-		}
 	}
 	for _, tid := range tids {
 		if err := unix.PtraceDetach(tid); err != nil {
