@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"factorybox/internal/storefs"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -95,5 +97,25 @@ func TestStorageAdmissionDoesNotFollowReplacedRoot(t *testing.T) {
 	}
 	if err := engine.admitStorageWrite(); err == nil {
 		t.Fatal("substituted root symlink admitted a write")
+	}
+}
+
+func TestBoundedStorageRequiresInternalRootsAndAdmission(t *testing.T) {
+	active := &storefs.Active{Target: "/private/data"}
+	valid := Config{BoundedStore: active, Root: "/private/data/store/controller", ManagerRoot: "/private/data/store/manager", MinFreeBytes: 1, WriteReserve: 1}
+	if err := validateStoragePolicy(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func(*Config){
+		func(c *Config) { c.Root = "/private/data-other/controller" },
+		func(c *Config) { c.Root = "/private/data/../outside" },
+		func(c *Config) { c.ManagerRoot = "/private/manager" },
+		func(c *Config) { c.MinFreeBytes = 0; c.WriteReserve = 0 },
+	} {
+		invalid := valid
+		change(&invalid)
+		if err := validateStoragePolicy(invalid); err == nil {
+			t.Fatal("bounded store accepted external roots or disabled admission", invalid)
+		}
 	}
 }

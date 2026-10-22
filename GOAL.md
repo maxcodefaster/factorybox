@@ -231,3 +231,14 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   exklusivem Besitz und unsicherer Initialisierung. Die Verbindung zu Worker,
   Gäste-Speicherpfaden, Aufnahmeprüfung und Wiederherstellung nach Worker-Ersatz
   steht noch aus. Der neue Speicherweg ist nicht ausgewählt oder freigegeben.
+- Der neue Speicherweg ist inzwischen ausdrücklich in Worker-Start, gesicherte
+  Image-Identität und getrennte interne/Host-Aufnahmeprüfungen eingebunden.
+  Ein vollständiger kleiner Sysbox-Test auf dem tatsächlich ausgelieferten Build
+  besteht Checkpoint, unabhängigen Fork, gemessene Pause/Resume und echten
+  Platzmangel durch Gastschreibarbeit. Externe Bind-Quellen werden vor Intent
+  abgelehnt. Ein gesicherter Fehler zeigt erhaltene Dateiblöcke über einen
+  Gast-Overlay-Alias nach Unlink; Retention darf freigegebenen Platz nicht aus
+  gelöschten Namen ableiten. Alle Fehler und exakten Fixture-Korrekturen bleiben
+  erhalten. Worker-Ersatz, vollständige Verbraucher, weitere Fehlerfälle und
+  finale Abnahme auf diesem integrierten Pfad bleiben offen; Produktionsfreigabe
+  und Auswahl des Backends bleiben ausdrücklich falsch.

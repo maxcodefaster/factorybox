@@ -24,16 +24,19 @@ import (
 
 	"factorybox/internal/lifecycle"
 	"factorybox/internal/platform"
+	"factorybox/internal/storefs"
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
 
 type Config struct {
-	Store      string
-	RunRoot    string
-	Components string
-	Manifest   string
-	StoreID    string
+	Store        string
+	RunRoot      string
+	Components   string
+	Manifest     string
+	StoreID      string
+	BoundedRoot  string
+	BoundedBytes int64
 }
 
 const (
@@ -419,9 +422,11 @@ func Current(runRoot string) (Status, error) {
 	}
 	if strings.Trim(status.Epoch, "0123456789abcdef") != "" || strings.Trim(status.StoreID, "0123456789abcdef") != "" ||
 		status.Lifecycle.Root != status.Store+"/epochs/"+status.Epoch+"/controller" || status.Lifecycle.ManagerRoot != status.Store+"/manager" ||
-		status.Lifecycle.MinFreeBytes != localMinFreeBytes || status.Lifecycle.WriteReserve != localWriteReserve ||
 		len(status.Components) != 4 || status.Lifecycle.RuntimeSHA256 != status.Components["sysbox-runc"] || status.Lifecycle.CriuSHA256 != status.Components["criu"] {
 		return status, fmt.Errorf("worker controller epoch or component recipe changed")
+	}
+	if err := verifyBoundedStatus(status); err != nil {
+		return status, err
 	}
 	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil || strings.TrimSpace(string(boot)) != status.BootID {
@@ -492,6 +497,19 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	}
 	if err != nil {
 		return err
+	}
+	if err := boundedConfig(&config); err != nil {
+		return err
+	}
+	var bounded *storefs.Active
+	if config.BoundedRoot != "" {
+		attachment, outerLease, err := attachBounded(ctx, config)
+		if err != nil {
+			return err
+		}
+		defer outerLease.Close()
+		defer func() { runErr = errors.Join(runErr, attachment.Close()) }()
+		bounded = &attachment.Active
 	}
 	for _, path := range []string{config.Store, config.RunRoot} {
 		if err := makePrivate(path); err != nil {
@@ -581,7 +599,10 @@ func Run(ctx context.Context, config Config) (runErr error) {
 		Manager: manager.identity,
 		Lifecycle: lifecycle.Config{Root: root + "/controller", Runtime: config.Components + "/sysbox-runc", RuntimeSHA256: binaries["sysbox-runc"],
 			Criu: config.Components + "/criu", CriuSHA256: binaries["criu"], ManagerRoot: config.Store + "/manager",
-			MinFreeBytes: localMinFreeBytes, WriteReserve: localWriteReserve}}
+			MinFreeBytes: localMinFreeBytes, WriteReserve: localWriteReserve, BoundedStore: bounded}}
+	if bounded != nil {
+		status.Lifecycle.MinFreeBytes, status.Lifecycle.WriteReserve = boundedMinFreeBytes, boundedWriteReserve
+	}
 	ready := false
 	// Register after each service cleanup so failure collection runs first.
 	collectFailure := func() {

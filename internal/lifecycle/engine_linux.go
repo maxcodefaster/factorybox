@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"factorybox/internal/platform"
+	"factorybox/internal/storefs"
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
@@ -32,14 +33,15 @@ var digest = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var tokenID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 type Config struct {
-	Root          string `json:"root"`
-	Runtime       string `json:"runtime"`
-	RuntimeSHA256 string `json:"runtime_sha256"`
-	Criu          string `json:"criu"`
-	CriuSHA256    string `json:"criu_sha256"`
-	ManagerRoot   string `json:"manager_root"`
-	MinFreeBytes  uint64 `json:"min_free_bytes,omitempty"`
-	WriteReserve  uint64 `json:"write_reserve_bytes,omitempty"`
+	Root          string          `json:"root"`
+	Runtime       string          `json:"runtime"`
+	RuntimeSHA256 string          `json:"runtime_sha256"`
+	Criu          string          `json:"criu"`
+	CriuSHA256    string          `json:"criu_sha256"`
+	ManagerRoot   string          `json:"manager_root"`
+	MinFreeBytes  uint64          `json:"min_free_bytes,omitempty"`
+	WriteReserve  uint64          `json:"write_reserve_bytes,omitempty"`
+	BoundedStore  *storefs.Active `json:"bounded_store,omitempty"`
 }
 
 type Operation struct {
@@ -95,6 +97,11 @@ func Open(config Config) (_ *Engine, resultErr error) {
 	if os.Geteuid() != 0 {
 		return nil, fmt.Errorf("the local Sysbox controller requires worker root")
 	}
+	if config.BoundedStore != nil {
+		if err := storefs.Verify(*config.BoundedStore); err != nil {
+			return nil, err
+		}
+	}
 	info, err := platform.Current()
 	if err == nil {
 		err = info.CheckExecution()
@@ -104,6 +111,14 @@ func Open(config Config) (_ *Engine, resultErr error) {
 	}
 	if err := canonical(config.Root); err != nil {
 		return nil, err
+	}
+	if config.BoundedStore != nil {
+		engine := &Engine{config: config}
+		for _, path := range []string{filepath.Dir(config.Root), config.ManagerRoot} {
+			if err := engine.boundedObject(path); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if err := os.Mkdir(config.Root, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 		return nil, err
@@ -180,6 +195,9 @@ func privateDirectory(path string) error {
 }
 
 func (e *Engine) lock() (*os.File, error) {
+	if err := e.validateRoot(); err != nil {
+		return nil, err
+	}
 	directory, err := e.root.Open(".")
 	if err != nil {
 		return nil, err
@@ -214,6 +232,16 @@ func (e *Engine) lock() (*os.File, error) {
 }
 
 func (e *Engine) validateRoot() error {
+	if e.config.BoundedStore != nil {
+		if err := storefs.Verify(*e.config.BoundedStore); err != nil {
+			return err
+		}
+		for _, path := range []string{e.config.Root, e.config.ManagerRoot} {
+			if err := e.boundedObject(path); err != nil {
+				return err
+			}
+		}
+	}
 	anchored, err := e.root.Stat(".")
 	if err != nil {
 		return err
@@ -427,6 +455,9 @@ func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner st
 	stat := info.Sys().(*syscall.Stat_t)
 	rootIdentity, err := directoryIdentity(root.Path)
 	if err != nil {
+		return record, err
+	}
+	if err := e.boundedBundle(bundle, root.Path, spec); err != nil {
 		return record, err
 	}
 	if err := e.exclusiveRootfs(root.Path, uint64(stat.Dev), stat.Ino); err != nil {

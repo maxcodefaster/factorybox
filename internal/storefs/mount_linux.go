@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -28,6 +29,7 @@ type Active struct {
 	LoopNumber    int    `json:"loop_number"`
 	BlockDevice   uint64 `json:"block_device"`
 	FilesystemMax uint64 `json:"filesystem_capacity_bytes"`
+	DirectIO      bool   `json:"direct_io"`
 }
 
 type deviceNode struct {
@@ -144,7 +146,8 @@ func sameLoop(fd int, image Image) error {
 		return err
 	}
 	if info.Device != image.Device || info.Inode != image.Inode || info.Offset != 0 ||
-		info.Sizelimit != uint64(image.Bytes) || info.Flags&unix.LO_FLAGS_AUTOCLEAR == 0 {
+		info.Sizelimit != uint64(image.Bytes) ||
+		info.Flags&(unix.LO_FLAGS_AUTOCLEAR|unix.LO_FLAGS_DIRECT_IO) != unix.LO_FLAGS_AUTOCLEAR|unix.LO_FLAGS_DIRECT_IO {
 		return fmt.Errorf("loop association no longer matches the fixed image")
 	}
 	return nil
@@ -227,7 +230,7 @@ func Attach(expected Image, target string) (_ *Attachment, resultErr error) {
 		return nil, err
 	}
 	config := unix.LoopConfig{Fd: uint32(image.Fd()), Size: 4096,
-		Info: unix.LoopInfo64{Sizelimit: uint64(expected.Bytes), Flags: unix.LO_FLAGS_AUTOCLEAR}}
+		Info: unix.LoopInfo64{Sizelimit: uint64(expected.Bytes), Flags: unix.LO_FLAGS_AUTOCLEAR | unix.LO_FLAGS_DIRECT_IO}}
 	copy(config.Info.File_name[:], "factorybox-"+expected.Owner)
 	if err := unix.IoctlLoopConfigure(attachment.loop, &config); err != nil {
 		return nil, err // An EBUSY occupant is neither altered nor detached.
@@ -238,6 +241,7 @@ func Attach(expected Image, target string) (_ *Attachment, resultErr error) {
 	}
 	attachment.Active.LoopNumber = number
 	attachment.Active.BlockDevice = unix.Mkdev(7, uint32(number))
+	attachment.Active.DirectIO = true
 	if err := unix.Mount(attachment.node.path, target, "ext4", unix.MS_NODEV, "data=ordered,nodiscard"); err != nil {
 		return nil, err
 	}
@@ -271,11 +275,57 @@ func (attachment *Attachment) Check() error {
 	if err := sameLoop(attachment.loop, expected); err != nil {
 		return err
 	}
-	actual, capacity, err := targetIdentity(attachment.Active.Target)
-	if err != nil || actual != attachment.Active.Mount || capacity != attachment.Active.FilesystemMax {
+	return verifyMount(attachment.Active)
+}
+
+func verifyMount(active Active) error {
+	if !active.DirectIO || active.LoopNumber < 0 || active.LoopNumber > 1<<20 ||
+		active.BlockDevice != unix.Mkdev(7, uint32(active.LoopNumber)) || active.Mount.Device != active.BlockDevice ||
+		active.Mount.Inode == 0 || active.Mount.MountID == 0 || active.FilesystemMax == 0 ||
+		active.FilesystemMax > uint64(active.Image.Bytes) {
+		return fmt.Errorf("invalid active fixed filesystem identity")
+	}
+	if err := privateDirectory(active.Target); err != nil {
+		return err
+	}
+	actual, capacity, err := targetIdentity(active.Target)
+	if err != nil || actual != active.Mount || capacity != active.FilesystemMax {
 		return fmt.Errorf("fixed filesystem mount changed: %v", err)
 	}
 	return nil
+}
+
+// Verify inspects an already owned attachment without adopting or changing it.
+// The image lock must still be held by another open file description. Worker
+// publication must additionally authenticate the live process holding that lease.
+func Verify(active Active) (resultErr error) {
+	if os.Geteuid() != 0 {
+		return fmt.Errorf("fixed filesystem verification requires worker root")
+	}
+	image, err := openImage(active.Image)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, image.Close()) }()
+	if err := unix.Flock(int(image.Fd()), unix.LOCK_EX|unix.LOCK_NB); err == nil {
+		return fmt.Errorf("fixed filesystem no longer has an image owner")
+	} else if !errors.Is(err, unix.EWOULDBLOCK) {
+		return err
+	}
+	if err := verifyMount(active); err != nil {
+		return err
+	}
+	node, err := newNode(active.LoopNumber)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, node.remove()) }()
+	fd, err := unix.Open(node.path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, unix.Close(fd)) }()
+	return sameLoop(fd, active.Image)
 }
 
 // Close refuses a changed target or association and never uses LOOP_CLR_FD.
@@ -302,18 +352,29 @@ func (attachment *Attachment) Close() error {
 		}
 		attachment.loopClosed = true
 	}
-	fd, err := unix.Open(attachment.node.path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return err
+	// The final kernel reference can outlive unmount/close briefly, including
+	// with direct I/O. Observe bounded completion without detaching anything.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		fd, err := unix.Open(attachment.node.path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+		if err != nil {
+			return err
+		}
+		info, statusErr := unix.IoctlLoopGetStatus64(fd)
+		released := errors.Is(statusErr, unix.ENXIO) || (statusErr == nil &&
+			(info.Device != attachment.Active.Image.Device || info.Inode != attachment.Active.Image.Inode))
+		if err := unix.Close(fd); err != nil {
+			return err
+		}
+		if released {
+			break
+		}
+		if statusErr != nil || !time.Now().Before(deadline) {
+			return fmt.Errorf("original loop release is unconfirmed; no association detached: status=%+v error=%v", info, statusErr)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	info, statusErr := unix.IoctlLoopGetStatus64(fd)
-	released := errors.Is(statusErr, unix.ENXIO) || (statusErr == nil &&
-		(info.Device != attachment.Active.Image.Device || info.Inode != attachment.Active.Image.Inode))
-	closeErr := unix.Close(fd)
-	if !released {
-		return errors.Join(closeErr, fmt.Errorf("original loop release is unconfirmed; no association detached: %v", statusErr))
-	}
-	if err := errors.Join(closeErr, attachment.node.remove()); err != nil {
+	if err := attachment.node.remove(); err != nil {
 		return err
 	}
 	attachment.closed = true

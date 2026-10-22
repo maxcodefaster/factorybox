@@ -24,9 +24,11 @@ class StorefsRunnerTests(unittest.TestCase):
             state = {"identity": "f" * 64, "deleted": []}
             proofs = {
                 "capacity": ["real_enospc", "boundary_canary_enospc", "rollback_after_reserve_release", "retained_unchanged",
-                             "remount_persistence", "existing_initialization_refused", "exact_autoclear_cleanup"],
+                             "remount_persistence", "existing_initialization_refused", "exact_autoclear_cleanup",
+                             "loop_direct_io", "independent_verification"],
                 "identity": ["second_owner_refused", "shared_inode_refused", "symlink_substitution_refused",
-                             "existing_kernel_association_refused", "changed_mount_preserved", "original_data_preserved", "exact_autoclear_cleanup"],
+                             "existing_kernel_association_refused", "changed_mount_preserved", "original_data_preserved", "exact_autoclear_cleanup",
+                             "unheld_image_lease_refused", "independent_changed_mount_refused"],
                 "autoclear": ["unconfirmed_release_refused", "lease_retained_until_release", "cleanup_retry_completed", "exact_reopen"],
                 "initialization": ["wrong_formatter_refused_before_creation", "failed_initialization_retained", "uncertain_image_not_reformatted",
                                    "uninitialized_attachment_refused", "retained_image_unchanged"],

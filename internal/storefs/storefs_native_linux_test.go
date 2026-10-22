@@ -143,6 +143,12 @@ func TestNativeStoreFSCapacityAndRemount(t *testing.T) {
 	}
 	reserve = nil
 	first := attachment.Active
+	if !first.DirectIO {
+		t.Fatal("backing image direct I/O was not enabled")
+	}
+	if err := Verify(first); err != nil {
+		t.Fatal("independent active attachment verification", err)
+	}
 	if err := attachment.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +168,8 @@ func TestNativeStoreFSCapacityAndRemount(t *testing.T) {
 	saveProof(t, "capacity", map[string]any{"image": image, "first_mount": first,
 		"written_bytes": written, "real_enospc": true, "boundary_canary_enospc": true,
 		"rollback_after_reserve_release": true, "retained_unchanged": true, "remount_persistence": true,
-		"existing_initialization_refused": true, "exact_autoclear_cleanup": true})
+		"existing_initialization_refused": true, "exact_autoclear_cleanup": true,
+		"loop_direct_io": true, "independent_verification": true})
 }
 
 func TestNativeStoreFSIdentityAndLeaseRefusals(t *testing.T) {
@@ -219,6 +226,9 @@ func TestNativeStoreFSIdentityAndLeaseRefusals(t *testing.T) {
 	if err := unix.Flock(int(attachment.image.Fd()), unix.LOCK_UN); err != nil {
 		t.Fatal(err)
 	}
+	if err := Verify(attachment.Active); err == nil {
+		t.Fatal("independent verification accepted a released image lease")
+	}
 	if unexpected, err := Attach(image, other); err == nil || !strings.Contains(err.Error(), "already has a loop association") {
 		if unexpected != nil {
 			unexpected.Close()
@@ -241,6 +251,9 @@ func TestNativeStoreFSIdentityAndLeaseRefusals(t *testing.T) {
 	if err := attachment.Close(); err == nil {
 		t.Fatal("substituted mount authorized unmount")
 	}
+	if err := Verify(attachment.Active); err == nil {
+		t.Fatal("independent verification accepted a substituted mount")
+	}
 	actual, _, err := targetIdentity(target)
 	if err != nil || actual != foreign {
 		t.Fatal("refusal changed the substituted mount", err)
@@ -260,7 +273,8 @@ func TestNativeStoreFSIdentityAndLeaseRefusals(t *testing.T) {
 	saveProof(t, "identity", map[string]any{"image": image, "second_owner_refused": true,
 		"shared_inode_refused": true, "symlink_substitution_refused": true,
 		"existing_kernel_association_refused": true, "changed_mount_preserved": true,
-		"original_data_preserved": true, "exact_autoclear_cleanup": true})
+		"original_data_preserved": true, "exact_autoclear_cleanup": true,
+		"unheld_image_lease_refused": true, "independent_changed_mount_refused": true})
 }
 
 func TestNativeStoreFSRetainsLeaseUntilAutoclear(t *testing.T) {

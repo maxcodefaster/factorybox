@@ -6,6 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
+	"strings"
+
+	"factorybox/internal/storefs"
 
 	"golang.org/x/sys/unix"
 )
@@ -14,23 +18,46 @@ import (
 // size of its own files. AvailableBytes conservatively uses statfs Bavail. The
 // admission floor neither reserves blocks nor limits concurrent guest writes.
 type StorageCapacity struct {
-	Version        int          `json:"version"`
+	Version           int           `json:"version"`
+	Root              string        `json:"root"`
+	Directory         KernelObject  `json:"directory"`
+	ObservedAt        string        `json:"observed_at"`
+	FilesystemType    int64         `json:"filesystem_type"`
+	TotalBytes        uint64        `json:"filesystem_total_bytes"`
+	FreeBytes         uint64        `json:"filesystem_free_bytes"`
+	AvailableBytes    uint64        `json:"filesystem_available_bytes"`
+	MinFreeBytes      uint64        `json:"min_free_bytes"`
+	WriteReserve      uint64        `json:"write_reserve_bytes"`
+	PolicyEnabled     bool          `json:"policy_enabled"`
+	WriteAdmitted     bool          `json:"new_write_admitted"`
+	BoundedImageBytes uint64        `json:"bounded_image_bytes,omitempty"`
+	Host              *HostCapacity `json:"host,omitempty"`
+}
+
+type HostCapacity struct {
 	Root           string       `json:"root"`
 	Directory      KernelObject `json:"directory"`
-	ObservedAt     string       `json:"observed_at"`
-	FilesystemType int64        `json:"filesystem_type"`
 	TotalBytes     uint64       `json:"filesystem_total_bytes"`
-	FreeBytes      uint64       `json:"filesystem_free_bytes"`
 	AvailableBytes uint64       `json:"filesystem_available_bytes"`
 	MinFreeBytes   uint64       `json:"min_free_bytes"`
 	WriteReserve   uint64       `json:"write_reserve_bytes"`
-	PolicyEnabled  bool         `json:"policy_enabled"`
-	WriteAdmitted  bool         `json:"new_write_admitted"`
+}
+
+const hostWriteReserve = 4 << 30
+
+func withinStore(root, path string) bool {
+	return filepath.IsAbs(root) && filepath.Clean(root) == root && root != "/" &&
+		filepath.IsAbs(path) && filepath.Clean(path) == path && strings.HasPrefix(path, root+"/")
 }
 
 func validateStoragePolicy(config Config) error {
 	if (config.MinFreeBytes == 0) != (config.WriteReserve == 0) || config.WriteReserve > math.MaxUint64-config.MinFreeBytes {
 		return fmt.Errorf("storage admission requires a positive free-space floor and write reserve without overflow")
+	}
+	if active := config.BoundedStore; active != nil {
+		if config.MinFreeBytes == 0 || !withinStore(active.Target, config.Root) || !withinStore(active.Target, config.ManagerRoot) {
+			return fmt.Errorf("bounded storage requires internal controller/manager roots and enabled admission")
+		}
 	}
 	return nil
 }
@@ -41,6 +68,12 @@ func (e *Engine) storageCapacity() (StorageCapacity, error) {
 		PolicyEnabled: e.config.MinFreeBytes != 0}
 	if err := validateStoragePolicy(e.config); err != nil {
 		return report, err
+	}
+	if active := e.config.BoundedStore; active != nil {
+		if err := storefs.Verify(*active); err != nil {
+			return report, err
+		}
+		report.BoundedImageBytes = uint64(active.Image.Bytes)
 	}
 	root, err := e.root.Open(".")
 	if err != nil {
@@ -70,6 +103,45 @@ func (e *Engine) storageCapacity() (StorageCapacity, error) {
 	report.FilesystemType = int64(filesystem.Type)
 	report.TotalBytes, report.FreeBytes, report.AvailableBytes = filesystem.Blocks*block, filesystem.Bfree*block, filesystem.Bavail*block
 	report.WriteAdmitted = !report.PolicyEnabled || report.AvailableBytes >= report.MinFreeBytes+report.WriteReserve
+	if active := e.config.BoundedStore; active != nil {
+		if report.Directory.Device != active.BlockDevice || report.Directory.MountID != active.Mount.MountID ||
+			report.TotalBytes != active.FilesystemMax {
+			return report, fmt.Errorf("controller is outside its exact bounded filesystem")
+		}
+		host, err := boundedHostCapacity(filepath.Dir(active.Image.Path))
+		if err != nil {
+			return report, err
+		}
+		report.Host = &host
+		report.WriteAdmitted = report.WriteAdmitted && host.AvailableBytes >= host.MinFreeBytes+host.WriteReserve
+	}
+	return report, nil
+}
+
+func boundedHostCapacity(path string) (HostCapacity, error) {
+	report := HostCapacity{Root: path, MinFreeBytes: storefs.HostFreeFloor, WriteReserve: hostWriteReserve}
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return report, err
+	}
+	defer unix.Close(fd)
+	var fs unix.Statfs_t
+	var stat unix.Stat_t
+	var extended unix.Statx_t
+	if err := errors.Join(unix.Fstatfs(fd, &fs), unix.Fstat(fd, &stat),
+		unix.Statx(fd, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &extended)); err != nil {
+		return report, err
+	}
+	if extended.Mask&unix.STATX_MNT_ID == 0 || extended.Mnt_id == 0 || fs.Bsize <= 0 || fs.Bavail > fs.Blocks ||
+		fs.Blocks > math.MaxUint64/uint64(fs.Bsize) {
+		return report, fmt.Errorf("host filesystem identity or counters invalid")
+	}
+	report.Directory = KernelObject{Device: uint64(stat.Dev), Inode: stat.Ino, MountID: extended.Mnt_id}
+	current, err := directoryIdentity(path)
+	if err != nil || current != report.Directory {
+		return report, fmt.Errorf("host image directory changed: %v", err)
+	}
+	report.TotalBytes, report.AvailableBytes = fs.Blocks*uint64(fs.Bsize), fs.Bavail*uint64(fs.Bsize)
 	return report, nil
 }
 
@@ -95,6 +167,10 @@ func (e *Engine) admitStorageWrite() error {
 		return errors.Join(err, fmt.Errorf("new storage writes refused: capacity could not be verified"))
 	}
 	if !report.WriteAdmitted {
+		if report.Host != nil && report.Host.AvailableBytes < report.Host.MinFreeBytes+report.Host.WriteReserve {
+			return fmt.Errorf("new storage writes refused: host available=%d bytes, required free floor=%d plus write reserve=%d",
+				report.Host.AvailableBytes, report.Host.MinFreeBytes, report.Host.WriteReserve)
+		}
 		return fmt.Errorf("new storage writes refused: filesystem available=%d bytes, required free floor=%d plus write reserve=%d",
 			report.AvailableBytes, report.MinFreeBytes, report.WriteReserve)
 	}

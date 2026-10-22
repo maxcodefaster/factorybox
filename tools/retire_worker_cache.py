@@ -58,6 +58,7 @@ def main():
     parser.add_argument("--build",required=True)
     proofs=parser.add_mutually_exclusive_group(required=True)
     proofs.add_argument("--native-proof")
+    proofs.add_argument("--bounded-store-proof", help="Complete fixed-filesystem lifecycle/ENOSPC proof of this exact delivered worker")
     proofs.add_argument("--replacement-proof",help="Passing exact storage regression for a replacement of the failed build")
     proofs.add_argument("--qualified-runtime-proof",help="Completed native qualification for an older runtime package's optional cache")
     parser.add_argument("--failed-proof",help="Closed failing storage regression for the superseded build")
@@ -76,6 +77,27 @@ def main():
     if args.qualified_runtime_proof:
         replacement={"qualified_runtime_proof":args.qualified_runtime_proof,
                      "scope":"Only optional compiler cache retirement; qualified source, original native evidence, runnable components and complete package stay directly available."}
+    elif args.bounded_store_proof:
+        if args.failed_proof: raise ValueError("failed proof requires a replacement storage proof")
+        proof,native=evidence(args.bounded_store_proof,r"factorybox-bounded-store-[0-9a-f]{32}")
+        if (native.get("passed") is not True or native.get("cleanup") is not True or
+                native.get("inputs_unchanged") is not True or native.get("passed_tests") != 1 or
+                native.get("worker_build") != args.build or native.get("worker_image_id") != result["image_id"]):
+            raise ValueError("bounded storage proof does not exercise this exact delivered image")
+        core=lambda rows:{key:value for key,value in rows.items() if not key.endswith("_test.go")}
+        if (upstream_unit.context_manifest(proof.parent/"source") != native["source_context"] or
+                core(native["source_context"]) != core(result["source_context"])):
+            raise ValueError("bounded storage proof core differs from delivered bytes")
+        checked=proof.parent/"output/bounded-store.json"
+        content=json.loads(checked.read_text())
+        if (checked.is_symlink() or reference.sha(checked) != native["proof_sha256"] or
+                any(content.get(key) is not True for key in ["passed","direct_io","checkpoint_fork",
+                    "branch_ram_independent","resume_ram_preserved","capture_refused_at_limit","prior_checkpoint_preserved",
+                    "external_writable_bind_refused","owned_truncate_released_blocks"]) or
+                content["full_capacity"]["filesystem_available_bytes"] != 0):
+            raise ValueError("bounded store proof is incomplete or changed")
+        replacement={"bounded_store_proof":args.bounded_store_proof,"proof_sha256":native["proof_sha256"],
+                     "scope":"Only optional compiler cache retirement; exact delivered image, package, source, native failures and passing bounded-store lifecycle remain preserved. No production qualification."}
     elif args.native_proof:
         if args.failed_proof:raise ValueError("failed proof requires a replacement storage proof")
         proof,native=evidence(args.native_proof,r"factorybox-consumer-worker-loss-[0-9a-f]{32}")

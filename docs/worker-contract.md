@@ -87,6 +87,20 @@ quotas and general concurrent-write exhaustion remain release work. The native
 pressure result covers the concrete failure described in
 [production progress](production-progress.md#capacity-admission-and-rollback-space).
 
+An additional experimental profile explicitly accepts `worker --bounded-root
+ABSOLUTE_PRIVATE_DIRECTORY --bounded-bytes BYTES`. It creates a fixed image from
+512 MiB to 64 GiB, with no automatic migration, resizing or reformatting. The
+store becomes `DIRECTORY/data/store`; image identity and the outer lease remain
+outside that filesystem. Its internal admission floor is 64 MiB plus 128 MiB
+headroom, separate from the host's 12 GiB plus 4 GiB checks. Both observations
+appear in `capacity`. All admitted disk-backed bundle layers and bind sources
+must reside in the bounded filesystem; initially read-only external binds are
+also refused. This profile requires existing loop/ext4 support and direct I/O.
+It has a native small-actor checkpoint/fork/pause/resume and real guest ENOSPC
+proof, but lacks full-consumer and worker-replacement qualification. It does not
+change the pilot deployment or production selection. See
+[the exact evidence and remaining limits](production-progress.md#opt-in-bounded-worker-and-actual-guest-capacity).
+
 ## Local commands and responses
 
 Administrative clients execute the image's own binary inside the worker:

@@ -39,3 +39,13 @@ planned and abrupt worker replacement, actual guest write pressure and negative
 identity tests are required before selecting the backend. The image's journal
 and allocation overhead, preparation cost, retained memory and failures must be
 reported. No existing store is migrated or reinterpreted automatically.
+
+The opt-in worker integration now has a small native Sysbox actor proof of
+checkpoint/fork, measured pause/resume and actual guest ENOSPC. Direct loop I/O
+is required and its actual kernel flag is rechecked. The host and internal
+capacity observations are separate. A preserved failure shows that unlinking
+through one overlay can leave a guest alias retaining the unlinked inode and
+its blocks; reclamation must be observed rather than inferred from names.
+These observations and every correction are pinned in the production progress
+record. This decision remains proposed pending worker replacement, full consumer
+and required failure/qualification evidence on the integrated profile.

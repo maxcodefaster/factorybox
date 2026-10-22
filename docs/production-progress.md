@@ -986,17 +986,104 @@ and fixture verification pass in
 `factorybox-checks-1a81a2fe3f6a4d298ab77fb626a1d2a6`. The
 [proposed storage decision](adr/0001-bound-worker-storage-with-a-fixed-filesystem.md)
 keeps fixed store capacity distinct from host free-space admission. The new
-component is not yet connected to worker startup, lifecycle admission, guest
-writable-path placement or committed-pause worker replacement. Those integration
-and failure tests remain necessary before backend selection or production
-qualification. The prior selected runtime and reference profile are unchanged.
+component result alone does not qualify worker startup, lifecycle admission,
+guest writable-path placement or committed-pause worker replacement. The
+subsequent integration is described below. The prior selected runtime and
+reference profile are unchanged.
+
+## Opt-in bounded worker and actual guest capacity
+
+The candidate now accepts an explicit `--bounded-root` and `--bounded-bytes`.
+The outer private directory holds its own worker lease, fixed `store.img` and
+immutable `bounded.json`; the mounted `data/store` contains the inner lease,
+manager data and controller epochs. Initialization refuses an unidentified
+nonempty directory or partial image and never reformats an existing store.
+Worker readiness verifies the saved image, held outer/image/inner leases,
+exact active mount and live services. The legacy default remains available;
+this opt-in backend is not selected for production.
+
+Loop attachment now requires direct I/O as well as autoclear, and independent
+verification checks the actual kernel flags. This avoids adding a buffered
+backing-image path for snapshot data; complete retained-memory qualification
+still needs the full consumers. The first direct-I/O native run
+`factorybox-storefs-native-77c7819cac9e40bface27d22de3876d7` fails because the
+immediate final release check still sees its association after clean remount.
+The exact failure and verified complete volume archive remain. Cleanup now
+observes release for at most 500 ms without detaching anything; a still-held
+external reference continues to refuse and retain the image lease. All four
+native component tests pass in
+`factorybox-storefs-native-048a59880a9e42a8aba2c9caca4e552d` (4.077 s native,
+5.254 s outer), including independent refusal of an unheld image lease and a
+substituted mount. Unsupported direct I/O refuses attachment.
+
+Lifecycle admission uses a 64-MiB internal free floor plus 128 MiB of preflight
+headroom for the bounded profile. These are observations, not preallocated
+rollback blocks. The existing owned capture rollback reserve remains separate.
+The host containing the image is checked independently for its 12-GiB floor
+plus 4-GiB headroom. Controller and manager roots must be inside the exact image.
+Admitted sandbox bundles, overlay layers and bind sources must be backed by it;
+external bind sources, unknown mount types and initial descendant mounts are
+refused. Read-only external binds also remain outside this initial profile.
+Kernel memory filesystems remain governed by the sandbox's cgroup memory cap.
+
+Exact delivered build `factorybox-build-worker-84e5cb48735547bfb0830e9ae4be1167`
+passes `factorybox-bounded-store-55ef14ad81c34f4fb1a06e03f45f8d50` with no skips.
+Its 536,870,912-byte image reports 510,873,600 bytes of filesystem capacity.
+The test rejects an external writable bind before intent, starts the real
+Sysbox RAM/file/watch actor, creates a complete checkpoint and independent fork,
+mutates the branch without changing source RAM, deletes it, pauses and resumes
+the source with identical private RAM. Pause records 4,612,096 snapshot bytes,
+resident bytes falling from 4,612,096 to zero and anonymous source memory falling
+from 4,608,000 bytes to zero. Other source cgroup memory remains 823,296 bytes;
+this is not a claim that every retained worker byte disappears.
+
+The actual resumed guest then writes until both large and 4096-byte writes
+reach ENOSPC, and a second canary fails. Store available space is zero, the host
+still has 880,782,774,272 bytes available and a new capture is refused without
+changing live RAM. The old independently saved checkpoint remains usable after
+release of the test pressure allocation. Worker readiness takes 0.564 s; the
+native test takes 5.88 s and the entire caller takes 10.137 s. These are one
+small fixture's observations, not consumer latency or a distribution estimate.
+
+The initial fixture run `factorybox-bounded-store-daacb85b4005434ea80545053b2eb71d`
+fails at guest `/dev` traversal. Matching the established native template's
+0755 overlay directories inside its private 0700 bundle allows the lifecycle
+to proceed without changing runtime bytes or assertions. Three subsequent
+failures (`67675d5ce5c24f7abfcaf1d1698cab93`, `514c587e562148ecb228b11d73067f90`,
+`1adfece54255450aa151557a9da3efe8`, all prefixed `factorybox-bounded-store-`)
+preserve a separate allocation finding: after host-side unlink and filesystem
+sync, the guest's separate idmapped overlay still sees the exact 390-MB pressure
+inode with link count zero and its allocated blocks. Admission correctly stays
+closed. The corrected fixture verifies that retained inode before truncating
+only its own pressure allocation, then requires restored admission and the old
+checkpoint. Retention must verify actual reclaimed capacity rather than infer
+it from removed names. Every failed volume, input and result stays preserved.
+Ordered fixture corrections with exact before/after and patch hashes are in
+`factorybox-bounded-store-corrections-6c7f016ef68b4d8786f699b09e04b87d`.
+
+Portable tests with vet, the consumer compilation and immutable reference and
+overlay checks pass in `factorybox-checks-056b9122d78f42898c0b06f6bba16a6d`.
+Planned/abrupt worker replacement, all full consumers, broader exhaustion/fault
+cases, final repetitions and upstream qualification on this new profile remain
+unrun and block its selection and production qualification.
+
+Storage maintenance preserves the required artifact headroom. A fully decoded
+and reverified closed passing archive repack reclaims 17,501,988 bytes in
+`factorybox-storage-repack-090e6114be554ee294619d90b1033a30`. Exact byte-identical
+source inputs of six closed upstream runs share one inode with receipts in
+`factorybox-storage-share-bats-inputs-5c9697805d0e476db442e244115f0aa2`, reclaiming
+493,015,040 allocated bytes without changing their contents or original results.
+After the exact delivered bounded-store proof passes, only its optional compiler
+cache is retired with manifest and source/package/image revalidation in
+`factorybox-storage-retire-cache-14520b6090cc4d309595c0063dcdd452` (139,550,720 bytes).
+Selected inputs, open failures and the historical experiment remain untouched.
 
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
 of the PID collision and new admission-fixture busy-mount cleanup; a predetermined
 repeated performance comparison; verified base reuse in the supplied
-operational path; hard store quotas and broader low-disk cases; dependency-checked
+operational path; full-consumer bounded-store recovery and broader low-disk cases; dependency-checked
 checkpoint/epoch retirement; explanation of the preserved Sysbox-fs timeout;
 repeated lifecycle/pressure/fault cases and bounded 24-hour soak; a reduced,
 independently reproducible worker package and operations instructions; required
