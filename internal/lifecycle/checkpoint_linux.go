@@ -288,6 +288,9 @@ func (e *Engine) publishCheckpoint(relative, name string, result any) error {
 
 func (e *Engine) readCheckpoint(relative, name string) (Checkpoint, error) {
 	var result Checkpoint
+	if err := e.checkpointAvailable(relative); err != nil {
+		return result, err
+	}
 	err := e.readCheckpointJSON(relative+"/"+name, &result)
 	return result, err
 }

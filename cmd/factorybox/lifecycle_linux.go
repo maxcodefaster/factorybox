@@ -59,6 +59,8 @@ func runLifecycle(args []string) error {
 	snapshot := ""
 	source := ""
 	var recovery lifecycle.RecoveryRequest
+	var checkpointRequest lifecycle.CheckpointRequest
+	var selectionID string
 	if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
 		start.StringVar(&bundle, "bundle", "", "administrator-prepared OCI bundle")
@@ -68,6 +70,21 @@ func runLifecycle(args []string) error {
 		remaining = start.Args()
 		if bundle == "" {
 			return fmt.Errorf("start requires --bundle")
+		}
+	} else if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" {
+		operation := flag.NewFlagSet(command, flag.ContinueOnError)
+		operation.StringVar(&checkpointRequest.SnapshotID, "snapshot-id", "", "exact published checkpoint ID")
+		operation.StringVar(&checkpointRequest.SourceOwner, "source-owner", "", "exact saved source owner")
+		operation.StringVar(&checkpointRequest.CheckpointSHA256, "checkpoint-sha256", "", "exact complete published checkpoint SHA-256")
+		if command != "retire-checkpoint" {
+			operation.StringVar(&selectionID, "selection-id", "", "immutable recovery selection ID")
+		}
+		if err := operation.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = operation.Args()
+		if checkpointRequest.SnapshotID == "" || checkpointRequest.SourceOwner == "" || checkpointRequest.CheckpointSHA256 == "" || command != "retire-checkpoint" && selectionID == "" {
+			return fmt.Errorf("%s requires exact checkpoint, owner, hash and any selection identity", command)
 		}
 	} else if command == "checkpoint" || command == "pause" || command == "resume" {
 		checkpoint := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -128,6 +145,26 @@ func runLifecycle(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" {
+		checkpointRequest.SourceID = remaining[0]
+		if command == "retire-checkpoint" {
+			result, err := engine.RetireCheckpoint(ctx, checkpointRequest)
+			if result.Version != 0 {
+				err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+			}
+			return err
+		}
+		var result lifecycle.CheckpointSelection
+		if command == "select-checkpoint" {
+			result, err = engine.SelectCheckpoint(ctx, checkpointRequest, selectionID)
+		} else {
+			result, err = engine.ReleaseCheckpointSelection(ctx, checkpointRequest, selectionID)
+		}
+		if result.ID != "" {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
 	if command == "prepare-base" {
 		result, err := engine.PrepareBase(ctx, remaining[0], source)
 		if result.ID != "" {

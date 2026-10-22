@@ -21,13 +21,15 @@ import upstream_unit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic'], default='capacity')
     args = parser.parse_args()
     _, worker = build_worker.load(args.worker_build)
     native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    name = 'factorybox-bounded-store-' + owner
+    retirement = args.suite.startswith('retirement')
+    name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
     source = artifact / 'source'
@@ -36,7 +38,8 @@ def main():
     for file in ['go.mod', 'go.sum']:
         shutil.copyfile(reference.ROOT / file, source / file)
     shutil.copyfile(__file__, artifact / 'runner.py')
-    shutil.copyfile(reference.ROOT / 'tests/bounded-store-setup.sh', artifact / 'setup.sh')
+    setup = 'checkpoint-retirement-setup.sh' if retirement else 'bounded-store-setup.sh'
+    shutil.copyfile(reference.ROOT / 'tests' / setup, artifact / 'setup.sh')
     manifest = upstream_unit.context_manifest(source)
     core = lambda rows: {k: v for k, v in rows.items() if not k.endswith('_test.go')}
     if core(manifest) != core(worker['source_context']):
@@ -48,12 +51,16 @@ def main():
     output = artifact / 'output'
     output.mkdir()
     result = {'schema': 1, 'owner': owner, 'passed': False, 'cleanup': False, 'production_qualified': False,
-              'worker_build': args.worker_build, 'worker_image_id': worker['image_id'], 'source_context': manifest,
+              'worker_build': args.worker_build, 'worker_image_id': worker['image_id'], 'source_context': manifest, 'suite': args.suite,
               'runner_sha256': reference.sha(artifact / 'runner.py'), 'setup_sha256': reference.sha(artifact / 'setup.sh'),
               'rootfs_sha256': busybox['sha256'], 'global_sysctls_before': consumer_worker_loss.sysctls(),
               'scope': 'Exact delivered bounded worker, 512-MiB fixed filesystem, full RAM/filesystem checkpoint/fork, '
                        'pause/resume, actual guest ENOSPC, distinct host/internal admission, external writable bind '
                        'refusal and preserved prior checkpoint. Not worker replacement, broad consumer or production qualification.'}
+    if retirement:
+        result['scope'] = 'Delivered CLI recovery selections, released selection replay, committed-pause protection, live independent fork/resume after checkpoint retirement, foreign mount/successor refusal, actual SIGKILL during partial deletion, retry with unknown entry refusal and verified immutable base alias cleanup. Not epoch retirement or production qualification.'
+    if args.suite == 'retirement-base-diagnostic':
+        result['scope'] = 'Isolated retained-sleep and immutable-alias diagnostic only; does not qualify the full required retirement suite.'
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = container = preserve = False
     identity = None
@@ -73,10 +80,15 @@ def main():
                    '--privileged', '--cgroupns=private', '--cpus=3', '--memory=3g', '--pids-limit=512', '--network=none',
                    '--env', 'GOMAXPROCS=2', '--env', 'GOMEMLIMIT=256MiB', '--env', 'FACTORYBOX_NATIVE_BOUNDED_STORE=1',
                    '--mount', f'type=volume,source={name},target=/var/lib/sysbox']
+        if retirement:
+            command += ['--env', 'FACTORYBOX_NATIVE_RETIREMENT=1', '--env', 'FACTORYBOX_NATIVE_BOUNDED_LOSS=1']
+        if args.suite == 'retirement-base-diagnostic':
+            command += ['--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeCheckpointRetirementImmutableAlias$']
         for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                        (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
             command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
-        command += [worker['image'], '--store-id', owner, '--bounded-root', '/var/lib/sysbox/fixed-store', '--bounded-bytes', str(512 << 20)]
+        capacity = 1 << 30 if retirement else 512 << 20
+        command += [worker['image'], '--store-id', owner, '--bounded-root', '/var/lib/sysbox/fixed-store', '--bounded-bytes', str(capacity)]
         result['command'] = command
         container = True
         identity = reference.docker(command)
@@ -90,19 +102,43 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        result['passed_tests'] = sum(line.startswith('--- PASS: TestNativeBoundedWorkerStore') for line in log.splitlines())
-        if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != 1 or '--- SKIP:' in log:
+        prefix = 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = 3 if args.suite == 'retirement' else 1
+        result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
+        if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
-        proof_path = output / 'bounded-store.json'
-        proof = json.loads(proof_path.read_text())
-        required = ['passed', 'direct_io', 'external_writable_bind_refused', 'checkpoint_fork', 'branch_ram_independent',
-                    'resume_ram_preserved', 'capture_refused_at_limit', 'prior_checkpoint_preserved', 'owned_truncate_released_blocks']
-        if (any(proof.get(key) is not True for key in required) or
-                proof['full_capacity']['filesystem_available_bytes'] != 0 or
-                'no space left' not in proof['guest_actual_enospc'].lower() or
-                proof['pause']['snapshot']['resident_bytes_after'] != 0):
-            raise ValueError('bounded worker proof lacks required assertions')
-        result['proof_sha256'] = reference.sha(proof_path)
+        if args.suite == 'retirement':
+            required = {
+                'retirement': ['unresumed_pause_protected', 'selection_protected', 'explicit_release_replayed', 'released_selection_not_reactivated',
+                               'foreign_mount_preserved', 'source_resume_preserved', 'independent_fork_preserved', 'new_fork_refused',
+                               'exact_completion_replayed', 'foreign_successor_preserved', 'partial_retry_preserved_foreign',
+                               'partial_retry_completed', 'descendant_useful_after_source_delete'],
+                'retirement-base': ['exact_alias_retired', 'shared_base_preserved', 'source_running'],
+                'retirement-base-actor': ['exact_alias_retired', 'shared_base_preserved', 'source_running'],
+            }
+            result['proof_sha256'] = {}
+            for proof_name, keys in required.items():
+                proof_path = output / (proof_name + '.json')
+                proof = json.loads(proof_path.read_text())
+                if proof.get('passed') is not True or any(proof.get(key) is not True for key in keys):
+                    raise ValueError('native retirement proof incomplete: ' + proof_name)
+                if proof_name == 'retirement' and (proof.get('actual_controller_sigkill', 0) <= 1 or
+                        proof['first']['after']['filesystem_available_bytes'] <= proof['first']['before']['filesystem_available_bytes']):
+                    raise ValueError('native retirement lacks actual interruption and observed capacity recovery')
+                result['proof_sha256'][proof_name] = reference.sha(proof_path)
+        elif args.suite == 'capacity':
+            proof_path = output / 'bounded-store.json'
+            proof = json.loads(proof_path.read_text())
+            required = ['passed', 'direct_io', 'external_writable_bind_refused', 'checkpoint_fork', 'branch_ram_independent',
+                        'resume_ram_preserved', 'capture_refused_at_limit', 'prior_checkpoint_preserved', 'owned_truncate_released_blocks']
+            if (any(proof.get(key) is not True for key in required) or
+                    proof['full_capacity']['filesystem_available_bytes'] != 0 or
+                    'no space left' not in proof['guest_actual_enospc'].lower() or
+                    proof['pause']['snapshot']['resident_bytes_after'] != 0):
+                raise ValueError('bounded worker proof lacks required assertions')
+            result['proof_sha256'] = reference.sha(proof_path)
+        else:
+            result['scope'] = 'Isolated immutable-alias retirement diagnostic only; full required retirement suite is not qualified.'
         result['passed'] = True
     except Exception as error:
         result['error'] = str(error)
@@ -135,6 +171,7 @@ def main():
             reference_lifecycle.write_json(artifact / 'result.json', result)
             print(json.dumps({'evidence': str(artifact), 'passed': result['passed'], 'cleanup': result['cleanup'],
                               'error': result.get('error')}), flush=True)
+            reference.artifact_storage.compact_closed_run(artifact, reference.ROOT)
     if not result['passed']:
         raise SystemExit(1)
 

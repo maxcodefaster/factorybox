@@ -337,7 +337,7 @@ def compact_closed_run(directory, root):
     candidates.extend(directory.glob("failed-volume-*.tar"))
     # Shared immutable inputs already occupy one inode. Encoding each link
     # separately could use more storage than leaving that shared input alone.
-    candidates.extend(path for name in ("lifecycle.test", "devx-lifecycle.test", "consumer-worker.test",
+    candidates.extend(path for name in ("lifecycle.test", "devx-lifecycle.test", "consumer-worker.test", "probe.test",
                                         "devx-actor", "devx-registry", "minimal-actor")
                       if (path := directory / name).is_file() and path.stat().st_nlink == 1)
     report = {"compacted": [], "errors": []}

@@ -1124,18 +1124,98 @@ Final portable checks, including vet, those stream tests, consumer compilation
 and unchanged imported reference/overlays, pass in
 `factorybox-checks-a8739b29e0c84fdc9e753607ae5e628b`.
 
-These tests add no production runtime changes or imported fixture edits. The
-checkpoint/epoch retirement implementation remains open. Its proposed ownership,
+These replacement tests add no production runtime changes or imported fixture edits. At
+that point checkpoint/epoch retirement remained unimplemented. Its proposed ownership,
 selection and reclamation rules are recorded in
 [the retirement decision](adr/0002-retire-saved-state-with-explicit-selections.md).
+
+## Experimental checkpoint retirement and an unresolved interrupted sleep
+
+Candidate `factorybox-build-worker-f09e41168c1240bba4422c263795a7f9` adds delivered
+`select-checkpoint`, `release-checkpoint` and `retire-checkpoint` commands. Exact
+source owner, checkpoint ID and canonical complete checkpoint hash bind each
+request. Durable selections and an unresumed committed pause protect their
+recovery input. Release cannot reactivate the same selection identity. Unfinished
+sandbox/fork work blocks retirement. Completed descendants and resumed sources
+must retain independently verified image copies and no filesystem dependency on
+the retiring backing. The pinned restore adds `restore.log` and `stats-restore`
+to those private copies. Only these bounded additions are allowed; every original
+file's hash/length and every file's independent regular-file identity still match.
+
+Retirement publishes a hash-bound compressed inventory and allocated one-MiB
+completion reserve before removal. It verifies exact inode, mount, parent,
+content and contained hardlink ownership. Only inventoried names are unlinked;
+payload bytes are never truncated. Verified read-only immutable aliases are
+unmounted without deleting their shared base. Metadata, original request
+identities and completion remain. Retry rejects unknown entries, successors and
+foreign mounts. Reports contain observed before/after filesystem capacity;
+unlink is not evidence that every open reference has released blocks.
+
+`factorybox-checkpoint-retirement-67b937096eb84f42b9df65f7cafb35e3` passes
+`TestNativeCheckpointRetirement`, including selection/pause protection, live
+independent resume/fork, foreign mount and successor refusal, increased available
+capacity, actual controller SIGKILL during partial removal, unknown-entry refusal
+on retry and useful descendants after source deletion. Its added
+`TestNativeCheckpointRetirementBaseActor` also passes with unchanged private RAM,
+same live PID, useful mutation and the shared immutable base intact. These are
+individual passing tests inside an overall **failed required suite**.
+
+The original `TestNativeCheckpointRetirementImmutableAlias` with `exec sleep 300`
+still fails its live-source assertion. Instrumentation proves it exits before
+retirement, directly after checkpoint. Freeze/thaw alone preserves it. The
+actual waiting syscall changes from `clock_nanosleep` 230 to `restart_syscall`
+219 after the control freeze. The selected Compel code converts an interrupted
+restart block to `-EINTR`; the native CRIU log reports this conversion. The
+original source exits normally with status zero while its request/remaining
+timespec still contains about 299 seconds. Read-only disassembly of the exact
+BusyBox 1.37.0 bytes shows its duration helper calling `nanosleep` once and
+returning without a retry. Decimal sleep works. No transparent relative-wait
+guarantee, admission policy or timer correction has been delivered. The failed
+survival assertion remains required and blocks qualification.
+
+The first failures and diagnostics remain frozen and fully archived. Ordered
+fixture before/after hashes, patches, exact result hashes, pinned disassembly
+and Compel excerpt are in
+`factorybox-checkpoint-retirement-notes-890fbf4221d14ee3b7cf7a13859d6ea2`.
+The latest isolated sleep failure is
+`factorybox-checkpoint-retirement-4bf7974fb0ca4c0db3e37c000eda8b0a`.
+The original required sleep case has not been replaced with the passing actor.
+No imported reference or overlay was changed and vet remains enabled.
+
+The same exact delivered candidate passes the existing complete bounded-store
+capacity/guest-ENOSPC regression in
+`factorybox-bounded-store-9774ed9fea4b48429793d5fdf4623ade`, planned worker replacement
+in `factorybox-bounded-loss-43524087d2304a26b5b32410b27f0c2e` and abrupt replacement
+in `factorybox-bounded-loss-d995efa00e21498a92c9f6cfa065e7ba`. These do not cover
+checkpoint retirement across epochs, selection recovery across worker loss,
+full-consumer bounded storage or epoch retirement.
+
+Storage receipts preserve the 32-GiB artifact budget and required start headroom.
+Fully decoded and byte-compared offline compaction of 38 closed passing payloads
+reclaims 421,130,240 allocated bytes in
+`factorybox-storage-compact-closed-8cbac24282e84710ab647c02a4d664d8`. Seven closed
+diagnostic test executables are compacted with full reconstruction receipts in
+`factorybox-storage-compact-retirement-probes-fc2862a7e3944cae991425f4b9dbf646`;
+the current sleep failure stays directly usable. Additional closed probe receipts
+sit beside their binaries. Closed probes now use the same full-verification
+compaction policy as other compiled test outputs. Only optional compiler caches
+are retired after the matching delivered capacity regressions pass, in
+`factorybox-storage-retire-cache-6303c0c900174a01ae4da63920c7a8e0` and
+`factorybox-storage-retire-cache-9b689f7d02594809925f8b685f505555`.
+
+Final portable Go/Python checks, consumer compilation, enabled vet and exact
+reference/imported-overlay verification pass in
+`factorybox-checks-7fb683fad48548f2a5f7911f318502a4`. This does not change the
+failed native retirement-suite verdict.
 
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
 of the PID collision and new admission-fixture busy-mount cleanup; a predetermined
 repeated performance comparison; verified base reuse in the supplied
-operational path; full-consumer bounded-store recovery and broader low-disk cases; dependency-checked
-checkpoint/epoch retirement; explanation of the preserved Sysbox-fs timeout;
+operational path; full-consumer bounded-store recovery and broader low-disk cases;
+interrupted wait handling, complete checkpoint retirement qualification and epoch
+retirement; explanation of the preserved Sysbox-fs timeout;
 repeated lifecycle/pressure/fault cases and bounded 24-hour soak; a reduced,
 independently reproducible worker package and operations instructions; required
 native and upstream suites on the selected delivered bytes. Missing or failed

@@ -253,3 +253,17 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Abnahme auf diesem Pfad bleiben offen. Checkpoint-/Epochen-Stilllegung ist
   weiterhin zu implementieren; die Regeln für Auswahl, Besitz und beobachtete
   Speicherfreigabe sind als vorgeschlagene Entscheidung gesichert.
+- Eine erste Checkpoint-Stilllegung samt dauerhaften Recovery-Auswahlen ist
+  implementiert, aber nicht freigegeben. Auf Build `f09e41168c1240bba4422c263795a7f9`
+  bestehen der vollständige Stilllegungstest mit echtem Controller-SIGKILL,
+  fremdem Eintrag beim Wiederanlauf, unabhängigen Nachkommen und beobachtetem
+  Kapazitätsgewinn sowie ein zusätzlicher RAM-Aktor auf geteilter unveränderlicher
+  Basis. Platzmangel und geplanter/abrupter Worker-Ersatz bestehen erneut.
+  Der erforderliche ursprüngliche Basis-Test mit `sleep 300` schlägt weiter fehl:
+  CRIU meldet einen unterbrochenen Warteaufruf, und das gepinnte BusyBox 1.37.0
+  wiederholt seinen einzelnen `nanosleep` nicht. Reines Einfrieren/Auftauen erhält
+  den Prozess. Der Fehler, Exitstatus 0, unverbrauchte Restzeit, Objektcode und
+  exakte Fixture-Änderungen sind unter
+  `factorybox-checkpoint-retirement-notes-890fbf4221d14ee3b7cf7a13859d6ea2` gesichert.
+  Die vollständige Stilllegungs-Suite bleibt fehlgeschlagen. Warteaufruf-Verhalten,
+  Epochen-Stilllegung und alle übrigen Abnahmen bleiben offen.

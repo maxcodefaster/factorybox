@@ -310,48 +310,65 @@ func BindFilesystemBase(tree FilesystemTree, destination string) (FilesystemTree
 	return bindImmutableTree(tree.Immutable.Root, destination, tree)
 }
 
-// RetireImmutableAlias unmounts only a verified alias and acknowledges an
-// already-unmounted original empty directory after a lost deletion outcome.
-func RetireImmutableAlias(path string, tree FilesystemTree) error {
+func checkRetiredAliasDirectory(path string, tree FilesystemTree) error {
 	if tree.Immutable == nil || tree.Alias == nil || !cleanAbsolute(path) || path == tree.Immutable.Root {
 		return fmt.Errorf("immutable alias has no retained original mountpoint")
 	}
-	checkEmpty := func() error {
-		directory, err := openDirectory(path)
-		if err != nil {
-			return err
-		}
-		defer directory.Close()
-		var stat unix.Stat_t
-		var extended unix.Statx_t
-		if err := unix.Fstat(int(directory.Fd()), &stat); err != nil {
-			return err
-		}
-		if err := unix.Statx(int(directory.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &extended); err != nil {
-			return err
-		}
-		if uint64(stat.Dev) != tree.Alias.Device || stat.Ino != tree.Alias.Inode ||
-			extended.Mnt_id != tree.Alias.MountID || stat.Uid != 0 || stat.Mode&0777 != 0700 {
-			return fmt.Errorf("immutable alias original mountpoint changed")
-		}
-		entries, err := directory.Readdirnames(1)
-		if len(entries) != 0 {
-			return fmt.Errorf("immutable alias original mountpoint is not empty")
-		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			return err
-		}
-		return nil
+	directory, err := openDirectory(path)
+	if err != nil {
+		return err
 	}
-	if err := VerifyImmutableTree(path, tree); err != nil {
-		emptyErr := checkEmpty()
-		if emptyErr == nil {
-			return nil
+	defer directory.Close()
+	var stat unix.Stat_t
+	var extended unix.Statx_t
+	if err := unix.Fstat(int(directory.Fd()), &stat); err != nil {
+		return err
+	}
+	if err := unix.Statx(int(directory.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &extended); err != nil {
+		return err
+	}
+	if uint64(stat.Dev) != tree.Alias.Device || stat.Ino != tree.Alias.Inode ||
+		extended.Mnt_id != tree.Alias.MountID || stat.Uid != 0 || stat.Mode&0777 != 0700 {
+		return fmt.Errorf("immutable alias original mountpoint changed")
+	}
+	entries, err := directory.Readdirnames(1)
+	if len(entries) != 0 {
+		return fmt.Errorf("immutable alias original mountpoint is not empty")
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
+}
+
+// CheckImmutableAliasRetirement observes the verified read-only alias or its
+// original uncovered empty directory without changing either one.
+func CheckImmutableAliasRetirement(path string, tree FilesystemTree) (bool, error) {
+	if tree.Immutable == nil || tree.Alias == nil || !cleanAbsolute(path) || path == tree.Immutable.Root {
+		return false, fmt.Errorf("immutable alias has no retained original mountpoint")
+	}
+	if err := VerifyImmutableTree(path, tree); err == nil {
+		return true, nil
+	} else {
+		if emptyErr := checkRetiredAliasDirectory(path, tree); emptyErr != nil {
+			return false, errors.Join(err, emptyErr)
 		}
-		return errors.Join(err, emptyErr)
+	}
+	return false, nil
+}
+
+// RetireImmutableAlias unmounts only a verified alias and acknowledges an
+// already-unmounted original empty directory after a lost deletion outcome.
+func RetireImmutableAlias(path string, tree FilesystemTree) error {
+	mounted, err := CheckImmutableAliasRetirement(path, tree)
+	if err != nil {
+		return err
+	}
+	if !mounted {
+		return nil
 	}
 	if err := unix.Unmount(path, 0); err != nil {
 		return err
 	}
-	return checkEmpty()
+	return checkRetiredAliasDirectory(path, tree)
 }

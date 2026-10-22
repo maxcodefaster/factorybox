@@ -166,6 +166,42 @@ are not implemented by this command. Production operation needs an independently
 qualified retention/capacity policy that preserves live descendant and recovery
 inputs. See the proposed [production release gates](../README.md#path-to-the-first-production-release).
 
+## Experimental checkpoint selections and retirement
+
+The unselected bounded-store candidate adds `select-checkpoint`,
+`release-checkpoint` and `retire-checkpoint`. Each requires one positional source
+sandbox ID and `--snapshot-id`, `--source-owner` and `--checkpoint-sha256` naming
+the exact complete saved checkpoint. Selection/release additionally require
+`--selection-id`. The checkpoint hash is its canonical complete JSON identity,
+also returned by a committed pause, not a hash of pretty-printed CLI output.
+Use the same `--worker-run-root /run/factorybox` profile as other lifecycle calls.
+
+A selection persists until explicitly released. Released selection IDs cannot
+be reactivated; use another explicit ID for a later selection. An unresumed
+committed pause independently protects its recovery checkpoint. Incomplete
+sandbox/fork work and remaining filesystem references block retirement. A
+completed fork or resumed source must have verified independent private images.
+Retirement preserves operation/provenance metadata and reserves the original
+checkpoint identity permanently. New forks cannot reuse a retiring generation.
+Exact completed fork/resume replay can continue using its own backing.
+
+`retire-checkpoint` currently requires the explicit bounded-store profile.
+It persists an exact deletion inventory and completion reserve, verifies owned
+objects and dependencies, and unlinks only inventoried payload names. It never
+truncates payload data. Verified immutable aliases are removed while their shared
+base stays intact. After interruption, repeat the exact request; unknown entries,
+changed objects, successors and foreign mounts cause refusal. Before/after
+capacity is observed separately because live open references can retain blocks.
+Do not manually clear an uncertain intent or interpret a partial result as a
+completed retirement.
+
+This implementation is not qualified. The required immutable-base test still
+fails because the pinned BusyBox `sleep 300` exits after CRIU interrupts its
+relative wait. The failure is retained alongside passing RAM-actor retirement
+tests. Selection recovery across epochs, full-consumer retirement, exhaustion
+faults and epoch retirement remain unverified or unimplemented. See the exact
+[progress and failed-suite evidence](production-progress.md#experimental-checkpoint-retirement-and-an-unresolved-interrupted-sleep).
+
 ## Recovering a committed pause after worker replacement
 
 Before removing the old worker, retain its successful pause response and
