@@ -6,11 +6,44 @@ lifecycle controller with exactly pinned, patched Sysbox and CRIU components.
 An IDE, Dev Container or agent can consume the runtime without becoming a
 lifecycle dependency.
 
-The local AMD64 pilot passed on 2026-10-22. The selected profile binds 44
-evidence gates, reproducible binaries and twenty complete comparison runs.
-Production qualification remains open. Start with the
+Use it to preserve and branch a development environment, including private
+Docker state and running agent tools, on infrastructure you operate without
+KVM. Factorybox currently requires a privileged worker container and shares
+the host kernel. It supplies no VM isolation boundary.
+
+The current AMD64 reference passed its local acceptance on 2026-10-22. Its
+profile binds 44 evidence gates, reproducible binaries and twenty complete
+comparison runs. This is a functional and performance reference; production
+qualification remains open. Start with the
 [acceptance report](docs/pilot-validation.md) and
 [supported worker contract](docs/worker-contract.md).
+
+## Why use Factorybox
+
+Factorybox is for teams that need complete, branching development environments
+on their own Linux workers and can accept system-container isolation. The
+tested environment includes private Docker/Compose, Dev Containers and a real
+running agent tool. A restored branch retains its process state as well as its
+files; restarting an application from a copied directory is a different operation.
+
+The concrete reasons to choose this approach are:
+
+- Run without `/dev/kvm` or nested virtualization, provided the host admits the
+  required privileged container, namespace, cgroup, FUSE and mount operations.
+  This does not make arbitrary managed container platforms compatible.
+- Keep lifecycle code, checkpoint backing and operation records on infrastructure
+  you control. The administrative interface does not depend on a vendor control
+  plane, IDE or model provider. You also own scheduling, storage and on-call work.
+- Inspect and reproduce the exact runtime/component sources, ordered patches
+  and binary identities used by the acceptance tests.
+- Continue and independently branch the admitted full Docker/agent workload,
+  including a previously forked or resumed source, with measured RAM release
+  during pause and exact ownership checks during recovery and deletion.
+
+These are deployment and control advantages for that workload. Lower cost,
+higher density, stronger isolation and faster startup than managed services
+have not been demonstrated. RAM snapshots and forks are also available in
+other products; they are not an exclusive Factorybox feature.
 
 ## What works
 
@@ -51,7 +84,7 @@ Five observations per configuration and example, interleaved on one host.
 Times are medians in seconds. A useful fork starts from an already published
 checkpoint; creating a new checkpoint adds its own cost.
 
-| Factory operation | Original v0.1, Docker VFS | Selected pilot, Docker Overlay2 |
+| Factory operation | Original v0.1, Docker VFS | Current reference, Docker Overlay2 |
 | --- | ---: | ---: |
 | Checkpoint | 24.158 | 6.875 |
 | Useful fork | 18.044 | 5.995 |
@@ -87,12 +120,50 @@ the same workload, memory, Docker state and recovery boundary were tested.
 The following comparison uses each project's own documentation, checked on
 2026-10-22. No provider was benchmarked against Factorybox here.
 
-| Project | Role and documented capabilities | Difference from this pilot |
+| Project | Role and documented capabilities | Difference from Factorybox |
 | --- | --- | --- |
 | Factorybox | Self-managed system-container lifecycle with the complete admitted RAM/filesystem forks and committed-pause recovery above | Exact local AMD64 scope; administrative CLI; operator supplies workers and storage |
 | [Sysbox](https://github.com/nestybox/sysbox) | A specialized runc for system containers running Docker, systemd and other system software | Factorybox builds on its isolation and virtualization, adding lifecycle records, complete independent snapshots, pause memory accounting and verified recovery |
-| [Daytona](https://www.daytona.io/docs/en/persistence/) | Documents memory-preserving pause/resume, hot snapshots and independent forks for VM sandboxes; container sandboxes do not support pause | A managed sandbox platform with a different isolation and operations model; ordinary stop/start clears memory |
-| [Modal](https://modal.com/docs/guide/sandbox-snapshots) | Documents filesystem snapshots and Alpha memory snapshots that capture memory plus filesystem into a new sandbox | Its published snapshot restrictions and managed service contract must be evaluated separately from this local runtime |
+| [Daytona](https://www.daytona.io/docs/en/linux-sandboxes/) | Offers container sandboxes sharing the host kernel and Linux VM sandboxes with their own kernel; VM persistence includes memory-preserving pause/resume and forks | Factorybox provides its own host-kernel runtime and local control contract. Daytona's VM and container modes need separate comparison; its container mode does not support pause |
+| [Modal](https://modal.com/blog/vm-sandboxes-agent-computers) | Offers its original gVisor runtime and a Cloud Hypervisor-based VM runtime, including Docker workloads | Factorybox avoids a guest VM and supplies a self-managed lifecycle. Modal supplies managed infrastructure; its [memory snapshot documentation](https://modal.com/docs/guide/sandbox-snapshots) currently marks that feature Alpha |
+
+### KVM and the isolation tradeoff
+
+[Firecracker](https://github.com/firecracker-microvm/firecracker/blob/main/docs/design.md)
+uses KVM-backed microVMs with guest kernels. That adds a VM boundary between
+workload and host. Factorybox uses host-kernel system containers and requires
+no hypervisor. This can matter when KVM is unavailable or managing a guest OS
+is undesirable, but it is not proof of better latency, density or security.
+Daytona also offers containers, and Modal offers both gVisor and VMs; treating
+all managed sandboxes as one KVM architecture would be incorrect.
+
+The initial Factorybox trust boundary is separate workers per customer or
+trust domain. Two workers on one host still share that host's kernel. Workloads
+requiring a VM boundary should use an appropriate VM deployment or alternative;
+that deployment is not qualified by this repository.
+
+### How the performance numbers compare
+
+| Published or measured endpoint | Reported time | What it establishes |
+| --- | ---: | --- |
+| Factorybox minimal, cold worker through useful application | 33.029 s | Local median including preparation and application initialization |
+| Factorybox complete Factory example, same endpoint | 55.581 s | Local median including private Docker, Connector and Dev Container setup |
+| Factorybox useful resume, minimal / Factory | 1.045 s / 2.834 s | Local medians for our admitted application state, from five observations each |
+| [Daytona environment creation](https://www.daytona.io/dotfiles/daytona-joins-the-ai-engineer-pack) | 200 ms | Provider claim published 2025-03-24; no equivalent Factorybox workload or percentile in that article |
+| [Modal VM cold start](https://modal.com/blog/vm-sandboxes-agent-computers) | Under 1 s | Provider claim published 2026-10-01; not a measurement of our complete application or its memory restore |
+
+Factorybox has not established a performance lead. Provider provisioning
+figures describe an earlier or differently defined endpoint than our complete
+application measurements; they cannot support a speed ratio in either direction.
+We also lack a matched provider result for restoring this RAM/private-Docker
+state. The earlier table demonstrates improvement over Factorybox v0.1 only.
+
+A valid comparison must run the same minimal and Factory consumers, pinned
+images, active tool and Docker data on each product. Report provisioning,
+preparation, first useful work, checkpoint, fork, pause, resume, retained memory,
+storage and cost separately. Record resource allocations, region/network,
+warm/cold cache state, failures and sample counts. An unsupported workload is
+a compatibility result. An unmeasured operation remains unknown, never zero.
 
 Sysbox and Factorybox share the host kernel. Neither this implementation nor
 its tests establish VM isolation. Deploy separate workers per customer or
@@ -230,12 +301,44 @@ startup still costs about 32 seconds. One complete Compose recovery spent
 worker epochs would need new identity, fencing and independence proofs.
 Neither investigation has a demonstrated additional speedup yet.
 
-Production work also includes more platforms/storage backends, reliability
-under repeated load, external provider reconnection, image reduction and
-licensing/distribution review. The original-code distribution license remains
-unresolved; this repository grants no new license by implication. Pinned
-upstream notices remain under [upstream/licenses](upstream/licenses), with
-their identities carried into built packages.
+## Path to the first production release
+
+The first release should qualify one concrete operating environment: our
+Factory workload on owned Linux AMD64 workers, one kernel/storage profile,
+separate workers per trust domain, at most two live sandboxes and the existing
+resource ceilings. The initial recovery contract remains same-host,
+same-boot recovery of a fully committed pause. More architectures, Kubernetes,
+cross-node migration and host-reboot RAM recovery are separate expansions.
+Supporting every deployment is not a prerequisite for this first release.
+
+The following are proposed release gates, not completed work or an approved
+availability/latency promise:
+
+| Gate | Work and exit evidence |
+| --- | --- |
+| Exact deployment and supported workloads | Select the actual production node kernel, storage and consumer inputs. Natively qualify that tuple and the delivered image. Keep unsupported features rejected before state changes. The current Omarchy-only admission must not be loosened to admit an untested production node |
+| Required upstream and failure coverage | Preserve all upstream assertions. Resolve every required failed/unrun test for the chosen contract. Explicitly unsupported capabilities remain excluded and their original skips remain visible; no required skip becomes a pass by reclassification. Cover earlier controller/guard-loss windows if those are in the release contract |
+| Repeated operation and failure behavior | Diagnose the preserved filesystem-service startup timeout. Proposed initial evidence is at least 100 complete lifecycles per consumer plus a bounded 24-hour soak, with interruption, memory/storage pressure and exact replay. Require zero integrity/ownership violations and no untriaged failures. Native runners must retain their storage guards and resource ceilings |
+| Real external agent continuation | Test a real model endpoint and tool workflow through pause/resume, disconnection and worker replacement. Verify reconnect, cancellation and side-effect handling. An uncertain external tool result must be reconciled rather than blindly replayed |
+| Durable storage lifecycle | Add measured quotas/admission, low-space handling and ownership-checked checkpoint/old-epoch retention and retirement. Prove no required snapshot or live descendant loses backing. Current sandbox deletion confirms process/cgroup/mount deletion; it intentionally retains checkpoint/operation files and does not provide automatic store garbage collection |
+| Operable release package | Produce a minimal runtime image with component/dependency inventory and license notices; repeat required tests on its actual bytes. Define metrics, alerts, timeouts, fencing, incomplete-operation reconciliation, drain and rollback procedures. An upgrade may not silently reinterpret old snapshots; qualify compatibility or drain the old format first |
+| Security, distribution and acceptance | Review the privileged worker and host-kernel trust model, secret access and dependency update process. Resolve original-code licensing before a distributable release. Agree error/latency and host-loss behavior for this service, then verify those expectations from a larger measured sample |
+
+Once the gates pass, a new production profile can bind the exact sources,
+patches, binaries, platform and results. Keep the current reference immutable.
+Performance improvements must pass the same integrity, recovery and upstream
+checks; faster startup alone cannot provide production qualification.
+
+The first implementation priorities are storage retention/capacity and the
+production-node qualification, alongside repeated startup and real external
+agent tests. Prepared-base reuse and profiling the 33-second application start
+can reduce waiting time in parallel. Fresh-worker base-import optimization
+comes later because ordinary same-worker resume avoids that cost already.
+
+The original-code distribution license remains unresolved; this repository
+grants no new license by implication. Pinned upstream notices remain under
+[upstream/licenses](upstream/licenses), with their identities carried into
+built packages.
 
 Recovery covers a fully committed pause on the same host and boot with intact
 owned storage. Unsaved running RAM, host reboot, host/disk loss, arbitrary TTY

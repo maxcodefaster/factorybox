@@ -114,6 +114,12 @@ the request or select a fresh target ID merely to bypass such a refusal.
 Preserve records, diagnostics and incomplete backing for explicit reconciliation.
 Deletion checks the exact saved object ownership before touching kernel state;
 it does not garbage-collect unrelated containers, volumes or old epochs.
+It confirms removal of the owned runtime, empty cgroups and owned fork overlay
+mount. Checkpoints, operation records and filesystem backing remain retained;
+automatic checkpoint retirement, store quotas and old-epoch garbage collection
+are not implemented by this command. Production operation needs an independently
+qualified retention/capacity policy that preserves live descendant and recovery
+inputs. See the proposed [production release gates](../README.md#path-to-the-first-production-release).
 
 ## Recovering a committed pause after worker replacement
 
