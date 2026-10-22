@@ -2244,6 +2244,66 @@ native negative results, retention and ordered source patches are indexed in
 Clean bounded-store shutdown and the complete Factory/Theia/agent and worker-loss
 acceptance runs remain required. Production qualification remains false.
 
+## Confirmed deletion before bounded worker exit
+
+The bounded Stop candidate fences the old controller epoch under its operation
+lock, withdraws readiness, and releases only verified canonical base mounts and
+their completed checkpoint aliases. Every sandbox must already have confirmed
+deletion, with its runtime and cgroup absent. Backing data remains intact.
+Paused epochs and recovered base layouts still require a separate drain path.
+
+The canonical-only build `6e9b9de9cd9b460e8a3d41bdc8d305b1` passes the seven
+small Stop cases but fails the full consumer with EBUSY because checkpoint
+aliases still cover the store. The next build `a9243efd79ac46e4a8e5ae32fbabb672`
+also inventories those aliases, but its full consumer fails on ENOENT.
+Read-only inspection of the fully verified stopped store confirms all four
+published checkpoint manifests and their listed filenames. A first inspection
+incorrectly reads the logical 32-GiB image into memory and fails; its corrected
+streaming version verifies the whole image before and after read-only debugfs
+inspection and removes only its temporary duplicate.
+
+File-syscall tracing after all eight useful-work phases, in
+`factorybox-consumer-worker-loss-799a935e8257433883e2931801e0e5c5`, identifies
+the ENOENT precisely. Fork and resume timer activation leave additional guard-only
+generations under `captures/`; these have no published `checkpoint.json`.
+The new exit inventory incorrectly interprets them as checkpoints. The signed
+pinned Ubuntu strace inputs are diagnostic files only. An initial DNS failure
+and a Python 3.10 compatibility failure are retained; an independent small
+container then reproduces the old helper failure and proves actual tracing
+with the corrected helper. No trace tool is installed in the delivered worker.
+
+The correction accepts only the exact guard-only generation layout, original
+source identity and record hash, completed timer activation and matching
+successful guard disarm. A real root-owned metadata regression first fails on
+the original core, then passes all 13 cases on the corrected core, including
+12 refusals for changed identities, uncertain completion or extra payload.
+Published checkpoint RAM and filesystem metadata verification is retained.
+
+Build `factorybox-build-worker-f4f3b99388ca476d9b2d18592bd033d6`, package
+SHA-256 `3b89f000806cd99cc32dc414934a0db7a118bde01c8d65a223acf2d30d6d840e`,
+passes the complete bounded minimal consumer in
+`factorybox-consumer-worker-loss-febe899836204f8db27c7728b37d4486`, with
+all eight phases, exit 0 and cleanup. The original workload test takes 38.59
+seconds in this single observation. This is no performance distribution or
+production qualification.
+
+The seven Stop cases pass on those same package bytes in
+`factorybox-bounded-base-stop-33ff7cd453d44c0ba210c00df5042417`, including
+refusal for changed mount identity, a descendant mount, incomplete base/object
+records and a held operation lock. Fresh workers confirm unchanged base bytes,
+inode metadata and original base records. The full retirement suite passes in
+`factorybox-checkpoint-retirement-3ba6a35b22f54d2896881d7da25ba9bc`: all four
+original tests plus the new internal-guard regression. Its timer case remains
+required, and completed checkpoint retirement is accepted by the new Stop path.
+All six portable checks pass in
+`factorybox-checks-6f6c6fa754b04a6aa43ef1614cf9815c`.
+
+The ordered source changes, intermediate failures, diagnostic inputs and storage
+maintenance receipts are indexed in
+`factorybox-bounded-base-exit-notes-bb1b671b490b4a38a0457ec1d3694b2a`.
+The remaining native regressions, full Factory/Theia consumer, paused worker
+replacement and all other release gates remain required.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

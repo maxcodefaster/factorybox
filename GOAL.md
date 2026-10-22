@@ -405,3 +405,13 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Patches: `factorybox-bounded-consumer-notes-f11aa1b429604122afcad7bad16e89cc`.
   Sauberer Stop, vollständige begrenzte Factory-/Theia-/Agenten- und
   Worker-Verlustläufe sowie sämtliche weiteren Freigabegates bleiben offen.
+- Der begrenzte minimale Verbraucher besteht auf dem neuen Stop-Kandidaten
+  `f4f3b99388ca476d9b2d18592bd033d6` erstmals vollständig mit sauberem Exit 0
+  und Cleanup. Der neue Pfad prüft bestätigte Löschung, sperrt die alte Epoche
+  und gibt exakte Checkpoint-Aliase vor ihren kanonischen Basismounts frei.
+  Ein Dateisystem-Trace belegt den zwischenzeitlichen ENOENT-Fehler: interne
+  Timer-Guard-Generationen wurden als veröffentlichte Checkpoints behandelt.
+  Der neue native Metadaten-Test reproduziert diesen Fehler und besteht nach
+  der Korrektur alle 13 Fälle einschließlich zwölf Verweigerungen.
+  Pausierte Epochen, wiederhergestellte Basislayouts, sämtliche übrigen
+  Regressionsgates und das vollständige Produktionsziel bleiben offen.

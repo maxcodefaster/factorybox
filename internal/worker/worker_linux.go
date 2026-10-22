@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -683,6 +684,22 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	for {
 		select {
 		case <-ctx.Done():
+			if bounded != nil {
+				var current Status
+				if err := readJSON(config.RunRoot+"/worker.json", &current); err != nil || !reflect.DeepEqual(current, status) {
+					return fmt.Errorf("worker exit readiness identity changed: %v", err)
+				}
+				if err := os.Remove(config.RunRoot + "/worker.json"); err != nil {
+					return err
+				}
+				engine, err := lifecycle.Open(status.Lifecycle)
+				if err != nil {
+					return err
+				}
+				exitContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				return errors.Join(engine.ReleaseDeletedEpochBases(exitContext), engine.Close())
+			}
 			return nil
 		case <-ticker.C:
 			if err := manager.alive(); err != nil {

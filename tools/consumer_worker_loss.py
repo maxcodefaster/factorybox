@@ -13,6 +13,7 @@ import uuid
 import build_worker
 import consumer_test_inputs
 import consumer_bounded_store
+import consumer_stop_trace
 import devx_inputs
 import devx_project_images
 import devx_lifecycle
@@ -76,6 +77,7 @@ def main():
     parser.add_argument("--worker-build",required=True)
     parser.add_argument("--probe-input-build",help="Exact already native-tested helper bytes; complete test/core source must match")
     parser.add_argument("--bounded-bytes",type=int,help="Explicit 4-32 GiB fixed store; relocate only new fixture copies and verify actual delivered capacity")
+    parser.add_argument("--stop-trace-inputs",help="Exact signed diagnostic fixture; trace worker file syscalls after all bounded lifecycle assertions pass")
     parser.add_argument("--consumer-inputs",required=True)
     parser.add_argument("--project-images",required=True)
     parser.add_argument("--example",choices=["minimal","factory"],required=True)
@@ -91,6 +93,9 @@ def main():
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
+    if options.stop_trace_inputs and (options.bounded_bytes is None or options.probe != "lifecycle" or
+            options.theia_image or options.opencode_flow or options.external_provider_proof or options.baseline_runtime_build):
+        parser.error("stop tracing is a separate bounded lifecycle diagnostic without optional peers")
     if options.bounded_bytes is not None and (options.bounded_bytes % (1 << 30) or not 4 << 30 <= options.bounded_bytes <= 32 << 30 or
             options.baseline_runtime_build or options.probe not in {"lifecycle", "worker-loss", "incomplete-pause", "warm-preparation"}):
         parser.error("bounded consumers require 4-32 whole GiB and a selected-runtime lifecycle/recovery fixture")
@@ -166,6 +171,8 @@ def main():
     if options.probe == "warm-preparation":
         result["scope"] = "Compose the existing immutable-base API for two independent fresh starts; charge initial import, incremental preparation and first useful work separately. No new base-cache algorithm."
     shutil.copyfile(__file__,artifact/"runner.py")
+    if options.stop_trace_inputs:
+        result["stop_trace_inputs"] = consumer_stop_trace.freeze(options.stop_trace_inputs, worker, artifact)
     shutil.copyfile(reference.ROOT/"tools/worker_readiness.py", artifact/"worker_readiness.py")
     fixture_declaration=reference.ROOT/"tests/production-fixture-extensions.json"
     if fixture_declaration.exists():
@@ -428,6 +435,14 @@ traceDependency({event: 'module-loaded'});
                             record["bounded_store_after"] = consumer_bounded_store.verify_capacity(record["startup"]["status"], capacity, options.bounded_bytes, owner)
                             if phase == "prepare":
                                 record["bounded_source"] = consumer_bounded_store.verify_source(json.loads((output / "cli-02-start.json").read_text()))
+                            code = 'import json,sys; target=sys.argv[1]; print(json.dumps({"target":target,"mountinfo":[line.strip() for line in open("/proc/self/mountinfo") if line.split()[4]==target or line.split()[4].startswith(target+"/")]}))'
+                            mounts = json.loads(reference.docker([
+                                "exec", identity, "python3", "-c", code,
+                                record["startup"]["status"]["lifecycle"]["bounded_store"]["target"]]))
+                            (phase_artifact / "bounded-before-worker-stop.json").write_text(json.dumps(mounts, indent=2) + "\n")
+                            record["bounded_before_worker_stop"] = mounts
+                        if options.stop_trace_inputs:
+                            record["stop_tracer"] = consumer_stop_trace.attach(identity, artifact, phase_artifact, result["stop_trace_inputs"])
                         reference.docker(["container","stop","--time=15",identity],timeout=20)
                 finally:
                     if probe.poll() is None:
@@ -437,15 +452,20 @@ traceDependency({event: 'module-loaded'});
                 record["theia"] = peer.result
                 if not peer.result.get("passed") or not peer.result.get("cleanup"): raise ValueError("consumer IDE proof or cleanup failed")
             state = exact_worker(container,owner,identity)["State"]
-            if state["Running"] or state["Pid"] != 0 or state["OOMKilled"] or state["ExitCode"] != expected: raise ValueError("consumer worker did not fully exit")
+            record["worker_exit"] = state
             logs = subprocess.run([*reference.DOCKER,"logs",identity],capture_output=True,text=True,timeout=5)
             (phase_artifact/"worker.log").write_text(logs.stdout+logs.stderr)
+            if record.get("stop_tracer"):
+                record["stop_trace"] = consumer_stop_trace.collect(identity, phase_artifact)
+            if state["Running"] or state["Pid"] != 0 or state["OOMKilled"] or state["ExitCode"] != expected: raise ValueError("consumer worker did not fully exit")
             reference.owned_delete("container",container,owner); containers.remove(container)
             record["worker_removed"],record["passed"] = True,True
         if (upstream_unit.context_manifest(artifact/"source") != result["source_context"] or
                 upstream_unit.context_manifest(artifact/"example") != result["example_manifest"] or
                 any(reference.sha(artifact/file)!=digest for file,digest in result["inputs_sha256"].items())):
             raise ValueError("frozen consumer proof inputs changed")
+        if options.stop_trace_inputs:
+            consumer_stop_trace.validate_root(artifact / "stop-trace-rootfs", result["stop_trace_inputs"]["files"])
         if options.opencode_flow and upstream_unit.context_manifest(artifact/"opencode-flow") != result["opencode_flow_inputs"]:
             raise ValueError("frozen actual agent/tool inputs changed")
         if service: service.require_requests()

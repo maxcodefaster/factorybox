@@ -6,12 +6,45 @@ import json
 import os
 from pathlib import Path
 import resource
+import re
 import shutil
 import subprocess
 import uuid
 
 import reference
 import reference_lifecycle
+
+
+def require_closed_source(run, source):
+    """Bind a reconciled failure to its exact successful retention receipt."""
+    closed_path = run / "result.json"
+    if closed_path.is_symlink():
+        raise ValueError("closed-run result cannot be redirected")
+    original = json.loads(closed_path.read_text())
+    if original.get("cleanup") is True:
+        return closed_path
+    relative = source.relative_to(run)
+    owner = original.get("owner", "")
+    if (not re.fullmatch(r"[0-9a-f]{32}", owner) or
+            run.name != "factorybox-consumer-worker-loss-" + owner or
+            original.get("passed") is not False or original.get("cleanup") is not False or
+            original.get("retained_volumes") != [run.name] or
+            len(relative.parts) != 3 or relative.parts[0] != "reconciliations" or
+            not re.fullmatch(r"[0-9a-f]{32}", relative.parts[1])):
+        raise ValueError("evidence source is not a fully closed run")
+    receipt_path = source.parent / "result.json"
+    if receipt_path.is_symlink():
+        raise ValueError("reconciliation result cannot be redirected")
+    saved = json.loads(receipt_path.read_text())
+    archives = saved.get("failed_volume_archives", {})
+    if (saved.get("passed") is not True or saved.get("cleanup") is not True or
+            saved.get("run") != run.name or saved.get("owner") != owner or
+            saved.get("volume_name") != run.name or
+            saved.get("original_result_sha256") != reference.sha(closed_path) or
+            set(archives) != {run.name} or
+            archives[run.name].get("file") != source.name.removesuffix(".zst")):
+        raise ValueError("reconciled source lacks its exact complete retention receipt")
+    return receipt_path
 
 
 def main():
@@ -25,15 +58,14 @@ def main():
     run = reference.ROOT/"artifacts"/source.relative_to(reference.ROOT/"artifacts").parts[0]
     if run.name.startswith(("factorybox-build-","factorybox-devx-inputs-","factorybox-devx-project-images-","factorybox-bats-images-")):
         raise ValueError("frozen build/consumer inputs cannot be repacked")
-    closed_path = run/"result.json"
-    if closed_path.is_symlink():
-        raise ValueError("closed-run result cannot be redirected")
-    closed = json.loads(closed_path.read_text())
-    if closed.get("cleanup") is not True:
-        raise ValueError("evidence source is not a fully closed run")
+    closed_path = require_closed_source(run, source)
     receipt_path = source.with_name(source.name.removesuffix(".zst")+".encoding.json")
     receipt = json.loads(receipt_path.read_text())
     expected = receipt["original"]
+    if closed_path != run / "result.json":
+        closed = json.loads(closed_path.read_text())
+        if closed["failed_volume_archives"][run.name] != expected:
+            raise ValueError("encoded source differs from its completed retention receipt")
     before = reference.artifact_storage.identity(source)
     if (receipt.get("whole_decompressed_payload_verified") is not True or
             receipt["encoded"]["file"] != source.name or receipt["encoded"]["bytes"] != before[2] or
@@ -51,6 +83,7 @@ def main():
     shutil.copyfile(__file__,artifact/"runner.py")
     target = artifact/source.name
     result = {"schema":1,"operation":"lossless_closed_archive_repack","source":str(source),
+              "closed_receipt":str(closed_path),"closed_receipt_sha256":reference.sha(closed_path),
               "source_encoded_sha256":receipt["encoded"]["sha256"],"source_encoded_bytes":before[2],
               "raw_bytes":expected["bytes"],"raw_sha256":expected["sha256"],"new_archive":str(target),
               "passed":False,"cleanup":False,"source_removed":False,"whole_decoded_bytes_verified":False}

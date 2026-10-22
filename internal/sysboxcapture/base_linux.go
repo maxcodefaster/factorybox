@@ -233,6 +233,20 @@ func VerifyImmutableTree(path string, tree FilesystemTree) error {
 	return nil
 }
 
+// ReleaseFilesystemBaseMount releases only the original verified read-only
+// self-bind. Its inode, data and provenance stay in the persistent store.
+// The caller must fence new work and establish that this epoch has no live or
+// uncertain sandboxes. Alias retirement and backing deletion are separate.
+func ReleaseFilesystemBaseMount(tree FilesystemTree) error {
+	if tree.Immutable == nil || tree.Saved != tree.Immutable.Root || tree.Alias != nil {
+		return fmt.Errorf("base release requires its original canonical mount")
+	}
+	if err := VerifyImmutableTree(tree.Saved, tree); err != nil {
+		return err
+	}
+	return unix.Unmount(tree.Saved, 0)
+}
+
 func noImmutableDescendantMounts(path string) error {
 	file, err := os.Open("/proc/self/mountinfo")
 	if err != nil {

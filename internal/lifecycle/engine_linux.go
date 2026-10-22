@@ -222,6 +222,12 @@ func (e *Engine) lock() (*os.File, error) {
 	if err == nil {
 		err = e.validateRoot()
 	}
+	if err == nil {
+		_, exitErr := e.root.Lstat("worker-exit.json")
+		if !errors.Is(exitErr, os.ErrNotExist) {
+			err = fmt.Errorf("controller epoch is closed for worker exit: %v", exitErr)
+		}
+	}
 	if err != nil {
 		file.Close()
 		return nil, err
