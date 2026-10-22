@@ -1582,6 +1582,77 @@ broader signals and mask semantics, interrupted real preparation repair,
 multi-thread mutation, nonzero offsets, continuation lifetime and final
 consumer/upstream qualification remain open.
 
+## Non-NULL remainder before a delayed signal handler
+
+The next direct-syscall regression distinguishes interruption time from handler
+completion. It supplies an actual writable remainder pointer, retains the
+register/flags/stack/read-only request checks and requires raw EINTR with one
+handler. The handler performs a real one-second wait before returning. The task
+records its own monotonic time immediately before the original twelve-second
+wait, allowing the normal control to run without a diagnostic freeze. Both
+remainder comparisons retain the original 250-ms deadline bound.
+
+The first fixture attempt
+`factorybox-checkpoint-retirement-8f464e82e8304498824b506d7f7ee354` fails its
+uncaptured control: freezing it to read the kernel restart block perturbs the
+observed remainder by about 0.5 seconds. That is retained as a fixture failure.
+The final no-freeze control passes in
+`factorybox-checkpoint-retirement-7bf2eb8700a34a429a77852d4274542e`, differing
+from its interruption-time estimate by 35,613 ns. The prepared b675 candidate
+passes the same raw EINTR and ABI checks but returns a remainder
+1,000,158,168 ns too short. The actual handler lasts 1,000,365,734 ns.
+Its helper recomputes the remainder after that handler, incorrectly charging
+the handler's elapsed time.
+
+Candidate `factorybox-build-worker-2fca9b438e664527a211a44df38bd0f7` records
+the full original remaining duration and the bounded poll-slice duration at
+each slice entry. On EINTR it uses the kernel-updated remaining slice,
+subtracting only the elapsed part of that slice from the original remaining
+duration. It performs no new clock read after the handler. The existing
+bounded self-copy and raw error propagation remain. This corrects the measured
+time accounting, without claiming all copy/error ordering is qualified.
+The package SHA-256 is
+`10c0fe52377676d854272bc17f29333a0856b8f668ecf080d641afd837909f83`.
+
+The same final native fixture passes both cases on these exact delivered bytes
+in `factorybox-checkpoint-retirement-03381a333fc644c687b64594c2d3d2d6`.
+The uncaptured remainder differs by 33,727 ns and the prepared remainder by
+31,282 ns. Both real handlers last about one second. These are individual
+correctness observations. The four signal-boundary cases also pass in
+`factorybox-checkpoint-retirement-f1fc7285c7dd47c594245bdfd5fdbfc6`.
+The full four-test retirement suite passes in
+`factorybox-checkpoint-retirement-74c6a3ee31134c6990c06f54c6f20469`.
+Capacity and actual guest ENOSPC pass in
+`factorybox-bounded-store-0e74bfd161a44df29db80e9642fcffdd`.
+Planned bounded-worker replacement passes in
+`factorybox-bounded-loss-d6bc10b605704b0eafd9dc84f8af9378`.
+Abrupt bounded-worker replacement passes in
+`factorybox-bounded-loss-f50f1c31487346c2b29f1f9afb962b9e`.
+Repeated timer capture and restored-child pause/resume pass in
+`factorybox-checkpoint-retirement-cf2e8c92938541158bc5d8b1ddc0b06b`.
+The full-filesystem capture-copy SIGKILL cases pass in
+`factorybox-storage-admission-e06b026ba59f4be6894344c18f0e7858`.
+The controlled normal/SIGKILL tracer exit guard passes in
+`factorybox-checkpoint-retirement-e828671fe7b64ee6a16931658b59b13d`.
+The latest individual two-second sleeping-task observation records 5,706 charged
+CPU microseconds and 24,576 anonymous bytes; raw counters are in the signal proof.
+
+The new assembly's 574 bytes and compiler/source identities are frozen in
+`factorybox-timer-code-build-3f8241901b3c417088b85c9403912ea4`; code SHA-256 is
+`826c5d482dc4ab1a529ea7394ce044c3b53a15770732a8c12802bf94bedabb23`.
+Portable checks with vet and exact reference/overlay verification pass in
+`factorybox-checks-00aa0eef7f3f4e8b9f3dd3846503dd45`.
+Evidence hashes and exact reconstructed source/fixture changes are in
+`factorybox-timer-remainder-notes-99afbe6c2e694fc79b0eadf57d2b97dd`.
+
+Production qualification remains false. Next, test copy/protection/error
+ordering explicitly: the helper still copies into the remainder pointer after
+the handler, so a handler changing that mapping needs a native control and
+candidate comparison. This case has no native verdict yet. Broader masks and
+signal actions, pending signals through pause/recapture, nonzero time offsets,
+actual partial-preparation repair, multi-thread mutation and continuation
+lifetime also remain required.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

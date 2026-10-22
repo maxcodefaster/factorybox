@@ -20,10 +20,12 @@ wait_again:
     mov frame+16(%rip), %rdx
     sub %rax, %rdx
     jle already_elapsed
+    mov %rdx, frame+112(%rip)
     cmp $25000000, %rdx
     jbe poll_slice
     mov $25000000, %edx
 poll_slice:
+    mov %rdx, frame+120(%rip)
     movq $0, frame+40(%rip)
     mov %rdx, frame+48(%rip)
     mov $271, %eax
@@ -40,19 +42,19 @@ poll_slice:
     jne restore_mask
     cmpq $0, frame+32(%rip)
     je restore_mask
-    /* ppoll's timeout is only a slice. Derive the original sleep remainder
-     * from the original clock/deadline, never from that short timeout. */
-    mov $228, %eax
-    mov frame+24(%rip), %rdi
-    lea frame+56(%rip), %rsi
-    syscall
-    test %rax, %rax
-    jne invalid_clock
-    mov frame+56(%rip), %rax
+    /* The kernel updates ppoll's remaining slice before running the caught
+     * handler. Subtract only that elapsed slice from the original remaining
+     * duration. Reading the clock here would incorrectly charge handler time
+     * to the nanosleep remainder. */
+    mov frame+40(%rip), %rax
     imul $1000000000, %rax
-    add frame+64(%rip), %rax
-    mov frame+16(%rip), %rdx
+    add frame+48(%rip), %rax
+    mov frame+120(%rip), %rdx
     sub %rax, %rdx
+    js invalid_clock
+    mov frame+112(%rip), %rax
+    sub %rdx, %rax
+    mov %rax, %rdx
     jg split_remainder
     xor %edx, %edx
 split_remainder:
