@@ -65,7 +65,7 @@ def worker():
         try:
             for component, args in [
                 ("sysbox-mgr", ["--disable-shiftfs", "--disable-inner-image-preload",
-                                "--data-root", "/var/lib/sysbox/manager"]),
+                                "--disable-binfmt-misc", "--data-root", "/var/lib/sysbox/manager"]),
                 ("sysbox-fs", ["--mountpoint", "/var/lib/sysbox/fs"]),
             ]:
                 stream = (output / f"{index:02d}-{component}-stdio.log").open("w")
@@ -118,10 +118,13 @@ def host():
     import reference
     import reference_lifecycle
     import upstream_unit
+    import consumer_worker_loss
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
     parser.add_argument("--native-base-build", required=True)
     parser.add_argument("--shm-build", help="Exact explicitly unselected native SHM candidate build")
+    parser.add_argument("--candidate-platform", choices=["linux/amd64"], help="Explicit native diagnostic target")
+    parser.add_argument("--gc-percent", type=int, choices=[1, 100], help="Process-local Go GC setting only; no host tuning")
     options = parser.parse_args()
     candidate = candidate_result = None
     if options.shm_build:
@@ -153,7 +156,11 @@ def host():
             expected = candidate_result["binary_sha256"][component]
         reference.artifact_storage.share_frozen_input(
             source, components / component, root, expected)
-    image, _ = native_base.load(options.native_base_build)
+    image, base = native_base.load(options.native_base_build, candidate_platform=options.candidate_platform)
+    target = options.candidate_platform or "linux/arm64"
+    native_base.require_native_host(target, json.loads(reference.docker(["info", "--format", "{{json .}}"])))
+    if inputs.get("platform", "linux/arm64") != target or base.get("platform", "linux/arm64") != target:
+        raise ValueError("startup components and worker must match the explicit native target")
     command = [
         *reference.DOCKER, "run", "--pull=never", "--name", name,
         "--label", "com.factorybox.run=" + owner, "--privileged", "--cgroupns=private",
@@ -170,8 +177,14 @@ def host():
         ". /delegate.sh > /output/cgroup-delegation.txt\nmount --make-rprivate /\n"
         "exec setpriv --bounding-set=-sys_module,-sys_rawio,-sys_boot,-sys_time,-syslog python3 /probe.py",
     ]
+    if options.gc_percent is not None:
+        # Add before Docker's image argument, never as a shell/user command.
+        position = command.index("--entrypoint")
+        command[position:position] = ["--env", "GOGC=" + str(options.gc_percent), "--env", "GOTRACEBACK=all"]
+    before = consumer_worker_loss.sysctls()
     result = {"owner": owner, "command": command, "passed": False, "cleanup": False,
               "shm_candidate": options.shm_build, "candidate_selected": False,
+              "gc_percent": options.gc_percent, "platform": target, "global_sysctls_before": before,
               "sysbox_build": options.sysbox_build, "native_base_build": options.native_base_build,
               "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "inputs_sha256": {path.name: reference.sha(path) for path in components.iterdir()},
@@ -198,6 +211,9 @@ def host():
     finally:
         reference.owned_delete("container", name, owner)
         reference.owned_delete("volume", name, owner)
+        result["global_sysctls_after"] = consumer_worker_loss.sysctls()
+        result["global_sysctls_unchanged"] = before == result["global_sysctls_after"]
+        result["passed"] = result["passed"] and result["global_sysctls_unchanged"]
         result["cleanup"] = True
         (archive / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps({"evidence": str(archive), "passed": result["passed"],

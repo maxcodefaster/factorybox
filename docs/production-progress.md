@@ -358,6 +358,24 @@ log, while manager readiness passes. It lacks the child's identity/stack.
 That narrows the observation to a child wait; it does not establish which
 startup probe hung or justify selecting the rejected SHM change.
 
+The existing startup diagnostic now retains its original sixteen starts,
+60-second readiness limit, 420-second outer deadline and failure inspection.
+Its ordered fixture extension adds explicit native AMD64 admission, the
+selected manager's disabled-binfmt option, optional process-local GC settings
+and a further unchanged-global-sysctls assertion. It changes no SHM code.
+All sixteen `GOGC=100` starts pass in
+`factorybox-startup-manager-5a2fca19ae614e29987d45ff3dc71c71`; all sixteen
+`GOGC=1` starts pass in
+`factorybox-startup-manager-d8cc249e1c9b45d7bb1e365618cdc2c3`.
+Exact input preservation, native resource limits and owned cleanup pass in both.
+These are daemon-only observations without a sandbox/rootfs workload, not
+application startup measurements or an explanation of the old timeout.
+Portable checks pass in `factorybox-checks-d0ed9c93b605423ca1f23bd482ec0b9c`.
+
+Next, retain bounded owned-child diagnostics from the actual Go worker before
+startup-failure cleanup. The old record lacks those child details. Further
+successful starts alone cannot replace the missing causal evidence.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

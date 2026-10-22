@@ -8,6 +8,14 @@
   "upstream_assertions_modified": false,
   "latency_comparable_to_previous_fixture": false,
   "files": {
+    "tests/sysbox-shm-candidate/startup.py": {
+      "before_sha256": "73b8f52e64d6e8de186341c80e3b55f5af5844f11215ebcf3ed28a7c0f8eb506",
+      "after_sha256": "e0408671990a9ced0e32f1878ae02a0c65d080570bcdb562955b167ad860065d",
+      "patch": "tests/compatibility/startup-gc-diagnostic.patch",
+      "patch_sha256": "de964eb3034e1709ce9e2ff56953263548147b2b0428eddce3b2ab199e60d7a9",
+      "before_file": "factorybox-startup-gc-inputs-3fa8618dc6a943ada10aa15cda14a9b4/startup.py",
+      "reason": "Preserve all 16 starts, original 60-second readiness limit, 420-second outer deadline, descendant/task inspection, exact Popen-child signaling, input/OOM checks and owned cleanup. Match the selected manager's disabled binfmt option. Add an explicit native-platform guard, optional process-local GOGC=1 or 100 with goroutine traces, and an additional unchanged-global-sysctls assertion. No host tuning, no replacement of the SHM implementation, no application-lifecycle or production qualification. Stress success alone cannot explain the historical timeout."
+    },
     "tests/criu-retained-candidate/build.py": {
       "before_sha256": "3b1f3418c46f1bae9d89a89f5c6e95a5952e5776914cf90bc719141fa9633041",
       "after_sha256": "a8467e529bb6977432bb8dcda31c403f9d1a74661dd892dc2d524fe1afee5f75",

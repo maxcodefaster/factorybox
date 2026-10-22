@@ -7,3 +7,4 @@ tests/compatibility/retained-pidfd-eintr.patch whitespace=-space-before-tab
 tests/compatibility/actor-stream-error.patch whitespace=-space-before-tab
 tests/compatibility/external-provider-gateway.patch whitespace=-space-before-tab,-blank-at-eol
 tests/compatibility/pid-diagnostic-builder.patch whitespace=-blank-at-eol
+tests/compatibility/startup-gc-diagnostic.patch whitespace=-blank-at-eol
