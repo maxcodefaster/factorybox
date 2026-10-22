@@ -157,7 +157,7 @@ func (authority *authority) proxy(ctx context.Context, request *http.Request) (j
 					return nil, fmt.Errorf("app status %d: %s", status, response)
 				}
 				return response, nil
-			case "error":
+			case "error", "stream-error":
 				return nil, fmt.Errorf("Connector stream: %s", event.Error)
 			}
 		}

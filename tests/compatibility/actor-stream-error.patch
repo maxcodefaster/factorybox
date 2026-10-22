@@ -1,0 +1,11 @@
+--- a/tests/devx-actor/main_linux.go
++++ b/tests/devx-actor/main_linux.go
+@@ -157,7 +157,7 @@
+ 					return nil, fmt.Errorf("app status %d: %s", status, response)
+ 				}
+ 				return response, nil
+-			case "error":
++			case "error", "stream-error":
+ 				return nil, fmt.Errorf("Connector stream: %s", event.Error)
+ 			}
+ 		}

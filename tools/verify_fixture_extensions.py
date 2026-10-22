@@ -9,6 +9,37 @@ import subprocess
 import reference
 
 
+def production_extensions(root):
+    path=root/"tests/production-fixture-extensions.json"
+    if not path.exists():return {"production_extensions":0,"production_before_files_verified":False}
+    value=json.loads(path.read_text())
+    if (value["schema"]!=1 or value["previous_manifest"]!="tests/pilot-fixture-extensions.json" or
+            reference.sha(root/value["previous_manifest"])!=value["previous_manifest_sha256"] or
+            not value["assertions_preserved"] or value["upstream_assertions_modified"]):
+        raise ValueError("production fixture declaration changes its original assertions or manifest")
+    baseline_name=value["baseline_artifact"]
+    if Path(baseline_name).name!=baseline_name:raise ValueError("invalid production fixture baseline")
+    baseline=root/"artifacts"/baseline_name/"source-manifest.json"
+    originals=None
+    if baseline.exists():
+        if reference.sha(baseline)!=value["baseline_source_manifest_sha256"]:
+            raise ValueError("production baseline manifest differs")
+        originals=json.loads(baseline.read_text())
+    before_verified=originals is not None
+    for name,row in value["files"].items():
+        if (reference.sha(root/name)!=row["after_sha256"] or
+                reference.sha(root/row["patch"])!=row["patch_sha256"]):
+            raise ValueError("production fixture or ordered patch differs: "+name)
+        if originals is not None and originals[name]["sha256"]!=row["before_sha256"]:
+            raise ValueError("production fixture before differs from its baseline: "+name)
+        before=root/"artifacts"/row["before_file"]
+        if before.exists():
+            if reference.sha(before)!=row["before_sha256"]:
+                raise ValueError("production original fixture bytes differ: "+name)
+        else:before_verified=False
+    return {"production_extensions":len(value["files"]),"production_before_files_verified":before_verified}
+
+
 def verify(root, baseline=None):
     root=Path(root)
     extensions=json.loads((root/"tests/pilot-fixture-extensions.json").read_text())
@@ -40,7 +71,8 @@ def verify(root, baseline=None):
             if reference.sha(baseline/"context"/row["file"]) != row["before_sha256"]:
                 raise ValueError("native-context fixture before differs from frozen v0.1 input")
     return {"previous_fixtures":len(previous["files"]),"ordered_extensions":len(extensions["files"]),
-            "before_files_verified":baseline is not None,"upstream_assertions_modified":False}
+            "before_files_verified":baseline is not None,"upstream_assertions_modified":False,
+            **production_extensions(root)}
 
 
 def apply_context_patches(root, context, artifact):

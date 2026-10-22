@@ -14,7 +14,9 @@ Run `tools/verify_pilot_profile.py` with the retained local inputs to repeat
 this verification; it creates a new evidence receipt and changes no archived
 result. The Factory repositories and historical experiment remain unchanged.
 
-The accepted scope is [GOAL.md](../GOAL.md). The immutable local v0.1 reference
+The accepted scope is the [frozen pilot goal](../artifacts/factorybox-production-baseline-0c99cab81e224d1db537b81d12a2e2f9/source/GOAL.md).
+The current [GOAL.md](../GOAL.md) describes the subsequent production qualification.
+The immutable local v0.1 reference
 and its original results remain in [amd64-validation.md](amd64-validation.md)
 and `upstream/amd64-profile.json`. [pilot-progress.md](pilot-progress.md)
 retains investigation history, rejected approaches and failures.

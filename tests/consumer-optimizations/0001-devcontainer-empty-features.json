@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "order": 1,
+  "file": "usr/local/lib/node_modules/@devcontainers/cli/dist/spec-node/devContainersSpecCLI.js",
+  "before_sha256": "22b5b3a7345608f552db2f1af589ca06c7274d116778d00aa67cbfe1e1cafc65",
+  "after_sha256": "891e207b41c10a52d112cb16d6cf4cbf4ed587db42e87b92befecac86471d233",
+  "find": "async function vQ(e,A,t,i){var C;let r=await uQ(",
+  "replace": "async function vQ(e,A,t,i){if(Object.keys({...A.features,...t}).length===0)return;var C;let r=await uQ(",
+  "consumer_version": "@devcontainers/cli 0.89.0",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Skip the feature-control network/cache lookup only for the empty union of configured and additional features. Preserve every original byte and path for nonempty features. Optional consumer patch; no lifecycle dependency or runtime change."
+}

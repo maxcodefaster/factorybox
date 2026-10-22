@@ -23,6 +23,7 @@ import theia_peer
 import upstream_bats
 import upstream_unit
 import worker_readiness
+import verify_fixture_extensions
 
 
 def sysctls():
@@ -76,12 +77,18 @@ def main():
     parser.add_argument("--storage-driver",choices=["vfs","overlay2"],default="vfs")
     parser.add_argument("--theia-image")
     parser.add_argument("--opencode-flow",action="store_true",help="Preserve the real agent's running local tool and consume its actual result")
+    parser.add_argument("--consumer-empty-features",action="store_true",help="Candidate exact consumer patch: omit the feature-control lookup for zero features only")
+    parser.add_argument("--consumer-request-profile",action="store_true",help="Optional copied Factory example telemetry around its first dependency fetches")
     parser.add_argument("--probe",choices=["worker-loss","incomplete-pause","attached-exec","topology","lifecycle","warm-preparation"],default="worker-loss")
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
     if options.example == "minimal" and options.theia_image:
         parser.error("the unchanged minimal consumer has no IDE")
+    if options.consumer_empty_features and (options.probe != "lifecycle" or options.baseline_runtime_build):
+        parser.error("the consumer optimization requires the full selected-runtime lifecycle without a baseline substitution")
+    if options.consumer_request_profile and (options.example != "factory" or options.probe != "lifecycle" or not options.consumer_empty_features):
+        parser.error("request profiling is a separate Factory lifecycle observation of the empty-features candidate")
     if options.example == "minimal" and options.opencode_flow:
         parser.error("the unchanged minimal consumer has no agent")
     if options.probe == "attached-exec" and (options.example != "minimal" or options.loss != "planned" or options.theia_image or options.opencode_flow):
@@ -123,6 +130,8 @@ def main():
               "worker_image_id":worker["image_id"],"example":options.example,"loss":options.loss,
               "storage_driver":options.storage_driver,"driver_selected":False,
               "opencode_flow":options.opencode_flow,
+              "consumer_empty_features":options.consumer_empty_features,
+              "consumer_request_profile":options.consumer_request_profile,
               "probe":options.probe,
               "baseline_input":baseline_receipt,"lifecycle_criu_sha256":effective_criu,
               "consumer_inputs":options.consumer_inputs,"project_images":options.project_images,
@@ -140,10 +149,52 @@ def main():
         result["scope"] = "Compose the existing immutable-base API for two independent fresh starts; charge initial import, incremental preparation and first useful work separately. No new base-cache algorithm."
     shutil.copyfile(__file__,artifact/"runner.py")
     shutil.copyfile(reference.ROOT/"tools/worker_readiness.py", artifact/"worker_readiness.py")
+    fixture_declaration=reference.ROOT/"tests/production-fixture-extensions.json"
+    if fixture_declaration.exists():
+        result["fixture_verification"]=verify_fixture_extensions.verify(reference.ROOT)
+        shutil.copyfile(fixture_declaration,artifact/"production-fixture-extensions.json")
+        shutil.copyfile(reference.ROOT/"tests/compatibility/actor-stream-error.patch",artifact/"actor-stream-error.patch")
     shutil.copytree(reference.ROOT/"examples"/options.example,artifact/"example")
+    if options.consumer_request_profile:
+        path=artifact/"example/server.mjs"
+        text=path.read_text()
+        anchor="    const dependency = await fetch('http://dependency:8081/health', {\n      signal: AbortSignal.timeout(2000),\n    });"
+        if text.count(anchor)!=1: raise ValueError("first-request profile anchor changed")
+        before_sha=reference.sha(path)
+        profile="""    const dependencyStarted = performance.now();
+    let dependency;
+    try {
+      dependency = await fetch('http://dependency:8081/health', {signal: AbortSignal.timeout(2000)});
+      traceDependency({event: 'response', milliseconds: performance.now()-dependencyStarted, status: dependency.status});
+    } catch(error) {
+      traceDependency({event: 'failure', milliseconds: performance.now()-dependencyStarted, error: String(error)});
+      throw error;
+    }"""
+        tracing="""import { appendFileSync } from 'node:fs';
+let traceCount = 0;
+function traceDependency(event) {
+  if (traceCount++ < 64) appendFileSync('/workspace/.factorybox-request-profile.jsonl', JSON.stringify({at: new Date().toISOString(), ...event})+'\\n');
+}
+traceDependency({event: 'module-loaded'});
+"""
+        path.write_text(tracing+text.replace(anchor,profile))
+        result["request_profile_input"]={"file":"examples/factory/server.mjs","before_sha256":before_sha,"after_sha256":reference.sha(path),
+                                          "scope":"Copied example only, bounded fetch timing without changing URL, 2-second timeout, success or error behavior. Not an optimization measurement."}
     result["example_manifest"] = upstream_unit.context_manifest(artifact/"example")
     for file in ["consumer-worker-setup.sh","global-sysctl-observation.py","devx-sandbox.sh","devx-devcontainer.sh","minimal-sandbox.sh"]:
         shutil.copyfile(reference.ROOT/"tests"/file,artifact/file)
+    if options.consumer_empty_features:
+        patch_input = reference.ROOT/"tests/consumer-optimizations/0001-devcontainer-empty-features.json"
+        shutil.copyfile(patch_input,artifact/"consumer-patch.json")
+        shutil.copyfile(reference.ROOT/"tools/devcontainer_empty_features.py",artifact/"consumer-patch.py")
+        path=artifact/"consumer-worker-setup.sh"
+        text=path.read_text()
+        anchor='  chmod 0755 "$root/devx-actor" "$root/devx-registry" "$root/bin/devcontainer"'
+        if text.count(anchor)!=1: raise ValueError("consumer injection anchor changed")
+        before_sha=reference.sha(path)
+        path.write_text(text.replace(anchor,anchor+'\n  python3 /consumer-patch.py --root /var/lib/sysbox/devx/bundle/lower --patch /consumer-patch.json --receipt /output/consumer-optimization.json'))
+        result["consumer_optimization"]={"patch":json.loads(patch_input.read_text()),"patch_sha256":reference.sha(patch_input),
+                                         "setup_before_sha256":before_sha,"setup_after_sha256":reference.sha(path),"selected":False}
     if options.probe == "attached-exec":
         path=artifact/"minimal-sandbox.sh"
         text=path.read_text()
@@ -176,6 +227,26 @@ def main():
     for directory in ["internal","cmd/factorybox","tests/devx-lifecycle","tests/devx-actor","tests/devx-registry","tests/minimal-actor","tests/ide-filesystem"]:
         shutil.copytree(reference.ROOT/directory,source/directory)
     for file in ["go.mod","go.sum"]: shutil.copyfile(reference.ROOT/file,source/file)
+    if options.consumer_request_profile:
+        path=source/"tests/devx-actor/main_linux.go"
+        text=path.read_text()
+        before_sha=reference.sha(path)
+        changes={
+            '\t\tauthority.mu.Lock()\n\t\tif event.Type == "hello" {':
+            '\t\tlog.Printf("profile-control role=%s type=%s phase=%s stream=%s", role, event.Type, event.Phase, event.StreamID)\n\t\tauthority.mu.Lock()\n\t\tif event.Type == "hello" {',
+            '\tauthority.write.Lock()\n\terr = websocket.JSON.Send(child, message{':
+            '\tlog.Printf("profile-app-send stream=%s", stream)\n\tauthority.write.Lock()\n\terr = websocket.JSON.Send(child, message{',
+            '\tapp, err := authority.proxy(ctx, request)\n\tif err != nil {':
+            '\tapp, err := authority.proxy(ctx, request)\n\tlog.Printf("profile-app-result error=%v", err)\n\tif err != nil {',
+            'func main() {\n\tif os.Getenv':
+            'func main() {\n\tlog.SetFlags(log.LstdFlags | log.Lmicroseconds)\n\tif os.Getenv',
+        }
+        for before_text,after_text in changes.items():
+            if text.count(before_text)!=1: raise ValueError("actor timing anchor changed")
+            text=text.replace(before_text,after_text)
+        path.write_text(text)
+        result["request_profile_actor"]={"file":"tests/devx-actor/main_linux.go","before_sha256":before_sha,"after_sha256":reference.sha(path),
+                                          "assertions_preserved":True,"scope":"Copied fixture timestamps only: authenticated control event kinds, first app send and result. No protocol or readiness changes."}
     result["source_context"] = upstream_unit.context_manifest(source)
     core = lambda data: {key:value for key,value in data.items() if (key.startswith("internal/") or key.startswith("cmd/") or key in {"go.mod","go.sum"}) and not key.endswith("_test.go")}
     if core(result["source_context"]) != core(worker["source_context"]):
@@ -236,6 +307,8 @@ def main():
             if options.opencode_flow:
                 mounts += [(artifact/"opencode-flow","/opencode-flow",True),(artifact/"opencode-probe.cjs","/opencode-probe.cjs",True)]
             if baseline_receipt: mounts += [(artifact/"baseline-criu","/baseline-criu",True)]
+            if options.consumer_empty_features:
+                mounts += [(artifact/file,"/"+file,True) for file in ["consumer-patch.py","consumer-patch.json"]]
             for source_path,target,readonly in mounts:
                 command += ["--mount",f"type=bind,source={source_path},target={target}"+(",readonly" if readonly else "")]
             command += ["--entrypoint","/opt/factorybox/factorybox",worker["image"],"worker","--store-id",owner]
@@ -250,6 +323,19 @@ def main():
                 try:
                     while probe.poll() is None:
                         pump_peer(peer,output)
+                        if options.consumer_request_profile and (output/"devx-observations.json").exists() and not (phase_artifact/"dependency-profile.jsonl").exists():
+                            exact_worker(container,owner,identity)
+                            # Native output is intentionally mode 0600 until
+                            # setup's final chown. Read it inside the exact
+                            # owned worker, not through the host user's mount.
+                            program=("import pathlib,json; v=json.loads(pathlib.Path('/output/cli-02-start.json').read_text()); "
+                                     "pid=v['runtime']['pid']; assert type(pid) is int and pid>1 and v['record']['id']=='source'; "
+                                     "p=pathlib.Path('/proc/%d/root/workspace/project/.factorybox-request-profile.jsonl'%pid); "
+                                     "d=p.read_bytes(); assert len(d)<=65536; print(d.decode(),end='')")
+                            copied=subprocess.run([*reference.DOCKER,"exec",identity,"python3","-c",program],capture_output=True,text=True,timeout=5)
+                            copied.check_returncode()
+                            (phase_artifact/"dependency-profile.jsonl").write_text(copied.stdout)
+                            record["dependency_profile"]=[json.loads(line) for line in copied.stdout.splitlines()]
                         marker = "FACTORYBOX_CONSUMER_PAUSE_INCOMPLETE=" if options.probe=="incomplete-pause" else "FACTORYBOX_CONSUMER_PAUSE_COMMITTED="
                         if phase == "prepare" and options.loss == "abrupt" and marker+owner in (phase_artifact/"stdout.txt").read_text().splitlines():
                             if peer and (not peer.closed or not peer.result.get("cleanup")): raise ValueError("old IDE helper still exists at intentional worker loss")
@@ -274,6 +360,12 @@ def main():
                                 raise ValueError("ordinary delivered-worker lifecycle omitted a required useful-work phase")
                             record["observations"]=observed
                             record["preparation"]=json.loads((output/"preparation.json").read_text())
+                            if options.consumer_empty_features:
+                                receipt=json.loads((output/"consumer-optimization.json").read_text())
+                                patch=result["consumer_optimization"]["patch"]
+                                if receipt["before_sha256"]!=patch["before_sha256"] or receipt["after_sha256"]!=patch["after_sha256"] or not receipt["assertions_preserved"] or receipt["upstream_assertions_modified"]:
+                                    raise ValueError("native consumer patch receipt differs")
+                                record["consumer_optimization"]=receipt
                         if options.probe=="warm-preparation":
                             record["preparation"]=json.loads((output/"preparation.json").read_text())
                             record["warm_preparation"]=json.loads((output/"warm-preparation.json").read_text())

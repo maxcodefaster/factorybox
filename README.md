@@ -17,6 +17,8 @@ comparison runs. This is a functional and performance reference; production
 qualification remains open. Start with the
 [acceptance report](docs/pilot-validation.md) and
 [supported worker contract](docs/worker-contract.md).
+The subsequent [production work](docs/production-progress.md) includes real
+external-agent checks, fresh-start optimization and the remaining release gates.
 
 ## Why use Factorybox
 
@@ -62,8 +64,10 @@ preserves application RAM and files. The [Factory composition](examples/factory)
 adds private Docker, Compose, Dev Containers, a separate Theia IDE and real
 OpenCode. Its active shell tool preserves private RAM and file watches across
 fork/resume, produces different branch results and returns its real exit status
-to the agent. The model peer is a deterministic local test server. External
-model inference, provider reconnection and external side effects need pilot tests.
+to the agent. Those lifecycle proofs use a deterministic local model peer.
+A separate real free-model tool round trip now passes with pinned OpenCode;
+external-model lifecycle, provider reconnection and external side effects
+remain release tests. See the [current evidence](docs/production-progress.md).
 Theia remains a separate reconnecting consumer rather than part of sandbox RAM.
 
 ```mermaid
@@ -92,6 +96,15 @@ checkpoint; creating a new checkpoint adds its own cost.
 | Useful resume | 8.613 | 2.834 |
 | Fresh start with prepared inputs | 33.683 | 33.099 |
 | Cold worker, local preparation and useful application | 58.152 | 55.581 |
+
+These historical Factory startup values include a subsequently diagnosed
+fixture delay: its authority ignored an immediate `stream-error` and waited
+ten seconds if the first app port was not ready. Functional state assertions
+remain valid. Both variants are being remeasured with the corrected authority;
+removing that measurement delay is not a production runtime speedup. The
+[investigation](docs/production-progress.md) also records a separate consumer
+patch for an unnecessary feature-catalog fetch. No revised performance
+distribution is qualified yet.
 
 The minimal example takes about 2.009 s for a useful fork, 1.870 s to pause and
 1.045 s to resume. Its checkpoint after resume regressed from 1.783 s to
@@ -147,7 +160,7 @@ that deployment is not qualified by this repository.
 | Published or measured endpoint | Reported time | What it establishes |
 | --- | ---: | --- |
 | Factorybox minimal, cold worker through useful application | 33.029 s | Local median including preparation and application initialization |
-| Factorybox complete Factory example, same endpoint | 55.581 s | Local median including private Docker, Connector and Dev Container setup |
+| Factorybox complete Factory example, same endpoint | 55.581 s | Historical local median; includes the subsequently diagnosed fixture delay described above |
 | Factorybox useful resume, minimal / Factory | 1.045 s / 2.834 s | Local medians for our admitted application state, from five observations each |
 | [Daytona environment creation](https://www.daytona.io/dotfiles/daytona-joins-the-ai-engineer-pack) | 200 ms | Provider claim published 2025-03-24; no equivalent Factorybox workload or percentile in that article |
 | [Modal VM cold start](https://modal.com/blog/vm-sandboxes-agent-computers) | Under 1 s | Provider claim published 2026-10-01; not a measurement of our complete application or its memory restore |

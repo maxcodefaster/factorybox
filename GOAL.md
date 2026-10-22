@@ -1,243 +1,181 @@
-# Factorybox für den Factory-Piloten
+# Factorybox: lokale Produktionsfreigabe
 
-Status: Am 2026-10-21 bestätigt und als aktives Ziel gestartet.
-Am 2026-10-22 für den vereinbarten lokalen Factory-Piloten abgeschlossen:
-[Abnahmebericht](docs/pilot-validation.md) und
-[geprüftes Pilot-Referenzprofil](upstream/amd64-pilot-profile.json).
-Funktionale Pilotabnahme und das gemessene Geschwindigkeitsziel sind erfüllt;
-eine vollständige Produktionsfreigabe bleibt ausdrücklich offen.
-Die abgeschlossene lokale 0.1-Abnahme bleibt in
-[amd64-validation.md](docs/amd64-validation.md) nachvollziehbar.
-Der Arbeitsstand und die noch offenen Nachweise stehen in
-[pilot-progress.md](docs/pilot-progress.md).
+Am 2026-10-22 nach der Grilling-Runde bestätigt und als aktives Goal gestartet.
+Ziel ist eine für diesen Linux-AMD64-Rechner und die vorhandenen Beispiele
+freigegebene Version. Eine Freigabe erfolgt erst nach bestandener Abnahme;
+der bisherige Stand bleibt unverändert als Vergleich erhalten.
 
-## Ziel und Einsatzgrenze
+Der Ausgangsstand ist Commit
+`521e05799853c8546c9db5de31d178c548c49573` und das
+[bisherige Referenzprofil](upstream/amd64-pilot-profile.json). Das vorangegangene
+abgeschlossene Goal, der Quellmanifest und dessen Eingaben liegen unter
+`artifacts/factorybox-production-baseline-0c99cab81e224d1db537b81d12a2e2f9/`.
+Der [Abnahmebericht](docs/pilot-validation.md) und die Referenzartefakte bleiben
+historische Nachweise. Produktionsqualifikation ist zu Beginn dieses Goals false.
 
-Factorybox als eigenständig startbaren Linux-AMD64-Worker für die anschließende
-Integration in den Factory-Piloten ausliefern. Die vorhandenen Beispiele sind
-die verbindliche Testumgebung. Die Factory-Repositories und das historische
-Experiment bleiben unverändert; eine echte Factory-Installation oder externe
-Produktionszugänge sind keine Voraussetzung für die Abnahme.
+## Einsatzgrenze
 
-Die nächste Etappe verbindet nachgewiesene Geschwindigkeitsverbesserungen mit
-Agentenfortsetzung und Wiederherstellung vollständig gespeicherter
-Pausezustände nach einem kompletten Worker-Neustart auf demselben Rechner.
-IDEs, Dev Containers und Agenten bleiben optionale Verbraucher. Sysbox-CLI- oder
-API-Kompatibilität ist weiterhin keine Anforderung.
+- Vorhandener Linux-AMD64-Rechner, geprüfter Kernel, 4096-Byte-Seiten,
+  cgroup v2 und konkret geprüfter lokaler Speicherpfad.
+- Getrennte Worker je Kunde oder Vertrauensbereich. Gemeinsamer Host-Kernel,
+  privilegierter äußerer Verwaltungs-Worker, keine behauptete VM-Isolation.
+- Worker mit höchstens 3 CPU/3 GiB, höchstens zwei lebende Sandboxes;
+  separate Theia mit 1 CPU/768 MiB und 420 Sekunden je nativem Lifecycle-Lauf.
+- Wiederherstellung einer vollständig bestätigten Pause nach geplantem oder
+  abruptem Worker-Ersatz auf demselben Host und Boot mit intaktem eigenen Store.
+- Kubernetes, andere Plattformen, Host-Neustart-RAM-Recovery und Cross-Node-
+  Migration sind keine Anforderungen dieser Etappe.
+- Keine Änderungen an Factory-Repositories oder historischem Experiment.
+  Kein KVM, neuer Kernel, neue VM, Host-Runtime-Installation oder globale sysctls.
 
-Die native Abnahme erfolgt zuerst auf dem vorhandenen Linux-AMD64-Rechner mit
-dem ausdrücklich geprüften Kernel, 4096-Byte-Seiten, cgroup v2 und Speicherpfad.
-Der Worker dokumentiert und prüft seine Voraussetzungen. Andere Kernel,
-Dateisysteme oder Zielrechner benötigen eigene native Nachweise.
-Integrationsfähigkeit ist keine pauschale Plattformfreigabe.
+## 1. Bestehenden vollständigen Lifecycle erhalten
 
-## 1. Bisherigen Lifecycle vollständig erhalten
+Das minimale Dev-Container-Beispiel und das vollständige Factory-Beispiel mit
+privatem Docker, Compose, Dev Containers und separater Theia müssen mit den
+tatsächlich ausgelieferten Bytes weiter bestehen:
 
-Das minimale Dev-Container-Beispiel und die Factory-Komposition mit separater
-Theia, privatem Docker, Compose und Dev Containers müssen mit dem tatsächlich
-ausgelieferten Runtime-Paket weiterhin bestehen:
+- Start, Status, vollständiger RAM-/Dateisystem-Checkpoint und unabhängiger Fork.
+- Unabhängige RAM-/Dateiänderungen, Checkpoint/Fork eines Forks, brauchbarer
+  Nachkomme nach Löschung seiner ursprünglichen Quelle.
+- Pause mit tatsächlicher Freigabe des Workload-RAMs und der residenten
+  Snapshot-RAM-Daten; nützliches Resume, erneuter Checkpoint/Fork danach.
+- Bestätigte Pause nach vollständigem Worker-Verlust unabhängig importieren,
+  fortsetzen, erneut checkpointen/forken und exakt wiederholen können.
+- Unvollständige oder fremde Operationen ablehnen; ausschließlich exakt
+  besessene Prozesse, Mounts, cgroups und Speicherobjekte stilllegen.
+- IDE, Agent und Dev Containers bleiben optionale Verbraucher.
 
-- Start und Status, vollständiger Checkpoint und unabhängiger RAM-/Dateisystem-Fork.
-- Unterschiedliche RAM- und Dateiänderungen in Quelle und Fork.
-- Checkpoint und Fork einer bereits geforkten Quelle.
-- Löschen der ursprünglichen Quelle bei weiterhin brauchbaren Nachkommen.
-- Pause mit gestoppten Sandbox-Prozessen und nachgewiesener Freigabe des
-  Workload-RAMs sowie der residenten Snapshot-RAM-Daten.
-- Resume mit erhaltenem Zustand, erneuter Checkpoint und Fork nach Resume.
-- Exakte, wiederholbare Löschung ausschließlich eigener Ressourcen.
-- Weiterarbeit der separaten Theia mit dem ausgewählten Workspace.
+## 2. Echte externe Agentenfortsetzung
 
-Die bisherige Referenz bleibt als unveränderter Vergleich verfügbar.
-Zusätzliche optimierte Verbrauchervarianten ersetzen diese Abnahme nicht.
+Das gepinnte OpenCode mit einem nachweislich kostenlosen, werkzeugfähigen
+externen Modell verbinden. Modell-ID, Schnittstelle, Kostenstatus, Zeitpunkt,
+Verfügbarkeit und genaue Testeingaben dokumentieren. Kein stiller Wechsel zu
+kostenpflichtigen Modellen oder anderer OpenCode-Version. Zugangsdaten nicht
+in Git, Logs oder öffentliche Artefakte schreiben. Nur synthetische Testdaten
+an den Anbieter senden.
 
-## 2. Drei konkrete Optimierungsfälle untersuchen
+Der reale Agent muss ein tatsächliches Werkzeug ausführen, dessen private
+RAM-/Dateidaten und Dateiwatches im vollständigen Lifecycle erhalten bleiben.
+Pause/Resume, Trennung/Wiederverbindung, vollständig bestätigte Pause nach
+Worker-Ersatz und unabhängiger anschließender Fork sind getrennt nachzuweisen.
+Nach Fortsetzung muss der Agent das tatsächliche Werkzeugergebnis und dessen
+Exitstatus verarbeiten. Keine unbeabsichtigte Wiederholung eines unklaren
+externen Werkzeugergebnisses; keine pauschale Exactly-once-Garantie.
 
-### A. Wiederholtes vollständiges Lesen und Prüfen
+Der deterministische lokale Modellserver bleibt für reproduzierbare negative
+Prüfungen. Ein Anbieterfehler, Rate-Limit oder fehlender Zugang ist kein
+bestandener Test. Unabhängige Laufzeitarbeit kann dabei fortgesetzt werden.
 
-Die vollständigen Lesevorgänge im Kopierprozess, im Controller sowie bei Fork
-und Resume einzeln zuordnen und zeitlich erfassen. Innerhalb derselben
-geschützten Operation prüfen, ob bereits erbrachte vollständige Nachweise sicher
-weiterverwendet werden können.
+## 3. Frischen Factory-Start verkürzen
 
-Eine Änderung muss Manipulation, Quellenänderung, fremde Mounts/Inodes,
-Prozessabbrüche, unvollständige Ergebnisse und unsichere Wiederholungen
-weiterhin erkennen. Eine gespeicherte Erfolgsmarkierung oder ein unveränderter
-Zeitstempel ersetzt keine Inhalts- und Identitätsgarantie.
+Den frischen Start priorisieren. Die bereits bewiesene verifizierte Basis
+konsequent für weitere unabhängige frische Umgebungen verwenden. Den bisherigen
+ungefähr 33 Sekunden langen Anwendungsstart in Docker, Image-Bereitstellung,
+Connector, Dev-Container-Einrichtung und erste nützliche Antwort zerlegen.
+Nur konkret gemessene Engpässe ändern.
 
-### B. Unveränderliche Docker-Daten wiederverwenden
+Vollständige kalte Vorbereitung bleibt im Bericht sichtbar. Wiederverwendung
+einer schon vorbereiteten Basis ist keine Beschleunigung ihrer erstmaligen
+Vorbereitung. Eine echte frische Umgebung erbt keinen Agenten-RAM-Zustand.
+Bestehende Verbraucherdateien bleiben als Vergleich erhalten; optimierte
+Varianten und ihre exakten Änderungen werden getrennt dokumentiert.
 
-Prüfen, ob nachweislich unveränderliche Image-Daten aus dem wiederholt
-vollständig zu sichernden Docker-Zustand herausgelöst werden können.
-Veränderlicher Docker-, Anwendungs- und Workspace-Zustand bleibt pro Fork
-unabhängig. Quelle und ursprünglicher Worker müssen nach erfolgreicher
-Veröffentlichung eines unabhängigen Nachkommen entbehrlich sein.
+Vergleichbare Beobachtungen gegen den eingefrorenen Ausgangsstand müssen den
+ausgewählten Gewinn nachweisen. Vorbereitung, erste nützliche Anwendung,
+separate IDE-Prüfungen, Checkpoint/Fork, Pause/Resume, Speicher, I/O und Fehler
+berichten. Keine Regression der bisherigen Zustands-/Integritätsprüfungen.
+Für Start-/Fork-/Resume-Zeiten die vorherige Schranke von höchstens dem größeren
+Wert aus 20 Prozent und 250 ms als konservativen Vergleich übernehmen;
+Abweichungen ausdrücklich untersuchen, nicht durch veränderte Eingaben verdecken.
 
-Dies ist ein zu qualifizierender Ansatz. Die Speicherersparnis oder ein
-vollständiger Geschwindigkeitsgewinn sind noch nicht bewiesen. Die vorhandene
-VFS-Komposition bleibt der Vergleich, bis eine vollständige Ersatzkomposition
-alle erforderlichen Gates besteht. Alte Overlay2-, SHM-, Lazy-/Delta- oder
-Lesehinweis-Kandidaten werden dadurch nicht automatisch ausgewählt.
+Keine p95-Garantie aus wenigen Beobachtungen. SHM, Lazy-/Delta-Snapshots und
+Lesehinweis-Experimente bleiben ohne eigene vollständige Qualifikation ungewählt.
 
-### C. Vorbereitung wiederverwenden
+## 4. Speicher für Dauerbetrieb
 
-Eine bereits vollständig importierte und geprüfte Basis für weitere Starts
-wiederverwenden. Einmalige Vorbereitung pro Worker beziehungsweise Basis,
-inkrementelle Vorbereitung und die anschließende Nutzerwartezeit getrennt
-ausweisen. Vorbereitung darf keine versteckte Arbeit oder ungeprüfte Daten
-hinterlassen.
+Gemessene Store-Kapazität, begrenzte Aufnahme neuer Schreiboperationen und
+Fail-closed-Verhalten bei Platzmangel liefern. Alter Checkpoint, lebende
+Sandbox und belegte Wiederherstellungsdaten bleiben bei einer abgelehnten oder
+unterbrochenen Operation erhalten.
 
-Bereits umgesetzte Reflink-Anforderungen, Quelldigest-Wiederverwendung,
-unveränderliche Basis, wiederverwendete Lesepuffer und gebündelte
-Dauerhaftigkeitsbarrieren gelten als Ausgangspunkt, nicht als neue Gewinne.
-Frühere erfolglose Mikrooptimierungen werden nur mit einer neuen konkreten
-Begründung und unterscheidbarem Nachweis erneut untersucht.
+Eine ausdrücklich angeforderte Stilllegung alter Checkpoints und Worker-
+Epochen muss genaue Besitz- und Abhängigkeitsprüfungen haben. Keine lebende
+Quelle, kein Nachkomme und kein ausgewählter Recovery-Eingang darf dadurch
+benötigte Daten verlieren. Unvollständige Operationen und fremde Dateien nicht
+blind aufräumen. Wiederholte Stilllegung muss ihren exakten eigenen Abschluss
+erkennen. Reine Sandbox-Löschung und Datenstilllegung getrennt dokumentieren.
 
-Für jeden Ansatz vorab Hypothese, Gleichwertigkeitsprüfung und begrenzten
-Vergleich festlegen. Unwirksame, unsichere oder unentschiedene Änderungen
-verwerfen und das Ergebnis erhalten. Nur nachgewiesene Verbesserungen gelangen
-in die ausgewählte Komposition.
+## 5. Wiederholung, Fehler und Starttimeout
 
-## 3. Geschwindigkeit ohne schwächere Garantien nachweisen
+Den erhaltenen Sysbox-fs-Starttimeout auf diesem Host gezielt untersuchen.
+Ursache, konkrete Reproduktion und eventuelle Korrektur belegen. Erfolgreiche
+spätere Starts erklären keinen früheren Timeout. Ohne belegte Ursache keine
+unverifizierte SHM-Änderung auswählen.
 
-Mit unveränderten Verbraucher- und Daten-Eingaben sowie denselben
-Ressourcenobergrenzen eine frisch gemessene 0.1-Baseline und die finale
-Komposition zeitlich verschachtelt vergleichen. Mindestens fünf vollständige
-vergleichbare Beobachtungen pro Konfiguration erhalten. Reihenfolge,
-Vorbereitung, Cache-Bedingungen, CPU-, I/O- und Speicherdruck sowie Ausfälle
-dokumentieren; keine globalen Cache- oder Systemeinstellungen verändern.
+Als anfänglichen Freigabeumfang mindestens 100 vollständige Lifecycle-Läufe
+je Beispiel und einen begrenzten 24-Stunden-Dauerlauf anstreben. Positive und
+negative Fälle, Trennung, Worker-Verlust, Speicher-/Platzdruck und exakte
+Wiederholung einbeziehen. Keine Daten- oder Besitzverletzung und keine
+untersuchten Fehler stillschweigend verwerfen. Ausfälle vollständig ausweisen.
+Der Umfang ist ein lokaler Belastungsnachweis, keine behauptete Langzeit-SLA.
 
-Arbeitsziel ist mindestens 50 Prozent weniger Medianzeit für Checkpoint,
-Pause und Fork bis zur brauchbaren Anwendungsantwort, jeweils gegenüber der
-zugehörigen Phase der gemessenen Baseline. Fork-Zeiten aus fertigen Checkpoints
-und die Summe aus neuem Checkpoint plus Fork getrennt ausweisen. Das Ziel ist
-noch keine bewiesene Eigenschaft oder Latenzzusage.
+Die Artefaktgrenzen gelten auch im Dauerlauf. Referenz, eingefrorene Eingaben,
+aktive Läufe und ausgewählte unaufgelöste Fehler bewahren. Neue Builds/native
+Läufe nur nach Kapazitätsprüfung; abgeschlossene Belege ausschließlich mit
+geprüften Retentions-/Kompressionsbelegen verkleinern.
 
-Start, Resume und die bisherigen Lifecycle-Phasen des minimalen Beispiels
-dürfen im gemessenen Median nicht um mehr als das größere Maß aus 20 Prozent
-und 250 Millisekunden langsamer werden. Eine ausgeschöpfte oder verfehlte
-Messgrenze darf nicht durch veränderte Eingaben oder höhere Limits verdeckt
-werden.
+## 6. Betriebsfähiges reproduzierbares Paket
 
-Alle Einzelwerte, Mediane, Spannweiten und fehlgeschlagenen Läufe veröffentlichen,
-einschließlich Vorbereitung, retained memory und erstem brauchbaren
-Anwendungs-/Werkzeugergebnis. Aus dieser kleinen Stichprobe keinen p95 ableiten.
-Das Halbierungsziel separat bewerten und bei Nichterreichen ausdrücklich offen
-lassen. Funktionale Erfolge ersetzen den fehlenden Geschwindigkeitsnachweis nicht.
+Ein genau identifiziertes Worker-Paket/Image mit notwendigen Bibliotheken,
+Komponenten-/Abhängigkeitsinventar, Patchfolge und Lizenzhinweisen bauen.
+Unnötige Build-/Testwerkzeuge aus dem auszuliefernden Image entfernen und die
+resultierenden Bytes neu abnehmen. Unabhängige Wiederholungsbuilds müssen
+Paket- und Binäridentität belegen.
 
-## 4. Laufenden Agenten und Werkzeugprozess fortsetzen
+Bereitschaft, Laufzeitmessungen, Ressourcen, Fehler und Kapazität beobachtbar
+machen. Anleitungen für Aufnahme neuer Arbeit, Drain, bestätigte Pause,
+Fencing, Wiederherstellung, unvollständige Operationen und Rollback liefern.
+Ein Update interpretiert alte Snapshots nicht ungeprüft neu; Kompatibilität
+nachweisen oder vor Wechsel kontrolliert leeren.
 
-Den im Beispiel vorbereiteten, genau gepinnten OpenCode-Prozess mit einem
-kontrollierten lokalen Modell-Testgegenüber tatsächlich einen Werkzeugaufruf
-ausführen lassen. Reine Erreichbarkeit der Agenten-API reicht nicht.
+## 7. Verbindliche Freigabe
 
-Folgende Fälle nativ prüfen:
+Alle erforderlichen nativen Laufzeitregressionen, Sysbox-Unit/Core/Integration/
+Bats-Suites und CRIU-Core-Checkpoint/Restore-Prüfungen mit erhaltenen
+Upstream-Assertions auf dem ausgewählten Paket/Komponentenstand bestehen.
+Referenz und benannte importierte Overlays byte-identisch bewahren. Änderungen
+als geordnete Patches; Fixture-Kompatibilität mit exakten Vorher-/Nachher-Hashes,
+beibehaltenen Assertions und aktiviertem Vet deklarieren.
 
-- Checkpoint/Fork während eines laufenden lokalen Werkzeugprozesses.
-- Pause/Resume während dieses Werkzeugprozesses.
-- Pause, kompletter Worker-Neustart und anschließendes Resume während dieses
-  gespeicherten Werkzeugzustands.
-- Unabhängige Fortsetzung und unterschiedliche RAM-/Dateiänderungen in Quelle
-  und Fork; auch ein Nachkomme nach Löschen der ursprünglichen Quelle bleibt brauchbar.
-- Das Werkzeug beendet sich mit dem erwarteten Resultat und Exitstatus;
-  der Agent übernimmt dieses Resultat und setzt seinen Ablauf korrekt fort.
-- Terminal und Browser dürfen sich neu verbinden. Der unterstützte Start-
-  und Reconnect-Pfad darf Agenten- oder Werkzeugzustand nicht still verlieren.
+Erforderliche fehlgeschlagene oder nicht ausgeführte Assertions verhindern
+Produktionsqualifikation. Ein Testskip wird nicht durch Umbenennung zum Pass.
+Explizit nicht unterstützte Fähigkeiten bleiben ausgewiesen und gesperrt;
+keine pauschale Sysbox-/OCI-Kompatibilität oder Plattformfreigabe behaupten.
 
-Die bisher fehlgeschlagene angehängte Exec-/Sitzungstopologie erhält einen
-gezielten Regressionstest und eine explizite Behandlung. Der unterstützte
-Dienst-/Reconnect-Pfad muss bestehen. Eine Garantie für beliebige fremde
-interaktive TTY-/Exec-Sitzungen wird daraus nicht abgeleitet.
+Quellen, Patches, ausgelieferte Bytes, Plattform, unabhängige Builds und alle
+Freigabeergebnisse in einem neuen überprüfbaren Profil verbinden. Das alte
+Referenzprofil nicht umschreiben. Das Goal erst abschließen, wenn alle für
+diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
 
-Externe Modellanbieter, externe Gesprächspartner und deren Nebenwirkungen
-werden nicht mitgeforkt. Echte Modellinferenz und Provider-Wiederanbindung
-bleiben zusätzliche Pilotprüfungen. OpenCode bleibt Testverbraucher und wird
-keine Abhängigkeit der Runtime.
+## Arbeitsstand
 
-## 5. Bestätigten Pausezustand nach Worker-Neustart wiederherstellen
-
-RAM-Abbild, vollständiges benötigtes Dateisystem, unveränderliche Basisdaten
-und Herkunfts-/Operationsdaten auf unabhängigem dateibasiertem Speicher
-dauerhaft veröffentlichen. Persistente und flüchtige Worker-Daten ausdrücklich
-trennen und dokumentieren.
-
-Für beide vorhandenen Beispiele folgende Fälle prüfen:
-
-- Erfolgreich pausieren, gesamten Worker einschließlich Sysbox-Diensten
-  beenden und entfernen, einen frischen Worker auf demselben Rechner mit
-  demselben persistenten Datenbestand starten und den Zustand fortsetzen.
-- Dasselbe nach abruptem Verlust des Workers, nachdem Pause bereits
-  erfolgreich bestätigt war.
-- Der neue Worker darf keine alten Prozesse, offenen Deskriptoren oder
-  weiterlebenden Hilfsdienste zur RAM-Wiederherstellung benötigen.
-- Nach Wiederherstellung erneut checkpointen, forken, unabhängig verändern,
-  die ursprüngliche Quelle löschen und die eigenen Ressourcen exakt bereinigen.
-- Wiederholte Wiederherstellungsanfragen erzeugen keine unbemerkten Duplikate.
-  Unsichere oder unterbrochene Versuche werden nachvollziehbar abgeglichen
-  beziehungsweise sicher zurückgewiesen.
-- Fehlende oder veränderte RAM-Dateien, Dateisystemdaten, Metadaten,
-  Komponentenidentitäten und fremde Ressourcen werden erkannt. Andere
-  Umgebungen dürfen weder übernommen noch gelöscht werden.
-- Ein Worker-Verlust während einer noch nicht bestätigten Pause darf keinen
-  erfolgreichen vollständigen Snapshot vortäuschen oder frühere bestätigte
-  Snapshots beschädigen.
-
-Die Zusage gilt für vollständig bestätigte Pausezustände bei erhaltenem
-Speicher auf demselben Rechner und gleicher qualifizierter Plattform.
-Ungespeicherter RAM laufender Umgebungen, Host-Neustart, Rechner-/Datenträgerverlust,
-Cross-Node-Migration und Wiederherstellung auf anderer Hardware gehören nicht
-zu dieser Abnahme. Keine Neustart- oder Migrationseigenschaft vor dem
-entsprechenden tatsächlichen Test als unterstützt melden.
-
-## 6. Integrationsfähigen Worker ausliefern
-
-Einen reproduzierbar gebauten Docker-Worker mit genau gepinnten Sysbox-/CRIU-
-Komponenten und einer stabil beschriebenen, versionierten lokalen
-CLI-/JSON-Steuerung liefern. In diesem Repository ein ausführbares Beispiel
-für Start, Pause, Worker-Neuerzeugung, Resume, Fork und Löschen bereitstellen.
-
-Der Integrationsvertrag beschreibt insbesondere:
-
-- Plattform, Worker-Rechte, Ressourcenlimits und unterstützten Speicher.
-- Persistente Mounts, flüchtige Verzeichnisse und Speicherbedarf.
-- Bereitschaft, Zustandsabfragen, Operationsidentitäten, Wiederholungen,
-  Fehlerzustände und Wiederherstellung.
-- Schutz der administrativen Steuerung und getrennte Worker pro Kunde oder
-  Vertrauensbereich.
-- Genaue Komponenten-/Quellidentitäten, Diagnoseinformationen,
-  reproduzierbaren Neuaufbau und bekannte Grenzen.
-
-Die Factory-Anbindung selbst erfolgt anschließend im Piloten. Das
-Beispiel verwendet denselben ausgelieferten Worker und dieselben
-Steuerkommandos. Eine öffentliche Netzwerk-API, ein Kubernetes-Operator,
-beliebige Cluster-Unterstützung und öffentliche Veröffentlichung sind nicht
-Bestandteil dieses Ziels.
-
-## 7. Abnahme und Nachweise
-
-Die ausgewählte Komposition muss die betroffenen nativen Regressionen,
-beide vollständigen Beispiele, die neuen Agenten-/Neustartfälle,
-die erforderlichen Sysbox-Unit/Core/Integration-Suiten und CRIU-Core-
-Checkpoint/Restore-Prüfungen bestehen. Upstream-Assertions und Vet bleiben
-erhalten. Originale Skips bleiben einzeln sichtbar; neue Fehlschläge oder
-unbegründete neue Skips blockieren die Pilotabnahme. Bestehende erforderliche
-nicht ausgeführte Prüfungen blockieren weiterhin eine vollständige Produktionsfreigabe.
-
-Den gesamten ausgelieferten Worker und das Runtime-Paket aus eingefrorenen
-Eingaben reproduzierbar neu bauen und genau die ausgelieferten Binärdateien
-nativ prüfen. Beschaffung aus dem Netz und Kompilierung aus vorhandenen
-verifizierten Eingaben getrennt bewerten.
-
-Funktionale Pilotfähigkeit, Geschwindigkeitsziel und verbleibende
-Produktionslücken getrennt abnehmen. Das Gesamtziel erst als erreicht melden,
-wenn alle vereinbarten Teilziele nachgewiesen sind. Kein VM-Isolationsversprechen,
-keine pauschale Kubernetes-/Plattformfreigabe und keine unbewiesene Latenzgarantie.
-
-AGENTS.md bleibt verbindlich: ein Implementierungsautor, keine Subagents,
-keine Änderungen an Factory oder historischem Experiment, unveränderte
-Referenzdateien/Import-Overlays, geordnete nachvollziehbare Patches,
-3 CPU/3 GiB pro Sandbox-Worker, separate Theia mit 1 CPU/768 MiB,
-höchstens zwei lebende Sandboxes und 420 Sekunden je vollständigem
-Lifecycle-Lauf. Neue Fälle dürfen eigene begrenzte Gates erhalten.
-Native Läufe und Builds erhalten vorher eigene Artefakte und halten das
-Speicherbudget sowie die Regeln für exakte Eigentumsprüfung und Bereinigung ein.
-Keine Host-Runtime-Installation, globalen sysctls, KVM, neuen VMs oder Veröffentlichung.
+- Baseline mit bisherigem Goal und Quellmanifest gesichert.
+- Echte kostenlose externe Inferenz mit OpenCode 2.0.27 und tatsächlichem
+  Vordergrund-Werkzeug, 16 MiB RAM, Dateiwatch und Ergebnis-/Exitverarbeitung
+  einschließlich exakt einer abgeschlossenen Shell-Ausführung nachgewiesen.
+  Externer Lifecycle, Verbindungsfehler und Recovery bleiben offen.
+- Ein exakt gehashter optionaler Dev-Containers-Patch vermeidet einen unnötigen
+  Katalogabruf ohne Features. Beide vollständigen Beispiele und neun Prüfungen
+  der originalen/gepatchten Feature-Kontrolle bestehen. Erste einzelne
+  vorbereitete Starts mit korrigierter Factory-Gegenstelle: Factory
+  23,8 → 18,9 s, minimal 9,1 → 3,3 s.
+  Weitere Messungen vor Leistungsfreigabe; keine p95-Aussage.
+- Der vorherige Factory-Wert enthielt einen nachgewiesenen Zehn-Sekunden-
+  Timeout der Test-Gegenstelle bei einer ignorierten `stream-error`-Meldung.
+  Geordneter Fixture-Patch und Regression erhalten alle bisherigen Assertions.
+  Die Messkorrektur ist keine zusätzliche Laufzeitoptimierung.
+- Ein fester Vergleich mit fünf Beobachtungen je Variante und Beispiel ist
+  vorbereitet. Weitere Factory-Initialisierung wird gemessen. Speichergrenzen, Retention,
+  Starttimeout, Dauerlauf und reduzierte Auslieferung sind noch nicht erledigt.
+- [Fortschritt und genaue Belege](docs/production-progress.md). Das bestehende
+  Referenzprofil und der eigentliche Go-Laufzeitcode sind bisher unverändert.
