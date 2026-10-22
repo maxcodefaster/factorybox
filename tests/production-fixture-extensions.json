@@ -39,6 +39,14 @@
       "patch_sha256": "e78bbc8b63b5781c9874d7acaaec270cd3bbe2e6c1d833e5d31cf4b42a7cbcad",
       "before_file": "factorybox-stream-error-regression-7fbd4a20583e4911af565fbb88f170a4/main_linux.go",
       "reason": "Keep the legacy error case and handle the actual Connector stream-error terminal frame identically. Preserve authentication, readiness, complete HTTP response/JSON checks, mutation behavior, resource/deadline assertions and vet. The old proof authority ignored this immediate failure and waited its 10-second request deadline when the first app port was not ready. Native timing evidence f3e29eaee4db4416b57eb3b9f949e752 and the actual websocket red regression establish the cause. This corrects the fixture; it is not a production runtime speedup. Remeasure both consumer variants with this same authority before comparing startup times."
+    },
+    "internal/lifecycle/engine_linux_test.go": {
+      "before_sha256": "980497fb7861a416e9e61243d137fbb83f0a8079f2198099317d142004ca954b",
+      "after_sha256": "a43ae0da489642a01fa90a7799cbd763e1c14739752c9835efbd141c8ee9e105",
+      "patch": "tests/compatibility/busy-overlay-diagnostic.patch",
+      "patch_sha256": "67158b10856af5b3e9d6e604aa472fb5e1cd8701bd1ba0c944b2e64732176b19",
+      "before_file": "factorybox-build-worker-c45d9c2ed6a44c41bd642a0f01728a59/source/internal/lifecycle/engine_linux_test.go",
+      "reason": "Keep every original native setup, resource check, source/fork assertion and the original immediate unmount failure. On that already failed assertion only, save bounded read-only process/thread/mount/descriptor metadata from the owned native PID namespace. No retry, signal, lazy/forced unmount, timeout change or success reclassification. Adds a separate diagnostic helper test source; vet remains enabled. The historical busy-mount failure remains unresolved until actual causal evidence is collected."
     }
   }
 }

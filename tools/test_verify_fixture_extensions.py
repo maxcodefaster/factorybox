@@ -96,3 +96,30 @@ class OrderedFixtureHashes(unittest.TestCase):
             previous["unrelated_field"]="changed without breaking legacy fixtures"
             (path/"tests/pilot-fixture-extensions.json").write_text(json.dumps(previous))
             with self.assertRaises(ValueError):verify_fixture_extensions.verify(path)
+
+    def test_production_extension_continues_an_already_extended_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory);declaration=self.production_fixture(path)
+            before=path/"artifacts/regression/changed"
+            before.write_text("after")
+            (path/"tests/changed").write_text("later diagnostic")
+            declaration["files"]["tests/changed"]={"before_sha256":digest("after"),"after_sha256":digest("later diagnostic"),
+                "patch":"tests/actor.patch","patch_sha256":digest("ordered one-line protocol fix"),"before_file":"regression/changed"}
+            manifest_path=path/"artifacts/factorybox-production-baseline-test/source-manifest.json"
+            manifest=json.loads(manifest_path.read_text())
+            manifest["tests/changed"]={"sha256":digest("after")}
+            manifest_path.write_text(json.dumps(manifest))
+            declaration["baseline_source_manifest_sha256"]=digest(manifest_path.read_text())
+            production=path/"tests/production-fixture-extensions.json"
+            production.write_text(json.dumps(declaration))
+            self.assertEqual(verify_fixture_extensions.verify(path)["production_extensions"],2)
+            # Even a matching forged baseline/before copy cannot jump over the
+            # immutable previous fixture's actual final hash.
+            before.write_text("unrelated input")
+            declaration["files"]["tests/changed"]["before_sha256"]=digest("unrelated input")
+            manifest["tests/changed"]={"sha256":digest("unrelated input")}
+            manifest_path.write_text(json.dumps(manifest))
+            declaration["baseline_source_manifest_sha256"]=digest(manifest_path.read_text())
+            production.write_text(json.dumps(declaration))
+            with self.assertRaisesRegex(ValueError,"continue"):
+                verify_fixture_extensions.verify(path)

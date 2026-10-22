@@ -562,12 +562,81 @@ Frozen runnable component bundles and original consumer image inputs remain
 directly available. Nested dump repacking checks the containing run's result;
 a regression refuses a nested frozen-build input before any decoder starts.
 
+The original immediate failed unmount now also records bounded, read-only
+process/thread/descriptor/mount metadata from that fixture's private PID
+namespace before outer shutdown. It does not retry the unmount, signal a
+process, use lazy/forced unmount or change the failed assertion. The ordered
+fixture patch declares the exact old/new engine-test hashes. The hash verifier
+also checks that a production extension of an already extended fixture starts
+at the previous final hash; its regression refuses a forged discontinuity.
+Portable checks pass in `factorybox-checks-6c00580d8bd241bca81c8d93282d0ddf`.
+The earlier checker failure
+`factorybox-checks-ed2f5d3cee5349d8b679de8f8dec6faf` remains retained.
+
+Three predetermined complete admission observations pass in
+`factorybox-admission-cleanup-probe-1fbe8b233b414064a614899616caf253`.
+Each passes seventeen top-level tests and 78 subtests, without skips, using the
+same candidate core and pinned components. Their child native gate parents are
+`factorybox-pilot-native-gates-bb6bc1478d0142a6a16966a3e27fb9b9`,
+`factorybox-pilot-native-gates-c0d70f6342a24c97816dcf54afdb0c9e` and
+`factorybox-pilot-native-gates-9f8a27e3656a4735a8caa98a7afac577`.
+No busy-overlay report is triggered. This does not explain or fix the original
+failure. A prior three-observation attempt,
+`factorybox-admission-cleanup-probe-037e46dde1214f17a68900843e527ae7`, passes
+only its first native suite before the next run is refused by the eight-GiB
+starting-headroom guard. Its parent remains failed, with two observations unrun.
+
+The separately labelled targeted diagnostic
+`factorybox-proc-cleanup-diagnostic-c6906b410dc94a3083bc169bd8eb3abd` then
+passes twenty fixed repetitions and all forty original held/transient proc
+subtests. It reconstructs the already verified native test executable with the
+same SHA-256, retaining the original setup and assertions; only an explicitly
+recorded invocation adapter selects the two subtests with count twenty and
+stop-on-first-failure. The native container runs for 158.21 s. The original
+immediate overlay unmount is exercised every time. Exact cleanup, unchanged
+frozen inputs and unchanged global sysctls pass. No busy-overlay report is
+triggered. All 3,181,379,584 archived source bytes receive whole-decompression
+verification before the raw archive is removed. Neither this targeted result
+nor the three full admission passes resolves the original failure.
+
+The current diagnostic CRIU bytes also pass the eighteen declared unchanged
+core C cases, with two dump/restore cycles per case, in
+`factorybox-criu-core-7dab24bfa7004ec38f86676f16d89de3`, parent
+`factorybox-pilot-native-gates-6e621512540845329b36b022b919982d`.
+Cleanup passes and all 1,030 upstream test files remain unchanged. Eighteen
+executed cases are not a claim to have run the complete ZDTM matrix. Portable
+checks subsequently pass in
+`factorybox-checks-fa334ce7145b4d01b09d0b60bf57eb70`.
+
+Maintenance `factorybox-storage-share-encoded-c36ffd65a71a4a51b7edca8a879e0888`
+shares byte-identical compressed, closed passing consumer-test inputs through
+hardlinks, reclaiming 764,334,080 allocated bytes. Original raw SHA-256,
+complete decoded verification, encoded bytes/hash/mode/ownership and both
+receipts must match before each link. Source, results, logs, failed stores and
+each reconstruction receipt remain intact; linked archives must never be
+rewritten in place. The initial attempt
+`factorybox-storage-share-encoded-9d467e2ae1aa4618bb86113fe05b48d2` takes no
+action because hashing changes access time; the subsequent verifier binds the
+existing immutable identity fields instead. The two explicitly qualified old
+v0.1 builds also retire only their optional compiler caches in
+`factorybox-storage-retire-cache-6c6410e237e14979a1d995cfe317d441` and
+`factorybox-storage-retire-cache-7273f92359774891b6637a774fb02b19`, with their
+exact native package/source/component qualification rechecked before and after.
+No historical executable is reconstructed or historical archive expanded.
+Maintenance `factorybox-storage-share-native-25b839abf5104917add9651a20f3c082`
+also shares 73 verified identical native-test inputs of closed passing runs,
+with per-input durable intent/completion receipts. It excludes the source of
+the still-active targeted diagnostic. Frozen bytes, executable modes, ownership,
+sources, native results and reconstruction receipts remain exact. Its observed
+whole-artifact allocation delta overlaps the diagnostic's archive compaction;
+that delta is not an isolated measurement of reclaimed storage.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
 of the PID collision and new admission-fixture busy-mount cleanup; a predetermined
 repeated performance comparison; verified base reuse in the supplied
-operational path; store quotas/admission and low-disk cases; dependency-checked
+operational path; hard store quotas and broader low-disk cases; dependency-checked
 checkpoint/epoch retirement; explanation of the preserved Sysbox-fs timeout;
 repeated lifecycle/pressure/fault cases and bounded 24-hour soak; a reduced,
 independently reproducible worker package and operations instructions; required

@@ -11,6 +11,7 @@ import uuid
 import build_worker
 import reference
 import upstream_unit
+import sources
 
 
 def saved(path, value):
@@ -21,22 +22,61 @@ def saved(path, value):
     finally: os.close(parent)
 
 
+def qualified_runtime(build_name, proof_name):
+    if not re.fullmatch(r"factorybox-build-runtime-[0-9a-f]{32}",build_name):
+        raise ValueError("requires one exact legacy runtime package build")
+    if not re.fullmatch(r"factorybox-v01-qualification-[0-9a-f]{32}",proof_name or ""):
+        raise ValueError("requires its exact completed local runtime qualification")
+    build=reference.ROOT/"artifacts"/build_name
+    proof=reference.ROOT/"artifacts"/proof_name/"result.json"
+    if any(path.is_symlink() or path.resolve()!=path for path in [build,proof,build/"result.json"]):
+        raise ValueError("runtime cache inputs cannot be redirected")
+    result,native=(json.loads(path.read_text()) for path in [build/"result.json",proof])
+    package=build/"factorybox-v0.1-linux-amd64.tar"
+    manifest=build/"bundle/manifest.json"
+    if (result.get("passed") is not True or result.get("inputs_unchanged") is not True or
+            native.get("passed") is not True or native.get("native_lifecycle_qualified") is not True or
+            native.get("exact_packaged_cli_tested") is not True or
+            build_name not in {Path(native["runtime_package"]).parent.name,native["independent_component_rebuild_comparison"]} or
+            reference.sha(package)!=result["package_sha256"] or result["package_sha256"]!=native["runtime_package_sha256"] or
+            result["binary_sha256"]!=native["binary_sha256"] or
+            upstream_unit.context_manifest(build/"context")!=result["source_context"] or
+            sources.tree_sha(build/"context")!=native["go_source_sha256"] or
+            reference.sha(build/"bundle/profile.json")!=native["profile_sha256"]):
+        raise ValueError("legacy package, sources and native qualification do not match")
+    if manifest.is_symlink() or json.loads(manifest.read_text())["binary_sha256"]!=result["binary_sha256"]:
+        raise ValueError("legacy runtime manifest changed")
+    for name,digest in result["binary_sha256"].items():
+        path=build/"bundle"/name
+        if path.is_symlink() or reference.sha(path)!=digest:
+            raise ValueError("legacy runnable component bundle changed")
+    return build,result,proof,native
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build",required=True)
     proofs=parser.add_mutually_exclusive_group(required=True)
     proofs.add_argument("--native-proof")
     proofs.add_argument("--replacement-proof",help="Passing exact storage regression for a replacement of the failed build")
+    proofs.add_argument("--qualified-runtime-proof",help="Completed native qualification for an older runtime package's optional cache")
     parser.add_argument("--failed-proof",help="Closed failing storage regression for the superseded build")
     args=parser.parse_args()
-    build,result=build_worker.load(args.build)
+    if args.qualified_runtime_proof:
+        if args.failed_proof:raise ValueError("failed proof is only for replacement storage evidence")
+        build,result,proof,native=qualified_runtime(args.build,args.qualified_runtime_proof)
+    else:
+        build,result=build_worker.load(args.build)
     replacement=None
     def evidence(name,pattern):
         if not re.fullmatch(pattern,name or ""):raise ValueError("requires one exact completed native proof")
         path=reference.ROOT/"artifacts"/name/"result.json"
         if path.is_symlink() or path.resolve()!=path:raise ValueError("native proof cannot be redirected")
         return path,json.loads(path.read_text())
-    if args.native_proof:
+    if args.qualified_runtime_proof:
+        replacement={"qualified_runtime_proof":args.qualified_runtime_proof,
+                     "scope":"Only optional compiler cache retirement; qualified source, original native evidence, runnable components and complete package stay directly available."}
+    elif args.native_proof:
         if args.failed_proof:raise ValueError("failed proof requires a replacement storage proof")
         proof,native=evidence(args.native_proof,r"factorybox-consumer-worker-loss-[0-9a-f]{32}")
         if native.get("passed") is not True or native.get("cleanup") is not True or native.get("worker_build")!=args.build or native.get("worker_image_id")!=result["image_id"]:
@@ -81,8 +121,9 @@ def main():
     saved(artifact/"receipt.json",receipt)
     if upstream_unit.context_manifest(cache)!=manifest: raise ValueError("closed cache changed before retirement")
     shutil.rmtree(cache)
-    # Recheck every frozen source, binary, package and image after retirement.
-    build_worker.load(args.build)
+    # Recheck frozen sources, binaries and packages, plus the worker image when present.
+    if args.qualified_runtime_proof:qualified_runtime(args.build,args.qualified_runtime_proof)
+    else:build_worker.load(args.build)
     saved(artifact/"result.json",{"schema":1,"passed":True,"removed":str(cache),
                                 "receipt_sha256":reference.sha(artifact/"receipt.json"),"reclaimed_allocated_bytes":receipt["allocated_bytes"]})
     print(json.dumps({"evidence":str(artifact),"reclaimed_allocated_bytes":receipt["allocated_bytes"]}),flush=True)

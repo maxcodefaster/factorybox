@@ -45,6 +45,7 @@ func nativeEngine(t *testing.T, program string) (*Engine, string) {
 	}
 	t.Cleanup(func() {
 		if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
+			recordBusyOverlay(t, bundle, err)
 			t.Errorf("release test overlay: %v", err)
 		}
 	})

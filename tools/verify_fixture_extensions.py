@@ -46,14 +46,23 @@ def verify(root, baseline=None):
     previous=json.loads((root/extensions["previous_manifest"]).read_text())
     if extensions["schema"]!=1 or not extensions["assertions_preserved"] or extensions["upstream_assertions_modified"]:
         raise ValueError("fixture declaration weakens original assertions")
+    production_path=root/"tests/production-fixture-extensions.json"
+    production=json.loads(production_path.read_text())["files"] if production_path.exists() else {}
+    def final_row(name, row):
+        current=production.get(name)
+        if current is None:return row
+        if current["before_sha256"]!=row["after_sha256"]:
+            raise ValueError("production fixture does not continue its previous after hash: "+name)
+        return current
     for name,row in previous["files"].items():
         final=extensions["files"].get(name,row)
         if name in extensions["files"] and final["before_sha256"]!=row["after_sha256"]:
             raise ValueError("fixture extension does not continue the declared before/after chain: "+name)
+        final=final_row(name,final)
         if reference.sha(root/name)!=final["after_sha256"]:
             raise ValueError("fixture differs from its declared final hash: "+name)
     for name,row in extensions["files"].items():
-        if reference.sha(root/name)!=row["after_sha256"]:raise ValueError("pilot fixture differs: "+name)
+        if reference.sha(root/name)!=final_row(name,row)["after_sha256"]:raise ValueError("pilot fixture differs: "+name)
     for row in extensions.get("context_patches", []):
         if (reference.sha(root / row["patch"]) != row["patch_sha256"] or
                 reference.sha(root / row["file"]) != row["before_sha256"]):

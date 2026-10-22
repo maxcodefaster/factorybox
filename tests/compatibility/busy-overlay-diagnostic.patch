@@ -1,0 +1,10 @@
+--- a/internal/lifecycle/engine_linux_test.go
++++ b/internal/lifecycle/engine_linux_test.go
+@@ -45,6 +45,7 @@
+ 	}
+ 	t.Cleanup(func() {
+ 		if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
++			recordBusyOverlay(t, bundle, err)
+ 			t.Errorf("release test overlay: %v", err)
+ 		}
+ 	})
