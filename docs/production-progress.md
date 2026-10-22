@@ -856,6 +856,64 @@ must also be established explicitly rather than inferred from directory nesting.
 The prototype and its patch remain in artifacts and are not selected runtime
 code. Hard store quotas remain release work.
 
+## Actual guest storage-path observation and chat handoff
+
+The production goal continues in one replacement chat after the prior chat's
+upstream model requests repeatedly failed. Local handoff
+`factorybox-chat-handoff-f58a26a3d19c47ba830a3a8cbeae16fb` freezes GOAL.md,
+AGENTS.md, this progress page and the worker contract at commit `38fef09`.
+Its context receipt retains the last eight human messages, twelve visible
+assistant updates, failed turns, the complete original transcript's SHA-256
+and exact result hashes. Hidden reasoning and raw credential-bearing tool
+payloads are excluded. The original chat and frozen inputs are unchanged.
+The replacement has the full production objective; no second implementation
+writer or resumed old goal was started.
+
+The last isolated quota result
+`factorybox-storage-quota-native-afb36aa1faff4a01a8e4721fc8bf7bb3` completes its
+bounded observation and exact cleanup. A new subvolume created from a distinct
+user namespace accepts one MiB after the original 64-MiB leaf quota refuses
+allocation. The aggregate therefore exceeds the original leaf limit. This is
+a negative storage-design result, not a qualified bounded store or a Sysbox
+guest result. Its source and original assertions remain in the ordered
+prototype `factorybox-storage-quota-nesting-prototype-59e6daed31b84023a41707d59dee0bf7`.
+
+The new standalone diagnostic `tools/storage_guest_native.py` uses the existing
+delivered worker's exact core and pinned Sysbox, adding only a new test and
+setup. It runs one real Sysbox guest with ordinary-write controls on its overlay
+root and on a fresh, explicitly supplied Btrfs directory from its owned volume.
+`factorybox-storage-guest-9f6b0bb6e9d14ba6acbaab6b7d53d3ca` passes this observation:
+both ordinary writes succeed; subvolume creation on the overlay returns
+`ENOTTY`; creation on the direct Btrfs bind succeeds and the child accepts exactly
+one MiB. The worker verifies each created child's subvolume ID and UUID against
+the guest receipt before deleting it, then verifies absence. Exact guest,
+outer-container and volume cleanup pass; inputs and global sysctls are unchanged.
+The outer diagnostic takes 4.563 seconds, including its test-binary preparation.
+
+This establishes that ordinary Sysbox isolation does not itself close the
+observed nested-subvolume accounting gap for a directly supplied Btrfs bind.
+No host path outside the new owned fixture was exposed and no quota setting,
+kernel component or existing runtime changed. No Sysbox guest escape is claimed.
+A hard storage limit must account for this path; simple directory nesting or a
+leaf qgroup is insufficient. The diagnostic does not change production code,
+select a storage backend, refresh the full lifecycle proof, or grant production
+qualification.
+
+Portable checks pass in `factorybox-checks-092a88b9e27a4a3b91b8aa1733d4e862`:
+Go tests with vet, the consumer build, Python tests, immutable reference/fixture
+verification and whitespace checks. The new guest test and setup are separate
+files; no imported assertion or overlay was edited.
+
+A read-only alternative-backend capability inspection is retained separately
+in `factorybox-bounded-store-capability-7717991c47904c59b57713794f3226dc`.
+The existing worker image contains mkfs.ext4, e2fsck, losetup, mount, umount and
+stat, and exposes the loop-control device node. Its inspection stops before
+confirming the remaining capabilities. The throwaway host reporter then passes
+an absent container ID to an inspector requiring an exact ID and raises
+TypeError. Exact label/name-checked container cleanup succeeds; the original
+failed result and output remain. No loop device, filesystem or mount is created,
+and no backend is selected from this incomplete check.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

@@ -208,3 +208,17 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   altem Checkpoint. Die bisherigen Speicherfälle bestehen ebenfalls.
 - [Fortschritt und genaue Belege](docs/production-progress.md). Das bestehende
   Referenzprofil bleibt unverändert; der neue Go-Worker ist noch nicht freigegeben.
+- Die Fortsetzung in einem einzigen neuen Implementierungs-Chat ist mit den
+  letzten sichtbaren Nutzerentscheidungen, Assistentenmeldungen, eingefrorenen
+  Dokumenten und exakten Ergebnis-Hashes unter
+  `artifacts/factorybox-chat-handoff-f58a26a3d19c47ba830a3a8cbeae16fb/` gesichert.
+  Das vollständige Produktionsziel bleibt bestehen.
+- Zwanzig vollständige aktuelle Factory-Läufe bestehen als Diagnose, ohne die
+  seltenen Fehler oder die finale 100-Fälle-/24-Stunden-Abnahme zu ersetzen.
+  Der isolierte Quotenversuch belegt anschließend, dass zusätzliche Btrfs-
+  Untervolumes nicht automatisch durch die einfache Elternquote begrenzt sind.
+  Ein neuer echter Sysbox-Gasttest bestätigt, dass ein ausdrücklich eingebundenes
+  eigenes Btrfs-Verzeichnis solche Untervolumes zulässt. Auf seinem Overlay-
+  Dateisystem wird die Operation abgelehnt. Beide normalen Schreibkontrollen,
+  begrenzte Datenmenge und exaktes Aufräumen bestehen. Eine integrierte harte
+  Speichergrenze bleibt deshalb offen; der Befund wird nicht als Freigabe gewertet.
