@@ -120,7 +120,7 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 	if err != nil {
 		return View{Record: record, Runtime: state}, err
 	}
-	after, err := e.sandboxMemory(record)
+	after, err := e.stoppedSandboxMemory(ctx, record)
 	if err != nil {
 		return View{Record: record, Runtime: state}, err
 	}

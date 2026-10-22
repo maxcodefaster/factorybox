@@ -23,6 +23,10 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if err := prepareTimerNativeCapture(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	if handled, err := CaptureWorkerCommand(os.Args[1:]); handled {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)

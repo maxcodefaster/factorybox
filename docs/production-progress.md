@@ -1282,6 +1282,80 @@ Repeating source sharing against the already shared canonical inputs makes zero
 file changes and revalidates the original manifests/results in
 `factorybox-storage-share-sources-212967ac54764adb8616361fe2ba1ae8`.
 
+## Timer continuation experiment and confirmed pause memory
+
+The new experiment prepares one admitted, frozen native AMD64 task before
+CRIU reads its mappings. Only the native test binary has the preparation path;
+the delivered CLI has no timer hook or Python dependency. The sealed capture
+request, original cgroup descriptor, PID birth and live pidfd identify the
+source. A temporary read-only BPF iterator supplies the kernel deadline. The
+experiment requires one thread and zero time namespace offsets. It adds one
+private RX code page and one RW state page, preserves the original read-only
+request, stack/red-zone bytes, flags and general registers, and returns the
+raw syscall result. It never retries EINTR unconditionally.
+
+For a NULL remainder, the continuation waits on the original absolute
+monotonic deadline. CRIU's existing restart handling then preserves subsequent
+captures without another preparer. The passing experiment
+`factorybox-checkpoint-retirement-59f44517b59b464eb3b6114bbd63394d` includes the
+prepared source capture, a second capture through the delivered CLI, private
+fork, capture of that restored child through pause, snapshot RAM release and
+resume. Both source and resumed child pass the unchanged direct-syscall
+register/flags/stack/request assertions and finish at the original deadline
+within the required 250 ms. No exit tracer participates in this final run.
+The two private pages retain 8 KiB per prepared task until process destruction;
+this is measured state overhead, not a demonstrated optimization.
+
+Earlier prototype attempts that missed completion files remain preserved.
+Natural-exit observation in
+`factorybox-checkpoint-retirement-8608369301b84b0cbbe25839029abce6` shows both
+tasks exit zero after completing their original assertions. The test now pins
+each live owned task's actual root mount. Both
+`factorybox-checkpoint-retirement-4a8dc9d3c3114deb9997bff2d0054d84` and the
+final experiment demonstrate a completed timestamp through that guest view
+while a repeatedly polled outer overlay still returns ENOENT. The required
+task assembly and every original assertion remain intact; exact fixture
+before/after hashes and ordered patches are retained with the experiment notes.
+
+The pause extension also exposed delayed anonymous-memory accounting for the
+small task. Closed failures
+`factorybox-checkpoint-retirement-e33093d0a73a4594a0dc0a1123ef67c7` and
+`factorybox-checkpoint-retirement-8ffa3aaab44045ae9e178df5c9b773f2` retain
+20,480 to 24,576 reported anonymous bytes after populated=0 and zero resident
+snapshot pages. In the latter, repeated read-only observations reach zero
+about 1.6 seconds later. Pause now waits at most three seconds, also bounded
+by its context, while revalidating the exact empty original cgroup. It records
+the observed zero and refuses to commit if release remains unconfirmed.
+The original assertions are preserved. No global flush or substituted counter
+is used. The final experiment records 24,576 anonymous bytes before pause,
+zero afterwards, and 32,768 snapshot bytes with zero resident bytes afterwards.
+
+Candidate `factorybox-build-worker-2b11bea0a63c4136a18d41bbe211af80` contains
+that pause confirmation change, with the same pinned Sysbox, CRIU and native
+base. Its package SHA-256 is
+`966b535b0d3ac33d806e3128634bacf9489bc6636616c060ecfa83a11be491f4`.
+Capacity/guest ENOSPC, full checkpoint/fork and pause/resume pass in
+`factorybox-bounded-store-3461693615cc4214a565d1cb260a2dca`.
+Planned and abrupt bounded-store worker replacement also pass on these exact
+delivered bytes in `factorybox-bounded-loss-8c1b2d07cad54b81a788430c2f58c9e0`
+and `factorybox-bounded-loss-61fc2dcb72ea4c6f9e9de88f1e9604e3`.
+The complete required retirement suite
+`factorybox-checkpoint-retirement-abce758b443345b08446ba1593a6298a` still has
+two passing retirement/RAM-actor controls and both original timer failures.
+Production qualification remains false. The timer continuation has not been
+integrated into the runtime. A non-NULL remainder, real signals and errors,
+multiple threads, nonzero time offsets, safe continuation lifetime and
+interrupted preparation still require implementation and proof.
+
+The verified evidence index and exact, successfully reconstructed ordered
+before/after source patches are in
+`factorybox-timer-continuation-notes-c3b2393e0dc44ad19708a61cd15b2c02`.
+The final timer experiment finishes 267,281 ns and 306,172 ns after the original
+kernel deadline for source and resumed child respectively. These are individual
+correctness observations, not latency percentile claims. Portable checks with
+vet, consumer compilation, Python tests and immutable reference/overlay checks
+pass in `factorybox-checks-3fe80cd2883b4bbb94968a57157e0392`.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

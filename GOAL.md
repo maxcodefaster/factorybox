@@ -281,3 +281,25 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   `factorybox-timer-restart-diagnosis-b0e8c3c680174fd4853859b109b97073`.
   Eine Laufzeitkorrektur oder ausgewählte neue Kernel-Abhängigkeit ist damit
   noch nicht geliefert. Das vollständige Produktionsziel bleibt aktiv.
+- Ein isolierter Timer-Versuch erhält jetzt Register, Flags, schreibgeschützte
+  Zeitangabe und ursprüngliche Ablaufzeit über Checkpoint, erneuten ausgelieferten
+  CLI-Checkpoint, Fork sowie Pause/Resume des Forks. Der Versuch verwendet einen
+  einzelnen nativen Thread, einen NULL-Restzeit-Zeiger und Zeit-Namespace-
+  Offsets von null. Er ist noch keine integrierte Runtime-Korrektur.
+  `factorybox-checkpoint-retirement-59f44517b59b464eb3b6114bbd63394d` enthält den
+  erfolgreichen Nachweis ohne Exit-Tracer. Tatsächliche Gast-Mounts ersetzen
+  unzuverlässige negative Lookups auf dem äußeren Overlay im Test; alle
+  ursprünglichen Assertions und das erforderliche Testprogramm bleiben erhalten.
+  Ein neuer kleiner Pause-Fall zeigte außerdem verzögerte anonyme Speicher-
+  abrechnung. Build `2b11bea0a63c4136a18d41bbe211af80` bestätigt jetzt vor dem
+  Pause-Abschluss die leere eigene cgroup und den tatsächlich gemessenen
+  Nullstand, begrenzt auf drei Sekunden und den Aufrufer-Kontext. Speichergrenze,
+  Gast-ENOSPC und Snapshot-RAM-Freigabe bestehen. Die vollständige erforderliche
+  Stilllegungs-Suite `factorybox-checkpoint-retirement-abce758b443345b08446ba1593a6298a`
+  bleibt mit zwei bestandenen und zwei fehlgeschlagenen Tests gesperrt.
+  Mehrere Threads, Signale/Restzeit-Zeiger, Zeit-Offsets und sichere Lebensdauer
+  der Fortsetzung sowie alle übrigen Produktionsabnahmen bleiben offen.
+  Geplanter und abrupter Worker-Ersatz bestehen auf den neuen ausgelieferten
+  Bytes ebenfalls. Exakte Fixture-Hashes, erfolgreich rekonstruierte geordnete
+  Patches und der geprüfte Belegindex liegen unter
+  `factorybox-timer-continuation-notes-c3b2393e0dc44ad19708a61cd15b2c02`.

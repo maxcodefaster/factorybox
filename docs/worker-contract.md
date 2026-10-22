@@ -68,6 +68,12 @@ controller record is not a substitute for those measurements. See the native
 results for example sizes and timings. Plan capacity for independent mutable
 filesystems, active checkpoints and interrupted operations as well as bases.
 
+The current candidate confirms an empty original cgroup and zero anonymous
+memory accounting before committing a pause. Small-task accounting can settle
+after the process exits. The confirmation is bounded to three seconds and the
+caller's context; a timeout leaves the stopped checkpoint for exact retry.
+Snapshot residency is checked separately. No global memory flush is used.
+
 The production candidate exposes `--worker-run-root /run/factorybox capacity`.
 It reports the controller filesystem's total, free and available bytes and its
 actual directory/mount identity. These are filesystem counters, not the size
@@ -205,6 +211,13 @@ restart-state diagnostics are not a runtime timer correction. Selection recovery
 across epochs, full-consumer retirement, exhaustion
 faults and epoch retirement remain unverified or unimplemented. See the exact
 [progress and failed-suite evidence](production-progress.md#experimental-checkpoint-retirement-and-an-unresolved-interrupted-sleep).
+
+A separate single-thread native experiment now preserves the direct wait's
+original deadline and register contract through source capture, a second
+delivered-CLI capture, fork, pause and resume. Its process continuation is test
+instrumentation, outside the delivered CLI. It does not qualify BusyBox sleep,
+general signal/remainder handling, multiple threads or nonzero time offsets.
+The original two timer failures remain release blockers.
 
 ## Recovering a committed pause after worker replacement
 

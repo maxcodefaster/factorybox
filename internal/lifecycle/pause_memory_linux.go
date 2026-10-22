@@ -65,6 +65,38 @@ func (e *Engine) sandboxMemory(record Record) (SandboxMemory, error) {
 	return result, nil
 }
 
+// cgroup v2 batches memory.stat updates. A stopped small process can leave an
+// old anon count visible for more than a second even with populated=0. Commit
+// a pause only after both the original cgroup remains empty and its own anon
+// accounting confirms release. Never substitute a fabricated zero or force a
+// global flush. A timeout leaves the stopped checkpoint available for retry.
+func (e *Engine) stoppedSandboxMemory(ctx context.Context, record Record) (SandboxMemory, error) {
+	deadline := time.NewTimer(3 * time.Second)
+	defer deadline.Stop()
+	for {
+		if err := e.requireEmptyCgroup(record); err != nil {
+			return SandboxMemory{}, err
+		}
+		memory, err := e.sandboxMemory(record)
+		if err != nil {
+			return memory, err
+		}
+		if memory.Anon == 0 {
+			return memory, e.requireEmptyCgroup(record)
+		}
+		interval := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			interval.Stop()
+			return memory, ctx.Err()
+		case <-deadline.C:
+			interval.Stop()
+			return memory, fmt.Errorf("stopped sandbox anonymous memory release remains unconfirmed: %d bytes", memory.Anon)
+		case <-interval.C:
+		}
+	}
+}
+
 func fileResidentBytes(file *os.File) (uint64, error) {
 	info, err := file.Stat()
 	if err != nil {
