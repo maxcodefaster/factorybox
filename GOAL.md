@@ -359,3 +359,17 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   fehlende Timer-Aktivierung in den bestätigten Abbruch-/Cure-Pfaden; deren
   Freigabe einer vorbereiteten Fortsetzung muss mit echtem ENOSPC nativ geprüft
   und korrigiert werden. Vollständiges Produktionsziel weiterhin aktiv.
+- Kandidat `37dd732100cd45be93cc7a123ee39f1a` korrigiert jetzt den bestätigten
+  Capture-Abbruch. Der neue native Test reproduziert auf dem vorherigen Paket
+  nach tatsächlichem ENOSPC den falschen EFAULT-Rückgabewert; auf dem neuen Paket
+  bestehen Kontrolle und Rückabwicklung mit ursprünglichem EINTR, ABI und
+  Unterbrechungs-Restzeit. Die Aktivierung läuft vor der Freigabe und erhält
+  einen eigenen Eltern-Identitätsbeleg. Orphan-/delegierte Cure-Pfade verweigern
+  ohne bestätigten Timer-Abschluss das Auftauen. Zehn portable Fälle prüfen
+  diese Belegregel. Alle elf bisherigen nativen Regressionsgates bestehen auf
+  den neuen Paketbytes erneut; negative/positive Abbruchfälle, exakte Quellpatches
+  und Belege liegen unter
+  `factorybox-timer-abort-notes-ba5e6e083bba490185420f3d0a2b1c12`.
+  Native Verlustgrenzen und automatische Reparatur einer
+  unvollständigen Timer-Mutation bleiben offen. Das vollständige Goal bleibt
+  aktiv, Produktionsfreigabe false.

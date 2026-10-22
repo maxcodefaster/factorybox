@@ -264,6 +264,21 @@ func activateCaptureTimers(request captureRequest, anchors captureGuardAnchors, 
 	if err := captureGuardCaptureReturned(request.Guard, anchors); err != nil {
 		return err
 	}
+	complete, err := captureTimerActivationComplete(request.Guard, anchors)
+	if err != nil || complete {
+		return err
+	}
+	birth, err := processBirth(os.Getpid())
+	if err != nil {
+		return err
+	}
+	// Activation can belong to the capture worker or to its original caller
+	// after verified process rollback. Preserve the first worker's evidence.
+	if err := captureGuardWrite(anchors.evidence, "timer-activation-worker-intent.json", captureWorkerIntent{
+		Token: request.Guard.Token, PID: os.Getpid(), Start: birth, SourcePID: request.Guard.PID,
+		CriuSHA256: request.Guard.CriuSHA256, Scope: "guarded source timer activation"}); err != nil {
+		return err
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -313,14 +328,75 @@ func activateCaptureTimers(request captureRequest, anchors captureGuardAnchors, 
 		return fmt.Errorf("guarded timer activation: %w", err)
 	}
 	data, err = captureReadFile(anchors.evidence, "timer-activation-complete.json", timerPlanLimit)
-	var complete struct {
+	var completion struct {
 		Token  string `json:"token"`
 		Passed bool   `json:"passed"`
 	}
-	if err != nil || json.Unmarshal(data, &complete) != nil || complete.Token != request.Guard.Token || !complete.Passed {
+	if err != nil || json.Unmarshal(data, &completion) != nil || completion.Token != request.Guard.Token || !completion.Passed {
 		return fmt.Errorf("activation lacks its exact completed hold: %v", err)
 	}
 	return captureGuardCaptureReturned(request.Guard, anchors)
+}
+
+func captureTimerActivationComplete(config captureGuardConfig, anchors captureGuardAnchors) (bool, error) {
+	data, err := captureReadFile(anchors.evidence, "timer-activation-complete.json", timerPlanLimit)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var complete struct {
+		Version  int    `json:"version"`
+		Token    string `json:"token"`
+		Passed   bool   `json:"passed"`
+		Frozen   bool   `json:"source_frozen"`
+		Detached bool   `json:"tracers_detached"`
+		CodeSHA  string `json:"code_sha256"`
+	}
+	if json.Unmarshal(data, &complete) != nil || complete.Version != 1 || complete.Token != config.Token ||
+		!complete.Passed || !complete.Frozen || !complete.Detached || !digest.MatchString(complete.CodeSHA) {
+		return false, fmt.Errorf("timer activation receipt does not confirm its original frozen transaction")
+	}
+	return true, nil
+}
+
+// A process/network cure alone does not restore a staged timer. In particular,
+// controller or guard loss must not authorize its old continuation to execute.
+func captureGuardTimersSafe(config captureGuardConfig, anchors captureGuardAnchors) error {
+	complete, err := captureTimerActivationComplete(config, anchors)
+	if err != nil || complete {
+		return err
+	}
+	for _, name := range []string{"timer-prepare-intent.json", "timer-activation-intent.json"} {
+		if _, err := captureReadFile(anchors.evidence, name, timerPlanLimit); err == nil {
+			return fmt.Errorf("timer mutation remains unconfirmed; original source must remain held")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (guard *captureGuard) activateTimers() error {
+	request := captureRequest{Guard: guard.config}
+	data, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	fd, err := unix.MemfdCreate("factorybox-source-timer-request", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
+	if err != nil {
+		return err
+	}
+	sealed := os.NewFile(uintptr(fd), "sealed source timer request")
+	defer sealed.Close()
+	if _, err := sealed.Write(data); err != nil {
+		return err
+	}
+	if _, err := unix.FcntlInt(sealed.Fd(), unix.F_ADD_SEALS, captureRequestSeals); err != nil {
+		return err
+	}
+	return activateCaptureTimers(request, guard.anchor, sealed, guard.socket)
 }
 
 func (e *Engine) activateRestoredTimers(record Record, pid int) (resultErr error) {
@@ -337,31 +413,7 @@ func (e *Engine) activateRestoredTimers(record Record, pid int) (resultErr error
 	if err := guard.capturePhase(true); err != nil {
 		return err
 	}
-	request := captureRequest{Guard: guard.config}
-	data, err := json.Marshal(request)
-	if err != nil {
-		return err
-	}
-	fd, err := unix.MemfdCreate("factorybox-restored-timer-request", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
-	if err != nil {
-		return err
-	}
-	sealed := os.NewFile(uintptr(fd), "sealed restored timer request")
-	defer sealed.Close()
-	if _, err := sealed.Write(data); err != nil {
-		return err
-	}
-	if _, err := unix.FcntlInt(sealed.Fd(), unix.F_ADD_SEALS, captureRequestSeals); err != nil {
-		return err
-	}
-	birth, err := processBirth(os.Getpid())
-	if err != nil {
-		return err
-	}
-	if err := captureGuardWrite(guard.anchor.evidence, "capture-worker-intent.json", captureWorkerIntent{Token: guard.config.Token, PID: os.Getpid(), Start: birth, SourcePID: pid}); err != nil {
-		return err
-	}
-	if err := activateCaptureTimers(request, guard.anchor, sealed, guard.socket); err != nil {
+	if err := guard.activateTimers(); err != nil {
 		return err
 	}
 	if err := guard.capturePhase(false); err != nil {

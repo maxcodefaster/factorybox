@@ -21,7 +21,7 @@ import upstream_unit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build", required=True)
-    parser.add_argument("--suite", choices=["admission", "controller-loss"], default="admission")
+    parser.add_argument("--suite", choices=["admission", "controller-loss", "timer-abort"], default="admission")
     args = parser.parse_args()
     _, worker = build_worker.load(args.worker_build)
     native_base.require_native_host("linux/amd64", json.loads(reference.docker(["info", "--format", "{{json .}}"])))
@@ -32,6 +32,8 @@ def main():
     source = artifact / "source"
     shutil.copyfile(__file__, artifact / "runner.py")
     setup = "storage-controller-loss-setup.sh" if args.suite == "controller-loss" else "storage-admission-setup.sh"
+    if args.suite == "timer-abort":
+        setup = "storage-timer-abort-setup.sh"
     shutil.copyfile(reference.ROOT / "tests" / setup, artifact / "setup.sh")
     for directory in ["internal", "cmd/factorybox"]:
         shutil.copytree(reference.ROOT / directory, source / directory)
@@ -58,6 +60,8 @@ def main():
                        "separate file-backed resume admission and actual post-admission ENOSPC. No host disk fill, "
                        "hard store quota, distribution or production qualification.")}
     before = consumer_worker_loss.sysctls()
+    if args.suite == "timer-abort":
+        result["scope"] = "Actual post-admission ENOSPC on a private 128-MiB tmpfs, confirmed source rollback, then the original protected-remainder EINTR/ABI and interruption-time deadline assertions. Identical native control. No host disk fill or production qualification."
     result["global_sysctls_before"] = before
     container_attempted = volume_attempted = False
     preserve = False
@@ -76,6 +80,7 @@ def main():
                    "--privileged", "--cgroupns=private", "--cpus=3", "--memory=3g", "--pids-limit=512", "--network=none",
                    "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB", "--env", "FACTORYBOX_NATIVE_LIFECYCLE=1",
                    "--env", "FACTORYBOX_NATIVE_STORAGE=1",
+                   "--env", "FACTORYBOX_NATIVE_TIMER_ABORT=" + ("1" if args.suite == "timer-abort" else "0"),
                    "--env", "FACTORYBOX_NATIVE_STORAGE_CONTROLLER_LOSS=" + ("1" if args.suite == "controller-loss" else "0"),
                    "--env", "FACTORYBOX_RUNTIME_SHA256=" + worker["bundle_sha256"]["components/sysbox-runc"],
                    "--env", "FACTORYBOX_CRIU_SHA256=" + worker["bundle_sha256"]["components/criu"],
@@ -116,6 +121,16 @@ def main():
                         proof.get("source_running_before_pressure_removal") is not True):
                     raise ValueError("controller-loss proof lacks actual full-disk recovery and independent prior checkpoint")
                 result["controller_loss_proof_sha256"][operation] = reference.sha(file)
+        elif args.suite == "timer-abort":
+            file = output / "timer-abort.json"
+            proof = json.loads(file.read_text())
+            cases = proof.get("cases", {})
+            if (proof.get("passed") is not True or set(cases) != {"uncaptured", "aborted"} or
+                    any(not c.get("raw_eintr_and_abi") or not c.get("remainder_actually_read_only") for c in cases.values()) or
+                    cases["aborted"].get("source_recovered_before_signal") is not True or
+                    "no space left" not in cases["aborted"].get("actual_enospc", "").lower()):
+                raise ValueError("actual ENOSPC timer rollback proof incomplete")
+            result["timer_abort_proof_sha256"] = reference.sha(file)
         else:
             proof = json.loads((output / "storage.json").read_text())
             resume = json.loads((output / "resume-admission.json").read_text())

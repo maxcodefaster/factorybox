@@ -164,6 +164,9 @@ func captureGuardAbortOrphan(config captureGuardConfig, anchors captureGuardAnch
 			return err
 		}
 	}
+	if err := captureGuardTimersSafe(config, anchors); err != nil {
+		return err
+	}
 	if _, err := captureGuardAbortIntent(config, anchors); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return err
@@ -203,6 +206,9 @@ func (guard *captureGuard) captureAborted(cause error) (*checkpointCaptureError,
 		if err := captureGuardProcessCompleted(guard.config, guard.anchor); err != nil {
 			return nil, err
 		}
+	}
+	if err := guard.activateTimers(); err != nil {
+		return nil, err
 	}
 	intent := captureAbortIntent{Version: 1, Token: guard.config.Token, FailedAt: now(), Error: cause.Error()}
 	if err := captureGuardWrite(guard.anchor.evidence, "capture-abort-intent.json", intent); err != nil {

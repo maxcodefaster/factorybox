@@ -500,12 +500,18 @@ func captureGuardServe() (resultErr error) {
 				return errors.Join(err, captureGuardWrite(anchor.evidence, "guard-capture-rejected.json",
 					map[string]any{"token": config.Token, "capture_in_flight": true, "error": err.Error()}))
 			}
+			if err := captureGuardTimersSafe(config, anchor); err != nil {
+				return err
+			}
 			unsafe, name, acknowledgement = false, "guard-capture-returned.json", "capture-safe:"
 		case "capture-aborted:" + config.Token:
 			if !unsafe || stopped {
 				return fmt.Errorf("capture abort has no matching live-source transaction")
 			}
 			if err := captureGuardProcessCompleted(config, anchor); err != nil {
+				return err
+			}
+			if err := captureGuardTimersSafe(config, anchor); err != nil {
 				return err
 			}
 			if _, err := captureGuardAbortIntent(config, anchor); err != nil {

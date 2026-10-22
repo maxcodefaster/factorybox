@@ -502,6 +502,9 @@ func (guard *captureGuard) completeDelegatedCure(cause error) (*checkpointCaptur
 	if err := captureRetainedPublishRestoration(guard.config, guard.anchor, arm, worker); err != nil {
 		return nil, err
 	}
+	if err := captureGuardTimersSafe(guard.config, guard.anchor); err != nil {
+		return nil, err
+	}
 	intent, err := captureGuardAbortIntent(guard.config, guard.anchor)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {

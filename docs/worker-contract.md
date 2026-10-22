@@ -246,10 +246,20 @@ The same candidate also passes committed-pause recovery after both planned
 and abrupt bounded-worker replacement, actual guest ENOSPC, the 18 selected
 CRIU cases with two restore cycles each and the existing selected Sysbox Go
 and Bats suites. Original upstream skips remain visible. These checks do not
-resolve activation after a failed capture: the existing confirmed abort/cure
-paths can release a prepared continuation without entering the new activation
-phase. That path needs a native ENOSPC regression and correction before release.
+resolve activation after a failed capture; that gap is reproduced and corrected
+by the subsequent candidate described below.
 See the [additional gates and remaining abort path](production-progress.md#component-and-replacement-gates-after-timer-activation).
+
+Candidate `37dd732100cd45be93cc7a123ee39f1a` activates staged timers after
+confirmed process/network rollback and before acknowledging a recovered abort.
+An actual post-admission ENOSPC regression reproduces EFAULT on the previous
+package and obtains the original EINTR, ABI and interruption-time remainder on
+this candidate. The activation worker has its own exact parent intent; the
+original capture-worker identity remains unchanged. Orphan and delegated cure
+must keep the source held when timer mutation lacks its completed receipt.
+The metadata refusal tests do not establish native controller/guard-loss
+reconciliation. Interrupted mutation repair and the other release gates remain
+open. See [confirmed abort activation](production-progress.md#native-timer-activation-after-confirmed-capture-abort).
 
 ## Recovering a committed pause after worker replacement
 

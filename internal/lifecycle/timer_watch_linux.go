@@ -47,7 +47,11 @@ func armCaptureTimerWatchPhase(config captureGuardConfig, anchors captureGuardAn
 	if json.Unmarshal(data, &ready) != nil || ready.Token != config.Token || ready.PID <= 1 || ready.TID <= 1 || ready.ParentPID <= 1 {
 		return nil, fmt.Errorf("invalid exact timer mutator readiness")
 	}
-	data, err = captureReadFile(anchors.evidence, "capture-worker-intent.json", 4096)
+	workerIntent := "capture-worker-intent.json"
+	if prefix == "timer-activation-" {
+		workerIntent = "timer-activation-worker-intent.json"
+	}
+	data, err = captureReadFile(anchors.evidence, workerIntent, 4096)
 	if err != nil {
 		return nil, err
 	}

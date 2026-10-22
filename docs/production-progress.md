@@ -2012,6 +2012,79 @@ native regression must combine real post-admission ENOSPC, confirmed rollback
 and the same actual handler protection/ABI assertions. This remains a release
 blocker; the preceding success results do not cover it.
 
+## Native timer activation after confirmed capture abort
+
+The preceding review identifies a real error. The new native regression uses
+the existing protected-remainder assembly byte for byte, with an uncaptured
+control and a separate captured source. Its controller lives on a private
+128-MiB tmpfs. A 160-MiB nonzero file in the owned source makes the filesystem
+copy reach actual ENOSPC after admission and completed process capture. The
+test requires confirmed rollback and the same running source PID before sending
+SIGUSR1. The original handler waits one second and protects its remainder page;
+the assembly retains all original register, flags, stack, EINTR and deadline
+assertions. The tolerance remains 250 ms.
+
+`factorybox-storage-admission-eac13a264f8544c5892553b18ab5204d` fails on the
+previous `edd5cff5a26a4488b2fd11de136434ac` package. Its uncaptured control
+passes. The recovered source is still in syscall 271 before the signal and
+returns raw -14, EFAULT, instead of -4, EINTR. The failed fixture, binary
+failure record, source, logs and fully verified compressed volume are retained.
+Exact cleanup, unchanged inputs and unchanged observed global sysctls pass.
+
+Candidate `37dd732100cd45be93cc7a123ee39f1a` corrects the confirmed-abort
+path. After the original process/network restoration proof, the caller starts
+the same independently watched activation before publishing abort intent or
+requesting release. A separate `timer-activation-worker-intent.json` identifies
+the actual activation parent without overwriting the dead capture worker's
+original evidence. Restored-task activation uses the same helper. An exact
+completed activation receipt permits replay without another mutation.
+
+Both SourceGuard completion acknowledgements, orphan completion and delegated
+cure also refuse release if preparation or activation intent exists without
+its completed, token-matching frozen/detached receipt. Invalid and redirected
+receipts refuse. Ten portable cases cover this metadata rule; callers continue
+to verify the original live kernel anchors separately. A lost controller or
+guard with an unfinished timer mutation is held for reconciliation. This
+change does not implement automatic repair of that unfinished mutation.
+
+`factorybox-storage-admission-eaaf2fc2f71d44cba5ce1a62426817a1` passes the
+same two native cases on the new package. The failed task SHA-256 is
+`8942944968708d04b484748e343550a2c614bfc53c007cb2c915a0b2e22ade6c`;
+the successful task SHA-256 is
+`0fb25d2021941b423046668b92b46d2b75ce53c6be7b9f90240a5eca0a7b44dc`.
+The six differing bytes are GCC's temporary object filename in the unloaded
+ELF symbol string table. All loadable segments and the assembly are identical.
+Assembly SHA-256 is
+`13d87314ca5958839fef3d8eee3e90175dd63d803ab810d9edfa2a8a6a9d9cc3`.
+The package SHA-256 is
+`e6ef06d8b41a41bab9c632bf3d821eac7145514f32945793d6774620ca13a641`.
+Sysbox, CRIU and native-base component identities remain unchanged.
+
+All eleven preceding native gates pass again on this package: full retirement,
+protected remainder, signal boundaries, delayed remainder, tracer-exit guard,
+backend restore hold, bounded guest ENOSPC, planned/abrupt worker replacement,
+storage admission and capture-worker loss under zero available space. Each
+verifies cleanup, frozen inputs and observed global sysctls. The probe SHA-256
+is `6611376ee6af27504317afa541c9af0b5b633bfdacf7d5f2fd144b2c4abaff2d`
+throughout these runs and the positive abort regression. The first batch wrapper
+mistakenly requests an absent metadata field after successful retirement and
+stops; its failure remains recorded. The corrected wrapper compares the actual
+before/after sysctl dictionaries and completes the remaining nine gates.
+
+Portable checks including vet and reference/overlay manifests pass in
+`factorybox-checks-bedf60f37e9e4cc2b1870ade6283c777`. Exact ordered source
+patches, negative/positive native observations, both wrapper outcomes, build
+provenance and retention receipts are verified and indexed in
+`factorybox-timer-abort-notes-ba5e6e083bba490185420f3d0a2b1c12`.
+The existing Sysbox/CRIU/Bats component gates remain applicable to their unchanged
+component bytes; they do not replace final full-consumer qualification.
+
+Production qualification remains false. Actual orphan/delegated timer holds,
+partial preparation/activation repair, multiple native thread waits and completed
+private-page lifetime require further native evidence. The regression exercises
+the delivered native core through the probe API; it does not replace the full
+consumer and endurance gates on final delivered bytes.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
