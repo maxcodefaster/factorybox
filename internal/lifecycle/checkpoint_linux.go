@@ -183,6 +183,10 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 			ManagerRoot: e.config.ManagerRoot, Base: record.Base,
 		})
 	}
+	if admissionErr == nil {
+		kind = "timers"
+		admissionErr = guard.admitCheckpointTimers()
+	}
 	if admissionErr != nil {
 		admission = &checkpointAdmissionError{kind: kind, cause: admissionErr, rejectedAt: now()}
 		evidenceErr := e.publishCheckpoint(relative, "admission-rejected.json", checkpointAdmissionRejection{

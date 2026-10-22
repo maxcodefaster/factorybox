@@ -23,6 +23,13 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if handled, err := TimerWorkerCommand(os.Args[1:]); handled {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 	if err := prepareTimerNativeCapture(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

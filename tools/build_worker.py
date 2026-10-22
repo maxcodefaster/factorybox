@@ -58,6 +58,7 @@ def main():
     parser.add_argument("--sysbox-build", required=True)
     parser.add_argument("--retained-candidate", required=True)
     parser.add_argument("--compare", help="Require an identical package and image from a separate no-cache build")
+    parser.add_argument("--discard-compiler-scratch", action="store_true", help="After a successful verified build, retain its generated compiler-cache inventory and remove only that new build's optional scratch cache")
     options = parser.parse_args()
     base_image, base = native_base.load(options.native_base_build, candidate_platform="linux/amd64")
     sysbox_path, sysbox = reference_lifecycle.component_build(options.sysbox_build, "factorybox-build-sysbox-")
@@ -173,6 +174,17 @@ def main():
             raise ValueError("worker Go inputs changed")
         if comparison and any(result[key] != comparison[key] for key in ["package_sha256", "image_id", "layers"]):
             raise ValueError("independent worker package/image differs from the comparison")
+        if options.discard_compiler_scratch:
+            cache = artifact / "go-cache"
+            cache_manifest = upstream_unit.context_manifest(cache)
+            reference_lifecycle.write_json(artifact / "compiler-scratch.json", {
+                "schema": 1, "scope": "Only this successful build's optional generated compiler scratch. Source, runnable bundle, package and image remain directly available.",
+                "cache_manifest": cache_manifest, "reconstruction": "Offline fresh compilation from preserved frozen sources with the exact pinned toolchain.",
+                "package_sha256": result["package_sha256"], "image_id": result["image_id"]})
+            if upstream_unit.context_manifest(cache) != cache_manifest:
+                raise ValueError("new compiler scratch changed before disposal")
+            shutil.rmtree(cache)
+            result["discarded_compiler_scratch_sha256"] = reference.sha(artifact / "compiler-scratch.json")
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)

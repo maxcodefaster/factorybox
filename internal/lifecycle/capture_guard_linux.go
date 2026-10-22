@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -39,15 +40,16 @@ type captureGuardAnchors struct {
 }
 
 type captureGuard struct {
-	config  captureGuardConfig
-	anchor  captureGuardAnchors
-	socket  *os.File
-	cmd     *exec.Cmd
-	done    chan error
-	exit    error
-	exited  bool
-	unsafe  bool
-	stopped bool
+	timerPlanSHA string
+	config       captureGuardConfig
+	anchor       captureGuardAnchors
+	socket       *os.File
+	cmd          *exec.Cmd
+	done         chan error
+	exit         error
+	exited       bool
+	unsafe       bool
+	stopped      bool
 }
 
 // CaptureGuardCommand is an internal re-exec entry point. The CLI and native
@@ -384,6 +386,8 @@ func captureGuardCaptureReturned(config captureGuardConfig, anchor captureGuardA
 }
 
 func captureGuardServe() (resultErr error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	socket := os.NewFile(3, "exclusive controller socket")
 	anchor := captureGuardAnchors{os.NewFile(4, "original source cgroup"),
 		os.NewFile(5, "original source pidfd"), os.NewFile(6, "owned evidence directory"),
@@ -416,14 +420,56 @@ func captureGuardServe() (resultErr error) {
 		return err
 	}
 	unsafe, stopped := false, false
+	var timerWatch *captureTimerWatch
+	defer func() {
+		if timerWatch != nil {
+			resultErr = errors.Join(resultErr, timerWatch.closeHeld())
+		}
+	}()
 	var request []byte
 	for {
+		timeout := -1
+		if timerWatch != nil && timerWatch.active {
+			if err := timerWatch.poll(); err != nil {
+				return err
+			}
+			timeout = 25
+		}
+		poll := []unix.PollFd{{Fd: 3, Events: unix.POLLIN}, {Fd: int32(controller.pidfd), Events: unix.POLLIN}}
+		count, pollErr := unix.Poll(poll, timeout)
+		if errors.Is(pollErr, unix.EINTR) {
+			continue
+		}
+		if pollErr != nil {
+			return pollErr
+		}
+		if count == 0 {
+			continue
+		}
+		if poll[1].Revents&unix.POLLIN != 0 {
+			if timerWatch != nil {
+				if err := timerWatch.closeHeld(); err != nil {
+					return err
+				}
+			}
+			request = nil
+			break
+		}
 		request, err = captureGuardRead(3, -1)
 		if err != nil {
 			return err
 		}
 		name, acknowledgement := "", ""
 		switch string(request) {
+		case "timer-watch:" + config.Token:
+			if !unsafe || timerWatch != nil {
+				return fmt.Errorf("timer watch has no exclusive capture transaction")
+			}
+			timerWatch, err = armCaptureTimerWatch(config, anchor)
+			if err != nil {
+				return err
+			}
+			name, acknowledgement = "guard-timer-watched.json", "timer-watched:"
 		case "capture-enter:" + config.Token:
 			if unsafe {
 				return fmt.Errorf("guard capture is already in flight")

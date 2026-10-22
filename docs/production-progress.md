@@ -1356,14 +1356,142 @@ correctness observations, not latency percentile claims. Portable checks with
 vet, consumer compilation, Python tests and immutable reference/overlay checks
 pass in `factorybox-checks-3fe80cd2883b4bbb94968a57157e0392`.
 
+## Go timer reader, guarded preparation and delivered integration
+
+Candidate `factorybox-build-worker-16a6d038c23142d1802cec1cc1b05acb` now
+integrates timer admission and preparation into the Go capture worker. Its
+package SHA-256 is
+`fb629eba620042a60690bd3697efa27d7d84ffade72f23f26eed62005e1f30c6`.
+The native base, Sysbox and CRIU inputs are unchanged. No Python preparer is
+part of the delivered runtime. This remains an unselected local candidate and
+production qualification remains false.
+
+`internal/timerstate` implements a bounded, read-only kernel task iterator.
+It pins each exact PID or non-leader TID with its own birth time, filters the
+caller's PID namespace and closes the iterator, link, program and allowed-task
+map. Exact program/map ID lookups must confirm release, including on errors.
+The permitted-task map is frozen before attachment. This reader uses raw BPF
+syscalls and the installed kernel's BTF rather than a new dependency. Its BTF
+decoder accepts the kernel's 24-bit member count; the older pinned indirect
+decoder only accepts 16 bits. A regression puts 65,536 enum members before
+`task_struct`, and malformed bounds must fail.
+
+Native read-only component proof
+`factorybox-checkpoint-retirement-fb72da3d3a5e4bc48c38abdbe30dfb1b` passes
+for owned root PIDs and non-leader threads, mixed timer/non-timer tasks, a
+different PID namespace, duplicate PID refusal, wrong-birth refusal with BPF
+release, agreement with the independent Python reader and unchanged useful
+actor RAM. It tested the component before the CLI linked it; this is explicitly
+not delivered lifecycle qualification. The preserved preceding failure
+`factorybox-checkpoint-retirement-33ecf09ab9bf4bba8b852682b31c6bae` is the
+fixture's inherited background-sleep output pipe. Redirecting the entire
+owned shell fixes that fixture without dropping assertions.
+
+Capture now records a hashed frozen-thread/timer plan. A separate Go mutator
+may trace only those original threads after an independent source guard has
+acknowledged its owning OS thread. All source threads stop before preparation.
+Remote mmap/mprotect calls reuse the verified original syscall instruction;
+application text is never patched. Predetermined MAP_FIXED_NOREPLACE private
+addresses, original registers, masks, request bytes and continuation state are
+journaled before task mutation. Code becomes RX and state stays RW. Existing
+relative continuations reuse their verified frame. Native monotonic/boottime
+offset conversion is implemented but not yet qualified with nonzero offsets.
+
+The source guard traces the mutator's OS thread with TRACEEXIT. Even SIGKILL
+stops that thread before the kernel automatically detaches its tracees. The
+guard confirms the exact original cgroup is frozen before allowing exit. An
+unconfirmed hold keeps the guard alive rather than releasing the tracer.
+The original controller is also pinned and polled independently, because the
+capture worker temporarily holds a duplicate control-socket endpoint. This
+prevents that duplicate from hiding controller death.
+
+The controlled native exit proof
+`factorybox-checkpoint-retirement-d74c9b82fc9649f7868e1eb69ee5a510` passes
+normal exit and real pidfd SIGKILL. In each case the exact source was observed
+with a thawed cgroup and the actual test tracer before exit, then held and
+untraced after the independent guard's recorded EXIT event. No preparation
+completion is invented. This tests the production guard against a controlled
+test-only tracer; it does not repair an interrupted real mutation or qualify
+controller loss during that mutation.
+
+The full required retirement suite now passes all four tests in
+`factorybox-checkpoint-retirement-906db4b97dd649bd93d9cc00febb2017` on the
+delivered candidate. The previously failing BusyBox sleep stays alive. The
+unchanged direct-syscall task with a read-only request and NULL remainder
+preserves registers, flags, stack and its original deadline in source and
+fork. Original checkpoint selection, interruption, retirement and RAM-actor
+assertions also pass. The retained historical failures above are unchanged.
+
+Repeated capture and restored-child pause/resume additionally pass in
+`factorybox-checkpoint-retirement-ed4891a88d914f438f4215ef8c052bd3`.
+The existing experiment fixture now delegates preparation to the Go runtime
+when the sealed request contains a timer plan. Its original assembly and
+assertions remain intact. It still verifies a second delivered CLI capture,
+private fork, child pause with actual anonymous and snapshot resident bytes
+both zero, resume and both original completion deadlines. The Python
+prototype inputs remain frozen comparison evidence.
+
+Other exact delivered-candidate regressions pass:
+
+- Capacity, actual guest ENOSPC, preserved prior checkpoint, independent RAM
+  and pause/resume in `factorybox-bounded-store-947cd46eaaaa41b7a42c6f3f69b78927`.
+- Planned and abrupt bounded worker replacement in
+  `factorybox-bounded-loss-1e3937a9fc4f4291be3b017dae81144a` and
+  `factorybox-bounded-loss-394aeedf45204fb09443c613e75368b8`.
+- Actual capture-worker SIGKILL after completed CRIU while the controller is
+  stopped and the private filesystem is full, for checkpoint and pause, in
+  `factorybox-storage-admission-bb2592f6bb484980abfbb4edcce6a1fa`.
+  The original source remains useful before pressure removal, and its prior
+  checkpoint remains independently usable. This is a later capture-copy
+  interruption, not an interrupted timer preparer.
+
+Real signal races at the continuation boundary, non-NULL remainder error
+cases, actual partial-preparation repair, repeated multi-thread mutation,
+nonzero time offsets and continuation lifetime still need direct proof or
+correction. Pending caught unblocked signals are refused before and after
+preparation; that check alone does not close the later signal race. The
+current helper retains two private pages per newly prepared task until process
+destruction. No general signal transparency or bounded lifetime is claimed.
+The complete consumer/native/upstream suites are still required on final bytes.
+
+Artifact maintenance retains the historical experiment cold. Closed failed
+native inputs are eligible for identical-source sharing only with confirmed
+cleanup and unchanged source manifests; failed builds and dumps are excluded.
+Receipts `factorybox-storage-share-sources-2daaeb59c60e4072853fb75a0772a76e`
+and `factorybox-storage-share-sources-ba2d843a20804968ad546e9bf42e70c1`
+reclaim 64,364,544 and 5,169,152 allocated bytes respectively. Only optional
+compiler caches of three superseded v0.1 packages were retired against the
+existing native-qualified successor, preserving every runnable package and
+source. Receipts end in `7b197a5c21304750ba554cb46b81bbf0`,
+`73e0bc83a94a4f598871b2ef6185daa9` and `a49b4b60b3f94f36b28768d722d2dafc`;
+actual reclaimed allocations were 4,153,344, 6,725,632 and 138,264,576 bytes.
+
+Receipt `factorybox-storage-share-inputs-f4889fc232ec43bf8d3a9c9f3f0c5d19`
+shares 200 identical completed compiled inputs, including completed worker
+component bundles, reclaiming 2,468,044,800 allocated bytes. All original
+source, result, runnable bundle, package and image identities are reverified
+before and after. Executable bytes, modes and ownership stay identical;
+original and shared inode mtimes are recorded. No file contents are rewritten.
+The current successful build optionally discards only its own new compiler
+scratch after verification, retaining its full inventory receipt. Failed
+build scratch is preserved.
+
+Exact evidence hashes and successfully reconstructed ordered before/after
+source patches are in
+`factorybox-timer-integration-notes-331047eab8a04eed9fac29654251cddc`.
+All six portable gates, including enabled Go vet, Python tests and byte-exact
+reference/imported-overlay verification, pass in
+`factorybox-checks-59eb1ebbe6ab43b498fa7e6d07b29503`.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
 of the PID collision and new admission-fixture busy-mount cleanup; a predetermined
 repeated performance comparison; verified base reuse in the supplied
 operational path; full-consumer bounded-store recovery and broader low-disk cases;
-interrupted wait handling, complete checkpoint retirement qualification and epoch
-retirement; explanation of the preserved Sysbox-fs timeout;
+broader signal/error and interrupted timer preparation handling, final-consumer
+checkpoint retirement qualification and epoch retirement;
+explanation of the preserved Sysbox-fs timeout;
 repeated lifecycle/pressure/fault cases and bounded 24-hour soak; a reduced,
 independently reproducible worker package and operations instructions; required
 native and upstream suites on the selected delivered bytes. Missing or failed

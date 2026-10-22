@@ -19,10 +19,11 @@ import (
 )
 
 type captureRequest struct {
-	Guard       captureGuardConfig `json:"guard"`
-	Criu        string             `json:"criu"`
-	CriuSHA256  string             `json:"criu_sha256"`
-	ManagerRoot string             `json:"manager_root"`
+	TimerPlanSHA string             `json:"timer_plan_sha256,omitempty"`
+	Guard        captureGuardConfig `json:"guard"`
+	Criu         string             `json:"criu"`
+	CriuSHA256   string             `json:"criu_sha256"`
+	ManagerRoot  string             `json:"manager_root"`
 }
 
 const captureRequestSeals = unix.F_SEAL_WRITE | unix.F_SEAL_GROW | unix.F_SEAL_SHRINK | unix.F_SEAL_SEAL
@@ -84,6 +85,9 @@ func captureWorkerServe() (resultErr error) {
 		return fmt.Errorf("capture worker CRIU identity differs from its guard")
 	}
 	if err := captureGuardWrite(anchors.evidence, "capture-worker-intent.json", worker); err != nil {
+		return err
+	}
+	if err := prepareCaptureTimers(request, anchors, requestFile); err != nil {
 		return err
 	}
 	var captured sysboxcapture.Result
@@ -234,7 +238,7 @@ func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File
 		"--owner", guard.config.Source.Owner, guard.config.Source.RuntimeID); err != nil {
 		return fmt.Errorf("capture frozen FUSE state: %w", err)
 	}
-	data, err := json.Marshal(captureRequest{Guard: guard.config, Criu: e.config.Criu,
+	data, err := json.Marshal(captureRequest{Guard: guard.config, Criu: e.config.Criu, TimerPlanSHA: guard.timerPlanSHA,
 		CriuSHA256: e.config.CriuSHA256, ManagerRoot: e.config.ManagerRoot})
 	if err != nil {
 		return err
@@ -260,7 +264,7 @@ func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File
 	command.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"HOME=/root", "LANG=C", "GOMAXPROCS=2", "GOMEMLIMIT=256MiB"}
 	command.ExtraFiles = []*os.File{request, guard.anchor.group, guard.anchor.pid,
-		guard.anchor.evidence, guard.anchor.root, lock}
+		guard.anchor.evidence, guard.anchor.root, lock, guard.socket}
 	var stdout, stderr boundedOutput
 	command.Stdout, command.Stderr = &stdout, &stderr
 	command.WaitDelay = 2 * time.Second

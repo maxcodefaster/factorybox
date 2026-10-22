@@ -64,6 +64,9 @@ func prepareTimerNativeCapture() error {
 	if err := json.Unmarshal(data[:n], &request); err != nil {
 		return err
 	}
+	if request.TimerPlanSHA != "" {
+		return nil
+	} // The runtime now owns preparation; retain every prototype assertion.
 	var anchors captureGuardAnchors
 	defer anchors.close()
 	for fd, target := range map[int]**os.File{4: &anchors.group, 5: &anchors.pid, 6: &anchors.evidence, 7: &anchors.root} {

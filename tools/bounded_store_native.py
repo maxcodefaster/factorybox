@@ -21,23 +21,25 @@ import upstream_unit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard'], default='capacity')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
     args = parser.parse_args()
     if args.timer_probe and args.suite == 'capacity':
         parser.error('--timer-probe requires a retirement suite')
     prototype = args.suite == 'timer-restart-prototype'
+    reader_only = args.suite == 'timer-state-reader'
+    exit_guard = args.suite == 'timer-exit-guard'
     if args.timer_observe_exit and not prototype:
         parser.error('--timer-observe-exit requires timer-restart-prototype')
-    if args.suite == 'retirement' or prototype:
+    if args.suite == 'retirement' or prototype or reader_only:
         args.timer_probe = True  # The complete required suite includes the timer regression.
     _, worker = build_worker.load(args.worker_build)
     native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype
+    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -59,7 +61,15 @@ def main():
     manifest = upstream_unit.context_manifest(source)
     core = lambda rows: {k: v for k, v in rows.items() if not k.endswith('_test.go')}
     if core(manifest) != core(worker['source_context']):
-        raise ValueError('native core differs from delivered image')
+        # A separate read-only component may be tested against the old CLI
+        # only while it is not linked by that CLI. This exception never applies
+        # to lifecycle qualification or changed existing runtime source files.
+        unlinked = lambda rows: {k: v for k, v in core(rows).items() if not k.startswith('internal/timerstate/')}
+        if not reader_only or unlinked(manifest) != unlinked(worker['source_context']):
+            raise ValueError('native core differs from delivered image')
+        dependencies = subprocess.check_output(['go', 'list', '-mod=readonly', '-deps', './cmd/factorybox'], cwd=source, text=True).splitlines()
+        if 'factorybox/internal/timerstate' in dependencies:
+            raise ValueError('linked timer reader requires a new delivered worker build')
     busybox = json.loads((reference.ROOT / 'upstream/test-inputs.json').read_text())['busybox-amd64']
     rootfs = reference.ROOT / '.cache/downloads' / busybox['archive']
     if reference.sha(rootfs) != busybox['sha256']:
@@ -83,6 +93,11 @@ def main():
         result['scope'] = 'Experimental single-thread, native AMD64, zero time namespace offset timer continuation before capture. Exact original deadline, read-only request, NULL remainder and full syscall register checks in source and fork. Delivered runtime and original required tests unchanged; not production qualification.'
         result['prototype_inputs'] = prototype_inputs
         result['natural_exit_observer'] = args.timer_observe_exit
+    if reader_only:
+        result['scope'] = 'Read-only Go kernel timer component only, including bulk owned PIDs/non-leader TIDs, exact birth, namespace filtering, independent Python comparison and release of all temporary BPF objects. Existing delivered CLI core unchanged. Not timer integration or lifecycle qualification.'
+        result['unlinked_component_only'] = 'internal/timerstate/'
+    if exit_guard:
+        result['scope'] = 'Production timer exit guard against a controlled test-only tracer, including real normal/SIGKILL exit while the exact original source cgroup is thawed. Confirm source hold before kernel auto-detach. Not actual partial timer mutation rollback, controller-loss or production qualification.'
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = container = preserve = False
     identity = None
@@ -114,6 +129,10 @@ def main():
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerRestartPrototype$']
             if args.timer_observe_exit:
                 command += ['--env', 'FACTORYBOX_TIMER_OBSERVE_EXIT=1']
+        if reader_only:
+            command += ['--env', 'FACTORYBOX_NATIVE_TIMER_READER=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerReader$']
+        if exit_guard:
+            command += ['--env', 'FACTORYBOX_NATIVE_TIMER_EXIT_GUARD=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerExitGuard$']
         for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                        (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
             command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -136,8 +155,8 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = 1 if prototype else 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        prefix = 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = 1 if prototype or reader_only or exit_guard else 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -171,6 +190,20 @@ def main():
                     'no space left' not in proof['guest_actual_enospc'].lower() or
                     proof['pause']['snapshot']['resident_bytes_after'] != 0):
                 raise ValueError('bounded worker proof lacks required assertions')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif reader_only:
+            proof_path = output / 'timer-reader.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'non_leader_threads', 'independent_python_agreement',
+                                                        'wrong_birth_refused_and_released', 'duplicate_pid_refused',
+                                                        'pid_namespace_separated', 'task_memory_unchanged', 'sources_running']):
+                raise ValueError('read-only Go timer component proof incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif exit_guard:
+            proof_path = output / 'timer-exit-guard.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'normal_exit', 'actual_sigkill', 'held_before_auto_detach', 'no_preparation_claim']):
+                raise ValueError('timer exit guard proof incomplete')
             result['proof_sha256'] = reference.sha(proof_path)
         elif not prototype:
             result['scope'] = 'Isolated immutable-alias retirement diagnostic only; full required retirement suite is not qualified.'

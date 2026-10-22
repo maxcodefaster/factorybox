@@ -22,34 +22,47 @@ def saved(path, value):
     finally: os.close(parent)
 
 
-def qualified_runtime(build_name, proof_name):
+def frozen_runtime(build_name):
     if not re.fullmatch(r"factorybox-build-runtime-[0-9a-f]{32}",build_name):
         raise ValueError("requires one exact legacy runtime package build")
-    if not re.fullmatch(r"factorybox-v01-qualification-[0-9a-f]{32}",proof_name or ""):
-        raise ValueError("requires its exact completed local runtime qualification")
     build=reference.ROOT/"artifacts"/build_name
-    proof=reference.ROOT/"artifacts"/proof_name/"result.json"
-    if any(path.is_symlink() or path.resolve()!=path for path in [build,proof,build/"result.json"]):
+    if any(path.is_symlink() or path.resolve()!=path for path in [build,build/"result.json"]):
         raise ValueError("runtime cache inputs cannot be redirected")
-    result,native=(json.loads(path.read_text()) for path in [build/"result.json",proof])
+    result=json.loads((build/"result.json").read_text())
     package=build/"factorybox-v0.1-linux-amd64.tar"
     manifest=build/"bundle/manifest.json"
     if (result.get("passed") is not True or result.get("inputs_unchanged") is not True or
-            native.get("passed") is not True or native.get("native_lifecycle_qualified") is not True or
-            native.get("exact_packaged_cli_tested") is not True or
-            build_name not in {Path(native["runtime_package"]).parent.name,native["independent_component_rebuild_comparison"]} or
-            reference.sha(package)!=result["package_sha256"] or result["package_sha256"]!=native["runtime_package_sha256"] or
-            result["binary_sha256"]!=native["binary_sha256"] or
+            reference.sha(package)!=result["package_sha256"] or
             upstream_unit.context_manifest(build/"context")!=result["source_context"] or
-            sources.tree_sha(build/"context")!=native["go_source_sha256"] or
-            reference.sha(build/"bundle/profile.json")!=native["profile_sha256"]):
-        raise ValueError("legacy package, sources and native qualification do not match")
+            reference.sha(build/"bundle/profile.json")!=result["profile_sha256"]):
+        raise ValueError("legacy frozen package/source/profile changed")
     if manifest.is_symlink() or json.loads(manifest.read_text())["binary_sha256"]!=result["binary_sha256"]:
         raise ValueError("legacy runtime manifest changed")
     for name,digest in result["binary_sha256"].items():
         path=build/"bundle"/name
         if path.is_symlink() or reference.sha(path)!=digest:
             raise ValueError("legacy runnable component bundle changed")
+    return build,result
+
+
+def qualified_runtime(build_name, proof_name):
+    build,result=frozen_runtime(build_name)
+    if not re.fullmatch(r"factorybox-v01-qualification-[0-9a-f]{32}",proof_name or ""):
+        raise ValueError("requires its exact completed local runtime qualification")
+    proof=reference.ROOT/"artifacts"/proof_name/"result.json"
+    if proof.is_symlink() or proof.resolve()!=proof:
+        raise ValueError("runtime qualification cannot be redirected")
+    native=json.loads(proof.read_text())
+    if (
+            native.get("passed") is not True or native.get("native_lifecycle_qualified") is not True or
+            native.get("exact_packaged_cli_tested") is not True or
+            build_name not in {Path(native["runtime_package"]).parent.name,native["independent_component_rebuild_comparison"]} or
+            result["package_sha256"]!=native["runtime_package_sha256"] or
+            result["binary_sha256"]!=native["binary_sha256"] or
+            upstream_unit.context_manifest(build/"context")!=result["source_context"] or
+            sources.tree_sha(build/"context")!=native["go_source_sha256"] or
+            reference.sha(build/"bundle/profile.json")!=native["profile_sha256"]):
+        raise ValueError("legacy package, sources and native qualification do not match")
     return build,result,proof,native
 
 
@@ -61,11 +74,25 @@ def main():
     proofs.add_argument("--bounded-store-proof", help="Complete fixed-filesystem lifecycle/ENOSPC proof of this exact delivered worker")
     proofs.add_argument("--replacement-proof",help="Passing exact storage regression for a replacement of the failed build")
     proofs.add_argument("--qualified-runtime-proof",help="Completed native qualification for an older runtime package's optional cache")
+    proofs.add_argument("--qualified-successor-runtime-proof",help="Native-qualified successor with identical pinned components; retire only the superseded runtime's optional compiler cache, preserving its runnable package")
     parser.add_argument("--failed-proof",help="Closed failing storage regression for the superseded build")
     args=parser.parse_args()
-    if args.qualified_runtime_proof:
+    if args.qualified_runtime_proof or args.qualified_successor_runtime_proof:
         if args.failed_proof:raise ValueError("failed proof is only for replacement storage evidence")
-        build,result,proof,native=qualified_runtime(args.build,args.qualified_runtime_proof)
+        if args.qualified_runtime_proof:
+            build,result,proof,native=qualified_runtime(args.build,args.qualified_runtime_proof)
+        else:
+            if not re.fullmatch(r"factorybox-v01-qualification-[0-9a-f]{32}",args.qualified_successor_runtime_proof):
+                raise ValueError("requires one exact qualified runtime successor")
+            candidate=reference.ROOT/"artifacts"/args.qualified_successor_runtime_proof/"result.json"
+            if candidate.is_symlink() or candidate.resolve()!=candidate:raise ValueError("successor cannot be redirected")
+            successor_name=Path(json.loads(candidate.read_text())["runtime_package"]).parent.name
+            _,successor,proof,native=qualified_runtime(successor_name,args.qualified_successor_runtime_proof)
+            build,result=frozen_runtime(args.build)
+            components=lambda row:{k:v for k,v in row["binary_sha256"].items() if k!="factorybox"}
+            if (successor_name==args.build or result["source_lock_sha256"]!=successor["source_lock_sha256"] or
+                    components(result)!=components(successor)):
+                raise ValueError("successor must be separate and retain exact pinned components/source lock")
     else:
         build,result=build_worker.load(args.build)
     replacement=None
@@ -77,6 +104,10 @@ def main():
     if args.qualified_runtime_proof:
         replacement={"qualified_runtime_proof":args.qualified_runtime_proof,
                      "scope":"Only optional compiler cache retirement; qualified source, original native evidence, runnable components and complete package stay directly available."}
+    elif args.qualified_successor_runtime_proof:
+        replacement={"qualified_successor_proof":args.qualified_successor_runtime_proof,
+                     "qualified_successor_build":successor_name,"qualified_successor_package_sha256":successor["package_sha256"],
+                     "scope":"Only the superseded runtime's optional compiler cache. Identical pinned components and a fully native-qualified successor are verified. All original frozen sources, runnable binaries, complete packages, negative controls and native evidence stay directly available."}
     elif args.bounded_store_proof:
         if args.failed_proof: raise ValueError("failed proof requires a replacement storage proof")
         proof,native=evidence(args.bounded_store_proof,r"factorybox-bounded-store-[0-9a-f]{32}")
@@ -142,13 +173,21 @@ def main():
              "source_and_bundle_preserved":True,"reconstruction":"Fresh offline Go compilation from the preserved frozen source and exact toolchain; generated cache bytes are optional and intentionally removed."}
     saved(artifact/"receipt.json",receipt)
     if upstream_unit.context_manifest(cache)!=manifest: raise ValueError("closed cache changed before retirement")
+    allocated_before_removal=reference.artifact_storage.allocated_bytes(reference.ROOT/"artifacts")
     shutil.rmtree(cache)
     # Recheck frozen sources, binaries and packages, plus the worker image when present.
     if args.qualified_runtime_proof:qualified_runtime(args.build,args.qualified_runtime_proof)
+    elif args.qualified_successor_runtime_proof:
+        frozen_runtime(args.build)
+        qualified_runtime(successor_name,args.qualified_successor_runtime_proof)
     else:build_worker.load(args.build)
+    allocated_after_removal=reference.artifact_storage.allocated_bytes(reference.ROOT/"artifacts")
+    reclaimed=allocated_before_removal-allocated_after_removal
     saved(artifact/"result.json",{"schema":1,"passed":True,"removed":str(cache),
-                                "receipt_sha256":reference.sha(artifact/"receipt.json"),"reclaimed_allocated_bytes":receipt["allocated_bytes"]})
-    print(json.dumps({"evidence":str(artifact),"reclaimed_allocated_bytes":receipt["allocated_bytes"]}),flush=True)
+                                "receipt_sha256":reference.sha(artifact/"receipt.json"),"cache_logical_allocated_bytes":receipt["allocated_bytes"],
+                                "allocated_before_removal":allocated_before_removal,"allocated_after_removal":allocated_after_removal,
+                                "reclaimed_allocated_bytes":reclaimed})
+    print(json.dumps({"evidence":str(artifact),"reclaimed_allocated_bytes":reclaimed}),flush=True)
 
 
 if __name__=="__main__": main()
