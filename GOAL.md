@@ -183,6 +183,9 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   brach nach 14 vollständigen Erfolgen beim 15. Lauf ab. Beim Fork einer
   resumierten Factory-Quelle meldet CRIU einen PID-Konflikt. Der vollständige
   Fehlerdump bleibt erhalten; die Leistungsfreigabe ist nicht erteilt.
+  Ein neuer CRIU-Build ergänzt ausschließlich lesende Fehlerdiagnostik.
+  Seine drei festen vollständigen Factory-Läufe bestehen. Der seltene Fehler
+  trat dabei nicht erneut auf; Ursache und Reparatur bleiben offen.
   Weitere Factory-Initialisierung wird gemessen. Speichergrenzen, Retention,
   Starttimeout, Dauerlauf und reduzierte Auslieferung sind noch nicht erledigt.
 - [Fortschritt und genaue Belege](docs/production-progress.md). Das bestehende

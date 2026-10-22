@@ -321,6 +321,43 @@ restore log and process-tree/core/identity images as bounded hashed files.
 No archive member path is extracted. The saved process 4463 has own-namespace
 PID 2, under nested init 1328. The conflicting occupant is not yet identified.
 
+## Read-only restore collision diagnosis
+
+The optional ordered
+[CRIU diagnostic patch](../upstream/patches/criu-pid-collision-diagnostics-candidate.patch)
+logs only after a nested `clone3` returns `EEXIST`. It records requested IDs,
+bounded current/visible process status and, if available, the occupant's pidfd
+metadata. It opens no writable proc files, sends no signal, changes no PID
+counter, retries nothing and restores the original errno. It is a diagnostic,
+not a repair or selected optimization. The existing builder extension is
+declared with exact original/patched hashes and preserves its default path.
+
+Native build `factorybox-build-criu-retained-251286b9d2a744c28da64ae6a41817c1`
+passes with binary SHA-256
+`45ba3635a5f4da5becb3c49298e00e896d6c5366d1ca3be53e813d8306b4879c`
+and 1,030 unchanged upstream test files. This counts source preservation,
+not execution of those suites. Its new unqualified worker is
+`factorybox-build-worker-a3d8b92f5ded4b719d088e6fd6894570`, image
+`sha256:4ad5d1deceb2cb4b25a5f7858334eff2f9bf8806755dac39830cd5b66164061c`.
+The Go CLI remains byte-identical to C9. No reference profile changes.
+
+Three fixed full Factory lifecycles pass in
+`factorybox-restore-collision-probe-fde61870ac1b4ad090e62dda903a636f`.
+Its source/fixture hashes remain frozen across all cases. Results are
+`factorybox-consumer-worker-loss-0bcc296d87c44accb17c20719d6f3a62`,
+`factorybox-consumer-worker-loss-58c53118245b4bcfb959b3d0a3c0837d` and
+`factorybox-consumer-worker-loss-69140a9ec0744b31aee79923ca29cc5d`.
+The collision does not recur, so no conflicting occupant is identified and
+no repair is claimed. The original failure and its complete dump stay open.
+Portable checks, fixture declarations, vet and reference preservation pass in
+`factorybox-checks-d21fe8ad17e746c8823f027e2dc65853`.
+
+The separate preserved Sysbox-fs startup failure is still unexplained. Its
+saved process listing shows filesystem PID 37 in `do_wait` after the `FUSE dir`
+log, while manager readiness passes. It lacks the child's identity/stack.
+That narrows the observation to a child wait; it does not establish which
+startup probe hung or justify selecting the rejected SHM change.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

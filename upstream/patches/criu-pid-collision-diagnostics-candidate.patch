@@ -1,0 +1,80 @@
+--- a/criu/cr-restore.c
++++ b/criu/cr-restore.c
+@@ -8,6 +8,7 @@
+ 
+ #include <fcntl.h>
+ 
++#include <sys/syscall.h>
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <sys/mman.h>
+@@ -1235,6 +1236,60 @@
+ 	return 0;
+ }
+ 
++/* Read-only diagnostics for the preserved rare EEXIST restore failure.
++ * No retry, PID-counter write, signal, or change to the original errno. */
++static void nested_pid_collision_file(const char *path)
++{
++	char buffer[2049];
++	ssize_t count;
++	int fd;
++
++	fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++	if (fd < 0) {
++		pr_err("PID-COLLISION cannot open %s: %d\n", path, errno);
++		return;
++	}
++	count = read(fd, buffer, sizeof(buffer) - 1);
++	close(fd);
++	if (count < 0) {
++		pr_err("PID-COLLISION cannot read %s: %d\n", path, errno);
++		return;
++	}
++	buffer[count] = '\0';
++	pr_err("PID-COLLISION bounded %s bytes=%zd:\n%s\n", path, count, buffer);
++}
++
++static void nested_pid_collision(struct pstree_item *item, pid_t *requested, int nr)
++{
++	int saved = errno;
++	char path[96];
++#ifdef SYS_pidfd_open
++	int fd;
++#endif
++
++	pr_err("PID-COLLISION saved_pid=%d own_pid=%d caller=%d set_tid_size=%d tid0=%d tid1=%d flags=%lx\n",
++	       vpid(item), item->own_ns_pid, getpid(), nr, nr > 0 ? requested[0] : -1,
++	       nr > 1 ? requested[1] : -1, rsti(item)->clone_flags);
++	nested_pid_collision_file("/proc/self/status");
++	if (nr > 0) {
++		snprintf(path, sizeof(path), "/proc/%d/status", requested[0]);
++		nested_pid_collision_file(path);
++#ifdef SYS_pidfd_open
++		/* A pidfd is opened using the caller's PID namespace. Its fdinfo
++		 * reports the occupant in the mounted proc view as well. Read only. */
++		fd = syscall(SYS_pidfd_open, requested[0], 0);
++		if (fd >= 0) {
++			snprintf(path, sizeof(path), "/proc/self/fdinfo/%d", fd);
++			nested_pid_collision_file(path);
++			close(fd);
++		} else {
++			pr_err("PID-COLLISION pidfd_open(%d): %d\n", requested[0], errno);
++		}
++#endif
++	}
++	errno = saved;
++}
++
+ static inline int fork_with_pid(struct pstree_item *item)
+ {
+ 	struct cr_clone_arg ca;
+@@ -1393,6 +1448,8 @@
+ 		ret = clone3_with_pids_noasan(restore_task_with_children, &ca,
+ 					      (ca.clone_flags & ~(CLONE_NEWNET | CLONE_NEWCGROUP | CLONE_NEWTIME)),
+ 					      SIGCHLD, set_tid_size ? set_tid : NULL, set_tid_size);
++		if (ret < 0 && errno == EEXIST && nested_ns_enabled())
++			nested_pid_collision(item, set_tid, set_tid_size);
+ 	} else {
+ 		/*
+ 		 * Some kernel modules, such as network packet generator

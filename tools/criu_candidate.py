@@ -25,7 +25,7 @@ def load(name):
         if file not in {"retained.patch", "early-hold.patch", "exact-wait.patch", "exit-hold.patch",
                         "exit-hold-socket.patch", "nested-overlay.patch",
                         "nested-overlay-stable-path.patch",
-                        "nested-overlay-shared-root.patch"} or reference.sha(path / file) != expected:
+                        "nested-overlay-shared-root.patch", "pid-collision-diagnostics.patch"} or reference.sha(path / file) != expected:
             raise ValueError("retained-context candidate patch input changed")
     for file, expected in result.get("candidate_overlay_sha256", {}).items():
         if file != "exit-observer.h" or reference.sha(path / file) != expected:

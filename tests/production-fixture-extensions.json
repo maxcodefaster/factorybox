@@ -8,6 +8,14 @@
   "upstream_assertions_modified": false,
   "latency_comparable_to_previous_fixture": false,
   "files": {
+    "tests/criu-retained-candidate/build.py": {
+      "before_sha256": "3b1f3418c46f1bae9d89a89f5c6e95a5952e5776914cf90bc719141fa9633041",
+      "after_sha256": "a8467e529bb6977432bb8dcda31c403f9d1a74661dd892dc2d524fe1afee5f75",
+      "patch": "tests/compatibility/pid-diagnostic-builder.patch",
+      "patch_sha256": "2aac8c092eaaf1e945114bd00790e3eb7deaf2032509f7a3604e66c3a378186c",
+      "before_file": "factorybox-pid-diagnostic-inputs-c00bf2dccc05474ab58d295b0088d21b/build.py",
+      "reason": "Add an explicit optional ordered diagnostic patch to a new CRIU candidate only. Preserve every existing patch, source/test assertion, build command, native resource limit, unchanged-input check and cleanup. The default builder path stays unchanged. The new patch logs bounded process and pidfd metadata only after nested clone3 EEXIST, preserving errno and the failure. It does not signal, change PID allocation, retry, fix or select the failing runtime. Production qualification and upstream suites remain separately required."
+    },
     "tests/devx-lifecycle/opencode_flow_linux_test.go": {
       "before_sha256": "f28df34aab7a82d561a99e060bb73d3f694302fb6fe6babdc27aedcbf0497e23",
       "after_sha256": "242bd96138f257e9a0617af9c09abc29d266fa7a94aae2f54e5e4b8d64456114",

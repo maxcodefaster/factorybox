@@ -27,6 +27,8 @@ parser.add_argument("--nested-overlay-stable-paths", action="store_true",
                     help="Keep original layer names through a private temporary alias root")
 parser.add_argument("--nested-overlay-shared-root", action="store_true",
                     help="Bind each captured covering filesystem once so upper/work share a mount")
+parser.add_argument("--pid-collision-diagnostics", action="store_true",
+                    help="Read bounded process/pidfd metadata only after clone3 fails with EEXIST; no behavioral fix")
 options = parser.parse_args()
 if options.exit_hold_socket and not options.exit_hold:
     parser.error("--exit-hold-socket requires --exit-hold")
@@ -56,6 +58,10 @@ if options.nested_overlay_shared_root:
     patch_inputs.append(
         (root / "upstream/patches/criu-nested-overlay-shared-root-candidate.patch",
          "nested-overlay-shared-root.patch"))
+if options.pid_collision_diagnostics:
+    patch_inputs.append(
+        (root / "upstream/patches/criu-pid-collision-diagnostics-candidate.patch",
+         "pid-collision-diagnostics.patch"))
 lock = json.loads((root / "upstream/lock.json").read_text())
 original = lock["components"]["criu"]
 sources.validate_inputs(original)
@@ -93,7 +99,8 @@ for relative in [
     "criu/cr-dump.c", "criu/parasite-syscall.c", "criu/Makefile.crtools",
     "criu/factorybox-retained.c", "criu/include/factorybox-retained.h",
     "compel/src/lib/infect.c",
-] + (["criu/mount-v2.c"] if options.nested_overlay else []) + (
+] + (["criu/cr-restore.c"] if options.pid_collision_diagnostics else []) + (
+        ["criu/mount-v2.c"] if options.nested_overlay else []) + (
         ["criu/include/factorybox-exit-observer.h"] if options.exit_hold else []):
     component.setdefault("prepared_files_sha256", {})[relative] = reference.sha(context / relative)
 (archive / "source-lock.json").write_text(json.dumps(candidate, indent=2) + "\n")
@@ -180,6 +187,14 @@ if options.nested_overlay_shared_root:
         "preserving the kernel's shared-mount requirement for upper/work. Every layer "
         "first passes bounded beneath-root/no-magiclink/no-cross-mount lookup. "
         "Namespace-root and overlapping covering-mount aliases remain unsupported."
+    )
+if options.pid_collision_diagnostics:
+    result["pid_collision_diagnostics"] = True
+    result["scope"] += (
+        " Read-only bounded diagnostics only when nested clone3 fails with EEXIST: "
+        "requested IDs, current process status and an occupant pidfd's metadata. "
+        "No signal, PID-counter modification, retry or change to the original failure errno. "
+        "This is not a PID collision fix or a selected performance change."
     )
 (archive / "intent.json").write_text(json.dumps(result, indent=2) + "\n")
 print(json.dumps({"building": str(archive)}), flush=True)

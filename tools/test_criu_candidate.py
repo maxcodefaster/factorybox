@@ -77,7 +77,7 @@ class CandidatePatchTests(unittest.TestCase):
     def test_overlay_followups_require_their_own_frozen_patch(self):
         for filename in ["nested-overlay.patch", "nested-overlay-stable-path.patch",
                          "nested-overlay-shared-root.patch", "exact-wait.patch", "exit-hold.patch",
-                         "exit-hold-socket.patch"]:
+                         "exit-hold-socket.patch", "pid-collision-diagnostics.patch"]:
             with self.subTest(patch=filename), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 name, archive, result = self.fixture(root, True)
