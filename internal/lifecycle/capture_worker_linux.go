@@ -132,6 +132,7 @@ func captureWorkerServe() (resultErr error) {
 		},
 	})
 	if err != nil {
+		reserveErr := releaseCaptureReserve(anchors.evidence, request.Guard)
 		// Capture() returns only after its CRIU subprocess has been waited.
 		// Repair only the known network delta while the guarded original
 		// remains frozen and untraced. A repaired network is not permission
@@ -152,7 +153,7 @@ func captureWorkerServe() (resultErr error) {
 			"events_before": eventsBefore,
 			"passed":        validation == nil && rollback == nil,
 		})
-		return errors.Join(err, validation, rollback, receipt)
+		return errors.Join(err, reserveErr, validation, rollback, receipt)
 	}
 	if request.Guard.StopSource {
 		return captureStopSource(request.Guard, anchors, captured)

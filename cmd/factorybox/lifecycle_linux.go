@@ -36,6 +36,8 @@ func runLifecycle(args []string) error {
 	flags.StringVar(&config.Criu, "criu", "", "exact CRIU executable for checkpoint")
 	flags.StringVar(&config.CriuSHA256, "criu-sha256", "", "required CRIU SHA-256 for checkpoint")
 	flags.StringVar(&config.ManagerRoot, "manager-root", "", "private Sysbox manager data root")
+	flags.Uint64Var(&config.MinFreeBytes, "min-free-bytes", 0, "explicit controller filesystem admission floor")
+	flags.Uint64Var(&config.WriteReserve, "write-reserve-bytes", 0, "additional preflight headroom for new backing writes")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -103,10 +105,13 @@ func runLifecycle(args []string) error {
 		if source == "" || snapshot == "" {
 			return fmt.Errorf("fork requires --source and --snapshot-id")
 		}
-	} else if command != "state" && command != "delete" {
+	} else if command != "state" && command != "delete" && command != "capacity" {
 		return fmt.Errorf("unknown lifecycle command %q", command)
 	}
-	if len(remaining) != 1 {
+	if command == "capacity" && len(remaining) != 0 {
+		return fmt.Errorf("capacity requires no sandbox ID")
+	}
+	if command != "capacity" && len(remaining) != 1 {
 		return fmt.Errorf("%s requires one sandbox ID", command)
 	}
 	engine, err := lifecycle.Open(config)
@@ -114,6 +119,13 @@ func runLifecycle(args []string) error {
 		return err
 	}
 	defer engine.Close()
+	if command == "capacity" {
+		report, err := engine.Capacity()
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(report)
+	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 	if command == "prepare-base" {

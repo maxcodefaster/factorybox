@@ -68,6 +68,25 @@ controller record is not a substitute for those measurements. See the native
 results for example sizes and timings. Plan capacity for independent mutable
 filesystems, active checkpoints and interrupted operations as well as bases.
 
+The production candidate exposes `--worker-run-root /run/factorybox capacity`.
+It reports the controller filesystem's total, free and available bytes and its
+actual directory/mount identity. These are filesystem counters, not the size
+of this store. The local worker requires 12 GiB free plus 4 GiB of preflight
+headroom before starting new backing writes. Existing completed requests,
+inspection and deletion can still reconcile below that floor. A capture also
+allocates an independent 8-MiB private rollback reserve before freezing its
+source. Its exact inode can supply rollback metadata space after capture fails.
+This candidate behavior is outside the frozen pilot profile.
+Operations that still write completion/deletion metadata can fail if the
+filesystem has no space at all; the admission exemption is not a success promise.
+
+The preflight observation does not reserve 4 GiB, cap guest writes or guarantee
+space throughout an operation. It is not a hard store quota or coordination
+between workers. Use bounded storage for that separate requirement; hard
+quotas and general concurrent-write exhaustion remain release work. The native
+pressure result covers the concrete failure described in
+[production progress](production-progress.md#capacity-admission-and-rollback-space).
+
 ## Local commands and responses
 
 Administrative clients execute the image's own binary inside the worker:

@@ -329,16 +329,16 @@ same-boot recovery of a fully committed pause. More architectures, Kubernetes,
 cross-node migration and host-reboot RAM recovery are separate expansions.
 Supporting every deployment is not a prerequisite for this first release.
 
-The following are proposed release gates, not completed work or an approved
-availability/latency promise:
+The [accepted local goal](GOAL.md) works through these release gates. They are
+not completed work or an availability/latency promise:
 
 | Gate | Work and exit evidence |
 | --- | --- |
-| Exact deployment and supported workloads | Select the actual production node kernel, storage and consumer inputs. Natively qualify that tuple and the delivered image. Keep unsupported features rejected before state changes. The current Omarchy-only admission must not be loosened to admit an untested production node |
+| Exact deployment and supported workloads | Qualify the existing Linux AMD64 host, exact kernel/storage/consumer inputs and delivered image. Keep unsupported features rejected before state changes. Another production node needs its own qualification; the current admission must not be loosened to admit an untested node |
 | Required upstream and failure coverage | Preserve all upstream assertions. Resolve every required failed/unrun test for the chosen contract. Explicitly unsupported capabilities remain excluded and their original skips remain visible; no required skip becomes a pass by reclassification. Cover earlier controller/guard-loss windows if those are in the release contract |
 | Repeated operation and failure behavior | Diagnose the preserved filesystem-service startup timeout. Proposed initial evidence is at least 100 complete lifecycles per consumer plus a bounded 24-hour soak, with interruption, memory/storage pressure and exact replay. Require zero integrity/ownership violations and no untriaged failures. Native runners must retain their storage guards and resource ceilings |
 | Real external agent continuation | Test a real model endpoint and tool workflow through pause/resume, disconnection and worker replacement. Verify reconnect, cancellation and side-effect handling. An uncertain external tool result must be reconciled rather than blindly replayed |
-| Durable storage lifecycle | Add measured quotas/admission, low-space handling and ownership-checked checkpoint/old-epoch retention and retirement. Prove no required snapshot or live descendant loses backing. Current sandbox deletion confirms process/cgroup/mount deletion; it intentionally retains checkpoint/operation files and does not provide automatic store garbage collection |
+| Durable storage lifecycle | The candidate has filesystem-capacity admission and one native post-admission ENOSPC rollback proof. Hard store quotas, broader pressure cases and ownership-checked checkpoint/old-epoch retirement remain open. Prove no required snapshot or live descendant loses backing. Sandbox deletion retains checkpoint/operation files and does not provide automatic store garbage collection |
 | Operable release package | Produce a minimal runtime image with component/dependency inventory and license notices; repeat required tests on its actual bytes. Define metrics, alerts, timeouts, fencing, incomplete-operation reconciliation, drain and rollback procedures. An upgrade may not silently reinterpret old snapshots; qualify compatibility or drain the old format first |
 | Security, distribution and acceptance | Review the privileged worker and host-kernel trust model, secret access and dependency update process. Resolve original-code licensing before a distributable release. Agree error/latency and host-loss behavior for this service, then verify those expectations from a larger measured sample |
 
@@ -347,11 +347,13 @@ patches, binaries, platform and results. Keep the current reference immutable.
 Performance improvements must pass the same integrity, recovery and upstream
 checks; faster startup alone cannot provide production qualification.
 
-The first implementation priorities are storage retention/capacity and the
-production-node qualification, alongside repeated startup and real external
-agent tests. Prepared-base reuse and profiling the 33-second application start
-can reduce waiting time in parallel. Fresh-worker base-import optimization
-comes later because ordinary same-worker resume avoids that cost already.
+Current work covers storage retention/capacity, the unresolved startup and
+restore failures, repeated operation and the final worker package. Complete
+external-agent lifecycle and same-host worker-replacement proofs are recorded
+in [production progress](docs/production-progress.md), with their failure limits.
+Prepared-base reuse and the fixed comparison of consumer startup remain
+unselected until their full acceptance passes. The earlier 33-second startup
+included a corrected test-peer timeout; it is not a clean runtime baseline.
 
 The original-code distribution license remains unresolved; this repository
 grants no new license by implication. Pinned upstream notices remain under

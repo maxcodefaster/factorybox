@@ -111,6 +111,9 @@ func (e *Engine) Checkpoint(ctx context.Context, id, snapshot string) (_ Checkpo
 }
 
 func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Record, snapshot, relative string, stopSource bool) (_ Checkpoint, resultErr error) {
+	if err := e.admitStorageWrite(); err != nil {
+		return Checkpoint{}, err
+	}
 	if !digest.MatchString(e.config.CriuSHA256) || !filepath.IsAbs(e.config.ManagerRoot) {
 		return Checkpoint{}, fmt.Errorf("checkpoint requires pinned CRIU and an explicit manager root")
 	}

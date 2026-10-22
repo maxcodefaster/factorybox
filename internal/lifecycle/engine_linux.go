@@ -38,6 +38,8 @@ type Config struct {
 	Criu          string `json:"criu"`
 	CriuSHA256    string `json:"criu_sha256"`
 	ManagerRoot   string `json:"manager_root"`
+	MinFreeBytes  uint64 `json:"min_free_bytes,omitempty"`
+	WriteReserve  uint64 `json:"write_reserve_bytes,omitempty"`
 }
 
 type Operation struct {
@@ -87,6 +89,9 @@ type Engine struct {
 }
 
 func Open(config Config) (_ *Engine, resultErr error) {
+	if err := validateStoragePolicy(config); err != nil {
+		return nil, err
+	}
 	if os.Geteuid() != 0 {
 		return nil, fmt.Errorf("the local Sysbox controller requires worker root")
 	}
@@ -338,6 +343,9 @@ func (e *Engine) Start(ctx context.Context, id, bundle string) (View, error) {
 	}
 	record, err := e.read(id)
 	if errors.Is(err, os.ErrNotExist) {
+		if err := e.admitStorageWrite(); err != nil {
+			return View{}, err
+		}
 		record, err = e.prepare(id, bundle, object, input)
 	}
 	if err != nil {
@@ -357,6 +365,9 @@ func (e *Engine) Start(ctx context.Context, id, bundle string) (View, error) {
 		return View{Record: record}, fmt.Errorf("start outcome is uncertain; refusing a second create")
 	}
 	if state == nil {
+		if err := e.admitStorageWrite(); err != nil {
+			return View{Record: record}, err
+		}
 		if err := e.prepareCgroup(&record); err != nil {
 			return View{Record: record}, err
 		}

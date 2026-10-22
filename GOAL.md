@@ -194,5 +194,11 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Absichtlicher Start-Timeout und Dienstabbruch bestehen nativ. Ein vollständiger
   Factory-Lifecycle auf dem neuen Build besteht ebenfalls. Das ist Diagnostik,
   keine Erklärung oder Reparatur des historischen Startfehlers.
+- Eine neue Kapazitätsanzeige und Aufnahmeprüfung lehnen neue Schreibarbeit
+  unter der lokalen Freiplatzschwelle ab. Ein tatsächlicher Platzmangel-Test
+  fand eine eingefrorene Quelle durch fehlenden Rückabwicklungsplatz. Eine
+  vorab zugeteilte, besitzgeprüfte Rückabwicklungsreserve behebt diesen
+  konkreten Fall nativ mit unverändertem RAM und altem Checkpoint. Das ist
+  noch keine harte Store-Quote oder allgemeine Platzmangel-Freigabe.
 - [Fortschritt und genaue Belege](docs/production-progress.md). Das bestehende
   Referenzprofil bleibt unverändert; der neue Go-Worker ist noch nicht freigegeben.

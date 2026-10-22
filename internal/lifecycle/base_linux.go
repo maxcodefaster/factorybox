@@ -45,6 +45,9 @@ func (e *Engine) PrepareBase(ctx context.Context, id, source string) (Base, erro
 	if !errors.Is(err, os.ErrNotExist) {
 		return Base{}, err
 	}
+	if err := e.admitStorageWrite(); err != nil {
+		return Base{}, err
+	}
 	relative := "bases/" + id
 	if err := e.root.Mkdir(relative, 0700); err != nil {
 		return Base{}, fmt.Errorf("base import is incomplete or already owned; refusing replacement: %w", err)

@@ -447,6 +447,7 @@ traceDependency({event: 'module-loaded'});
             if service: service.close()
             reference_lifecycle.write_json(artifact/"result.json",result)
             print(json.dumps({"evidence":str(artifact),"passed":result["passed"],"cleanup":result["cleanup"],"error":result.get("error")}),flush=True)
+            reference.artifact_storage.compact_closed_run(artifact, reference.ROOT)
         if not result["passed"]: raise RuntimeError("consumer worker-loss proof failed: "+str(artifact))
 
 

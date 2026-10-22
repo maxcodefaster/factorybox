@@ -36,6 +36,11 @@ type Config struct {
 	StoreID    string
 }
 
+const (
+	localMinFreeBytes = 12 << 30
+	localWriteReserve = 4 << 30
+)
+
 type Process struct {
 	PID   int    `json:"pid"`
 	Birth string `json:"birth"`
@@ -414,6 +419,7 @@ func Current(runRoot string) (Status, error) {
 	}
 	if strings.Trim(status.Epoch, "0123456789abcdef") != "" || strings.Trim(status.StoreID, "0123456789abcdef") != "" ||
 		status.Lifecycle.Root != status.Store+"/epochs/"+status.Epoch+"/controller" || status.Lifecycle.ManagerRoot != status.Store+"/manager" ||
+		status.Lifecycle.MinFreeBytes != localMinFreeBytes || status.Lifecycle.WriteReserve != localWriteReserve ||
 		len(status.Components) != 4 || status.Lifecycle.RuntimeSHA256 != status.Components["sysbox-runc"] || status.Lifecycle.CriuSHA256 != status.Components["criu"] {
 		return status, fmt.Errorf("worker controller epoch or component recipe changed")
 	}
@@ -574,7 +580,8 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	status := Status{Schema: 1, Store: config.Store, StoreID: identity.ID, Epoch: epoch, Components: binaries,
 		Manager: manager.identity,
 		Lifecycle: lifecycle.Config{Root: root + "/controller", Runtime: config.Components + "/sysbox-runc", RuntimeSHA256: binaries["sysbox-runc"],
-			Criu: config.Components + "/criu", CriuSHA256: binaries["criu"], ManagerRoot: config.Store + "/manager"}}
+			Criu: config.Components + "/criu", CriuSHA256: binaries["criu"], ManagerRoot: config.Store + "/manager",
+			MinFreeBytes: localMinFreeBytes, WriteReserve: localWriteReserve}}
 	ready := false
 	// Register after each service cleanup so failure collection runs first.
 	collectFailure := func() {

@@ -86,6 +86,9 @@ func (e *Engine) RecoverPaused(ctx context.Context, request RecoveryRequest, tar
 			return View{}, fmt.Errorf("recovery target is already owned or its import is incomplete: %s: %v", path, err)
 		}
 	}
+	if err := e.admitStorageWrite(); err != nil {
+		return View{}, err
+	}
 	intent, err = e.importPaused(ctx, lock, request, targetID)
 	if err != nil {
 		return View{}, err

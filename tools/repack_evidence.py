@@ -22,9 +22,13 @@ def main():
     source = supplied.resolve()
     if supplied != source or source.is_symlink() or not source.is_relative_to(reference.ROOT/"artifacts") or not source.name.endswith(".tar.zst"):
         raise ValueError("requires one canonical repository evidence archive")
-    if source.parent.name.startswith(("factorybox-build-","factorybox-devx-inputs-","factorybox-devx-project-images-")):
+    run = reference.ROOT/"artifacts"/source.relative_to(reference.ROOT/"artifacts").parts[0]
+    if run.name.startswith(("factorybox-build-","factorybox-devx-inputs-","factorybox-devx-project-images-","factorybox-bats-images-")):
         raise ValueError("frozen build/consumer inputs cannot be repacked")
-    closed = json.loads((source.parent/"result.json").read_text())
+    closed_path = run/"result.json"
+    if closed_path.is_symlink():
+        raise ValueError("closed-run result cannot be redirected")
+    closed = json.loads(closed_path.read_text())
     if closed.get("cleanup") is not True:
         raise ValueError("evidence source is not a fully closed run")
     receipt_path = source.with_name(source.name.removesuffix(".zst")+".encoding.json")

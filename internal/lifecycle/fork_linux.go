@@ -106,6 +106,9 @@ func (e *Engine) Fork(ctx context.Context, sourceID, snapshotID, targetID string
 		} else if !errors.Is(exists, os.ErrNotExist) {
 			return View{}, exists
 		}
+		if err := e.admitStorageWrite(); err != nil {
+			return View{}, err
+		}
 		intent, err = e.newForkIntent(ctx, sourceID, snapshotID, targetID)
 		metadataVerified = err == nil
 		if err == nil {
@@ -142,6 +145,9 @@ func (e *Engine) finishFork(ctx context.Context, lock *os.File, operation, objec
 		return e.reconcileFork(ctx, lock, intent, record)
 	}
 	if !errors.Is(err, os.ErrNotExist) {
+		return View{}, err
+	}
+	if err := e.admitStorageWrite(); err != nil {
 		return View{}, err
 	}
 	if err := e.prepareForkBacking(ctx, lock, operation, intent, metadataVerified); err != nil {
@@ -504,6 +510,9 @@ func (e *Engine) reconcileFork(ctx context.Context, lock *os.File, intent forkIn
 	}
 	request := e.forkRestoreRequest(intent, record)
 	if !record.Start.Attempted {
+		if err := e.admitStorageWrite(); err != nil {
+			return View{Record: record}, err
+		}
 		if err := e.prepareCgroup(&record); err != nil {
 			return View{Record: record}, err
 		}

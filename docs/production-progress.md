@@ -438,10 +438,134 @@ upstream-suite qualification or performance selection. Portable checks pass in
 `factorybox-checks-17f2ba3d7afc4179b9fcdf29d1cc4c02` with vet, 232 unchanged
 reference files and all four declared production fixture extensions.
 
+## Capacity admission and rollback space
+
+The candidate adds an administrative `capacity` command. It reads `statfs`
+through the anchored controller directory and verifies its device, inode and
+mount identity against the current path. It reports total/free/available bytes,
+the observation time and admission decision. Invalid counters, overflow and
+changed roots refuse new writes. These are whole-filesystem counters, not
+per-store usage. The local worker publishes and verifies a fixed 12-GiB free
+floor plus 4-GiB write headroom. This is a preflight check, not a reservation,
+hard quota or protection from concurrent guest/other-worker writes.
+
+New start, base import, capture/pause, fork, resume and recovery backing paths
+check available capacity before new writes. Completed replay, state inspection,
+capacity observation and deletion remain possible below the floor. Explicit
+standalone controllers can supply a positive floor/reserve pair; historical
+fixtures with both values zero retain their original behavior. The validated
+worker path supplies its required local policy. Native tests retain all old
+assertions and use separate new fixtures.
+
+The first pressure attempt
+`factorybox-storage-admission-72ca4897635c48dda5a1fe827c287ea0` confirms that a
+RAM-backed tmpfs cannot satisfy the existing file-backed snapshot-RAM release
+check. Its attempted pause is refused and its complete failed store is retained.
+The new test separates real file-backed pause/resume from bounded tmpfs pressure;
+it does not weaken that release check or qualify tmpfs as production pause storage.
+
+The next attempt
+`factorybox-storage-admission-0836dc5c079f48b68ddbcfb0f2c41f4f` finds a real
+failure after successful admission. Copying a 160-MiB nonzero source file into
+the private 128-MiB filesystem produces actual `ENOSPC`. The rollback cannot
+write its receipts and the source remains frozen. The test fails its unchanged
+running-source assertion. Logs, frozen inputs and the complete failed store are
+retained. A passing preflight check alone did not prevent this failure.
+
+The correction allocates 8 MiB of actual private blocks for each capture before
+freezing. On a capture-worker failure it releases only that saved inode, then
+performs the original validated rollback and receipt checks. Normal completion
+also releases the reserve. The zero-length inode and original receipt remain
+for exact replay. Device, inode, owner, mode, link count, size and guard request
+must match; another guard, a substituted file or a shared inode is rejected.
+No failed checkpoint payload or old generation is removed by this mechanism.
+It does not bypass network, tracer, process-identity or thaw authorization.
+
+Candidate `factorybox-build-worker-c45d9c2ed6a44c41bd642a0f01728a59` passes its
+build with CLI SHA-256
+`b93ce974052824e3f7ae712b509da617a9887b1e53dde2211d28e8106a956b9b`, image
+`sha256:1ffb5060cac4b6fe51dad1b980be9224cdfcb886aae544bab9dda5c3dde5910c`
+and package SHA-256
+`a7826b67c2e43d49db2d8bb6a0a70311e00ae820cb975ac10990ed33f038c0b0`.
+It retains the same Sysbox and diagnostic CRIU inputs. This is unselected.
+
+All three native storage tests pass in
+`factorybox-storage-admission-1f877b3686094956b947a5dd2b8afed5`:
+five real low-space refusals before new backing, exact completed checkpoint
+replay below the floor and actual post-admission `ENOSPC`; a separate real
+file-backed pause with rejected resume leaving its record byte-identical,
+followed by successful resume under the restored policy; and refusal to
+truncate a foreign replacement/shared inode or release another guard's reserve,
+with exact release replay succeeding. Test times are 1.83 s, 1.78 s and 0.03 s.
+The failed capture returns failure, restores its original source to running,
+retains its original private RAM/file/watch state and verifies the complete
+older checkpoint. Its partial new capture remains retained. The 128-MiB
+pressure filesystem is enlarged to 144 MiB only for subsequent fixture cleanup,
+after the recovery assertions. The host disk is not filled. Delivered CLI
+capacity reports its required policy; exact cleanup, inputs and unchanged global
+sysctls pass. This concrete rollback proof is not general disk-failure qualification.
+
+Portable checks pass in `factorybox-checks-f4a369f161354a36a7b4af64ce59bcc1`.
+Both complete consumer regressions pass on these bytes: Factory with separate
+Theia and deterministic OpenCode in
+`factorybox-consumer-worker-loss-bd5b62b47eea4657bac6a18517e70415`, native
+116.46 s and outer probe 125.097 s; minimal in
+`factorybox-consumer-worker-loss-522793c807c843fc85270db15e51bee1`, native
+39.76 s and outer probe 48.396 s. These are complete-test durations, not
+individual application start times or a performance comparison.
+
+Native guard regression passes one test and all twelve subtests in
+`factorybox-runtime-3ef96769c13f4ac6a9c0b72f60bc60cf`. Native capture passes
+twelve tests and 78 subtests in
+`factorybox-runtime-c697bf5c37324a9d931540364e2ae979`. Neither has a skip.
+Their parent `factorybox-pilot-native-gates-5379a6d71df94c7f8e7000cd2eceb294`
+then stops before the pause suite can allocate an artifact: completed evidence
+has crossed the required eight-GiB starting-headroom threshold. The parent is
+failed, pause is unrun there and admission is not attempted. No native pause
+assertion failed in that attempt. The missing suites need a separate result
+after maintenance, not omission from the original failed parent.
+
+The subsequent parent
+`factorybox-pilot-native-gates-877a7bb5d1d1484596f9ee863db68818` completes the
+pause suite: twelve tests, 67 subtests and no skips in
+`factorybox-runtime-d9b30d20509349e89446b38599c7a803`. Its admission suite
+then fails in `factorybox-runtime-8829166825b0476888776bdfd2c7d5ae`.
+`TestProcDirectoryAdmissionNative/transient-foreign-proc-directory` passes its
+original RAM, rejection/settled-capture and independent-fork assertions, but
+the original test-overlay cleanup returns `EBUSY`. Sixteen top-level tests and
+77 subtests pass; the failed assertion is preserved, with no skip. Its complete
+captured source archive has original SHA-256
+`74c2866160dd59fccfc0c01554d564fa511584d8b65d95a9463a6bdf1ca2140b`.
+Outer exact container/volume cleanup passes. This does not explain the busy
+mount, qualify admission or permit an assertion change. It is a new open
+release blocker; the passing consumer/pressure suites do not override it.
+
+Artifact maintenance preserves all failed stores. Two closed Bats dumps are
+losslessly re-encoded by
+`factorybox-storage-repack-71a5ac7d952047cb820bbe3c3e21699d` and
+`factorybox-storage-repack-fcd4ffcef96e47a3933d7d6e5a9b82f8`, each verifying all
+718,274,560 raw bytes. Closed passing consumer test executables also receive
+whole-decompression checks and individual encoding/reconstruction receipts.
+The old failed admission candidate's optional compiler cache is retired only
+after the passing replacement, with exact source/package/component checks, in
+`factorybox-storage-retire-cache-e408a4fe30f9489290aeee1ccc896b45`.
+Frozen sources, results, logs, runnable component bundles and failed payloads
+remain preserved; the historical experiment is untouched.
+The new candidate's cache is retired after its full Factory pass in
+`factorybox-storage-retire-cache-3f24a5de5fe744d8862e649754a00018`. Its closed
+capture dump is losslessly repacked in
+`factorybox-storage-repack-9b0bf9c906d6431bb70ded90739e2622`, with all
+218,103,808 raw bytes verified. The compactor now also covers large generated
+consumer test/actor executables after exact cleanup. Each retains its own
+encoding, original hash, whole-decompression check and reconstruction command.
+Frozen runnable component bundles and original consumer image inputs remain
+directly available. Nested dump repacking checks the containing run's result;
+a regression refuses a nested frozen-build input before any decoder starts.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
-of the new PID collision; a predetermined
+of the PID collision and new admission-fixture busy-mount cleanup; a predetermined
 repeated performance comparison; verified base reuse in the supplied
 operational path; store quotas/admission and low-disk cases; dependency-checked
 checkpoint/epoch retirement; explanation of the preserved Sysbox-fs timeout;

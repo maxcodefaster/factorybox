@@ -51,6 +51,9 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 		return View{Record: record, Runtime: state}, nil
 	}
 	if record.Phase == "running" {
+		if err := e.admitStorageWrite(); err != nil {
+			return View{Record: record}, err
+		}
 		if _, err := e.root.Lstat(relative); !errors.Is(err, os.ErrNotExist) {
 			return View{Record: record}, fmt.Errorf("pause snapshot identity already exists or is inaccessible: %v", err)
 		}

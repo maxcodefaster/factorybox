@@ -669,6 +669,11 @@ func (e *Engine) startCheckpointGuard(source Record, pid int, executable, captur
 	if err := captureGuardWrite(guard.anchor.evidence, "guard-intent.json", config); err != nil {
 		return nil, err
 	}
+	if intent != nil {
+		if err := prepareCaptureReserve(guard.anchor.evidence, config); err != nil {
+			return nil, err
+		}
+	}
 	sockets, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_SEQPACKET|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
@@ -775,6 +780,7 @@ func (guard *captureGuard) captureStopped() error {
 
 func (guard *captureGuard) finish(recoverSource bool) (resultErr error) {
 	defer func() { resultErr = errors.Join(resultErr, guard.anchor.close(), guard.socket.Close()) }()
+	defer func() { resultErr = errors.Join(resultErr, releaseCaptureReserve(guard.anchor.evidence, guard.config)) }()
 	request := "disarm:"
 	if guard.stopped && !recoverSource {
 		request = "disarm-stopped:"
