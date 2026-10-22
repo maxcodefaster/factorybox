@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan'], default='capacity')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
     args = parser.parse_args()
@@ -36,6 +36,7 @@ def main():
     kernel_prototype = args.suite == 'timer-kernel-activation-prototype'
     protection = args.suite == 'timer-remainder-protection' or kernel_prototype
     restore_hold = args.suite == 'restore-hold'
+    timer_orphan = args.suite == 'timer-orphan'
     if args.timer_observe_exit and not prototype:
         parser.error('--timer-observe-exit requires timer-restart-prototype')
     if args.suite == 'retirement' or prototype or reader_only:
@@ -45,7 +46,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or remainder or protection or restore_hold
+    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or remainder or protection or restore_hold or timer_orphan
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -127,7 +128,9 @@ def main():
         result['scope'] = 'Test-only single-thread native kernel-wait activation after actual delivered source checkpoint, fork and resume, including a signal queued while frozen after syscall-entry activation, with the production independent tracer-exit guard. Original interruption-time deadline, handler-protection/EINTR/ABI assertions retained. Restores already exposed their ppoll continuation before test activation. Current CLI unchanged; no production pre-exposure integration, multi-thread, failure repair or production qualification.'
         result['prototype_inputs'] = prototype_inputs
     if restore_hold:
-        result['scope'] = 'Pinned Sysbox private sealed restore/resume pre-detach hold, exact persisted cgroup and application counter through ACK, CRIU detach and explicit thaw. Actual socket disconnect and foreign ACK refuse. Hold protocol is opt-in and production lifecycle activation remains disabled; not production qualification.'
+        result['scope'] = 'Pinned Sysbox private sealed restore/resume pre-detach hold, exact persisted cgroup and application counter through ACK, CRIU detach and explicit thaw. Actual socket disconnect and foreign ACK refuse. Raw backend protocol fixture; public lifecycle activation is covered by separate suites. Not production qualification.'
+    if timer_orphan:
+        result['scope'] = 'Delivered CLI pause interrupted at the exact owned filesystem-copy boundary after actual timer preparation and process completion. Real controller/worker SIGKILL, exact worker reap, delayed original guard decision, pending SIGUSR1 and source held frozen/untraced without handler progress. Unresolved pause evidence retained until exact outer teardown. No automatic repair or production qualification.'
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = container = preserve = False
     identity = None
@@ -173,6 +176,8 @@ def main():
             command += ['--env', 'FACTORYBOX_TIMER_KERNEL_PROTOTYPE=1']
         if restore_hold:
             command += ['--env', 'FACTORYBOX_NATIVE_RESTORE_HOLD=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeRestoreHold$']
+        if timer_orphan:
+            command += ['--env', 'FACTORYBOX_NATIVE_TIMER_ORPHAN=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerOrphan$']
         for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                        (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
             command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -195,8 +200,8 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = 1 if prototype or reader_only or exit_guard or signal_boundary or remainder or protection or restore_hold else 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        prefix = 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = 1 if prototype or reader_only or exit_guard or signal_boundary or remainder or protection or restore_hold or timer_orphan else 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -256,6 +261,14 @@ def main():
             proof = json.loads(proof_path.read_text())
             if any(proof.get(key) is not True for key in ['passed', 'uncaptured_control', 'interruption_time_remainder', 'raw_eintr_and_abi']):
                 raise ValueError('timer interruption-time remainder proof incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif timer_orphan:
+            proof_path = output / 'timer-orphan.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'controller_actual_sigkill', 'worker_actual_sigkill_and_reaped',
+                                                        'original_process_capture_completed', 'source_frozen_untraced',
+                                                        'queued_signal_handler_not_run', 'timer_completion_refused', 'no_automatic_repair_claim']):
+                raise ValueError('native timer orphan hold proof incomplete')
             result['proof_sha256'] = reference.sha(proof_path)
         elif restore_hold:
             proof_path = output / 'restore-hold.json'

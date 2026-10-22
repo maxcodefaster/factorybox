@@ -2079,11 +2079,51 @@ provenance and retention receipts are verified and indexed in
 The existing Sysbox/CRIU/Bats component gates remain applicable to their unchanged
 component bytes; they do not replace final full-consumer qualification.
 
-Production qualification remains false. Actual orphan/delegated timer holds,
+Production qualification remains false. Broader orphan/delegated timer holds,
 partial preparation/activation repair, multiple native thread waits and completed
 private-page lifetime require further native evidence. The regression exercises
 the delivered native core through the probe API; it does not replace the full
 consumer and endurance gates on final delivered bytes.
+
+## Native orphan hold after timer preparation
+
+`factorybox-checkpoint-retirement-976ff0a2a1ae41b089a2e4843d0fd1f6`
+passes a delivered-CLI pause fault on the unchanged `37dd732100cd45be93cc7a123ee39f1a`
+package. The original protected-remainder assembly is unchanged. The fixture
+observes and stops the exact owned GNU cp child after timer preparation and
+completed process capture, then stops the original guard and controller.
+Actual SIGKILL ends the capture worker and controller. The isolated probe acts
+as a child subreaper and reaps that exact worker before allowing the original
+guard to decide. A live worker or zombie therefore cannot account for refusal.
+
+The exact source receives real SIGUSR1, confirmed in its pending-signal mask.
+The guard refuses with `timer mutation remains unconfirmed` and records
+`original_source_held_for_capture_reconciliation`. The original source PID and
+birth remain frozen, populated and untraced for 1,250 ms with no signal-handler
+counter progress. No activation or safe-abort receipt appears. Deletion of the
+unresolved pause refuses and leaves its record unchanged. Synthetic guard
+receipts are copied before the unique outer worker and volume are removed;
+there is no diagnostic thaw or claimed automatic timer repair.
+
+The first fixture run, `factorybox-checkpoint-retirement-bf5a789d5eb7490399a62c23815fa834`,
+hangs in the test's controller Wait because the stopped guard inherits stderr.
+Read-only process observation shows the dead worker, stopped guard and stopped
+test progress. The exact probe is terminated through a verified pidfd; the run
+remains failed with exit 137 and its compressed volume intact. A two-second
+WaitDelay in the test fixes this fixture deadlock. The first successful retry,
+`factorybox-checkpoint-retirement-43f354e7b70245b889ff082609ebedef`, exposes
+root-only permissions on copied synthetic JSON output during later compaction.
+A separate receipt verifies unchanged file bytes while making only those
+outputs readable. The final run above passes both assertions and automatic
+verified compaction with the corrected output modes.
+
+Portable checks with vet pass in
+`factorybox-checks-901eba90690d43eab4cb541e7b5e536f`. All three attempts,
+output-access maintenance, exact patches and unchanged runtime/component bytes
+are indexed in `factorybox-timer-orphan-notes-77fc993985844b24af1e9a0695dd1311`.
+This covers one completed-process/orphan decision boundary. Guard loss,
+incomplete mutations, broader thread/signal states, private-page lifetime and
+every other production gate remain open.
 
 ## Release work still required
 

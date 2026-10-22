@@ -373,3 +373,12 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Native Verlustgrenzen und automatische Reparatur einer
   unvollständigen Timer-Mutation bleiben offen. Das vollständige Goal bleibt
   aktiv, Produktionsfreigabe false.
+- Ein eigener ausgelieferter CLI-Pause-Test belegt nun eine Timer-Orphan-Grenze:
+  echter Controller-/Worker-SIGKILL, exaktes Reap und anschließende Entscheidung
+  des ursprünglichen Guards. Die Quelle bleibt trotz ausstehendem SIGUSR1
+  eingefroren und untraced; der Handler läuft nicht, die unbestätigte Pause
+  bleibt erhalten und ihre Löschung wird verweigert. Der anfängliche Fixture-
+  Wait-Fehler, beide erfolgreichen Versuche, Output-Leserechte und exakte Patches
+  liegen unter `factorybox-timer-orphan-notes-77fc993985844b24af1e9a0695dd1311`.
+  Runtime- und Komponentenbytes bleiben unverändert. Guard-Verlust, automatische
+  Mutationsreparatur und sämtliche weiteren Freigabearbeiten bleiben offen.

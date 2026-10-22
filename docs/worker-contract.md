@@ -257,9 +257,13 @@ package and obtains the original EINTR, ABI and interruption-time remainder on
 this candidate. The activation worker has its own exact parent intent; the
 original capture-worker identity remains unchanged. Orphan and delegated cure
 must keep the source held when timer mutation lacks its completed receipt.
-The metadata refusal tests do not establish native controller/guard-loss
-reconciliation. Interrupted mutation repair and the other release gates remain
-open. See [confirmed abort activation](production-progress.md#native-timer-activation-after-confirmed-capture-abort).
+A subsequent native delivered-CLI pause test kills the actual controller and
+worker, reaps that worker, then verifies the original guard holds the staged
+source frozen and untraced with SIGUSR1 pending and no handler progress. The
+unresolved pause refuses deletion and preserves its record. This proves one
+orphan hold boundary; guard-loss reconciliation, interrupted mutation repair
+and the other release gates remain open. See [confirmed abort activation](production-progress.md#native-timer-activation-after-confirmed-capture-abort)
+and [the native orphan hold](production-progress.md#native-orphan-hold-after-timer-preparation).
 
 ## Recovering a committed pause after worker replacement
 
