@@ -22,7 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-remainder'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype'], default='capacity')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
     args = parser.parse_args()
@@ -33,6 +33,8 @@ def main():
     exit_guard = args.suite == 'timer-exit-guard'
     signal_boundary = args.suite == 'timer-signal'
     remainder = args.suite == 'timer-remainder'
+    kernel_prototype = args.suite == 'timer-kernel-activation-prototype'
+    protection = args.suite == 'timer-remainder-protection' or kernel_prototype
     if args.timer_observe_exit and not prototype:
         parser.error('--timer-observe-exit requires timer-restart-prototype')
     if args.suite == 'retirement' or prototype or reader_only:
@@ -42,7 +44,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or remainder
+    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or remainder or protection
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -70,6 +72,9 @@ def main():
         for source_name, target in [('prepare.py', 'timer-prepare.py'), ('restart.S', 'timer-restart.S')]:
             shutil.copyfile(reference.ROOT / 'tests/timer-probe' / source_name, artifact / target)
             prototype_inputs[target] = reference.sha(artifact / target)
+    if kernel_prototype:
+        shutil.copyfile(reference.ROOT / 'tests/timer-probe/restart.S', artifact / 'timer-kernel.S')
+        prototype_inputs['timer-kernel.S'] = reference.sha(artifact / 'timer-kernel.S')
     manifest = upstream_unit.context_manifest(source)
     core = lambda rows: {k: v for k, v in rows.items() if not k.endswith('_test.go')}
     if core(manifest) != core(worker['source_context']):
@@ -115,6 +120,11 @@ def main():
         result['scope'] = 'Direct syscall signal controls and actual SIGUSR1 queued after completed Go timer preparation while the exact source is frozen and its capture worker stopped before CRIU starts. Original wait must return raw EINTR after resume with one handler and unchanged registers/request. No production qualification.'
     if remainder:
         result['scope'] = 'Real one-second signal handler, uncaptured native control and delivered prepared wait. Original non-NULL remainder must describe interruption time before the handler, with raw EINTR and the original register/flags/stack/read-only request checks. Not production qualification.'
+    if protection:
+        result['scope'] = 'Real caught signal handler protects its dedicated remainder page after a one-second delay. Native control and prepared wait must both retain raw EINTR and all original ABI checks, with the kernel-compatible copy ordered before handler protection. Not production qualification.'
+    if kernel_prototype:
+        result['scope'] = 'Test-only single-thread native kernel-wait activation after actual delivered source checkpoint, fork and resume, including a signal queued while frozen after syscall-entry activation, with the production independent tracer-exit guard. Original interruption-time deadline, handler-protection/EINTR/ABI assertions retained. Restores already exposed their ppoll continuation before test activation. Current CLI unchanged; no production pre-exposure integration, multi-thread, failure repair or production qualification.'
+        result['prototype_inputs'] = prototype_inputs
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = container = preserve = False
     identity = None
@@ -154,6 +164,10 @@ def main():
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_SIGNAL=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerSignalBoundary$']
         if remainder:
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_REMAINDER=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerRemainder$']
+        if protection:
+            command += ['--env', 'FACTORYBOX_NATIVE_TIMER_REMAINDER_PROTECTION=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerRemainderProtection$']
+        if kernel_prototype:
+            command += ['--env', 'FACTORYBOX_TIMER_KERNEL_PROTOTYPE=1']
         for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                        (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
             command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -176,8 +190,8 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = 1 if prototype or reader_only or exit_guard or signal_boundary or remainder else 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        prefix = 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = 1 if prototype or reader_only or exit_guard or signal_boundary or remainder or protection else 4 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -238,6 +252,29 @@ def main():
             if any(proof.get(key) is not True for key in ['passed', 'uncaptured_control', 'interruption_time_remainder', 'raw_eintr_and_abi']):
                 raise ValueError('timer interruption-time remainder proof incomplete')
             result['proof_sha256'] = reference.sha(proof_path)
+        elif protection:
+            proof_path = output / 'timer-remainder-protection.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'uncaptured_control', 'copy_before_handler_protection', 'raw_eintr_and_abi']):
+                raise ValueError('timer remainder copy-order proof incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
+            if kernel_prototype:
+                activation = output / 'kernel-activation-prototype.json'
+                activated = json.loads(activation.read_text())
+                cases = activated.get('cases', {})
+                if (activated.get('passed') is not True or activated.get('native_frozen_remainder_control') is not True or
+                        set(cases) != {'prepared', 'fork', 'resumed', 'queued'} or
+                        set(proof.get('cases', {})) != {'uncaptured', 'frozen-control', *cases}):
+                    raise ValueError('native kernel activation experiment incomplete')
+                for mode, case in cases.items():
+                    if (case.get('passed') is not True or case.get('syscall_entry_atomic_mask') is not True or
+                            case.get('kernel_timer_armed') is not True or
+                            case.get('source_held') is not True or case.get('native_syscall') != 230 or
+                            case.get('code_sha256') != '02f23238267d39195a106632b38e3b1c4ba58fa6d7d95adeae531e5ad553e15f' or
+                            mode == 'queued' and (case.get('queued_before_thaw') is not True or
+                                                  case.get('queued_caught_signal') is not True)):
+                        raise ValueError('native kernel activation case incomplete: ' + mode)
+                result['activation_proof_sha256'] = reference.sha(activation)
         elif not prototype:
             result['scope'] = 'Isolated immutable-alias retirement diagnostic only; full required retirement suite is not qualified.'
         else:
@@ -283,7 +320,7 @@ def main():
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])
             if args.timer_probe:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(artifact / 'timer-probe.py') == result['timer_probe_sha256']
-            if prototype:
+            if prototype or kernel_prototype:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and all(reference.sha(artifact / name) == sha for name, sha in prototype_inputs.items())
             result['passed'] = (result['passed'] and result['cleanup'] and result['inputs_unchanged'] and
                                 result['global_sysctls_after'] == result['global_sysctls_before'])

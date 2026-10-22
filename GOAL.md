@@ -303,3 +303,16 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Bytes ebenfalls. Exakte Fixture-Hashes, erfolgreich rekonstruierte geordnete
   Patches und der geprüfte Belegindex liegen unter
   `factorybox-timer-continuation-notes-c3b2393e0dc44ad19708a61cd15b2c02`.
+- Der aktuelle ausgelieferte Kandidat `2fca9b438e664527a211a44df38bd0f7`
+  besteht die bisherigen Stilllegungs-, Speichergrenzen- und Worker-Ersatzfälle,
+  hat aber einen nachgewiesenen Restzeit-Kopierfehler. Ein Signal-Handler, der
+  seine eigene Restzeit-Seite schützt, führt im nativen Kontrollfall zu EINTR,
+  im vorbereiteten Kandidaten zu EFAULT. Der unveränderte finale Test bestätigt
+  das in `factorybox-checkpoint-retirement-98bebdb146ae463e87146c0738fa442f`.
+  Ein ausschließlich im Test ausführbarer Versuch mit echtem Kernel-Wait
+  besteht sechs Fälle einschließlich Fork, Resume und eingefrorenem Signal.
+  `factorybox-checkpoint-retirement-7c294dbd14b34613823c82854cb26126`
+  belegt auch den tatsächlich gestarteten Kernel-Timer und eine native
+  eingefrorene Vergleichskontrolle. Die Runtime ist noch unverändert.
+  Aktivierung vor Freigabe der Quelle und wiederhergestellter Tasks,
+  Fehlerreparatur und alle übrigen Produktionsabnahmen bleiben offen.

@@ -1645,13 +1645,104 @@ Portable checks with vet and exact reference/overlay verification pass in
 Evidence hashes and exact reconstructed source/fixture changes are in
 `factorybox-timer-remainder-notes-99afbe6c2e694fc79b0eadf57d2b97dd`.
 
-Production qualification remains false. Next, test copy/protection/error
-ordering explicitly: the helper still copies into the remainder pointer after
-the handler, so a handler changing that mapping needs a native control and
-candidate comparison. This case has no native verdict yet. Broader masks and
+Production qualification remains false. The next section records the later
+copy/protection ordering verdict. Broader masks and
 signal actions, pending signals through pause/recapture, nonzero time offsets,
 actual partial-preparation repair, multi-thread mutation and continuation
 lifetime also remain required.
+
+## Remainder mapping changed by the signal handler
+
+The delivered 2fca candidate has a confirmed copy-order defect. A separate
+native fixture places the remainder on its own page. The one-second handler
+then makes only that page read-only. The native control returns raw EINTR,
+with a valid remainder already written before the handler. The delivered
+prepared wait returns EFAULT because its self-copy happens after the handler.
+The first negative is
+`factorybox-checkpoint-retirement-4df5d445d898415a8d7c163e0c38bcfb`.
+The final fixture confirms the same result in
+`factorybox-checkpoint-retirement-98bebdb146ae463e87146c0738fa442f`.
+All original required timer, signal and delayed-handler tests stay unchanged.
+The new task retains their register, flags, stack, read-only request, one-handler
+and raw EINTR assertions. Symbol and mapping checks verify the dedicated page.
+
+A test-only activation experiment uses the existing 323-byte native-wait code
+from the unchanged `tests/timer-probe/restart.S`, SHA-256
+`02f23238267d39195a106632b38e3b1c4ba58fa6d7d95adeae531e5ad553e15f`.
+It operates on one exact task after a real delivered checkpoint, fork or
+resume. The production source guard independently watches its tracer exit.
+It journals the original registers, mask and private frame before mutation,
+verifies the runtime's private RX page, and replaces only that page. It keeps
+catchable signals blocked while stepping to the native clock_nanosleep entry,
+then installs the original mask at that kernel boundary. Syscall tracing
+prevents a return or signal-delivery stop from running application code.
+It confirms an actual sleeping kernel wait, interrupts it, reads its exact
+restart block and deadline, and freezes the source before detaching. Temporary
+BPF objects must be released. Application instructions and the request stay
+unchanged. This command and its switches exist only in the test executable.
+
+An earlier syscall-entry-only experiment passes in
+`factorybox-checkpoint-retirement-757d28e396e94dbfa0309d9fd7b36ff9` and
+`factorybox-checkpoint-retirement-6eeaddb9e0844d69862f08877fa116a9`.
+The final experiment additionally verifies the armed kernel timer. Its first
+observation attempt, `factorybox-checkpoint-retirement-f07f989fdb884be1aa876658e6a81df2`,
+reads a restart block before interrupting the wait. Linux has not yet filled
+that block, so the experiment correctly refuses the observation. The next
+attempt, `factorybox-checkpoint-retirement-35a9bda8b37d4270ab170bbcd2e61e87`,
+passes source, fork and resume but fails a new queued-signal timing assumption.
+The remainder was written at the tracer interruption, about 399 ms before the
+signal was queued during the hold.
+
+The final native frozen control establishes the correct comparison. It freezes
+an uncaptured native wait, reads the actual kernel-written remainder, waits
+600 ms, queues SIGUSR1 while still frozen, then thaws. After the handler, the
+remainder equals the earlier kernel-written value byte for byte. It differs
+from the later signal-time estimate by 602,112,981 ns. The activated queued
+case preserves the same native behavior, with a 403,623,241-ns difference from
+signal time and exact equality to its recorded interruption-time remainder.
+These cases do not relax the existing 250-ms checks. Both actual interruption
+observations must still satisfy that bound, and the held remainder requires
+exact equality. The initial frozen-control attempt accidentally thaws before
+queuing the signal and fails in
+`factorybox-checkpoint-retirement-d1e5720cbe6b4d9880bfdfbc1ad7315d`.
+Its frozen source and failed result remain preserved.
+
+The final six cases pass in
+`factorybox-checkpoint-retirement-7c294dbd14b34613823c82854cb26126`:
+ordinary native control, frozen native control, activated source, activated
+fork, activated resume and signal queued during the activated hold. All return
+raw EINTR and preserve the ABI and protected remainder. Active source, fork
+and resume remainders differ from their interruption-time estimates by
+483,574 ns, 534,352 ns and 378,603 ns. The four armed kernel deadlines differ
+from the saved application deadline by 355,841 to 577,522 ns. These are
+individual observations. Fork and resume have measured monotonic namespace
+offsets of -1,511,617,658 ns and -2,573,720,735 ns. Comparisons use the guest's
+clock, accounting for those offsets. No general time-namespace qualification
+follows from those two observations.
+
+The final negative and positive runs use the exact same test executable,
+SHA-256 `a2f4f9c4a8b45ccf918d3361af2e84d9dc6a8c856592a6d40b4bd5302c916e63`.
+Every run confirms exact owned cleanup, unchanged inputs and unchanged global
+sysctls. Portable Go checks with vet, Python checks, consumer compilation and
+immutable reference/overlay verification pass in
+`factorybox-checks-e49f48c645424d79bcac5e718062d3ec`.
+The verified evidence index, unchanged required-test hashes and reconstructed
+source/fixture patches are preserved in
+`factorybox-timer-copy-order-notes-1b608f92b4bf4ac09019e7147f6550d4`.
+
+The delivered runtime remains unchanged and fails this required behavior.
+The experiment activates restored tasks only after the existing CLI has already
+exposed their ppoll continuation. Production integration must hold restored
+tasks before any application continuation, activate before thaw, and keep
+checkpoint, pause, fork, resume and worker recovery consistent. The capture
+guard currently admits one watched mutator per transaction, and FD 9 closes
+when preparation returns. A second mutator cannot simply reuse that protocol.
+Keeping one watched child across capture is a possible source-side design;
+it is not implemented. The pinned CRIU source runs its pre-resume notification
+before final detach. A restore hold at that boundary still needs a separate
+native proof, including controller/tracer loss and exact cgroup ownership.
+Broader signal actions, interrupted mutation repair, multiple threads, repeated
+activation, private-page lifetime and all remaining release gates stay open.
 
 ## Release work still required
 

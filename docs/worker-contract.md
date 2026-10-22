@@ -201,23 +201,24 @@ capacity is observed separately because live open references can retain blocks.
 Do not manually clear an uncertain intent or interpret a partial result as a
 completed retirement.
 
-This implementation is not qualified. The required immutable-base test still
-fails because the pinned BusyBox `sleep 300` exits after CRIU interrupts its
-relative wait. The failure is retained alongside passing RAM-actor retirement
-tests. A required direct-syscall regression reproduces the premature exit with
-read-only input and a NULL remainder pointer; source/fork register and original
-deadline assertions remain blocked by that first failure. Read-only kernel
-restart-state diagnostics are not a runtime timer correction. Selection recovery
-across epochs, full-consumer retirement, exhaustion
-faults and epoch retirement remain unverified or unimplemented. See the exact
-[progress and failed-suite evidence](production-progress.md#experimental-checkpoint-retirement-and-an-unresolved-interrupted-sleep).
+This implementation is not qualified. The earlier BusyBox sleep and direct
+read-only-request/NULL-remainder failures remain preserved in the evidence.
+The integrated timer continuation in candidate
+`factorybox-build-worker-2fca9b438e664527a211a44df38bd0f7` passes the full
+four-test retirement suite, including both timer regressions. However, a caught
+handler that makes its dedicated remainder page read-only causes the prepared
+wait to return EFAULT where the native control returns EINTR. The delivered
+candidate still has this copy-order defect.
 
-A separate single-thread native experiment now preserves the direct wait's
-original deadline and register contract through source capture, a second
-delivered-CLI capture, fork, pause and resume. Its process continuation is test
-instrumentation, outside the delivered CLI. It does not qualify BusyBox sleep,
-general signal/remainder handling, multiple threads or nonzero time offsets.
-The original two timer failures remain release blockers.
+A separate test-only native-wait activation experiment passes source, fork,
+resume and queued-signal cases, with ordinary and frozen native controls.
+It verifies an actual armed kernel timer and preserves the protected remainder
+and syscall ABI. Restored tasks have already been exposed by the CLI before
+this experiment activates them. Production integration must hold tasks before
+exposure and qualify failures, multiple threads and continuation lifetime.
+Selection recovery across epochs, full-consumer retirement, broader exhaustion
+faults and epoch retirement remain unverified or unimplemented. See the
+[current timer evidence and remaining integration work](production-progress.md#remainder-mapping-changed-by-the-signal-handler).
 
 ## Recovering a committed pause after worker replacement
 
