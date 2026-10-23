@@ -464,3 +464,30 @@ Native worker-loss tests exercise the delivered image, not a renamed proof
 harness serving as the worker. Required native/upstream failures or unrun
 suites continue to block qualification; functional successes and benchmark
 targets are reported separately.
+
+## Canonical base import admission
+
+The bounded-store candidate limits canonical bases to 2 MiB of compact JSON
+entries in the eventual worker-exit ledger, half its unchanged 4-MiB bound.
+Before creating a new base directory or intent, it adds existing complete base
+records and a prospective record with the exact new paths, maximum numeric
+widths and maximum completion timestamp width. A changed or unfinished base
+inventory refuses a new import. This guard counts retained metadata, not guest
+file bytes, and does not allocate a disk reservation.
+
+The error reports current bytes, the new import's upper bound and the budget.
+Repeating a complete base ID still verifies and returns its original imported
+base, including at this boundary. A rejected new ID owns no directory, intent
+or canonical mount. No old base is removed to make room.
+
+At this boundary, stop accepting new base imports. Finish or fully pause each
+owned sandbox, stop the worker through its normal drain path and require its
+successful exit before replacing it on the same owned persistent store. The
+replacement has a fresh controller epoch and a fresh metadata budget. Retained
+old payloads still consume the store's physical capacity. A new epoch does not
+free those bytes or authorize deleting old epoch directories.
+
+This guard covers canonical base imports only. Checkpoint aliases, fork/recovery
+metadata, pause histories and old epoch retirement remain separate release
+requirements. The existing full exit-ledger completion preflight still runs
+before any fence or release. This change alone does not qualify production.

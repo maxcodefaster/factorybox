@@ -3030,6 +3030,75 @@ compared: only `criu/cr-restore.c` differs, by the bounded read-only EEXIST
 logging patch. No intervening CRIU repair is inferred. The historical PID
 collision and busy-overlay defect remain open.
 
+## Canonical base admission before exit metadata exhaustion
+
+The preserved 540-base failure shows that safe refusal at worker exit is too
+late for normal admission. The new bounded-store policy assigns canonical base
+records at most 2,097,152 encoded bytes, half the unchanged 4-MiB exit-ledger
+reader/publisher limit. It does not allocate filesystem blocks or claim to bound
+the remaining checkpoint, fork, recovery or pause metadata.
+
+The new public-CLI regression first fails on the preceding delivered worker
+`2d4ef2ecd68848979f86a6b8cf2c0f97` in
+`factorybox-base-admission-d8d44e664cc34726be42766cdeba467e`.
+It accepts 270 real tiny bases, using 2,102,383 bytes of compact base entries.
+That counterexample exceeds the newly declared admission policy; the earlier
+540-base artifacts separately preserve the original exit-size failure.
+The complete 537,919,488-byte failed-store archive is retained and verified,
+SHA-256 `faeef55ce97713654d826d8838faa7b2ce39a35b121e9158bdbd205d8ef5fcfd`.
+The driver and original result remain unchanged.
+
+The candidate checks existing complete base records plus a prospective record
+before creating any new directory, intent, copied payload or canonical mount.
+The prospective record uses the actual paths and maximum JSON numeric and UTC
+timestamp widths. A partial or changed existing import blocks new imports.
+Completed immutable replays still run their original complete verification.
+Unbounded explicit-controller fixtures retain their existing behavior; the
+delivered bounded-store profile always enables the new policy.
+
+Worker `factorybox-build-worker-ef7dcbe22aae4169a4642bb8df935f53` passes this
+same regression in `factorybox-base-admission-de59cb25360a4bf090703a81d11ff396`.
+It retains 269 bases using 2,094,871 bytes; the 270th import's conservative
+8,079-byte bound refuses before any intent. The first and last complete base
+replay exactly at this boundary. All prior payloads and metadata stay unchanged.
+The source worker stops with exit 0, independently starts a fresh epoch, verifies
+all 269 bases and both complete exit ledgers, then stops with exit 0 again.
+Both ledgers remain below their unchanged 4-MiB limit. Owned cleanup, unchanged
+inputs and unchanged global sysctls pass.
+
+The CLI SHA-256 is
+`c6ccfebf32e7cf9de6d53c764eb7ec434607b6fafb706f011032aba166bea74f`;
+package SHA-256 is
+`3aca6a495a0152a52b01478d1067a12b25281f259a181793df93d4d2b347feec`.
+Separate build `factorybox-build-worker-0d90e0cd8142498aa6f5d798c16252db`
+reproduces the package and image exactly. All six portable gates pass in
+`factorybox-checks-f6044a26b0234cc38516beec6bfb65ec`, including the unchanged
+reference/imported-fixture checks with vet enabled.
+
+All thirteen existing native regression groups also pass on these exact worker
+bytes in `factorybox-base-admission-regressions-44e42f4f65114436ba3601a65c5895fd`:
+checkpoint retirement and immutable aliases; the original signal, remainder,
+protection, exit-guard, restore-hold, orphan and guard-loss cases; actual bounded
+capacity/guest ENOSPC; planned and abrupt worker loss; storage admission and
+controller loss. Every original assertion remains, including exact owned cleanup,
+unchanged frozen inputs and unchanged global sysctls.
+
+The complete Factory lifecycle with separate Theia and the local OpenCode model
+fixture also passes on this package in
+`factorybox-consumer-worker-loss-21efb535c9f74b168f9f0e961b2ba5fd`.
+All RAM/filesystem independence, source deletion, fork of fork, pause/resume and
+fork of the resumed source assertions remain, with clean Stop and exact cleanup.
+This one development observation is not a final regular repetition or an
+external-provider test. The ordered proof and source reconstruction are indexed
+in `factorybox-base-admission-notes-5287e67f04804fef81586bba7427f4d9`.
+
+The documented manual response is to finish or commit pauses, drain normally,
+require clean exit and replace the worker in a fresh epoch on the same owned
+store. This resets the new epoch's metadata budget while retaining old backing.
+It does not reclaim old physical storage. Other new-work budgets, verified epoch
+retirement, the two unexplained historical defects and final-package acceptance
+remain open. Production qualification remains false.
+
 ## Initial local release scope agreed on 2026-10-23
 
 The user approved a controlled first release on the existing Linux AMD64 host,
