@@ -22,9 +22,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata'], default='capacity')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
+    parser.add_argument('--worker-metadata-minimal', action='store_true', help='Worker-metadata diagnostic only: four actual committed pauses and one prior public base instead of three pauses and 200 bases; retain all boundary/preservation assertions')
     args = parser.parse_args()
     if args.timer_probe and args.suite == 'capacity':
         parser.error('--timer-probe requires a retirement suite')
@@ -40,6 +41,9 @@ def main():
     timer_orphan = args.suite == 'timer-orphan'
     timer_guard_loss = args.suite == 'timer-guard-loss'
     record_metadata = args.suite == 'record-metadata'
+    worker_metadata = args.suite == 'worker-metadata'
+    if args.worker_metadata_minimal and not worker_metadata:
+        parser.error('--worker-metadata-minimal requires worker-metadata')
     if args.timer_observe_exit and not prototype:
         parser.error('--timer-observe-exit requires timer-restart-prototype')
     if args.suite == 'retirement' or prototype or reader_only:
@@ -49,7 +53,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata
+    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -140,6 +144,8 @@ def main():
         result['scope'] = 'Delivered CLI pause at the exact owned filesystem-copy boundary after timer preparation and process completion. Actual guard/worker SIGKILL with the original controller surviving and holding the exact staged source frozen/untraced with SIGUSR1 pending. Exact pause replay and deletion refuse without changing its record. No retained-cure grant exists at this boundary; this does not qualify grant-in-flight recovery, automatic repair or production.'
     if record_metadata:
         result['scope'] = 'Actual delivered committed pause with injected historical rejection metadata near the unchanged 1-MiB record reader bound. Resume must refuse before transition or backing, preserve the exact stopped source record and allow an independent useful fork of the prior checkpoint. Does not qualify other exit-ledger admission, epoch retirement or production.'
+    if worker_metadata:
+        result['scope'] = 'Real committed stopped pauses, real public canonical base imports and explicitly injected readable legacy history place the complete exit metadata just below 4 MiB. A new public base import must refuse before intent even though its separate canonical 2-MiB budget fits, preserving all committed sources and prior backing. Minimal mode uses four pauses/one prior base; ordinary regression uses three pauses/200 prior bases. Not a claim of real repeated historical failures, general new-work admission, clean worker drain or production qualification.'
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = container = preserve = False
     identity = None
@@ -193,6 +199,10 @@ def main():
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_GUARD_LOSS=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerGuardLoss$']
         if record_metadata:
             command += ['--env', 'FACTORYBOX_NATIVE_RECORD_METADATA=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeRecordMetadataResumeAdmission$']
+        if worker_metadata:
+            command += ['--env', 'FACTORYBOX_NATIVE_WORKER_METADATA=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeWorkerMetadataBaseAdmission$']
+            if args.worker_metadata_minimal:
+                command += ['--env', 'FACTORYBOX_WORKER_METADATA_MINIMAL=1']
         for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                        (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
             command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -215,7 +225,7 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        prefix = 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
         count = 1 if prototype or reader_only or exit_guard or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss else 6 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
@@ -244,6 +254,19 @@ def main():
                         proof['first']['after']['filesystem_available_bytes'] <= proof['first']['before']['filesystem_available_bytes']):
                     raise ValueError('native retirement lacks actual interruption and observed capacity recovery')
                 result['proof_sha256'][proof_name] = reference.sha(proof_path)
+        elif worker_metadata:
+            proof_path = output / 'worker-metadata.json'
+            proof = json.loads(proof_path.read_text())
+            required = ['passed', 'injected_legacy_history', 'refused_before_intent',
+                        'committed_sources_unchanged', 'canonical_backing_unchanged']
+            if (any(proof.get(key) is not True for key in required) or
+                    proof.get('prior_completion_bound_bytes') != (4 << 20) - 2048 or
+                    proof.get('minimal_input') != args.worker_metadata_minimal or
+                    proof.get('actual_committed_pauses') != (4 if args.worker_metadata_minimal else 3) or
+                    proof.get('actual_public_base_imports') != (1 if args.worker_metadata_minimal else 200) or
+                    proof.get('canonical_base_bytes', 2 << 20) >= (2 << 20) - 32768):
+                raise ValueError('worker metadata admission proof incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
         elif record_metadata:
             proof_path = output / 'record-metadata.json'
             proof = json.loads(proof_path.read_text())

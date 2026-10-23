@@ -4000,3 +4000,69 @@ name for the ordinary lifecycle probe. The actual complete probe runs
 `TestNativeDeveloperLifecycle`; that index also remains failed. The corrected
 index checks the actual logs/test and retains both failed index results.
 These verification changes do not alter any native outcome or assertion.
+
+## Reproducible aggregate worker metadata overflow
+
+The new public-API regression
+`TestNativeWorkerMetadataBaseAdmission` reaches a different admission gap on
+unchanged candidate `factorybox-build-worker-b8724db2ca594eb9b86989129604a411`.
+Three actual stopped committed pauses and 200 actual tiny public base imports
+are prepared first. Only those owned records' historical rejection text is
+then injected, with every individual record below its 1-MiB reader limit. The
+existing record identity, real pause checkpoint, source runtime and RAM/file
+backing remain those established through the ordinary delivered CLI. This is
+explicit synthetic legacy history, not a claim of repeated real failures.
+
+Native red `factorybox-checkpoint-retirement-2bc36639faee49c39e7f1b6701fe98b6`
+completes the test in 39.94 seconds and fails the intended assertion. The
+complete exit record with both maximum-width timestamps occupies 4,192,256
+bytes, 2,048 bytes below the unchanged 4,194,304-byte bound. The next public
+`prepare-base` succeeds and raises it to 4,199,969 bytes. All 201 canonical
+bases together occupy only 1,550,161 bytes, within their separate 2-MiB budget.
+Even shortening both timestamps to their minimum 20-byte UTC forms leaves the
+completion over its reader limit. The current base-only guard omits the other
+arrays in the eventual exit record; this is not a timestamp-only edge.
+
+The minimized variant uses four serially prepared, actually stopped pauses and
+one prior public base. Four readable sandbox records are needed to approach
+4 MiB without the large canonical inventory. The additional prior base makes
+the backing-preservation assertions nonvacuous. Each new actor is paused before
+starting the next; only one sandbox runs at a time. All RAM/file assertions of
+the original bounded-loss helper remain unchanged.
+`factorybox-checkpoint-retirement-9729b94e2059415b98cc203679d9a59f`
+reproduces the same refusal failure in 13.21 seconds. Its second public base
+raises the completion bound to 4,199,967 bytes while both canonical entries use
+only 15,422 bytes. The ordinary three-pause/200-base scenario remains available;
+`--suite worker-metadata --worker-metadata-minimal` selects the reduced case.
+
+Both native results remain failed, with unchanged inputs/global settings and
+confirmed exact cleanup. Their complete failed 1,074,790,400-byte store archives
+are retained with whole-stream verification. No runtime admission correction,
+clean-drain proof or production qualification is claimed here. The next change
+must account for the complete aggregate and prospective growth before new
+backing or intent, including paused/active sandbox records, capture/fork aliases
+and recovered canonical bases. Complete replay and the final strict worker-exit
+preflight must retain their existing ownership and integrity requirements.
+
+Offline maintenance
+`factorybox-storage-share-test-encodings-88fd07e5b1cf4574a7a3ce21ed8ba3ad`
+shares fourteen byte-identical closed passing probe encodings after another
+complete canonical decode. It reclaims 132,534,272 allocated bytes. Every
+encoded path, original/raw identity, encoding receipt, source/result/log remains
+available and unchanged; original/adopted mtimes are retained in the maintenance
+receipt. No unresolved failure archive, build input or historical experiment is
+changed.
+
+All six portable gates pass in
+`factorybox-checks-f143df068fc649cfbffc1545d88fa7d5`, including enabled vet,
+all 232 reference files and the existing fixture extension chains. Feedback
+index `factorybox-worker-metadata-feedback-e1c3088c4a1a472991c07aaa2a8429dc`
+passes its verification of both counterexamples and another complete decode
+of both failed stores. Its passing index means the failing native evidence is
+consistent; both native verdicts stay false and remain a release blocker.
+The minimal fixture parameterization preserves every original fatal assertion
+and the ordinary three-pause/200-base scenario. Exact native-test SHA-256 changes
+from `160dfcb2e86d914dadd45180e6ba8bca6560f8db0cc63ce70d2efc85fd99283c`
+to `20853f06f25f43b9436f240fa2a67d7bd670b7c28161fefa60ed5ea2ebeb631d`;
+the index retains the exact reconstructed patch and both sources. Runtime core
+bytes remain unchanged, and the first-release goal remains active.
