@@ -44,6 +44,12 @@ def load(name):
     if upstream_unit.context_manifest(artifact / "source") != result["source_context"]:
         raise ValueError("completed worker source context changed")
     recipe = json.loads((bundle / "build.json").read_text())
+    if "sysbox_shm_reexec" in result:
+        declared = result["sysbox_shm_reexec"]
+        if (recipe.get("sysbox_shm_reexec") != declared or
+                result["bundle_sha256"].get("source-patches/sysbox-shm-reexec.patch") != declared["patch_sha256"] or
+                result["bundle_sha256"].get("source-patches/sysbox-shm-reexec.json") != declared["source_sha256"]):
+            raise ValueError("worker SHM source patch differs from its frozen recipe")
     components = json.loads((bundle / "components.json").read_text())
     if (recipe["source_lock_sha256"] != reference.sha(artifact / "source-lock.json") or
             recipe["go_source_sha256"] != sources.tree_sha(artifact / "source") or
@@ -152,6 +158,27 @@ def main():
                   "criu_source_lock_sha256": criu["source_lock_sha256"],
                   "criu_patch_sha256": criu["candidate_patch_sha256"],
                   "base_image": base_image, "base_packages_sha256": base["packages_sha256"]}
+        if sysbox.get("shm_startup_reexec"):
+            patch = sysbox_path / "shm-reexec.patch"
+            proof = sysbox_path / "shm-reexec-source.json"
+            if (reference.sha(patch) != sysbox["shm_reexec_patch_sha256"] or
+                    reference.sha(proof) != sysbox["shm_reexec_source_sha256"]):
+                raise ValueError("component SHM patch provenance changed")
+            declaration = json.loads(proof.read_text())
+            if (not declaration["original_assertions_unchanged"] or not declaration["vet_enabled"] or
+                    declaration["patch_sha256"] != reference.sha(patch) or
+                    declaration["after"] != upstream_unit.context_manifest(sysbox_path / "context/sysbox-libs/linuxUtils")):
+                raise ValueError("component SHM source differs from its declared ordered patch")
+            for file, digest in declaration["before"].items():
+                if file.endswith("_test.go") and declaration["after"].get(file) != digest:
+                    raise ValueError("component SHM patch changed an original assertion")
+            patches = bundle / "source-patches"
+            patches.mkdir()
+            shutil.copyfile(patch, patches / "sysbox-shm-reexec.patch")
+            shutil.copyfile(proof, patches / "sysbox-shm-reexec.json")
+            result["sysbox_shm_reexec"] = {"patch_sha256": reference.sha(patch),
+                                            "source_sha256": reference.sha(proof)}
+            recipe["sysbox_shm_reexec"] = result["sysbox_shm_reexec"]
         reference_lifecycle.write_json(bundle / "build.json", recipe)
         result["bundle_sha256"] = {str(p.relative_to(bundle)): reference.sha(p) for p in sorted(bundle.rglob("*")) if p.is_file()}
         package = artifact / "factorybox-worker-linux-amd64.tar"

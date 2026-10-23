@@ -420,6 +420,21 @@ consumer cases and four actual interrupted drains on these new bytes.
 This admission guard does not bound the number of accepted work items or
 qualify checkpoint/epoch retirement; those remain separate release work.
 
+The SHM startup correction replaces execution of Go code after a raw clone
+with a fresh helper executable through Go's fork/exec path. The helper has a
+three-second deadline and verifies its private user, mount and IPC namespaces
+and exact mappings before its open-only probe. It never writes the three SHM
+sysctls. Build it explicitly with `tools/build_sysbox.py --shm-startup-reexec`;
+the default component path remains unchanged. The patch is applied only to a
+new private source context, with every original test file unchanged. A worker
+built from that context includes `source-patches/sysbox-shm-reexec.patch` and
+the full before/after declaration, bound to its package recipe and loader.
+All three Sysbox component hashes change. Existing recipe/hash guards remain;
+this does not establish that old snapshots can be restored with the new
+components. Keep the old package and intact store for recovery or rollback,
+and require proven compatibility or a controlled finish of old work before
+switching. See [the startup evidence](production-progress.md#shm-startup-raw-clone-failure-under-gc-pressure).
+
 `tools/build_worker.py` takes exact completed native-base, Sysbox and CRIU
 build IDs. It freezes the Go sources, toolchain and source lock, checks module
 inputs offline, assembles a deterministic package and builds a local image

@@ -14,9 +14,39 @@ import reference
 import reference_lifecycle
 import sources
 import build_config
+import upstream_unit
 
 ROOT = reference.ROOT
 COMPONENTS = ["sysbox-runc", "sysbox-fs", "sysbox-ipc", "sysbox-libs", "sysbox-mgr"]
+SHM_PATCH = ROOT / "upstream/patches/sysbox-libs-shm-probe-candidate.patch"
+
+
+def stage_shm_reexec(context, archive):
+    module = context / "sysbox-libs/linuxUtils"
+    before = upstream_unit.context_manifest(module)
+    patch = archive / "shm-reexec.patch"
+    shutil.copyfile(SHM_PATCH, patch)
+    with (archive / "shm-reexec-patch.log").open("x") as log:
+        subprocess.run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", str(patch)],
+                       cwd=context / "sysbox-libs", stdout=log, stderr=subprocess.STDOUT,
+                       check=True, timeout=15)
+    after = upstream_unit.context_manifest(module)
+    changed = {name for name in before if before[name] != after.get(name)}
+    added = set(after) - set(before)
+    if changed != {"linux.go"} or added != {
+            "shm_probe_linux.go", "shm_probe_linux_test.go", "factorybox_shm_probe_linux_test.go"}:
+        raise ValueError("SHM re-exec patch changed an undeclared source input")
+    if any(after.get(name) != row for name, row in before.items() if name.endswith("_test.go")):
+        raise ValueError("SHM re-exec patch changed an original upstream assertion")
+    declaration = {"schema": 1, "before": before, "after": after,
+                   "original_assertions_unchanged": True, "vet_enabled": True,
+                   "patch_sha256": reference.sha(patch)}
+    proof = archive / "shm-reexec-source.json"
+    with proof.open("x") as stream:
+        json.dump(declaration, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+    return {"shm_reexec_patch_sha256": reference.sha(patch),
+            "shm_reexec_source_sha256": reference.sha(proof)}
 
 
 def main():
@@ -24,6 +54,8 @@ def main():
     build_config.add_arguments(parser)
     parser.add_argument("--clean", action="store_true",
                         help="Disable layer reuse and use new empty Go module/build caches")
+    parser.add_argument("--shm-startup-reexec", action="store_true",
+                        help="Apply the declared fresh-executable SHM fix only to this new private build context")
     parser.add_argument("--compare", help="Require outputs identical to one exact successful build")
     parser.add_argument("--build-dns", help="One resolver IP mounted read-only into host-network build RUN steps; host DNS is unchanged")
     options = parser.parse_args()
@@ -35,6 +67,10 @@ def main():
     if options.compare:
         previous, comparison = reference_lifecycle.component_build(
             options.compare, "factorybox-build-sysbox-")
+        if bool(comparison.get("shm_startup_reexec")) != options.shm_startup_reexec:
+            parser.error("--compare requires the same explicit SHM startup profile")
+        if options.shm_startup_reexec and comparison["shm_reexec_patch_sha256"] != reference.sha(SHM_PATCH):
+            parser.error("--compare requires the exact same declared SHM patch")
         if comparison["dockerfile_sha256"] != reference.sha(ROOT / "build/sysbox.Dockerfile"):
             parser.error("--compare requires the same pinned build recipe")
         if comparison.get("platform", "linux/arm64") != options.platform:
@@ -63,6 +99,7 @@ def main():
         "source_lock_sha256": reference.sha(lock_path),
         "dockerfile_sha256": reference.sha(ROOT / "build/sysbox.Dockerfile"),
         "clean": options.clean, "comparison_build": options.compare,
+        "shm_startup_reexec": options.shm_startup_reexec,
         "build_dns": options.build_dns,
         "build_resolvers": resolvers, "build_resolv_sha256": reference.sha(resolver_file),
         "platform": options.platform, "native_lifecycle_qualified": False,
@@ -84,6 +121,8 @@ def main():
                         context / "sysbox-fs/bazil", dirs_exist_ok=True, symlinks=True)
         shutil.copyfile(ROOT / ".cache/downloads" / lock["sysbox-runc"]["archive"],
                         context / "sysbox-runc-pristine.tar.gz")
+        if options.shm_startup_reexec:
+            result.update(stage_shm_reexec(context, archive))
         context_files = {}
         for path in context.rglob("*"):
             relative = str(path.relative_to(context))

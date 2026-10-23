@@ -178,6 +178,10 @@ def main():
                    "--mount", f"type=bind,source={archive / 'private-cgroup-delegation.sh'},target=/delegate.sh,readonly",
                    "--mount", f"type=bind,source={rootfs},target=/busybox-rootfs.tar.gz,readonly",
                    "--entrypoint", "/bin/bash", image, "/run-tests.sh"]
+        if build_result.get("shm_startup_reexec") and options.suite == "all":
+            command[command.index("--entrypoint"):command.index("--entrypoint")] = [
+                "--env", "FACTORYBOX_NATIVE_SHM_PROBE=1"]
+            result["shm_reexec_native_tests_requested"] = True
         if options.suite in ["all", "mgr"]:
             command[command.index("--entrypoint"):command.index("--entrypoint")] = [
                 "--mount", f"type=volume,source={name},target=/var/lib/docker"]
@@ -244,6 +248,15 @@ def main():
                             required == result["suites"].keys() and
                             all(v["exit_code"] == 0 and not v["failed"]
                                 for v in result["suites"].values()))
+        if result.get("shm_reexec_native_tests_requested"):
+            records = [json.loads(line) for line in (output / "libs-linuxUtils.jsonl").read_text().splitlines()
+                       if line.startswith("{")]
+            required_shm = {"TestFactoryboxShmProbeNative", "TestShmProbeRefusesUnmappedProcess",
+                            "TestShmProbeRefusesSharedNamespaces", "TestShmProbeRefusesSharedNamespaces/ipc",
+                            "TestShmProbeRefusesSharedNamespaces/mount"}
+            passed_shm = {row.get("Test") for row in records if row.get("Action") == "pass"}
+            result["shm_reexec_native_tests_passed"] = required_shm <= passed_shm
+            result["passed"] = result["passed"] and result["shm_reexec_native_tests_passed"]
         if options.test:
             records = [json.loads(line) for line in
                        (output / "runc-integration.jsonl").read_text().splitlines()

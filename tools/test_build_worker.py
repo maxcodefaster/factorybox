@@ -86,6 +86,38 @@ class WorkerBuildInputs(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"inventory"):
             build_worker.load(self.name)
 
+    def test_shm_patch_recipe_must_match_the_delivered_patch_and_declaration(self):
+        patches = self.bundle / "source-patches"
+        patches.mkdir()
+        (patches / "sysbox-shm-reexec.patch").write_bytes(b"declared ordered source patch\n")
+        (patches / "sysbox-shm-reexec.json").write_bytes(b"declared source identities\n")
+        declared = {"patch_sha256": reference.sha(patches / "sysbox-shm-reexec.patch"),
+                    "source_sha256": reference.sha(patches / "sysbox-shm-reexec.json")}
+        recipe = json.loads((self.bundle / "build.json").read_text())
+        recipe["sysbox_shm_reexec"] = declared.copy()
+        (self.bundle / "build.json").write_text(json.dumps(recipe))
+        result = json.loads((self.artifact / "result.json").read_text())
+        result["sysbox_shm_reexec"] = declared.copy()
+        result["bundle_sha256"] = {str(p.relative_to(self.bundle)): reference.sha(p)
+                                  for p in self.bundle.rglob("*") if p.is_file()}
+        (self.artifact / "result.json").write_text(json.dumps(result))
+        self.assertEqual(build_worker.load(self.name)[0], self.artifact)
+
+        # Re-declaring a changed recipe's file hash cannot substitute a new
+        # patch identity for the one bound by the completed worker result.
+        recipe["sysbox_shm_reexec"]["patch_sha256"] = "0" * 64
+        (self.bundle / "build.json").write_text(json.dumps(recipe))
+        result["bundle_sha256"]["build.json"] = reference.sha(self.bundle / "build.json")
+        (self.artifact / "result.json").write_text(json.dumps(result))
+        with self.assertRaisesRegex(ValueError, "SHM source patch"):
+            build_worker.load(self.name)
+
+        # Matching declarations still require the actual delivered patch.
+        result["sysbox_shm_reexec"]["patch_sha256"] = "0" * 64
+        (self.artifact / "result.json").write_text(json.dumps(result))
+        with self.assertRaisesRegex(ValueError, "SHM source patch"):
+            build_worker.load(self.name)
+
     def test_changed_source_or_package(self):
         (self.artifact/"source/extra.go").write_text("package fixture\n")
         with self.assertRaisesRegex(ValueError,"source context"):

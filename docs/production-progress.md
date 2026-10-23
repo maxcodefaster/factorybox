@@ -2692,7 +2692,128 @@ The diagnostic recipe preserves exact before/after hashes and a patch for its
 copied umount2 filter and public-base scope label. Imported sources and frozen
 diagnostic executables remain unchanged. No latency claim follows from tracing.
 
-## Release work still required
+## SHM startup raw-clone failure under GC pressure
+
+The read-only source inspection
+`factorybox-startup-source-inspection-cc86e7c6141c4e959af935c7f911d814`
+preserves the six matching source files and original small logs for the
+historical `factorybox-devx-lifecycle-f7c02247159d4e13bf768da0ad1d39c5`.
+Its filesystem log ends after FUSE dir and its process listing shows a wait.
+The historical child identity/stack was not recorded. The initial raw-clone
+hazard was a source hypothesis, not a captured historical mechanism.
+
+The isolated diagnostic compiles the unchanged public SHM probe and every
+original module test with the component's actual Go 1.25.14, using the retained
+offline AMD64 builder. Vet stays enabled. All 32 plain calls pass in
+`factorybox-shm-pressure-c84eae98dd0b46069ce1fa617357c134`.
+With a declared private 32-MiB retained heap, one allocation/GC goroutine,
+GOGC=1 and GOMEMLIMIT=64MiB, the first probe exceeds the original 60-second
+limit in `factorybox-shm-pressure-cbe052c247664594866fe352ec1029f4`.
+The parent waits for its exact namespace child. That child's captured Go stack
+is in runtime.exitsyscall0/stopm immediately after the raw SYS_CLONE in
+CreateUsernsProcess; its only live kernel thread waits at the matching futex.
+Namespace IDs, births, executable identity, maps and task state are retained.
+All diagnostic signals follow the already failed deadline and use exact pidfds.
+The first diagnostic `factorybox-shm-pressure-55b7e8215bb84d2491a11183ca23dd82`
+allowed a brief extra probe after the diagnostic child exit. It stays failed
+and unchanged. The corrected helper publishes a failure marker before signals;
+the test checks it before and after every call. The later failed proof retains
+the same mechanism without that follow-up.
+
+The exact selected Sysbox-fs binary, SHA-256
+`bf5493e6afa11a4756efeba7c9ca3f8588cdcb86d3cb49568ff1be8910bc267d`,
+then reproduces the same failure during its actual handler startup. With
+GOGC=1 and a process-local 1-MiB Go soft limit,
+`factorybox-startup-manager-c368af884a454642a1de455ba6fe23d0` fails its first
+start after 60 seconds. A parent thread is in Wait4(child=33); the exact child
+is parked in exitsyscall0/stopm after CreateUsernsProcess at linux.go:301,
+through ShmSysctlUserNamespaced and handlerDB.go:148. Before diagnostic signals,
+the log ends at the same FUSE-dir boundary as the historical failure. The
+earlier three-second observation and final thread capture agree. The child
+signal later unblocks startup into its unsupported-SHM fallback; readiness
+remains failed and no later start is attempted. This proves the failure
+mechanism on the exact binary, not the missing historical child's exact heap
+or GC state. All sixteen starts with a 16-MiB soft limit pass in
+`factorybox-startup-manager-6f36fbc3eb73434fae8dc5625c65ef2c`.
+
+The existing unselected candidate replaces the raw-clone SHM callback with a
+fresh executable through Go's normal fork/exec path. The empirical open-only
+check, private user/mount/IPC mappings and three-second helper bound remain.
+Its direct proofs `factorybox-shm-reexec-5f3724c56015453c98c10cdf2b22bd8a`
+and `factorybox-shm-reexec-1ef30470d475488a82e5e4ca9d8fb5fb` both pass all
+32 diagnostic calls, the separate 32-call public regression, unchanged original
+module assertions and the mapping/shared-namespace refusal cases, without and
+with the same GC pressure. Parent and global SHM values remain unchanged.
+Copied diagnostics have exact ordered patches and reconstructed source hashes;
+reference and imported overlays remain untouched. No timing inference follows.
+
+`tools/build_sysbox.py --shm-startup-reexec` explicitly applies the declared
+patch only to a newly copied private component context. Existing test files
+must retain their hashes. New worker packages retain the exact patch and full
+before/after source declaration; package loading binds both to its recipe.
+The complete upstream runner requests the added native namespace cases and
+requires their actual pass events. Component build
+`factorybox-build-sysbox-a3d550a7cb8a4760aa41231b8c8c12fb` passes, and clean
+independent build `factorybox-build-sysbox-83818bfe47184a5f9bb3f67e6ce95f75`
+matches all three binaries, package inventory, full context and patch/source
+declaration. The new daemon passes all sixteen starts under the original
+one-MiB pressure conditions in
+`factorybox-startup-manager-d764f91d4f1e4259b02aed9b7fe3988f`.
+Worker `factorybox-build-worker-2a83453ad0f54b6a9580dc194bf5cdba` builds with
+package SHA-256 `dc64fdbbffc5e2a3cc543b2548c3e474d564bad1006d62ab72222e66cce30b1d`.
+Independent worker build
+`factorybox-build-worker-0c7cbf383ea54d7b97541719b7f8c01f` matches the full package,
+bundle and image. The complete upstream module run
+`factorybox-upstream-662ad4adabc74a25b2895048dae22cf6` passes 727 cases, including
+all five added native SHM cases, with the same 18 original skips.
+The seven lifecycle Bats cases pass in
+`factorybox-bats-fa352808c7c6428aafb43fa36aa9240a`; the four executed systemd
+cases and original two skips are preserved in
+`factorybox-bats-dd234e09657d459cb5493021e62ccc70`.
+The complete ordinary minimal lifecycle passes in
+`factorybox-consumer-worker-loss-27a074aa7ebd4fd7a8cb8eabe6c8a234`.
+
+The next complete Factory case,
+`factorybox-consumer-worker-loss-87d3d62a3d544fa8b2a0bba588c90b38`, fails at the
+checkpoint of its independent branch. Timer admission refuses with
+`relative timer has an unprocessed caught signal; source continuation remains
+unconfirmed`. Its original 64.50-second native verdict remains failed; no
+retry is substituted. Its full bounded-store archive has 34,360,786,944 decoded
+bytes and SHA-256 `cb078327e4506209e6c3f1cc419d4bf758e1da589f2cee15c6387b3cea81900a`.
+Exact outer cleanup, unchanged source and global sysctls pass. The serialized
+component batch `factorybox-shm-component-gates-1d050c87d95b46b592232e2fa031b354`
+remains failed with three passing steps and that failed fourth step. This is
+an additional required lifecycle counterexample, not a successful package
+integration or a demonstrated regression caused by SHM. The Go CLI is unchanged
+from the preceding ledger-fix package. Its pending signal and source state need
+inspection. Evidence is indexed in
+`factorybox-shm-reexec-notes-7635fa90a366427484db37876b21a2ae`; a verified index
+does not turn that failed integration into a pass. The original historical and
+new failed results remain preserved. Production qualification is false.
+
+## Initial local release scope agreed on 2026-10-23
+
+The user approved a controlled first release on the existing Linux AMD64 host,
+with separate workers per customer/trust domain and recovery only on the same
+host and boot. `GOAL.md` now defines its acceptance checklist. Before this
+change, the complete previous plan was frozen byte for byte in
+`factorybox-first-release-scope-de79043f4de849b9ac94bd502716abf3/previous-GOAL.md`,
+SHA-256 `5965e225dafd4eadca30869d75502ff7405a0aed6e3ac1a9e2772ea2a444a05f`.
+
+The first release still requires the final package's independent reproduction,
+all required existing assertions, the rare restore-PID correction, attribution
+and correction of runtime cleanup defects, bounded admission and a verified
+manual retention/capacity procedure, shipped-agent failure handling and checked
+operations/recovery/rollback instructions. Ten complete regular lifecycle runs
+per example are fixed before the final repetition series, in addition to the
+required targeted fault and upstream cases. No failed case is discarded.
+
+The 100-run series, 24-hour soak, further performance optimization, automatic
+retention and further image minimization move to the later programme. This is
+a change to release scope, not successful evidence for those unrun items.
+The first release makes no long-term stability or latency percentile claim.
+
+## Remaining work in the original wider programme
 
 Broader cancellation and uncertain external side-effect handling; resolution
 of the PID collision and new admission-fixture busy-mount cleanup; a predetermined

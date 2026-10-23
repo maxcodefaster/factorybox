@@ -1,9 +1,18 @@
-# Factorybox: lokale Produktionsfreigabe
+# Factorybox: erste lokale Produktionsfreigabe
 
-Am 2026-10-22 nach der Grilling-Runde bestätigt und als aktives Goal gestartet.
-Ziel ist eine für diesen Linux-AMD64-Rechner und die vorhandenen Beispiele
-freigegebene Version. Eine Freigabe erfolgt erst nach bestandener Abnahme;
-der bisherige Stand bleibt unverändert als Vergleich erhalten.
+Am 2026-10-23 hat der Nutzer die erste kontrollierte Freigabe für diesen
+Linux-AMD64-Rechner bestätigt. Datensicherheit, zuverlässige Wiederherstellung,
+Speichergrenzen und die Abnahme des endgültigen Pakets haben Vorrang.
+Die 100er-Serie je Beispiel, der 24-Stunden-Dauerlauf, weitere Optimierung,
+automatische Retention und weitere Paketverkleinerung folgen später.
+Eine Freigabe erfolgt erst nach bestandener Abnahme. Der bisherige Stand
+bleibt unverändert als Vergleich erhalten.
+
+Der vorherige vollständige Plan vom 2026-10-22 ist unverändert gesichert unter
+`artifacts/factorybox-first-release-scope-de79043f4de849b9ac94bd502716abf3/previous-GOAL.md`,
+SHA-256 `5965e225dafd4eadca30869d75502ff7405a0aed6e3ac1a9e2772ea2a444a05f`.
+Die Nachlagerung erklärt keine fehlgeschlagene Assertion zum Erfolg und macht
+aus dem bisherigen Entwicklungsstand keine bereits freigegebene Version.
 
 Der Ausgangsstand ist Commit
 `521e05799853c8546c9db5de31d178c548c49573` und das
@@ -12,6 +21,31 @@ abgeschlossene Goal, der Quellmanifest und dessen Eingaben liegen unter
 `artifacts/factorybox-production-baseline-0c99cab81e224d1db537b81d12a2e2f9/`.
 Der [Abnahmebericht](docs/pilot-validation.md) und die Referenzartefakte bleiben
 historische Nachweise. Produktionsqualifikation ist zu Beginn dieses Goals false.
+
+## Verbindliche To-do-Liste dieser ersten Freigabe
+
+- [ ] Endgültiges Paket unabhängig reproduzieren und alle erforderlichen
+  bestehenden nativen, Verbraucher- und Upstream-Prüfungen bestehen.
+  Aktueller Gegenbeweis: Factory-Lifecycle verweigert beim erneuten Checkpoint
+  der Branch eine relative Timer-Aufnahme mit anstehendem gefangenem Signal,
+  `factorybox-consumer-worker-loss-87d3d62a3d544fa8b2a0bba588c90b38`.
+  Vollständiger Fehlerzustand bleibt erhalten; dieser Pfad ist nicht abgenommen.
+- [ ] Seltenen Restore-PID-Konflikt erklären und beheben. Den betroffenen
+  vollständigen Lifecycle erst nach belegter Korrektur freigeben.
+- [ ] Offenen Busy-Mount-Aufräumfehler dem Test oder der Laufzeit zuordnen;
+  einen Laufzeitfehler beheben und Besitz sowie vollständiges Aufräumen prüfen.
+- [ ] Aufnahme neuer Arbeit und Aufbewahrung so begrenzen, dass volle Stores
+  bestehende Sicherungen und laufende Quellen erhalten. Einen geprüften
+  manuellen Betriebsweg für Stilllegung und Kapazitätsmangel liefern.
+- [ ] Mit ausgelieferte Agentenfortsetzung einschließlich Abbruch und unklarer
+  Werkzeugwirkungen auf dem endgültigen Paket prüfen.
+- [ ] Start, Stop, Update, Drain, Recovery und Rollback dokumentieren und prüfen;
+  vorab festgelegte Wiederholungsserie abschließen und Grenzen offen ausweisen.
+
+Die bestehende Startfehler-Korrektur wird in dieses Paket übernommen und dort
+vollständig abgenommen. Keine neuen Optimierungsexperimente beginnen, bevor
+die Freigabeblocker geschlossen sind. Genau ein Implementierungsautor,
+keine Subagents; AGENTS.md und die gesicherten letzten Chatnachrichten gelten.
 
 ## Einsatzgrenze
 
@@ -66,30 +100,20 @@ Der deterministische lokale Modellserver bleibt für reproduzierbare negative
 Prüfungen. Ein Anbieterfehler, Rate-Limit oder fehlender Zugang ist kein
 bestandener Test. Unabhängige Laufzeitarbeit kann dabei fortgesetzt werden.
 
-## 3. Frischen Factory-Start verkürzen
+## 3. Leistung erfassen, weitere Optimierung nachlagern
 
-Den frischen Start priorisieren. Die bereits bewiesene verifizierte Basis
-konsequent für weitere unabhängige frische Umgebungen verwenden. Den bisherigen
-ungefähr 33 Sekunden langen Anwendungsstart in Docker, Image-Bereitstellung,
-Connector, Dev-Container-Einrichtung und erste nützliche Antwort zerlegen.
-Nur konkret gemessene Engpässe ändern.
+Vorbereitung, erste nützliche Anwendung, separate IDE, Checkpoint/Fork,
+Pause/Resume, Speicher und Fehler auf den endgültigen Bytes dokumentieren.
+Die bisherige 20-Läufe-Serie ist eine beschreibende historische Messung;
+der einzelne schnellere vorbereitete Start ist kein abgesicherter Gewinn
+des neuesten Pakets. Keine p95- oder garantierte Latenzaussage ableiten.
 
-Vollständige kalte Vorbereitung bleibt im Bericht sichtbar. Wiederverwendung
-einer schon vorbereiteten Basis ist keine Beschleunigung ihrer erstmaligen
-Vorbereitung. Eine echte frische Umgebung erbt keinen Agenten-RAM-Zustand.
-Bestehende Verbraucherdateien bleiben als Vergleich erhalten; optimierte
-Varianten und ihre exakten Änderungen werden getrennt dokumentiert.
-
-Vergleichbare Beobachtungen gegen den eingefrorenen Ausgangsstand müssen den
-ausgewählten Gewinn nachweisen. Vorbereitung, erste nützliche Anwendung,
-separate IDE-Prüfungen, Checkpoint/Fork, Pause/Resume, Speicher, I/O und Fehler
-berichten. Keine Regression der bisherigen Zustands-/Integritätsprüfungen.
-Für Start-/Fork-/Resume-Zeiten die vorherige Schranke von höchstens dem größeren
-Wert aus 20 Prozent und 250 ms als konservativen Vergleich übernehmen;
-Abweichungen ausdrücklich untersuchen, nicht durch veränderte Eingaben verdecken.
-
-Keine p95-Garantie aus wenigen Beobachtungen. SHM, Lazy-/Delta-Snapshots und
-Lesehinweis-Experimente bleiben ohne eigene vollständige Qualifikation ungewählt.
+Kalte Vorbereitung und Start aus einer fertigen Basis getrennt berichten.
+Eine echte frische Umgebung erbt keinen Agenten-RAM-Zustand. Keine bisherigen
+Zustands-/Integritätsprüfungen abschwächen. Bereits ausgewählte Optimierungen
+benötigen ihre bisherigen Nachweise; neue Startoptimierung, weitergehende
+Basiswiederverwendung, Lazy-/Delta-Snapshots und Lesehinweis-Experimente sind
+nachgelagert. Die Startfehler-Korrektur ist eine Zuverlässigkeitsänderung.
 
 ## 4. Speicher für Dauerbetrieb
 
@@ -105,6 +129,11 @@ benötigte Daten verlieren. Unvollständige Operationen und fremde Dateien nicht
 blind aufräumen. Wiederholte Stilllegung muss ihren exakten eigenen Abschluss
 erkennen. Reine Sandbox-Löschung und Datenstilllegung getrennt dokumentieren.
 
+Automatisches Löschen alter Sicherungen und Epochen ist nachgelagert. Vor der
+ersten Freigabe muss ein geprüfter manueller Weg dieselben Besitz- und
+Abhängigkeitsprüfungen einhalten; bis dahin bei erreichter Grenze neue Arbeit
+ablehnen. Ungeprüftes Löschen ist kein Ersatz für Kapazitätsgrenzen.
+
 ## 5. Wiederholung, Fehler und Starttimeout
 
 Den erhaltenen Sysbox-fs-Starttimeout auf diesem Host gezielt untersuchen.
@@ -112,12 +141,19 @@ Ursache, konkrete Reproduktion und eventuelle Korrektur belegen. Erfolgreiche
 spätere Starts erklären keinen früheren Timeout. Ohne belegte Ursache keine
 unverifizierte SHM-Änderung auswählen.
 
-Als anfänglichen Freigabeumfang mindestens 100 vollständige Lifecycle-Läufe
-je Beispiel und einen begrenzten 24-Stunden-Dauerlauf anstreben. Positive und
-negative Fälle, Trennung, Worker-Verlust, Speicher-/Platzdruck und exakte
-Wiederholung einbeziehen. Keine Daten- oder Besitzverletzung und keine
-untersuchten Fehler stillschweigend verwerfen. Ausfälle vollständig ausweisen.
-Der Umfang ist ein lokaler Belastungsnachweis, keine behauptete Langzeit-SLA.
+Vor Beginn der finalen Wiederholungsserie zehn vollständige reguläre
+Lifecycle-Läufe je Beispiel auf genau dem endgültigen Paket festlegen.
+Jeder Lauf bekommt eigene Ressourcen und erhält alle bestehenden Assertions.
+Zusätzlich die erforderlichen positiven und negativen Fälle, Trennung,
+Worker-Verlust, Speicher-/Platzdruck und exakte Wiederholung prüfen.
+Keinen fehlgeschlagenen Lauf ersetzen oder aus dem Urteil entfernen.
+Eine Korrektur benötigt einen dokumentierten neuen Paketstand und dessen
+Abnahme; historische Fehler bleiben erhalten. Ausfälle vollständig ausweisen.
+
+Die 100 vollständigen Läufe je Beispiel und der begrenzte 24-Stunden-Dauerlauf
+sind ausdrücklich nachgelagert. Die erste Freigabe belegt deshalb keine
+Langzeitstabilität oder SLA. Erforderliche Fehlerfall- und Upstream-Prüfungen
+bleiben verpflichtend.
 
 Die Artefaktgrenzen gelten auch im Dauerlauf. Referenz, eingefrorene Eingaben,
 aktive Läufe und ausgewählte unaufgelöste Fehler bewahren. Neue Builds/native
@@ -128,9 +164,10 @@ geprüften Retentions-/Kompressionsbelegen verkleinern.
 
 Ein genau identifiziertes Worker-Paket/Image mit notwendigen Bibliotheken,
 Komponenten-/Abhängigkeitsinventar, Patchfolge und Lizenzhinweisen bauen.
-Unnötige Build-/Testwerkzeuge aus dem auszuliefernden Image entfernen und die
-resultierenden Bytes neu abnehmen. Unabhängige Wiederholungsbuilds müssen
-Paket- und Binäridentität belegen.
+Unabhängige Wiederholungsbuilds müssen Paket- und Binäridentität belegen.
+Weitere Entfernung von Build-/Testwerkzeugen und Paketverkleinerung sind
+nachgelagert. Das erste Paket benennt seine tatsächlich enthaltenen Werkzeuge;
+es wird nicht als bereits minimiertes Produktionsimage ausgegeben.
 
 Bereitschaft, Laufzeitmessungen, Ressourcen, Fehler und Kapazität beobachtbar
 machen. Anleitungen für Aufnahme neuer Arbeit, Drain, bestätigte Pause,
@@ -157,7 +194,13 @@ Freigabeergebnisse in einem neuen überprüfbaren Profil verbinden. Das alte
 Referenzprofil nicht umschreiben. Das Goal erst abschließen, wenn alle für
 diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
 
-## Arbeitsstand
+## Historischer Arbeitsstand und erhaltene Nachweise
+
+Die folgenden Einträge dokumentieren den bisherigen vollständigen Plan und
+seine einzelnen Entwicklungsstände. Aussagen über noch offene Freigabegates
+in diesen historischen Einträgen werden durch den oben festgelegten aktuellen
+Umfang eingeordnet; sie sind keine Abnahme des neuesten Pakets. Der aktuelle
+Fortschritt steht in `docs/production-progress.md`.
 
 - Baseline mit bisherigem Goal und Quellmanifest gesichert.
 - Der vollständige Factory-Lifecycle mit OpenCode 2.0.27, echtem kostenlosem
@@ -508,3 +551,22 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   vollständige Fehler-Store bleibt erhalten und wird vollständig verifiziert.
   Begrenzte Aufnahme neuer Arbeit und Epochen-Stilllegung bleiben getrennte
   offene Anforderungen. Das vollständige Goal bleibt aktiv.
+- Der unveränderte öffentliche SHM-Probeaufruf hängt unter deklariertem
+  privatem Heap-/GC-Druck mit Go 1.25.14. Der Kind-Stack zeigt den rohen
+  Clone in `CreateUsernsProcess` und `runtime.exitsyscall0/stopm`; der Eltern-
+  Thread wartet auf dieses Kind. Das exakt bisher ausgelieferte Sysbox-fs
+  reproduziert denselben Pfad bei `GOGC=1` und `GOMEMLIMIT=1MiB` im ersten
+  Start nach 60 Sekunden. Der fehlgeschlagene Lauf
+  `factorybox-startup-manager-c368af884a454642a1de455ba6fe23d0` bleibt mit
+  Namespace-, Thread-, Kernel- und Go-Stacks erhalten. Seine Start-Loggrenze
+  passt zum historischen Fehler; dessen fehlende Kinddaten werden nicht
+  rückwirkend erfunden. Mit 16 MiB bestehen alle 16 Starts.
+  Der ursprüngliche Postmortem-Treiber ließ nach dem Diagnosesignal kurz einen
+  Folgeaufruf zu. Der erhaltene korrigierte Gegenbeweis
+  `factorybox-shm-pressure-cbe052c247664594866fe352ec1029f4` scheitert ebenso,
+  verhindert aber jeden weiteren Aufruf vor und nach der Fehlermarke.
+  Der bisher ungewählte Re-exec-Kandidat besteht 32 direkte Aufrufe sowohl
+  ohne als auch mit demselben GC-Druck und alle Mapping-/Namespace-Verweigerungen.
+  Ein neues Komponentenpaket wird mit ausdrücklich gewähltem Patch gebaut.
+  Daemon-Abnahme, unabhängiger Nachbau und breite Regression darauf bleiben
+  erforderlich. Das vollständige Goal bleibt aktiv.
