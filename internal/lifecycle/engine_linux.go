@@ -195,6 +195,23 @@ func privateDirectory(path string) error {
 }
 
 func (e *Engine) lock() (*os.File, error) {
+	file, err := e.lockRoot()
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range []string{"worker-exit.json", "worker-exit-complete.json"} {
+		_, exitErr := e.root.Lstat(path)
+		if !errors.Is(exitErr, os.ErrNotExist) {
+			file.Close()
+			return nil, fmt.Errorf("controller epoch is closed for worker exit: %v", exitErr)
+		}
+	}
+	return file, nil
+}
+
+// lockRoot only serializes access. Lifecycle mutations must use lock, which
+// also enforces the exit fence. A recovery reader validates its exact selection.
+func (e *Engine) lockRoot() (*os.File, error) {
 	if err := e.validateRoot(); err != nil {
 		return nil, err
 	}
@@ -221,12 +238,6 @@ func (e *Engine) lock() (*os.File, error) {
 	}
 	if err == nil {
 		err = e.validateRoot()
-	}
-	if err == nil {
-		_, exitErr := e.root.Lstat("worker-exit.json")
-		if !errors.Is(exitErr, os.ErrNotExist) {
-			err = fmt.Errorf("controller epoch is closed for worker exit: %v", exitErr)
-		}
 	}
 	if err != nil {
 		file.Close()

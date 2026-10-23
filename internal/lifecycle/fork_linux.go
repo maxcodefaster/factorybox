@@ -539,11 +539,20 @@ func (e *Engine) reconcileFork(ctx context.Context, lock *os.File, intent forkIn
 }
 
 func (e *Engine) retireForkOverlay(record Record) error {
+	if record.Fork != nil && (record.Phase != "deleting" || record.Delete == nil) {
+		return fmt.Errorf("fork deletion lacks its persisted delete intent")
+	}
+	return e.retireForkOverlayBacking(record)
+}
+
+// The caller holds the operation lock and has either a delete intent or a
+// durable epoch exit fence for a committed pause whose runtime is now absent.
+func (e *Engine) retireForkOverlayBacking(record Record) error {
 	if record.Fork == nil {
 		return nil
 	}
 	if record.InputBundle != e.config.Root+"/forks/"+record.ID+"/materialized/filesystem" ||
-		record.Rootfs != record.InputBundle+"/rootfs" || record.Phase != "deleting" || record.Delete == nil {
+		record.Rootfs != record.InputBundle+"/rootfs" {
 		return fmt.Errorf("fork deletion overlay is outside its persisted target")
 	}
 	var origin forkOverlayOrigin

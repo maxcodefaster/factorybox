@@ -2370,6 +2370,144 @@ The remaining native regressions, bounded paused worker replacement, external
 provider acceptance on the selected bytes and all other release gates remain
 required.
 
+## Bounded committed-pause drain and recovery
+
+The complete minimal consumer with a prepared base initially confirms its
+pause, then fails planned worker Stop in
+`factorybox-consumer-worker-loss-71d2ec0da9c148a69c8a5056365f53b7`.
+Candidate `10aaf182ad584ceaabcd8411cdaadf82` requires every source to be
+deleted, while the source is correctly still paused. The recorded topology has
+the canonical read-only base, its checkpoint alias and Sysbox's stopped-runtime
+FUSE mount. The consumer already released its own source overlay and lower
+alias. The complete 32-GiB image is retained, losslessly repacked in
+`factorybox-storage-repack-0abc80b21faf4815a08f4905b9bd2f32` after full
+raw-payload verification.
+
+Intermediate candidate `af7bece39e1c4d098631df587ae504ea` stops that old
+worker with exit 0 and recovers the actual consumer. All replacement assertions
+pass, including exact replay, removal of old source files, another checkpoint
+and fork, independent mutations and source deletion. The overall run
+`factorybox-consumer-worker-loss-6056f81a5d7e4fcbae0dbb015c21363c` still
+fails its final Stop. Its complete image and logs retain the cause: the newly
+imported canonical base and two read-only aliases remain outside the ordinary
+base registry.
+
+Candidate `c2466d1f9df74c30be742170ac867948` passes the complete planned
+bounded minimal worker replacement in
+`factorybox-consumer-worker-loss-805b260a3a1e4d3d97ae935cda88fb1d`.
+Its package SHA-256 is
+`669b9270350b5804ce7b9415807d4c6252faba7a5e9580cd05f13f6eb33122b1`.
+The old and replacement workers both exit 0, cleanup succeeds, and observed
+global settings remain unchanged. This individual run takes 38.27 seconds for
+preparation and 36.15 seconds for recovery; the respective Stop observations
+are 1.62 and 0.88 seconds. These are not latency percentiles.
+
+The exit fence now binds each complete, released, unresumed pause before
+non-forced deletion of its exact stopped runtime and retirement of its empty
+cgroup. The pause record and checkpoint remain unchanged. A dedicated recovery
+reader can read that exact fenced selection after independently confirmed
+worker fencing; ordinary old-epoch operations remain closed. Recovery input
+bases are discovered only from complete, matching import and preparation
+records. Their exact aliases are uncovered before their verified canonical
+mounts. Partial imports and unknown objects refuse release. No backing is
+deleted by this path, no caller source mount is unmounted and no force/lazy
+unmount is used.
+
+Portable checks pass in
+`factorybox-checks-9fc1c0927c0d4b8eaaad27fe3a819921`. The first full native
+retirement attempt on this candidate remains failed in
+`factorybox-checkpoint-retirement-6da013b5e80a49edb30ba0b6f7195746` and
+batch `factorybox-paused-epoch-regressions-c523cac908374730945224263c11d0dc`.
+The four original tests and internal-guard regression pass, but the new fence
+fixture's temporary controller lacks required mode 0700. The runtime correctly
+rejects it. The isolated correction in
+`factorybox-worker-exit-fence-metadata-0959a558f1f547a1b20cc0d0205c49e8`
+exposes a second fixture error: its orphan-completion case still creates an
+intent. The corrected isolated test passes all 14 cases in
+`factorybox-worker-exit-fence-metadata-695753d32a7c4eb8b5c290bcac0e0f8f`.
+Both ordered fixture corrections retain exact before/after and patch hashes;
+every assertion remains and each negative case now requires its actual refusal
+reason. Production code and its permissions checks are unchanged by these
+fixture corrections. Cases cover interrupted intent, complete intent,
+malformed/changed records, file rights, links and held locks. Synthetic metadata
+cases alone do not qualify interruption of a live drain. Complete native
+regression, abrupt/full Factory replacement and final delivered-byte
+qualification remain required.
+
+The package rebuilt with the finished fixture is
+`factorybox-build-worker-c8578b8ae98a47f392bc050c79274346`, package SHA-256
+`09fa2a3fb08e576fa76cdf8c6a136c839de919721e1856f928bf70de45beba13`.
+Its CLI SHA-256 remains
+`2c2f3887d54cc3c304d5e62440d284fba11eee31dd5719d0b589c6830e96d5dd`,
+identical to `c2466d1f`; the packaging metadata binds the corrected test source.
+All 13 native core regression gates pass on this package in
+`factorybox-paused-epoch-regressions-8d6c41b5f4da48c8b37e6e056b9a6121`.
+The full retirement gate
+`factorybox-checkpoint-retirement-6f0b3e062e5647e2835d7ba202886725`
+includes the four original tests and both guard/fence regressions.
+All eight Stop protection cases pass in
+`factorybox-bounded-base-stop-7e60812bb05446ad93808c9275f2903c`.
+An earlier attempt, `factorybox-bounded-base-stop-49f3f79275864da29c0cdb17f998cc4b`,
+passes every individual case but remains failed because the driver still
+requires exactly seven results after adding the eighth case. The corrected
+driver requires all eight; no original case or assertion is removed.
+
+Independent offline build
+`factorybox-build-worker-0d3f304edb76467283a158b0aea1a67a` reproduces the
+same complete package, image identity and layers. The exact final package also
+passes planned minimal replacement in
+`factorybox-consumer-worker-loss-fe8c7e52724f41c4a4c5006b07336308`,
+abrupt minimal replacement in
+`factorybox-consumer-worker-loss-a07a4c9c7743423e9a82cd784e1f45a8`, and
+all eight ordinary minimal lifecycle phases in
+`factorybox-consumer-worker-loss-45c31f148afb48cabad190666ccc5969`.
+Each passes exact cleanup and its expected worker exit. Final portable checks
+pass in `factorybox-checks-ab1bc5f76a50442c90d02725ed315834`.
+Full planned Factory/Theia/OpenCode-fixture replacement also passes in
+`factorybox-consumer-worker-loss-91e53244af4049688b11dc6c94d7a7cb`.
+The first consumer batch
+`factorybox-paused-consumers-77525818087e4e48a87c007befea4cd4` remains
+failed because its collector expects exactly one generic evidence message;
+Factory emits both separate Theia admission and full-consumer evidence.
+Continuation `factorybox-paused-consumers-72cb8cb207884bc4a22bfdb4c8444908`
+selects only exact full-consumer artifact paths. It revalidates and pins the
+four complete passing leaf results rather than rerunning unchanged cases.
+All eight cases in that continuation now pass on the exact final package.
+Abrupt Factory replacement is
+`factorybox-consumer-worker-loss-1f5c57ffb12144c9b281dc60eb9a8e25`,
+ordinary full Factory lifecycle is
+`factorybox-consumer-worker-loss-105b6749f2544ae5ba61ff1cab8f1e13`,
+minimal incomplete-pause refusal/recovery is
+`factorybox-consumer-worker-loss-ddc2c441eda74439b8b79de07bdb46f1` and
+the matching full Factory case is
+`factorybox-consumer-worker-loss-6c11ef17483d4b3cbd4c6233d15722b2`.
+Both incomplete pauses are refused twice, their earlier committed pause
+metadata remains unchanged, and that earlier complete state is recovered
+through the full original consumer assertions. Every case has expected worker
+exits, cleanup and unchanged observed global settings. No fixture or assertion
+changes for the collector fix. Factory uses its separate Theia peer and local
+OpenCode model fixture throughout; this is not external-provider acceptance.
+Actual interruption during a live exit fence, replacement with a different
+loop assignment and large exit-ledger admission remain distinct checks. The
+full production goal remains active and unqualified.
+
+After the passing full bounded Factory lifecycle on `10aaf182`, the superseded
+five- and twelve-second deadline failure images are intentionally retired with
+complete decompression/member verification in
+`factorybox-storage-retirement-d696554320e749f1b7405d5bb50028bf` and
+`factorybox-storage-retirement-0a695bb908c743c28327110868608803`.
+Their original source, results, logs, CLI manifests and selected inputs remain;
+their complete images are no longer reconstructable. After the passing planned
+minimal replacement, the superseded recovered-base failure image `6056f81a`
+is also intentionally retired with complete stream verification in
+`factorybox-storage-retirement-53d1589b40ee481da804f11e1dde5d54`.
+Its original source, result, logs, CLI manifests and selected inputs stay intact;
+its full image is no longer reconstructable. The selected initial paused-base
+failure image `71d2ec0d` remains complete. Sharing byte-identical completed inputs
+is recorded in
+`factorybox-storage-share-closed-components-b3cb585d4367440aa05ce16c3945f518`.
+The 32-GiB artifact budget and required 8-GiB starting headroom remain enforced.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

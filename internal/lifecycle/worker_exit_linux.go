@@ -16,14 +16,18 @@ import (
 )
 
 type workerBaseRelease struct {
-	Version       int                            `json:"version"`
-	Root          string                         `json:"root"`
-	BootID        string                         `json:"boot_id"`
-	RuntimeSHA256 string                         `json:"runtime_sha256"`
-	RequestedAt   string                         `json:"requested_at"`
-	CompletedAt   string                         `json:"completed_at,omitempty"`
-	Bases         []Base                         `json:"bases"`
-	Aliases       []sysboxcapture.FilesystemTree `json:"aliases,omitempty"`
+	Version        int                            `json:"version"`
+	Root           string                         `json:"root"`
+	BootID         string                         `json:"boot_id"`
+	RuntimeSHA256  string                         `json:"runtime_sha256"`
+	CriuSHA256     string                         `json:"criu_sha256,omitempty"`
+	ManagerRoot    string                         `json:"manager_root,omitempty"`
+	RequestedAt    string                         `json:"requested_at"`
+	CompletedAt    string                         `json:"completed_at,omitempty"`
+	Bases          []Base                         `json:"bases"`
+	RecoveredBases []sysboxcapture.FilesystemTree `json:"recovered_bases,omitempty"`
+	Aliases        []sysboxcapture.FilesystemTree `json:"aliases,omitempty"`
+	Paused         []Record                       `json:"paused,omitempty"`
 }
 
 func (e *Engine) exitEntries(path string) ([]os.DirEntry, error) {
@@ -41,9 +45,10 @@ func (e *Engine) exitEntries(path string) ([]os.DirEntry, error) {
 
 // ReleaseDeletedEpochBases fences further controller operations and releases
 // completed canonical base mounts only after every sandbox was confirmed
-// deleted. Completed capture aliases are uncovered before their canonical
-// bases. No backing is deleted and no incomplete operation is repaired.
-// Paused epochs need a separate drain qualification.
+// deleted or completely paused. Paused runtime resources are released after
+// publication of the fence; their records and complete backing are retained.
+// Capture aliases are uncovered before their bases. No incomplete operation is
+// repaired and no caller-owned rootfs mount is released.
 func (e *Engine) ReleaseDeletedEpochBases(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -54,11 +59,12 @@ func (e *Engine) ReleaseDeletedEpochBases(ctx context.Context) error {
 	}
 	defer lock.Close()
 	entries, err := e.exitEntries("bases")
-	if err != nil || len(entries) == 0 {
+	if err != nil {
 		return err
 	}
 	intent := workerBaseRelease{Version: 1, Root: e.config.Root, BootID: e.boot,
-		RuntimeSHA256: e.config.RuntimeSHA256, RequestedAt: now()}
+		RuntimeSHA256: e.config.RuntimeSHA256, CriuSHA256: e.config.CriuSHA256,
+		ManagerRoot: e.config.ManagerRoot, RequestedAt: now()}
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -76,6 +82,22 @@ func (e *Engine) ReleaseDeletedEpochBases(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	intent.RecoveredBases, intent.Aliases, err = e.exitForkBases(ctx)
+	if err != nil {
+		return err
+	}
+	if len(intent.Bases) == 0 && len(intent.RecoveredBases) == 0 && len(objects) == 0 {
+		return nil
+	}
+	known := append([]sysboxcapture.FilesystemTree(nil), intent.RecoveredBases...)
+	for _, base := range intent.Bases {
+		known = append(known, base.Tree)
+	}
+	for _, tree := range intent.Aliases {
+		if err := exitKnownAlias(tree, known); err != nil {
+			return err
+		}
+	}
 	for _, entry := range objects {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -84,17 +106,20 @@ func (e *Engine) ReleaseDeletedEpochBases(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("worker exit refuses an unconfirmed sandbox: %w", err)
 		}
-		if record.Phase != "deleted" || record.Delete == nil ||
+		if record.Phase == "paused" {
+			if err := e.exitPausedRuntime(ctx, lock, record); err != nil {
+				return err
+			}
+			intent.Paused = append(intent.Paused, record)
+		} else if record.Phase != "deleted" || record.Delete == nil ||
 			record.Delete.CompletedAt == "" || record.Delete.Error != "" {
 			return fmt.Errorf("base release requires confirmed deletion of sandbox %s", record.ID)
-		}
-		if _, err := e.root.Lstat("runtime/" + record.RuntimeID); !errors.Is(err, os.ErrNotExist) {
+		} else if _, err := e.root.Lstat("runtime/" + record.RuntimeID); !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("base release refuses remaining runtime %s: %v", record.ID, err)
-		}
-		if _, err := os.Lstat(cgroupRoot + "/" + record.RuntimeID); !errors.Is(err, os.ErrNotExist) {
+		} else if _, err := os.Lstat(cgroupRoot + "/" + record.RuntimeID); !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("base release refuses remaining cgroup %s: %v", record.ID, err)
 		}
-		aliases, err := e.exitCaptureAliases(ctx, record, intent.Bases)
+		aliases, err := e.exitCaptureAliases(ctx, record, known)
 		if err != nil {
 			return err
 		}
@@ -104,6 +129,25 @@ func (e *Engine) ReleaseDeletedEpochBases(ctx context.Context) error {
 	// Publish the irreversible epoch fence while holding it, before unmounting.
 	if err := e.publishCheckpoint(".", "worker-exit.json", intent); err != nil {
 		return err
+	}
+	for _, record := range intent.Paused {
+		if err := e.exitPausedRuntime(ctx, lock, record); err != nil {
+			return err
+		}
+		// Non-forced deletion of the exact stopped runtime releases Sysbox's
+		// per-sandbox FUSE mount. The committed pause record never becomes deleted.
+		if _, err := e.command(ctx, lock, "delete", record.RuntimeID); err != nil {
+			return err
+		}
+		if state, err := e.runtimeState(ctx, record, lock); err != nil || state != nil {
+			return fmt.Errorf("paused runtime release is unconfirmed: %v", err)
+		}
+		if err := e.retireEmptyCgroup(record); err != nil {
+			return err
+		}
+		if err := e.retireForkOverlayBacking(record); err != nil {
+			return err
+		}
 	}
 	for _, tree := range intent.Aliases {
 		if err := ctx.Err(); err != nil {
@@ -121,19 +165,28 @@ func (e *Engine) ReleaseDeletedEpochBases(ctx context.Context) error {
 			return fmt.Errorf("release canonical base %s: %w", base.ID, err)
 		}
 	}
+	for _, tree := range intent.RecoveredBases {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := sysboxcapture.ReleaseFilesystemBaseMount(tree); err != nil {
+			return fmt.Errorf("release recovered canonical base: %w", err)
+		}
+	}
 	intent.CompletedAt = now()
 	return e.publishCheckpoint(".", "worker-exit-complete.json", intent)
 }
 
-func (e *Engine) exitCaptureAliases(ctx context.Context, record Record, bases []Base) ([]sysboxcapture.FilesystemTree, error) {
+func (e *Engine) exitCaptureAliases(ctx context.Context, record Record, bases []sysboxcapture.FilesystemTree) ([]sysboxcapture.FilesystemTree, error) {
 	entries, err := e.exitEntries("objects/" + record.ID + "/captures")
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, os.ErrNotExist) && record.Phase != "paused" {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	var aliases []sysboxcapture.FilesystemTree
+	pauseFound := record.Phase != "paused"
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -163,6 +216,14 @@ func (e *Engine) exitCaptureAliases(ctx context.Context, record Record, bases []
 		if saved.Filesystem == nil {
 			return nil, fmt.Errorf("worker exit capture has no filesystem manifest")
 		}
+		if record.Phase == "paused" && saved.ID == record.Pause.SnapshotID {
+			identity, err := json.Marshal(saved)
+			if err != nil || !saved.SourceStopped || saved.SourcePID != record.Pause.SourcePID ||
+				sum(identity) != record.Pause.CheckpointSHA256 {
+				return nil, fmt.Errorf("worker exit pause differs from its complete stopped checkpoint: %v", err)
+			}
+			pauseFound = true
+		}
 		for _, tree := range saved.Filesystem.Roots {
 			if tree.Immutable == nil {
 				continue
@@ -170,20 +231,58 @@ func (e *Engine) exitCaptureAliases(ctx context.Context, record Record, bases []
 			if tree.Saved != e.config.Root+"/"+relative+"/filesystem/"+tree.Name {
 				return nil, fmt.Errorf("worker exit capture alias is outside its exact generation")
 			}
-			matched := false
-			for _, base := range bases {
-				matched = matched || reflect.DeepEqual(tree.Immutable, base.Tree.Immutable)
-			}
-			if !matched {
-				return nil, fmt.Errorf("worker exit capture alias lacks its exact completed base")
-			}
-			if _, err := sysboxcapture.CheckImmutableAliasRetirement(tree.Saved, tree); err != nil {
+			if err := exitKnownAlias(tree, bases); err != nil {
 				return nil, err
 			}
 			aliases = append(aliases, tree)
 		}
 	}
+	if !pauseFound {
+		return nil, fmt.Errorf("worker exit lacks the exact published pause")
+	}
 	return aliases, nil
+}
+
+func exitKnownAlias(tree sysboxcapture.FilesystemTree, bases []sysboxcapture.FilesystemTree) error {
+	matched := false
+	for _, base := range bases {
+		matched = matched || tree.Immutable != nil && reflect.DeepEqual(tree.Immutable, base.Immutable)
+	}
+	if !matched {
+		return fmt.Errorf("worker exit alias lacks its exact completed base")
+	}
+	_, err := sysboxcapture.CheckImmutableAliasRetirement(tree.Saved, tree)
+	return err
+}
+
+func committedExitPause(record Record) error {
+	pause := record.Pause
+	if record.Phase != "paused" || pause == nil || !tokenID.MatchString(pause.SnapshotID) ||
+		!digest.MatchString(pause.CheckpointSHA256) || pause.RequestedAt == "" || pause.CompletedAt == "" ||
+		pause.Error != "" || pause.RejectedAt != "" || pause.Resume != nil || pause.SourcePID <= 1 ||
+		pause.After.Anon != 0 || pause.Snapshot.ResidentBytesAfter != 0 || record.Delete != nil ||
+		record.Start.CompletedAt == "" || record.RuntimeCreated == "" {
+		return fmt.Errorf("worker exit requires an exact committed, released and unresumed pause")
+	}
+	return nil
+}
+
+func (e *Engine) exitPausedRuntime(ctx context.Context, lock *os.File, record Record) error {
+	if err := committedExitPause(record); err != nil {
+		return err
+	}
+	var persisted Record
+	if err := e.readCheckpointJSON("objects/"+record.ID+"/record.json", &persisted); err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(record, persisted) {
+		return fmt.Errorf("worker exit paused record changed")
+	}
+	state, err := e.runtimeState(ctx, record, lock)
+	if err != nil || state == nil || state.Status != "stopped" || state.PID != 0 {
+		return fmt.Errorf("worker exit requires the exact stopped paused runtime: %v", err)
+	}
+	return e.requireEmptyCgroup(record)
 }
 
 // Restoring a fork or pause starts a separate timer activation guard. Its

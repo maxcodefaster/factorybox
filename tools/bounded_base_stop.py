@@ -43,11 +43,11 @@ def run(HERE, WORKER, OWNER):
     result = {'schema': 1, 'passed': False, 'production_qualified': False, 'cleanup': False, 'owner': OWNER,
               'worker_build': WORKER, 'worker_image_id': worker['image_id'], 'runner_sha256': reference.sha(Path(__file__)),
               'cases': [], 'global_sysctls_before': before,
-              'scope': 'Seven serialized 3 CPU/3 GiB cases with 512-MiB stores: empty, canonical base, changed identity, owned nested mount, incomplete base/object and held operation lock. Exact Stop outcomes and fresh-worker backing/record preservation. No sandbox, manual unmount, force/lazy cleanup or host setting change.'}
+              'scope': 'Eight serialized 3 CPU/3 GiB cases with 512-MiB stores: empty, canonical base, changed identity, owned nested mount, incomplete base/object/fork and held operation lock. Exact Stop outcomes and fresh-worker backing/record preservation. No sandbox, manual unmount, force/lazy cleanup or host setting change.'}
     deadline = time.monotonic() + 420
     clean = True
     try:
-        for mode in ['empty', 'base', 'changed-identity', 'nested-mount', 'incomplete-base', 'incomplete-object', 'held-operation']:
+        for mode in ['empty', 'base', 'changed-identity', 'nested-mount', 'incomplete-base', 'incomplete-object', 'incomplete-fork', 'held-operation']:
             if time.monotonic() >= deadline:
                 raise TimeoutError('bounded worker-stop cases exceeded 420 seconds')
             name = HERE.name + '-' + mode
@@ -94,6 +94,10 @@ def run(HERE, WORKER, OWNER):
                         code = 'import os,sys; os.mkdir(sys.argv[1],0o700)'
                         reference.docker(['exec', identity, 'python3', '-c', code,
                                           status['lifecycle']['root'] + '/objects/partial-object'])
+                    elif mode == 'incomplete-fork':
+                        code = 'import os,sys; os.mkdir(sys.argv[1],0o700)'
+                        reference.docker(['exec', identity, 'python3', '-c', code,
+                                          status['lifecycle']['root'] + '/forks/partial-fork'])
                     elif mode == 'held-operation':
                         code = 'import fcntl,json,os,sys,time; f=open(sys.argv[1],"r+b"); fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB); open(sys.argv[2],"x").write(json.dumps({"pid":os.getpid(),"lock_inode":os.fstat(f.fileno()).st_ino})); time.sleep(300)'
                         marker = status['store'] + '/held-operation-ready.json'
@@ -193,7 +197,7 @@ print(json.dumps({'mounts':mounts,'processes':processes}))'''
                     clean = clean and row['cleanup']
                     (output / 'result.json').write_text(json.dumps(row, indent=2) + '\n')
                     print(json.dumps({'case': mode, 'passed': row['passed'], 'cleanup': row['cleanup'], 'state': row.get('state')}), flush=True)
-        result['passed'] = len(result['cases']) == 7 and all(r['passed'] for r in result['cases'])
+        result['passed'] = len(result['cases']) == 8 and all(r['passed'] for r in result['cases'])
     finally:
         result['cleanup'] = clean
         result['global_sysctls_after'] = consumer_worker_loss.sysctls()

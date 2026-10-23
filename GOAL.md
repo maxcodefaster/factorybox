@@ -426,3 +426,28 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Externe echte Modellabnahme, vollständiger Verbraucher-Worker-Ersatz mit
   vorbereiteter Basis, sämtliche übrigen Freigabearbeiten und das Gesamtziel
   bleiben offen. Die Modell-Fixture ersetzt keinen externen Anbieterbeleg.
+- Der vollständige geplante begrenzte minimale Worker-Wechsel besteht auf
+  `c2466d1f9df74c30be742170ac867948` in
+  `factorybox-consumer-worker-loss-805b260a3a1e4d3d97ae935cda88fb1d`.
+  Die bestätigte Pause bleibt erhalten; erst die dauerhafte Epochensperre
+  erlaubt die Freigabe der exakt gestoppten Runtime und ihrer leeren cgroup.
+  Recovery liest nur den gebundenen Zustand und erhält unabhängige Inputs.
+  Auch der abschließende Stop berücksichtigt die wiederhergestellte Basis
+  außerhalb des Basisregisters. Beide Worker enden mit 0, Cleanup besteht.
+  Beide vorherigen Fehlerbelege bleiben gesichert. Das erste Abbild bleibt
+  vollständig; das durch erfolgreichen Ersatz abgelöste Recovery-Abbild
+  `6056f81a` ist mit vollständiger Verifikation und Stilllegungsbeleg bewusst
+  nicht mehr rekonstruierbar.
+  Das mit korrigierter Test-Fixture neu gebaute Paket
+  `c8578b8ae98a47f392bc050c79274346` enthält dieselbe CLI. Darauf bestehen
+  alle 13 nativen Kern-Regressionsgates, acht Stop-Schutzfälle sowie geplanter
+  und abrupter minimaler Verbraucher-Ersatz und der normale Acht-Phasen-Lifecycle.
+  Ein unabhängiger Offline-Build reproduziert Paket und Image exakt.
+  Auch vollständiger Factory-/Theia-/OpenCode-Fixture-Ersatz und normaler
+  Lifecycle bestehen auf diesen Bytes. Alle acht Verbraucherfälle sind in
+  `factorybox-paused-consumers-72cb8cb207884bc4a22bfdb4c8444908` gebunden.
+  Beide unvollständigen Pausen werden zweimal verweigert, danach wird der
+  frühere bestätigte Zustand vollständig wiederhergestellt. Die Modell-Fixture
+  ersetzt keine externe Anbieterabnahme. Unterbrochener Live-Drain, veränderte
+  Loop-Zuordnung, große Exit-Belege und sämtliche weiteren Produktionsabnahmen
+  bleiben offen. Das vollständige Goal bleibt aktiv.

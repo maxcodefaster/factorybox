@@ -127,7 +127,7 @@ func (e *Engine) importPaused(ctx context.Context, lock *os.File, request Recove
 	// A read-only view avoids Open's directory initialization. The source
 	// lock serializes cooperating file readers/writers; worker fencing is a
 	// separate prerequisite, not inferred from this lock or absent old PIDs.
-	oldLock, err := old.lock()
+	oldLock, err := old.recoveryLock(request)
 	if err != nil {
 		return intent, err
 	}

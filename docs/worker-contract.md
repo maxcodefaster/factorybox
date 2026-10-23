@@ -351,8 +351,32 @@ shutdowns, for example Docker's `--stop-timeout=45`. The consumer proof limits
 that call by its remaining 420-second lifecycle budget. The complete bounded
 Factory/Theia/OpenCode-fixture lifecycle passes on that candidate, including
 worker exit 0 and cleanup. All 13 native core regression gates also pass on
-those package bytes. Paused epoch drain and recovered base layouts still
-require native acceptance.
+those package bytes.
+
+A further opt-in candidate binds completed, released and unresumed pauses in
+the durable exit fence. It verifies the exact stopped runtime and empty cgroup
+before non-forced runtime deletion, retaining the paused record and complete
+checkpoint. Caller-owned source mounts are retained. Runtime-owned fork
+overlays and exact immutable aliases are released only after fencing. Recovery
+input bases outside `bases/` require their complete matching recovery intent
+and private preparation before canonical mount release. Partial or unknown
+imports refuse cleanup.
+
+Recovery can read an exact pause retained by that fence. All ordinary lifecycle
+operations in the old epoch remain closed. A present completion record must
+match its original intent. An interrupted exit can lack a completion record
+while preserving a complete recovery selection, but
+this never establishes that its worker has been fenced. The caller must still
+stop/remove the exact old worker and retain exclusive ownership of the store.
+The exact candidate now passes all 13 native core regression gates, eight Stop
+protection cases and eight full bounded consumer cases, with an independently
+identical package/image rebuild. Both examples pass planned/abrupt worker
+replacement and the original lifecycle. Interrupted incomplete pauses are
+refused while their earlier committed state remains recoverable. Factory
+includes its separate Theia peer and local OpenCode model fixture.
+Interruption of a live drain, a changed loop assignment, large-ledger admission,
+external-provider and all remaining release qualification stay open; see
+[the paused drain evidence](production-progress.md#bounded-committed-pause-drain-and-recovery).
 
 `tools/build_worker.py` takes exact completed native-base, Sysbox and CRIU
 build IDs. It freezes the Go sources, toolchain and source lock, checks module
