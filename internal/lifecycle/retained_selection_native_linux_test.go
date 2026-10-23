@@ -65,6 +65,14 @@ func TestNativeRetainedSelectionRecover(t *testing.T) {
 	if err != nil {
 		t.Fatal("inventory all retained backing before release", err)
 	}
+	inspectArgs := retirementArgs("inspect-recovery-checkpoint", request, "")
+	inspectArgs = append([]string{inspectArgs[0], "--source-root", pause.Request.SourceRoot}, inspectArgs[1:]...)
+	var inspected RetainedCheckpointInspection
+	if err := json.Unmarshal(boundedLossAction(t, inspectArgs...), &inspected); err != nil || inspected.Version != 1 ||
+		!inspected.FullContentVerified || inspected.Files <= 0 || inspected.FileBytes < 32<<20 || inspected.FilesystemTrees < 2 ||
+		inspected.Request.SourceRoot != pause.Request.SourceRoot || inspected.Request.CheckpointRequest != request || inspected.VerifiedAt == "" {
+		t.Fatal("retained inspection did not verify the complete exact saved generation", inspected, err)
+	}
 	selected, err := old.selection(relative, "recover-primary")
 	if err != nil || selected.ReleasedAt != "" {
 		t.Fatal("old active selection was not retained", err)
@@ -144,6 +152,7 @@ func TestNativeRetainedSelectionRecover(t *testing.T) {
 	boundedLossSave(t, "retained-selection-released.json", map[string]any{"passed": true, "production_qualified": false,
 		"source_root": pause.Request.SourceRoot, "current_root": status.Lifecycle.Root,
 		"old_lifecycle_fence_preserved": fenced, "wrong_requests_refused": 6, "exact_release_replayed": true,
-		"other_selection_preserved": true, "unresumed_pause_still_protected": true,
+		"retained_checkpoint_inspected": true,
+		"other_selection_preserved":     true, "unresumed_pause_still_protected": true,
 		"original_backing_inventory_unchanged": true, "full_original_recovery_assertions_passed": true})
 }

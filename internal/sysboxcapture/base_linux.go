@@ -66,59 +66,78 @@ func RecoverFilesystemBase(ctx context.Context, saved FilesystemTree, destinatio
 type BaseRecoveryVerifier func(saved FilesystemTree, currentDevice uint64) error
 
 func recoverFilesystemBase(ctx context.Context, saved FilesystemTree, destination string, verify BaseRecoveryVerifier) (FilesystemTree, error) {
+	root, err := openRetainedFilesystemBase(ctx, saved, verify)
+	if err != nil {
+		return FilesystemTree{}, err
+	}
+	defer root.Close()
+	base := saved.Immutable
+	// The expected digest describes data, not the vanished kernel objects.
+	// No old immutable pointer may escape on a failed new preparation.
+	saved.Immutable, saved.Alias = nil, nil
+	return prepareFilesystemBase(ctx, base.Root, destination, &saved, root)
+}
+
+// The caller must verify content before using this read-only file descriptor as
+// an input. The recovery copy checks its target; inspection fingerprints here.
+func openRetainedFilesystemBase(ctx context.Context, saved FilesystemTree, verify BaseRecoveryVerifier) (_ *os.File, resultErr error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	base := saved.Immutable
 	if saved.Name != "lower" || base == nil || !cleanAbsolute(base.Root) ||
 		len(saved.SHA256) != 64 || strings.Trim(saved.SHA256, "0123456789abcdef") != "" ||
 		saved.Entries <= 0 || saved.HashedBytes < 0 || saved.FileBytes < saved.HashedBytes ||
 		base.SHA256 != saved.SHA256 || base.Entries != saved.Entries ||
 		base.FileBytes != saved.FileBytes || base.HashedBytes != saved.HashedBytes {
-		return FilesystemTree{}, fmt.Errorf("base recovery requires its complete saved immutable-tree manifest")
+		return nil, fmt.Errorf("base recovery requires its complete saved immutable-tree manifest")
 	}
 	if err := immutableParents(base.Root); err != nil {
-		return FilesystemTree{}, err
+		return nil, err
 	}
 	root, err := openDirectory(base.Root)
 	if err != nil {
-		return FilesystemTree{}, err
+		return nil, err
 	}
-	defer root.Close()
+	defer func() {
+		if resultErr != nil {
+			root.Close()
+		}
+	}()
 	var stat unix.Stat_t
 	var current, parentMount unix.Statx_t
 	if err := unix.Fstat(int(root.Fd()), &stat); err != nil {
-		return FilesystemTree{}, err
+		return nil, err
 	}
 	if stat.Ino != base.Inode || stat.Mode != base.Mode ||
 		stat.Uid != base.UID || stat.Gid != base.GID || stat.Mtim.Sec != base.MtimeSec ||
 		stat.Mtim.Nsec != base.MtimeNano || stat.Ctim.Sec != base.CtimeSec || stat.Ctim.Nsec != base.CtimeNano {
-		return FilesystemTree{}, fmt.Errorf("persisted base inode or metadata changed")
+		return nil, fmt.Errorf("persisted base inode or metadata changed")
 	}
 	if uint64(stat.Dev) != base.Device && verify == nil {
-		return FilesystemTree{}, fmt.Errorf("persisted base inode or metadata changed")
+		return nil, fmt.Errorf("persisted base inode or metadata changed")
 	}
 	parent, err := openDirectory(filepath.Dir(base.Root))
 	if err != nil {
-		return FilesystemTree{}, err
+		return nil, err
 	}
 	err = unix.Statx(int(root.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &current)
 	if err == nil {
 		err = unix.Statx(int(parent.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &parentMount)
 	}
 	if err := errors.Join(err, parent.Close()); err != nil {
-		return FilesystemTree{}, err
+		return nil, err
 	}
 	if current.Mask&unix.STATX_MNT_ID == 0 || parentMount.Mask&unix.STATX_MNT_ID == 0 ||
 		current.Mnt_id == 0 || current.Mnt_id != parentMount.Mnt_id {
-		return FilesystemTree{}, fmt.Errorf("persisted base has an unexpected covering mount")
+		return nil, fmt.Errorf("persisted base has an unexpected covering mount")
 	}
 	if uint64(stat.Dev) != base.Device {
 		if err := verify(saved, uint64(stat.Dev)); err != nil {
-			return FilesystemTree{}, fmt.Errorf("persisted base device translation refused: %w", err)
+			return nil, fmt.Errorf("persisted base device translation refused: %w", err)
 		}
 	}
-	// The expected digest describes data, not the vanished kernel objects.
-	// No old immutable pointer may escape on a failed new preparation.
-	saved.Immutable, saved.Alias = nil, nil
-	return prepareFilesystemBase(ctx, base.Root, destination, &saved, root)
+	return root, nil
 }
 
 func prepareFilesystemBase(ctx context.Context, source, destination string, expected *FilesystemTree, anchored *os.File) (FilesystemTree, error) {

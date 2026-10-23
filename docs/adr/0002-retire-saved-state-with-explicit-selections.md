@@ -26,3 +26,19 @@ An interrupted deletion needs an inventory of exact owned objects and a bounded
 retry that refuses changed identities and foreign mounts. This proposal still
 requires implementation, native interruption/ownership tests and full consumer
 evidence before selection for production.
+
+For an old unresumed pause, a running descendant alone cannot establish a
+durable recovery handover. Epoch retirement must name and verify an independent
+committed successor pause, including complete private RAM/filesystem backing and
+its recovery provenance. A descendant may have performed useful independent
+work since recovery. Releasing an old selection is a separate operation and
+does not authorize withdrawal of that committed pause.
+
+The accepted retirement operation must keep its successor inputs protected
+until the old payload deletion and durable completion are confirmed, including
+after interruption. That protection cannot depend only on an in-process lock.
+A retry must not interpret vanished mounts as missing data or use the old mount
+IDs as current authority. Retained immutable base metadata and full content
+need a read-only check against the exact current store attachment before an
+owned deletion plan can be prepared. These are retirement admission rules;
+successful inspection alone grants no deletion authority.

@@ -598,3 +598,28 @@ Other selections remain effective. Releasing all selections still leaves an
 unresumed committed pause protected, and does not remove any payload or reopen
 the old lifecycle. Checkpoint/epoch backing retirement remains a separate
 operation requiring its own dependency and ownership proof.
+
+## Inspecting a retained complete checkpoint
+
+`inspect-recovery-checkpoint` uses the same validated current worker and exact
+earlier `--source-root`, positional source sandbox ID, `--snapshot-id`,
+`--source-owner` and `--checkpoint-sha256`. It requires no selection ID and
+does not release one. It holds the current and old controller locks while
+checking the published generation, every RAM/opaque metadata file and every
+saved filesystem tree. The old lifecycle remains fenced.
+
+A vanished read-only mount is not immutable runtime authority. For a retained
+base, this inspection checks its canonical stored inode, original metadata and
+complete content digest. Its former alias must be the exact original empty
+uncovered directory. Unexpected covering mounts, changed contents, changed
+metadata and replacement directories are refused. Only the independently
+verified identical store image and epoch can authorize a changed loop device;
+old mount IDs are never adopted. Inspection creates no new mount or copy and
+does not modify the saved manifests.
+
+Successful output is a fresh observation with the exact request, verification
+time, serialized checkpoint-file count/bytes and filesystem-tree count. The
+file-byte field excludes filesystem-tree payloads and does not measure store
+capacity. This report grants no deletion authority, releases no committed
+pause, and does not establish a recovery handover. Manual epoch retirement
+still needs its full dependency, interruption and owned-payload protocol.

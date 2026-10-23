@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Share identical encoded probes of closed native runs without changing receipts."""
+"""Share identical encoded helpers of closed native runs without changing receipts."""
+import argparse
 import hashlib
 import json
 import os
@@ -25,38 +26,53 @@ def save(path, value):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--include-closed-consumer-helpers', action='store_true',
+                        help='also share encoded consumer helpers bound to their exact native inputs_sha256')
+    args = parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('encoded input sharing requires every native worker to close')
     before = reference.artifact_storage.require_capacity(reference.ROOT, run_reserve=0)
     groups, hashes = {}, {}
     for run in sorted((reference.ROOT / 'artifacts').iterdir()):
-        if not re.fullmatch(r'factorybox-(?:checkpoint-retirement|bounded-store|bounded-store-loss|bounded-loss|storage-admission)-[0-9a-f]{32}', run.name):
+        native = re.fullmatch(r'factorybox-(?:checkpoint-retirement|bounded-store|bounded-store-loss|bounded-loss|storage-admission)-[0-9a-f]{32}', run.name)
+        consumer = args.include_closed_consumer_helpers and re.fullmatch(r'factorybox-consumer-worker-loss-[0-9a-f]{32}', run.name)
+        if not native and not consumer:
             continue
-        result, receipt, encoded = run / 'result.json', run / 'probe.test.encoding.json', run / 'probe.test.zst'
-        if any(p.is_symlink() or not p.is_file() for p in (result, receipt, encoded)):
+        result = run / 'result.json'
+        if run.is_symlink() or result.is_symlink() or not result.is_file():
             continue
-        outcome, encoding = json.loads(result.read_text()), json.loads(receipt.read_text())
+        outcome = json.loads(result.read_text())
         if outcome.get('cleanup') is not True:
             continue
-        expected = outcome.get('test_binary_sha256', outcome.get('probe_sha256'))
-        if not expected:
-            continue  # Other drivers retain a different input manifest.
-        original, stored = encoding['original'], encoding['encoded']
-        if (encoding.get('whole_decompressed_payload_verified') is not True or
-                original['file'] != 'probe.test' or stored['file'] != 'probe.test.zst' or
-                original['sha256'] != expected):
-            raise ValueError('closed probe differs from its native result: ' + run.name)
-        info = encoded.stat()
-        if info.st_uid != os.getuid() or encoded.resolve() != encoded:
-            raise ValueError('encoded probe has another owner or a redirected path')
-        if info.st_size != stored['bytes'] or sha(encoded) != stored['sha256']:
-            raise ValueError('encoded probe bytes differ from receipt')
-        hashes[str(result)], hashes[str(receipt)] = sha(result), sha(receipt)
-        key = (original['sha256'], original['bytes'], stored['sha256'], stored['bytes'], info.st_mode, info.st_uid, info.st_gid)
-        groups.setdefault(key, []).append({'path': str(encoded), 'identity': list(reference.artifact_storage.identity(encoded)),
-            'mtime_ns': info.st_mtime_ns, 'mode': info.st_mode, 'uid': info.st_uid, 'gid': info.st_gid,
-            'original': original, 'encoded': stored})
+        candidates = {'probe.test': outcome.get('test_binary_sha256', outcome.get('probe_sha256'))} if native else {
+            name: outcome.get('inputs_sha256', {}).get(name) for name in
+            ['consumer-worker.test', 'devx-actor', 'devx-registry', 'minimal-actor', 'ide-filesystem']}
+        for name, expected in candidates.items():
+            receipt, encoded = run / (name + '.encoding.json'), run / (name + '.zst')
+            if not isinstance(expected, str) or not re.fullmatch(r'[0-9a-f]{64}', expected):
+                continue
+            if any(p.is_symlink() or not p.is_file() for p in (receipt, encoded)):
+                continue
+            encoding = json.loads(receipt.read_text())
+            original, stored = encoding['original'], encoding['encoded']
+            if (encoding.get('whole_decompressed_payload_verified') is not True or
+                    original['file'] != name or stored['file'] != name + '.zst' or
+                    original['sha256'] != expected):
+                raise ValueError('closed helper differs from its native result: ' + run.name + '/' + name)
+            info = encoded.stat()
+            if info.st_uid != os.getuid() or encoded.resolve() != encoded:
+                raise ValueError('encoded helper has another owner or a redirected path')
+            if info.st_size != stored['bytes'] or sha(encoded) != stored['sha256']:
+                raise ValueError('encoded helper bytes differ from receipt')
+            hashes[str(result)], hashes[str(receipt)] = sha(result), sha(receipt)
+            key = (original['sha256'], original['bytes'], stored['sha256'], stored['bytes'], info.st_mode, info.st_uid, info.st_gid)
+            groups.setdefault(key, []).append({'path': str(encoded), 'identity': list(reference.artifact_storage.identity(encoded)),
+                'mtime_ns': info.st_mtime_ns, 'mode': info.st_mode, 'uid': info.st_uid, 'gid': info.st_gid,
+                'original': original, 'encoded': stored})
     rows = [group for group in groups.values() if len({tuple(row['identity'][:2]) for row in group}) > 1]
+    for group in rows:
+        group.sort(key=lambda row: -Path(row['path']).stat().st_nlink)
     artifact = reference.ROOT / 'artifacts' / ('factorybox-storage-share-test-encodings-' + uuid.uuid4().hex)
     artifact.mkdir()
     shutil.copyfile(__file__, artifact / 'runner.py')
@@ -65,7 +81,8 @@ def main():
     for group in rows:
         reference.artifact_storage.verify_compacted(Path(group[0]['path']).with_suffix(''), group[0]['original'])
     save(artifact / 'intent.json', {'schema': 1, 'groups': rows, 'results_and_receipts': hashes,
-                                  'capacity_before': before, 'canonical_complete_decodes_verified': True})
+                                  'capacity_before': before, 'canonical_complete_decodes_verified': True,
+                                  'include_closed_consumer_helpers': args.include_closed_consumer_helpers})
     result = {'schema': 1, 'passed': False, 'completed': [], 'production_qualified': False}
     try:
         for group in rows:
@@ -101,7 +118,7 @@ def main():
         after = reference.artifact_storage.require_capacity(reference.ROOT, run_reserve=0)
         result.update(passed=True, capacity_after=after,
                       reclaimed_allocated_bytes=before['allocated_bytes'] - after['allocated_bytes'],
-                      scope='Only byte-identical encoded compiled probes of closed native runs. Full canonical decompression and all native executable/encoding identities verified. Every path remains usable; results, logs, sources and encoding receipts unchanged. No failure dump, frozen build, active input or historical experiment changed.')
+                      scope='Only byte-identical encoded helpers of closed native runs. Optional consumer helpers require exact inputs_sha256 bindings. Full canonical decompression and all native executable/encoding identities verified. Every path remains usable; results, logs, sources and encoding receipts unchanged. No failure dump, frozen build, active input or historical experiment changed.')
     except Exception as error:
         result['error'] = str(error)
         raise

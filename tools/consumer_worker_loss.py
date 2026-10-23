@@ -137,6 +137,37 @@ def pump_peer(peer, output):
         (output / "theia-released").write_text("ok\n" if peer.result.get("passed") and peer.result.get("cleanup") else "failed\n")
 
 
+def inspect_retained_checkpoint(identity, artifact, old, view, deadline):
+    record = view['record']
+    pause = record['pause']
+    request = {'source_root': old['lifecycle']['root'], 'source_id': record['id'],
+               'snapshot_id': pause['snapshot_id'], 'source_owner': record['owner'],
+               'checkpoint_sha256': pause['checkpoint_sha256']}
+    if record['phase'] != 'paused' or not pause.get('completed_at') or pause.get('resume'):
+        raise ValueError('retained inspection does not name a committed unresumed pause')
+    command = [*reference.DOCKER, 'exec', identity, '/opt/factorybox/factorybox',
+               '--worker-run-root', '/run/factorybox', 'inspect-recovery-checkpoint',
+               '--source-root', request['source_root'], '--snapshot-id', request['snapshot_id'],
+               '--source-owner', request['source_owner'], '--checkpoint-sha256', request['checkpoint_sha256'],
+               request['source_id']]
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError('retained inspection exhausted the existing lifecycle deadline')
+    started = time.monotonic()
+    done = subprocess.run(command, capture_output=True, text=True, timeout=min(120, remaining))
+    (artifact / 'retained-inspection.stdout').write_text(done.stdout)
+    (artifact / 'retained-inspection.stderr').write_text(done.stderr)
+    if done.returncode:
+        raise ValueError('delivered retained checkpoint inspection failed')
+    proof = json.loads(done.stdout)
+    if (proof.get('version') != 1 or proof.get('request') != request or proof.get('boot_id') != old['boot_id'] or
+            proof.get('full_content_verified') is not True or not proof.get('verified_at') or
+            proof.get('files', 0) <= 0 or proof.get('file_bytes', 0) <= 0 or proof.get('filesystem_trees', 0) < 2):
+        raise ValueError('retained inspection omitted exact identity or complete-content verification')
+    return {'passed': True, 'command': command, 'seconds': time.monotonic()-started,
+            'proof': proof, 'stdout_sha256': reference.sha(artifact / 'retained-inspection.stdout')}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build",required=True)
@@ -144,6 +175,7 @@ def main():
     parser.add_argument("--bounded-bytes",type=int,help="Explicit 4-32 GiB fixed store; relocate only new fixture copies and verify actual delivered capacity")
     parser.add_argument("--drain-interrupt-inputs",help="Exact preflighted host watcher to SIGKILL the owned worker after publication of its committed exit fence")
     parser.add_argument("--replacement-loop-holder",action="store_true",help="Use a separate empty owned worker to force the retained store onto a different loop slot during recovery")
+    parser.add_argument("--inspect-retained-checkpoint",action="store_true",help="Verify the complete saved generation through the delivered read-only CLI before all original recovery assertions")
     parser.add_argument("--stop-trace-inputs",help="Exact signed diagnostic fixture; trace worker file syscalls after all bounded lifecycle assertions pass")
     parser.add_argument("--consumer-inputs",required=True)
     parser.add_argument("--project-images",required=True)
@@ -165,6 +197,8 @@ def main():
         parser.error("drain interruption requires a complete bounded planned fixture and no separate diagnostic/provider substitution")
     if options.replacement_loop_holder and (options.bounded_bytes is None or options.probe != "worker-loss"):
         parser.error("replacement loop holder requires a complete bounded worker-loss case")
+    if options.inspect_retained_checkpoint and (options.bounded_bytes is None or options.probe != "worker-loss" or options.baseline_runtime_build):
+        parser.error("retained inspection requires the current bounded worker-loss fixture")
     if options.stop_trace_inputs and (options.bounded_bytes is None or options.probe != "lifecycle" or
             options.theia_image or options.opencode_flow or options.external_provider_proof or options.baseline_runtime_build):
         parser.error("stop tracing is a separate bounded lifecycle diagnostic without optional peers")
@@ -235,6 +269,7 @@ def main():
               "consumer_empty_features":options.consumer_empty_features,
               "consumer_request_profile":options.consumer_request_profile,
               "bounded_store_bytes":options.bounded_bytes,
+              "inspect_retained_checkpoint":options.inspect_retained_checkpoint,
               "probe":options.probe,
               "baseline_input":baseline_receipt,"lifecycle_criu_sha256":effective_criu,
               "consumer_inputs":options.consumer_inputs,"project_images":options.project_images,
@@ -502,6 +537,10 @@ traceDependency({event: 'module-loaded'});
             record["startup"] = ready(container,owner,identity,deadline)
             if phase == "recover" and loop_holder is not None:
                 consumer_loop_holder.verify_replacement(loop_holder, record["startup"]["status"])
+            if phase == "recover" and options.inspect_retained_checkpoint:
+                record['retained_checkpoint_inspection'] = inspect_retained_checkpoint(
+                    identity, phase_artifact, result['phases'][0]['startup']['status'],
+                    json.loads((artifact / 'prepare-output/cli-03-pause.json').read_text()), deadline)
             if options.bounded_bytes is not None:
                 capacity = json.loads(reference.docker(["exec", identity, "/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox", "capacity"]))
                 record["bounded_store_before"] = consumer_bounded_store.verify_capacity(record["startup"]["status"], capacity, options.bounded_bytes, owner)

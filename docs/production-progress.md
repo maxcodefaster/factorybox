@@ -4349,3 +4349,82 @@ open. The previous selected baseline is unchanged and the full goal stays active
 The exact source patches, independent package identities, both complete native
 proofs and fully decoded retained probe identities are linked by
 `factorybox-retained-selection-notes-ea59ee422b19442181f301ce6ba87662`.
+
+## Read complete retained backing without reviving old mount authority
+
+The old immutable-base verifier correctly refuses a base whose worker mount
+has disappeared. Copy recovery already validates its original stored inode and
+metadata before making and verifying an independent new base. The same original
+read-only opening checks are now shared with inspection. Copy recovery retains
+every existing assertion, full target verification and rejection of an unknown
+covering mount or unauthorized device translation.
+
+New `inspect-recovery-checkpoint` uses the current validated bounded worker and
+the exact old controller/source/checkpoint/owner/hash. It reads every serialized
+RAM/opaque metadata file and every filesystem tree. An immutable lower is read
+at its retained canonical backing after its original empty alias mountpoint
+is verified. It does not recreate a mount, copy backing, change the old manifest,
+release a selection/pause or grant authority to delete. Source epoch, same-boot
+store/image identity and original inode/metadata checks bind a changed loop
+device; former mount IDs are not current authority.
+
+Worker `factorybox-build-worker-b5d3f162359b4235a20c213f891ff4cc` and independent
+offline comparison `factorybox-build-worker-320529a4a5414eb5b4bd66fdfdf00bd0`
+produce identical package SHA-256
+`c13c66e2dc7633173f97b072744d67f71ab22488d81b52bbc16be6440aab6ea5`,
+image `sha256:deee8c669fb8274bbc4083e8e7f41265f5cc54839325a3e642ddee14e82d5d8a`
+and CLI `5af1e19a5c6a83207689f1f6575321fc095265573283eb8b700a5b181a32596e`.
+Both original base-recovery tests plus all sixteen new retained-inspection
+controls pass in `factorybox-base-recovery-eb2da8ced73d4808af2e6e56592b0017`.
+The latter use an owned 512-MiB ext4 store and explicitly synthetic old-device
+translation. They cover authorized/unauthorized/denied translation, actual
+foreign self-binds over base/alias/upper, changed content at unchanged file
+size/mtime, changed xattrs, alias payload/successor/mode, changed inode identity
+and cancellation. Exact owned-object/content inventories and saved manifests
+stay unchanged by successful or refused inspections. No read-only check grants
+the vanished immutable mount's runtime authority.
+
+Real committed 32-MiB RAM pauses survive actual old-worker removal in
+`factorybox-bounded-loss-acdf76b56e70467882897df7cb151703` with clean stop and
+`factorybox-bounded-loss-e1b5ce17f6e1483f87186940f0ddd977` with SIGKILL.
+Both inspect the old generation through the delivered CLI before every previous
+selection/pause-protection and complete recovery assertion. All original
+RAM/file, replay, independent-descendant, pause/resume and useful-work checks
+pass afterward; the complete old objects/forks/bases inventory stays identical
+except for the two explicitly requested selection-release records. Inputs,
+global settings and exact cleanup remain verified.
+
+Complete Factory/Theia/OpenCode local-model case
+`factorybox-consumer-worker-loss-c041b21756db44ef921a83f13300fc76` also passes.
+The same retained image moves from loop 0 to loop 1 while an empty separately
+owned worker holds the old slot. Before the complete original recovery test,
+the new CLI verifies all 351 serialized files, 542,700,130 bytes excluding the
+filesystem-tree payloads, and all nine filesystem trees in 28.28 seconds.
+Both application workers and the empty holder stop cleanly; source/replacement
+stop observations are 4.164/6.503 seconds. This explicit full-content inspection
+is an integrity observation, not a start optimization or a latency-distribution
+claim. Separate Theia admission
+`factorybox-theia-admission-d22197519478429fb2ce985bd1d2845c` passes. No external
+provider or final ten-run acceptance series is claimed.
+
+All six supported portable gates pass in
+`factorybox-checks-90bda549a85746398782e5b3e40249d9`, including 212 Python checks,
+232 immutable imported files, original fixture-extension verification and vet.
+Closed encoded-consumer helper sharing is now explicit opt-in. It verifies each
+helper against that run's original `inputs_sha256`, every encoding receipt and
+complete canonical decompression, chooses an already-shared canonical inode,
+then rechecks all result/receipt hashes. Maintenance
+`factorybox-storage-share-test-encodings-bf42995fb7994846a8e4f5d53a8e54e7`
+shares 56 identical encodings and reclaims 238,780,416 allocated bytes. All paths,
+original sources/results/logs/receipts and complete failure stores remain.
+Other completed archive re-encodings preserve every original decoded byte and
+one-hop reconstruction receipts; selected baseline inputs remain unchanged.
+
+The proposed retirement decision now distinguishes explicit recovery handover
+to an independent committed successor pause from releasing an old selection.
+It requires durable protection of successor inputs across interrupted deletion.
+That handover/epoch-deletion protocol is not yet implemented or qualified.
+Manual epoch retirement, original PID/busy-mount attribution, final external
+agent and full first-release acceptance remain open; the full goal is active.
+Exact source patches and current proof bindings are recorded in
+`factorybox-retained-inspection-notes-e5a47382374f49129900acc78667f754`.

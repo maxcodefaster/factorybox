@@ -142,7 +142,7 @@ def main():
             selection = json.loads(selection_file.read_text())
             required = ['passed', 'exact_release_replayed', 'other_selection_preserved',
                         'unresumed_pause_still_protected', 'original_backing_inventory_unchanged',
-                        'full_original_recovery_assertions_passed']
+                        'full_original_recovery_assertions_passed', 'retained_checkpoint_inspected']
             if (any(selection.get(key) is not True for key in required) or
                     selection.get('wrong_requests_refused') != 6 or
                     selection.get('old_lifecycle_fence_preserved') != (args.loss == 'planned')):

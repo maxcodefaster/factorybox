@@ -50,3 +50,9 @@ request identity remains reserved. It is separate from deleting a sandbox.
 **Epoch retirement**:
 Permanent withdrawal of an obsolete worker lifetime's stored state after its
 live, recovery and descendant dependencies have been resolved.
+
+**Recovery handover**:
+An explicit transfer from an old committed pause to an independently preserved
+committed pause after verified recovery. Its successor may include independent
+work performed after recovery. Releasing a recovery selection alone is not a
+handover.

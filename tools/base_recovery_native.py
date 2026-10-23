@@ -19,6 +19,8 @@ import upstream_unit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
+    parser.add_argument('--retained-inspection', action='store_true',
+                        help='also require all sixteen read-only retained base/snapshot controls')
     args = parser.parse_args()
     build, worker = build_worker.load(args.worker_build)
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
@@ -41,7 +43,8 @@ def main():
               'owner': owner, 'worker_build': args.worker_build, 'package_sha256': worker['package_sha256'],
               'worker_result_sha256': reference.sha(build / 'result.json'), 'source_context': manifest,
               'global_sysctls_before': consumer_worker_loss.sysctls(),
-              'scope': 'Two original/new base-library tests; the device-verifier case uses the owned 512-MiB ext4 store. No sandbox, throughput or full-consumer claim.'}
+              'retained_inspection': args.retained_inspection,
+              'scope': 'Original base-library tests plus opt-in read-only retained inspection controls; the device-verifier cases use the owned 512-MiB ext4 store. No sandbox, throughput or full-consumer claim.'}
     attempted = volume_created = False
     preserve = False
     try:
@@ -64,17 +67,25 @@ def main():
         result['identity'] = identity
         deadline = time.monotonic() + 420
         result['startup'] = consumer_worker_loss.ready(name, owner, identity, deadline)
+        pattern = '^TestFilesystemBase(Device)?RecoveryNative$'
+        tests = ['TestFilesystemBaseRecoveryNative', 'TestFilesystemBaseDeviceRecoveryNative']
+        if args.retained_inspection:
+            pattern = '^Test(FilesystemBase(Device)?RecoveryNative|RetainedFilesystemNative)$'
+            tests += ['TestRetainedFilesystemNative']
         command = [*reference.DOCKER, 'exec', '--env', 'FACTORYBOX_NATIVE_RETAINED_CAPTURE=1',
                    '--env', 'FACTORYBOX_DEVICE_RECOVERY_TEST_ROOT=' + result['startup']['status']['store'],
-                   identity, '/probe.test', '-test.v', '-test.run=^TestFilesystemBase(Device)?RecoveryNative$', '-test.timeout=60s']
+                   identity, '/probe.test', '-test.v', '-test.run=' + pattern, '-test.timeout=60s']
         result['probe_command'] = command
         with (artifact / 'stdout.txt').open('x') as out, (artifact / 'stderr.txt').open('x') as err:
             done = subprocess.run(command, stdout=out, stderr=err, timeout=min(65, deadline-time.monotonic()))
         result['exit_code'] = done.returncode
         output = (artifact / 'stdout.txt').read_text()
-        if done.returncode or '--- SKIP:' in output or any('--- PASS: ' + test + ' ' not in output for test in
-                ['TestFilesystemBaseRecoveryNative', 'TestFilesystemBaseDeviceRecoveryNative']):
+        if done.returncode or '--- SKIP:' in output or any('--- PASS: ' + test + ' ' not in output for test in tests):
             raise ValueError('base recovery assertions failed or skipped')
+        if args.retained_inspection:
+            result['retained_inspection_controls'] = sum(line.strip().startswith('--- PASS: TestRetainedFilesystemNative/') for line in output.splitlines())
+            if result['retained_inspection_controls'] != 16:
+                raise ValueError('read-only retained inspection controls incomplete')
         consumer_worker_loss.exact_worker(name, owner, identity)
         remaining = deadline - time.monotonic()
         if remaining <= 2:
