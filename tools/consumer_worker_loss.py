@@ -2,6 +2,7 @@
 """Run one complete same-host worker-loss case with an unchanged real consumer."""
 import argparse
 import ast
+import difflib
 import json
 import os
 from pathlib import Path
@@ -31,6 +32,42 @@ import upstream_bats
 import upstream_unit
 import worker_readiness
 import verify_fixture_extensions
+
+
+PROBE_PHASES = {
+    "worker-loss": ("prepare", "recover"),
+    "incomplete-pause": ("prepare", "recover"),
+    "attached-exec": ("prepare",),
+    "topology": ("prepare",),
+    "lifecycle": ("prepare",),
+    "warm-preparation": ("prepare",),
+    "agent-cancel": ("prepare", "recover"),
+}
+
+
+def planned_phases(probe):
+    if probe not in PROBE_PHASES:
+        raise ValueError("probe lacks an explicit complete phase plan")
+    return PROBE_PHASES[probe]
+
+
+def require_agent_cancel_recovery(result):
+    phases = result["phases"]
+    if [row.get("phase") for row in phases] != ["prepare", "recover"]:
+        raise ValueError("agent cancellation requires both prepare and recover phases")
+    if any(row.get("passed") is not True or row.get("worker_removed") is not True for row in phases):
+        raise ValueError("cancellation worker phases did not completely pass and close")
+    prepared, recovered = [row["agent_cancellation"] for row in phases]
+    if prepared["agent"] != recovered["agent"]:
+        raise ValueError("worker replacement changed the settled agent cancellation")
+    if any(recovered.get(key) is not True for key in ["independent_branch", "source_deleted", "recovery_replay"]):
+        raise ValueError("cancellation lacks its independent recovery descendant")
+    epochs = [row["startup"]["status"]["epoch"] for row in phases]
+    if not all(epochs) or epochs[0] == epochs[1]:
+        raise ValueError("cancellation requires two distinct worker epochs")
+    return {"passed": True, "phases": ["prepare", "recover"], "worker_epochs": epochs,
+            "same_cancellation": True, "session_id": prepared["agent"]["session_id"],
+            "call_sha256": prepared["agent"]["call_sha256"]}
 
 
 def sysctls():
@@ -93,7 +130,7 @@ def main():
     parser.add_argument("--external-disconnect",action="store_true",help="Drop the second completed provider response once; require exact client replay and no repeated shell")
     parser.add_argument("--consumer-empty-features",action="store_true",help="Candidate exact consumer patch: omit the feature-control lookup for zero features only")
     parser.add_argument("--consumer-request-profile",action="store_true",help="Optional copied Factory example telemetry around its first dependency fetches")
-    parser.add_argument("--probe",choices=["worker-loss","incomplete-pause","attached-exec","topology","lifecycle","warm-preparation"],default="worker-loss")
+    parser.add_argument("--probe",choices=list(PROBE_PHASES),default="worker-loss")
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
@@ -105,7 +142,7 @@ def main():
             options.theia_image or options.opencode_flow or options.external_provider_proof or options.baseline_runtime_build):
         parser.error("stop tracing is a separate bounded lifecycle diagnostic without optional peers")
     if options.bounded_bytes is not None and (options.bounded_bytes % (1 << 30) or not 4 << 30 <= options.bounded_bytes <= 32 << 30 or
-            options.baseline_runtime_build or options.probe not in {"lifecycle", "worker-loss", "incomplete-pause", "warm-preparation"}):
+            options.baseline_runtime_build or options.probe not in {"lifecycle", "worker-loss", "incomplete-pause", "warm-preparation", "agent-cancel"}):
         parser.error("bounded consumers require 4-32 whole GiB and a selected-runtime lifecycle/recovery fixture")
     if options.external_disconnect and (not options.external_provider_proof or options.probe != "lifecycle"):
         parser.error("the completed-response disconnect is a separate complete external-agent lifecycle")
@@ -114,6 +151,9 @@ def main():
         parser.error("external inference requires the complete Factory agent lifecycle or committed-pause worker-loss case")
     if options.example == "minimal" and options.theia_image:
         parser.error("the unchanged minimal consumer has no IDE")
+    if options.probe == "agent-cancel" and (options.example != "factory" or not options.opencode_flow or
+            options.external_provider_proof or options.theia_image or options.bounded_bytes is None or options.baseline_runtime_build):
+        parser.error("agent cancellation requires the bounded Factory/local-agent replacement case without extra peers")
     if options.consumer_empty_features and (options.probe != "lifecycle" or options.baseline_runtime_build):
         parser.error("the consumer optimization requires the full selected-runtime lifecycle without a baseline substitution")
     if options.consumer_request_profile and (options.example != "factory" or options.probe != "lifecycle" or not options.consumer_empty_features):
@@ -176,6 +216,8 @@ def main():
         result["scope"] = "Complete unchanged consumer lifecycle in the delivered Go supervisor image, with exact packaged CLI/CRIU inputs and original RAM/filesystem/IDE assertions. One observation; no latency distribution."
     if options.probe == "incomplete-pause":
         result["scope"] = "Whole-worker SIGKILL at an actual blocked filesystem-copy permission event during an unconfirmed second pause; reject incomplete recovery and recover the earlier complete independent pause."
+    if options.probe == "agent-cancel":
+        result["scope"] = "Actual shipped OpenCode user interruption and settled tool cancellation through committed pause, same-boot worker replacement and independent fork. Local launch counter only; no uncertain external-effect or general exactly-once qualification."
     if options.probe == "warm-preparation":
         result["scope"] = "Compose the existing immutable-base API for two independent fresh starts; charge initial import, incremental preparation and first useful work separately. No new base-cache algorithm."
     if options.drain_interrupt_inputs:
@@ -245,6 +287,20 @@ traceDependency({event: 'module-loaded'});
         result["exec_input_after_sha256"] = reference.sha(path)
     if options.opencode_flow:
         shutil.copytree(reference.ROOT/"tests/opencode-flow",artifact/"opencode-flow")
+        if options.probe == "agent-cancel":
+            model = artifact/"opencode-flow/model.cjs"
+            before = model.read_text()
+            old = "/opt/factorybox/opencode-flow/held-tool.cjs "
+            if before.count(old) != 1:
+                raise ValueError("exact held-tool model command changed")
+            after = before.replace(old, "/opt/factorybox/opencode-flow/cancel-held-tool.cjs ")
+            (artifact/"cancel-model.before.cjs").write_text(before)
+            patch = artifact/"cancel-model.patch"
+            patch.write_text(''.join(difflib.unified_diff(before.splitlines(True), after.splitlines(True), fromfile="a/model.cjs", tofile="b/model.cjs")))
+            model.write_text(after)
+            result["agent_cancel_model"] = {"before_sha256": reference.sha(artifact/"cancel-model.before.cjs"),
+                "after_sha256": reference.sha(model), "patch_sha256": reference.sha(patch), "assertions_preserved": True,
+                "scope": "Only the new cancellation case wraps its exact held command with a local launch counter; every model assertion and the original held-tool source remain unchanged."}
         shutil.copyfile(reference.ROOT/"tests/opencode-probe.cjs",artifact/"opencode-probe.cjs")
         path=artifact/"devx-sandbox.sh"
         text=path.read_text()
@@ -268,6 +324,20 @@ traceDependency({event: 'module-loaded'});
     for file in ["go.mod","go.sum"]: shutil.copyfile(reference.ROOT/file,source/file)
     if options.bounded_bytes is not None:
         result["bounded_fixture"] = consumer_bounded_store.apply_fixture(artifact, source, options.consumer_empty_features)
+    if options.probe == "agent-cancel":
+        setup = artifact/"consumer-worker-setup.sh"
+        before = setup.read_text()
+        anchor = '/consumer-worker.test -test.v -test.run="^${test_name}$" -test.timeout=390s'
+        if before.count(anchor) != 1:
+            raise ValueError("exact native test selection changed")
+        after = before.replace(anchor, 'test_name=TestNativeAgentCancellation\n' + anchor)
+        (artifact/"cancel-setup.before.sh").write_text(before)
+        patch = artifact/"cancel-setup.patch"
+        patch.write_text(''.join(difflib.unified_diff(before.splitlines(True), after.splitlines(True), fromfile="a/consumer-worker-setup.sh", tofile="b/consumer-worker-setup.sh")))
+        setup.write_text(after)
+        result["agent_cancel_setup"] = {"before_sha256": reference.sha(artifact/"cancel-setup.before.sh"),
+            "after_sha256": reference.sha(setup), "patch_sha256": reference.sha(patch), "assertions_preserved": True,
+            "scope": "After the declared bounded-path patch, select only the additive cancellation test in this new probe. Ordinary lifecycle/replacement assertions retain their original selections."}
     if options.consumer_request_profile:
         path=source/"tests/devx-actor/main_linux.go"
         text=path.read_text()
@@ -333,7 +403,7 @@ traceDependency({event: 'module-loaded'});
         result["inputs_sha256"] = {p.name:reference.sha(p) for p in artifact.iterdir() if p.is_file()}
         reference.docker(["volume","create","--label","com.factorybox.run="+owner,name]); attempted=True
         deadline = time.monotonic()+420
-        for phase in (["prepare","recover"] if options.probe in {"worker-loss","incomplete-pause"} else ["prepare"]):
+        for phase in planned_phases(options.probe):
             if phase == "recover" and options.replacement_loop_holder:
                 loop_holder = consumer_loop_holder.new_case(name)
                 result["replacement_loop_holder"] = loop_holder
@@ -426,10 +496,20 @@ traceDependency({event: 'module-loaded'});
                     record["probe_seconds"],record["probe_exit"] = time.monotonic()-probe_start,code
                     expected = 137 if phase=="prepare" and options.loss=="abrupt" else 0
                     if code != expected: raise ValueError("consumer probe exit differs: "+str(code))
+                    if options.probe == "agent-cancel":
+                        receipt = json.loads((output/("opencode-cancel-"+phase+".json")).read_text())
+                        agent = receipt["agent"]
+                        if (receipt.get("passed") is not True or receipt.get("phase") != phase or
+                                agent.get("canceled") is not True or agent.get("launches") != 1 or agent.get("tool_status") != "error" or
+                                agent.get("idle_repeat") is not True or agent.get("original_process_gone") is not True or agent.get("execution_interrupted") is not True):
+                            raise ValueError("missing settled actual tool cancellation")
+                        if phase == "recover" and any(receipt.get(key) is not True for key in ["independent_branch", "source_deleted", "recovery_replay"]):
+                            raise ValueError("cancellation omitted independent descendant or recovery replay")
+                        record["agent_cancellation"] = receipt
                     if expected == 0:
                         log = (phase_artifact/"stdout.txt").read_text()
                         test_name={"attached-exec":"TestNativeAttachedExecBoundary","topology":"TestNativeSessionTopology","worker-loss":"TestNativeConsumerWorkerLoss","incomplete-pause":"TestNativeConsumerWorkerLoss",
-                                   "warm-preparation":"TestNativeWarmPreparation",
+                                   "warm-preparation":"TestNativeWarmPreparation", "agent-cancel":"TestNativeAgentCancellation",
                                    "lifecycle":"TestNativeMinimalLifecycle" if options.example=="minimal" else "TestNativeDeveloperLifecycle"}[options.probe]
                         if "--- PASS: "+test_name+" " not in log or "--- SKIP:" in log: raise ValueError("consumer worker assertions omitted or skipped")
                         if options.probe=="lifecycle":
@@ -507,6 +587,8 @@ traceDependency({event: 'module-loaded'});
         if options.opencode_flow and upstream_unit.context_manifest(artifact/"opencode-flow") != result["opencode_flow_inputs"]:
             raise ValueError("frozen actual agent/tool inputs changed")
         if service: service.require_requests()
+        if options.probe == "agent-cancel":
+            result["agent_cancellation_complete"] = require_agent_cancel_recovery(result)
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)

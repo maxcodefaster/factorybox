@@ -118,13 +118,22 @@ searches rather than starting the requested held tool. A fourth inference
 returns HTTP 429, with the provider body reporting an unavailable endpoint.
 The arm deadline fails; an active request prevents a clean gateway shutdown,
 so the fixture also refuses normal release. No capture proceeds. Exact owned
-cleanup and unchanged global sysctls pass; the complete failure dump remains
-available through its encoding and lossless repack
+cleanup and unchanged global sysctls pass. The complete failure dump was first
+preserved through lossless repack
 `factorybox-storage-repack-cd42f368c0074adba8482dd250845de6`.
 This attempt does not test abrupt worker recovery. The next independent
 attempt clarifies the actual direct-shell versus code-mode distinction in
 the synthetic prompt. It does not hide failed requests or relax the one-shell,
 RAM, watch, result, deadline or gateway-exit assertions.
+
+After the clarified-prompt proof below passes, storage retirement
+`factorybox-storage-retirement-8ac75107b52a43b8ab04dbd47517e4b2` fully verifies
+this superseded pre-tool failure's complete decoded stream and retains all
+member metadata/hashes plus 1,990,546 bytes of selected diagnostics. Original
+host provider exchanges, source, result and logs remain. It retires only the
+785,014,225-byte repacked mutable-store archive; that complete old filesystem
+is no longer reconstructable. The failure remains a failed attempt, and the
+selected unresolved runtime failures are unaffected.
 
 The independent clarified-prompt run
 `factorybox-consumer-worker-loss-457fe987231b45e9b037625adb9c5def` passes the
@@ -3238,7 +3247,75 @@ disconnect proof loses a completed provider response after tool completion;
 it does not cover interruption of a running tool or partial tool-call output.
 `findings.md` records those precise gaps and the native cases still required,
 including cancellation through pause/replacement and an effect counter outside
-the captured environment. No cancellation/error qualification is claimed.
+the captured environment. That source inspection alone makes no native
+cancellation/error qualification claim.
+
+## Acknowledged agent cancellation through worker replacement
+
+The additive `agent-cancel` probe uses the actual shipped OpenCode 2.0.27 API,
+POST `/api/session/:sessionID/interrupt?resume=false`. A private copy of the
+local model changes only its held command to a launch-counting wrapper around
+the unchanged 16-MiB held tool. Every original model assertion remains. Exact
+before/after hashes and reconstructable patches declare this change and the
+copied setup's selection of the additional native test. The original model,
+ordinary held-tool client and existing native assertions remain unchanged.
+
+The first native attempt,
+`factorybox-consumer-worker-loss-20eb6232b8d946349f3bdadaa831b19e`, reaches actual
+tool interruption and exit, then fails the new fixture's incorrect assumption
+that the error is a string. Inspection of the exact exported schema in
+`factorybox-agent-cancel-schema-5d83e3037ecc4cecbbb82adce4760a4c` confirms an
+error object with `type` and `message`. The corrected fixture also requires the
+durable session outcome `interrupted`. The original failed result stays intact.
+Its complete 34,360,786,944-byte failed-store stream remains reconstructable,
+SHA-256 `bf9e3a7691fb65b682756927535d5097e951d954dceddb4445a22eb315a80148`.
+Lossless repack `factorybox-storage-repack-3ae270ef71874e7a905d164d87b74881`
+verifies both complete decoded streams and reclaims 824,267,368 encoded bytes.
+The repacker now hashes large compressed files as streams instead of loading
+an entire archive into memory; its receipt/decompression guards remain.
+
+The next attempt,
+`factorybox-consumer-worker-loss-cef1d7f3efe746979730cb2817f0298e`, passes actual
+cancellation and committed pause, but its new driver initially schedules only
+preparation. Its original `passed: true` is preserved as a historical partial
+result and is explicitly rejected as worker-recovery evidence. Regression
+`factorybox-agent-cancel-phase-red-01fda6f814b84ea39879393a08f15c24` catches the
+missing second phase. Probe choices and execution now use one explicit phase
+plan, and final cancellation admission independently requires both completed,
+closed workers, different epochs, identical cancellation data, recovery replay
+and an independent descendant after source deletion. All six portable gates,
+including the new missing-phase/changed-epoch/changed-state regressions, pass in
+`factorybox-checks-97213398c5e241e38a4437a073fd4574`.
+
+The corrected complete native cases both pass on worker
+`ef7dcbe22aae4169a4642bb8df935f53`:
+
+- Planned replacement:
+  `factorybox-consumer-worker-loss-a8cba0f395194a0ba940599aaeca0d30`.
+- Abrupt replacement:
+  `factorybox-consumer-worker-loss-1c3fa52e05f84c908945c0c13c553c3c`.
+
+Each confirms the original tool's exit and one launch, durable
+`aborted: Tool execution interrupted`, an idle repeat with no execution,
+committed pause with zero source anonymous and resident snapshot bytes, and
+the same cancellation after independent recovery in a new worker epoch.
+Recovery replay preserves its target. A new checkpoint/fork retains the
+cancellation while the application changes independently; deleting the
+recovered source leaves its descendant useful with one tool launch. The old
+worker exits 0 or, at the deliberate abrupt boundary, 137. Both cases close
+all owned resources and preserve global sysctls. They use the same exact
+native test executable, SHA-256
+`bc574e92d9bc01c46005473d4b5f1ab0f114428d6c0a3c35709266f891f57048`.
+
+`factorybox-agent-cancel-notes-f7c07e35c6764827b0b90c31e20b3c36` binds both full
+results, reconstructed fixture patches, verified encoded native inputs and
+complete first-failure archive; it checks the historical partial result is
+refused and reference verification still checks all 232 files. These are
+specific local-model cancellation observations. A new user prompt after
+cancellation, provider errors/partial tool-call output, and uncertain external
+effects with a counter outside the captured environment remain required.
+The final package's external gateway/model proof and all other first-release
+gates also remain open. Production qualification is false.
 
 ## Timing boundaries on the canonical-base candidate
 
