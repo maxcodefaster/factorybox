@@ -1,6 +1,6 @@
 # Local production work
 
-Status on 2026-10-22: active, **production qualification false**. The accepted
+Status on 2026-10-23: active, **production qualification false**. The accepted
 [goal](../GOAL.md) extends the completed local pilot. Its frozen starting point
 is commit `521e05799853c8546c9db5de31d178c548c49573` and artifact
 `factorybox-production-baseline-0c99cab81e224d1db537b81d12a2e2f9`.
@@ -4863,3 +4863,115 @@ bounded native evidence. Broader final-package/consumer qualification, the
 original rare PID and busy-overlay causes, external model acceptance, operating
 acceptance and the predetermined series remain open. Production and full
 epoch-retirement qualification remain false; the complete goal stays active.
+
+## Historical busy-overlay replay and file-reference observation
+
+The original admission failure remains
+`factorybox-runtime-8829166825b0476888776bdfd2c7d5ae`. Its transient foreign-proc
+case passes the RAM, descriptor, admission and independent-fork assertions,
+then the fixture's immediate ordinary overlay unmount returns EBUSY. The
+original test, CLI, component bytes and complete unresolved failure archive
+remain retained. No unmount retry, delay before the assertion, lazy unmount,
+GC workaround or runtime repair is selected.
+
+`tools/historical_admission_cleanup.py` replays the exact original test binary,
+CLI, components, setup and resources. The eleven adapter tests run once and the
+six original main admission tests run three times, stopping at the first
+failure. The original named inventory requires 29 top-level and 112 subtest
+passes. Each run has fresh owned storage and retains the complete source store,
+native outputs, cleanup and input checks. The tracer and decoder are frozen
+inputs; decoding does not import a subsequently edited parser.
+
+Two earlier diagnostic parents remain failed, despite their native assertions
+passing. `factorybox-historical-admission-6a8d8a7465fd4ab0951b16d7d0957ea6`
+used an incorrect expected top-level test count. Its corrected outcome
+evaluation is `factorybox-historical-admission-evaluation-ca4a7618dbe14c0f9347c4d904d43406`.
+`factorybox-historical-admission-3d6c3c8aed8d4d498752bde499e29115` rejected
+72 correctly encoded events whose legacy mount ID is zero. Their nonzero
+mount pointers and file generations remain observations, not mount-ownership
+authority. Evaluation
+`factorybox-mount-ref-observation-f3d7801b35ac410aaabdc590dfa75a65` retains the
+old/new decoder bytes and confirms every native assertion and loss counter.
+Neither evaluation rewrites a failed parent or explains the original EBUSY.
+
+The bounded read-only observer lives in `tools/diagnostics/mountrefs/`, with
+the binary event decoder in `tools/mount_ref_events.py`. It observes successful
+`path_openat` returns, final file releases and ordinary unmount entry/return
+in the exact owned outer PID namespace. A tracked final release may occur on
+a kernel worker. File pointer generations distinguish reused kernel addresses.
+No file contents or paths are collected. The installed probes have explicit
+kernel miss counters and the observer rejects event loss, map failures or
+failed kernel reads. Tracking starts only after all paired probes are attached.
+It installs no host runtime or kernel, mounts no host filesystem and changes
+no global sysctl.
+
+The current kernel's optional BTF layout header is accepted only after every
+layout and type-record bound is checked against the pinned reader's supported
+encoding. Only a private in-memory header copy is adapted. The original kernel
+BTF remains byte-identical and its hash is recorded. This is a diagnostic
+compatibility path, not a runtime dependency or additional platform release.
+
+The original LSM-open observer misses O_PATH. Native control
+`factorybox-mount-opath-control-834b32b1509940fa83634ae2d37c0f76` demonstrates
+that an actual held O_PATH blocks unmount, while the observer reports no held
+file interval. Strict coverage evaluation
+`factorybox-mount-opath-evaluation-9002c7585a824c48b48153739df941ab` fails.
+After observing successful path-open returns, the byte-identical control passes
+in `factorybox-mount-opath-control-582619229f6f43189f13f5e78d0928dc`, with
+passing coverage evaluation
+`factorybox-mount-opath-evaluation-f3232552486046cc8086284c738b7af3`.
+Its earlier failed image-inspection attempt, before any container creation,
+is separately retained; the corrected invocation explicitly selects the local
+Docker context and elevation.
+
+The intermediate normal-file control
+`factorybox-mount-ref-control-76c8d54ce59848eca59c2bf2e4548371` remains failed
+with three observer errors. Open events could enter before the paired release
+return probe was attached. The final observer enables tracking after complete
+attachment. The same normal-file control then passes in
+`factorybox-mount-ref-control-f3cd53b6f8de45d28a0c091a29b7a225`. Both final
+controls record the held-file interval across actual EBUSY, its exact final
+release, and successful unmount afterward, with all three error and five miss
+counters zero.
+
+Final diagnostic build
+`factorybox-mount-ref-tracer-dfa89db897b8405cb842d1d5c0466593` freezes its
+sources, pinned helper headers, commands, tool versions and output hashes.
+Historical replay
+`factorybox-historical-admission-3e67ba7b2e3b416eb3436c2c2f21dece` passes the
+complete 29/112 inventory, exit zero, no skips, unchanged inputs/global sysctls
+and exact cleanup. All 45 original-test unmounts return zero. Its 421,823
+events have zero error/miss counters; the historical EBUSY is not reproduced.
+The complete source store is compressed only after full decompression/hash
+verification, retaining its original hash
+`ec074fe03de2f1ed57c29bdaa58abe21cc2bab015217ba6ce34e4c656cedacb5`.
+
+`factorybox-mount-reference-notes-0773359f1f194faf80060e9ed63ef615` independently
+checks the exact named outcomes, frozen decoder, raw trace, both final held-file
+controls and 45 selected source-mount observations. Its first analysis attempt
+failed because JSON converts numeric dictionary keys to strings; the script
+and failure receipt remain, with the corrected comparison serialized before
+comparison. Native results are unchanged. All six portable gates pass in
+`factorybox-checks-8062c8acf40849a293b97577982f8362`, including 228 Python
+tests, reference/fixture verification and enabled Go vet. The diagnostic Go
+package also passes explicit vet in the notes artifact.
+
+Storage maintenance
+`factorybox-storage-observation-retirement-e32a64ee647e4472a5287f23a603b897`
+fully decodes and hashes the superseded LSM observation's complete store before
+retiring its 369,085,394 encoded bytes. Every member header and regular-file
+hash, plus 4,288,185 bytes of selected diagnostic contents, remain retained.
+That superseded complete store is intentionally no longer reconstructable;
+its original source, failed result, raw trace, logs and input executables remain.
+The stronger complete replacement store stays available. Maintenance also
+fully verifies the original unresolved EBUSY archive through its lossless
+replacement pointer before deleting only the superseded control payload.
+The earlier count-defect store has the equivalent retained receipt in
+`factorybox-storage-observation-retirement-beb2f34829f44a81b59c7fb59369ef5f`.
+
+These are observed file intervals only. Cwd, root and namespace references,
+opens before coverage and file creation outside the recorded path-open hook
+are outside this inventory. An empty observed set cannot exonerate the runtime.
+The original busy mount and rare PID conflict remain unresolved. No production
+runtime code, upstream assertion, imported overlay or release scope changes;
+the full first-release goal remains active and unqualified.
