@@ -31,6 +31,7 @@ import (
 
 const readyRoot = "/run/factorybox-consumer-provider"
 const address = "127.0.0.1:4097"
+const effectAddress = "127.0.0.1:4098"
 const bodyLimit = 2 << 20
 
 var noncePattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -76,7 +77,11 @@ func birth(pid int) (string, error) {
 }
 
 func observe(pid int, nonce string) (identity, error) {
-	value := identity{Schema: 1, Nonce: nonce, PID: pid, Address: address}
+	return observeEndpoint(pid, nonce, address)
+}
+
+func observeEndpoint(pid int, nonce, endpoint string) (identity, error) {
+	value := identity{Schema: 1, Nonce: nonce, PID: pid, Address: endpoint}
 	var err error
 	value.Birth, err = birth(pid)
 	if err == nil {
@@ -126,6 +131,10 @@ func publish(value identity) error {
 }
 
 func inspect(nonce, expected string, target int) (identity, error) {
+	return inspectEndpoint(nonce, expected, target, address)
+}
+
+func inspectEndpoint(nonce, expected string, target int, endpoint string) (identity, error) {
 	var saved identity
 	if err := privateRoot(false); err != nil {
 		return saved, err
@@ -152,10 +161,10 @@ func inspect(nonce, expected string, target int) (identity, error) {
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return saved, fmt.Errorf("gateway identity contains trailing data")
 	}
-	if saved.Schema != 1 || saved.Nonce != nonce || saved.PID <= 1 || saved.Executable != expected || saved.Address != address || target <= 1 {
+	if saved.Schema != 1 || saved.Nonce != nonce || saved.PID <= 1 || saved.Executable != expected || saved.Address != endpoint || target <= 1 {
 		return saved, fmt.Errorf("gateway identity differs from its exact request")
 	}
-	actual, err := observe(saved.PID, nonce)
+	actual, err := observeEndpoint(saved.PID, nonce, endpoint)
 	if err != nil || actual != saved {
 		return saved, errors.Join(err, fmt.Errorf("gateway process identity changed"))
 	}
@@ -172,7 +181,7 @@ func stop(value identity) error {
 		return err
 	}
 	defer unix.Close(fd)
-	actual, err := observe(value.PID, value.Nonce)
+	actual, err := observeEndpoint(value.PID, value.Nonce, value.Address)
 	if err != nil || actual != value {
 		return errors.Join(err, fmt.Errorf("refusing to signal a changed gateway identity"))
 	}
@@ -198,6 +207,10 @@ func stop(value identity) error {
 }
 
 func handler(socket string) http.Handler {
+	return endpointHandler(socket, false)
+}
+
+func endpointHandler(socket string, effectOnly bool) http.Handler {
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", socket)
@@ -221,7 +234,11 @@ func handler(socket string) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		request.Close = true
 		writer.Header().Set("Connection", "close")
-		if request.Method != "POST" || request.URL.Path != "/v1/chat/completions" || request.URL.RawQuery != "" {
+		allowed := request.URL.Path == "/v1/chat/completions"
+		if effectOnly {
+			allowed = request.URL.Path == "/fixture/effects/apply" || request.URL.Path == "/fixture/effects/status"
+		}
+		if request.Method != "POST" || !allowed || request.URL.RawQuery != "" {
 			http.Error(writer, "consumer inference path refused", http.StatusBadRequest)
 			return
 		}
@@ -238,7 +255,7 @@ func handler(socket string) http.Handler {
 	})
 }
 
-func serve(nonce, expected, socket string, lifetime time.Duration) error {
+func serve(nonce, expected, socket string, lifetime time.Duration, effectOnly bool) error {
 	if !filepath.IsAbs(socket) || filepath.Clean(socket) != socket {
 		return fmt.Errorf("requires a canonical consumer relay socket")
 	}
@@ -246,11 +263,15 @@ func serve(nonce, expected, socket string, lifetime time.Duration) error {
 	if err != nil || info.Mode()&os.ModeSocket == 0 {
 		return errors.Join(err, fmt.Errorf("consumer relay socket is missing"))
 	}
-	value, err := observe(os.Getpid(), nonce)
+	endpoint := address
+	if effectOnly {
+		endpoint = effectAddress
+	}
+	value, err := observeEndpoint(os.Getpid(), nonce, endpoint)
 	if err != nil || value.Executable != expected {
 		return errors.Join(err, fmt.Errorf("gateway executable differs from its frozen input"))
 	}
-	listener, err := net.Listen("tcp4", address)
+	listener, err := net.Listen("tcp4", endpoint)
 	if err != nil {
 		return err
 	}
@@ -265,7 +286,7 @@ func serve(nonce, expected, socket string, lifetime time.Duration) error {
 	defer cancel()
 	ctx, expire := context.WithTimeout(signals, lifetime)
 	defer expire()
-	server := &http.Server{Handler: handler(socket), ReadHeaderTimeout: 3 * time.Second,
+	server := &http.Server{Handler: endpointHandler(socket, effectOnly), ReadHeaderTimeout: 3 * time.Second,
 		ReadTimeout: 5 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 2 * time.Second, MaxHeaderBytes: 32 << 10}
 	closed := make(chan error, 1)
 	go func() {
@@ -299,17 +320,22 @@ func run() error {
 	expectedPID := flag.Int("expected-pid", 0, "previously verified gateway PID, required for stop")
 	expectedBirth := flag.String("expected-birth", "", "previously verified gateway birth, required for stop")
 	lifetime := flag.Int("lifetime-seconds", 110, "maximum gateway lifetime, at most 120 seconds")
+	effectOnly := flag.Bool("effect-only", false, "separate synthetic effect paths on loopback port 4098; refuses inference")
 	flag.Parse()
 	if flag.NArg() != 0 || os.Geteuid() != 0 || !noncePattern.MatchString(*nonce) || !hashPattern.MatchString(*expected) || *lifetime < 1 || *lifetime > 120 {
 		return fmt.Errorf("requires worker root and exact bounded gateway inputs")
 	}
 	if *operation == "serve" {
-		return serve(*nonce, *expected, *socket, time.Duration(*lifetime)*time.Second)
+		return serve(*nonce, *expected, *socket, time.Duration(*lifetime)*time.Second, *effectOnly)
 	}
 	if *operation != "inspect" && *operation != "stop" {
 		return fmt.Errorf("unknown gateway operation: %s", *operation)
 	}
-	value, err := inspect(*nonce, *expected, *target)
+	endpoint := address
+	if *effectOnly {
+		endpoint = effectAddress
+	}
+	value, err := inspectEndpoint(*nonce, *expected, *target, endpoint)
 	if err != nil {
 		return err
 	}

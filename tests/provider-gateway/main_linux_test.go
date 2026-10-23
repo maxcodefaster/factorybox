@@ -102,3 +102,24 @@ func TestGatewayObservationUsesActualBirthExecutableAndNamespace(t *testing.T) {
 		t.Fatalf("gateway identity did not reflect the real process: %+v: %v", value, err)
 	}
 }
+
+func TestEffectEndpointCannotAdmitInferenceOrEscapeItsTwoPaths(t *testing.T) {
+	for _, test := range []struct{ method, path string }{
+		{"POST", "/v1/chat/completions"}, {"GET", "/fixture/effects/status"},
+		{"POST", "/fixture/effects/status?other=1"}, {"POST", "/fixture/effects/other"},
+	} {
+		request := httptest.NewRequest(test.method, test.path, strings.NewReader(`{"operation":"synthetic"}`))
+		writer := httptest.NewRecorder()
+		endpointHandler("/missing-unit-socket", true).ServeHTTP(writer, request)
+		if writer.Code != 400 {
+			t.Fatalf("effect endpoint admitted an unrelated path: %s %s: %d", test.method, test.path, writer.Code)
+		}
+	}
+	for _, path := range []string{"/fixture/effects/apply", "/fixture/effects/status"} {
+		writer := httptest.NewRecorder()
+		handler("/missing-unit-socket").ServeHTTP(writer, httptest.NewRequest("POST", path, strings.NewReader("{}")))
+		if writer.Code != 400 {
+			t.Fatal("ordinary inference endpoint admitted an effect", path, writer.Code)
+		}
+	}
+}

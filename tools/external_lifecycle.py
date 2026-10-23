@@ -26,7 +26,7 @@ def prepare(artifact, proof_name, worker_image, result):
         raise ValueError("gateway proof cannot be redirected")
     record = json.loads((proof / "result.json").read_text())
     if (any(record.get(key) is not True for key in ["passed", "cleanup", "inputs_unchanged", "foreign_birth_refused", "global_sysctls_unchanged"]) or
-            record["worker_image_id"] != worker_image or
+            record.get("effect_only", False) is not False or record["worker_image_id"] != worker_image or
             upstream_unit.context_manifest(proof / "source") != record["source_context"] or
             reference.sha(proof / "provider-gateway") != record["binary_sha256"]):
         raise ValueError("gateway proof does not qualify its frozen helper on this worker")

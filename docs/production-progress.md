@@ -3398,6 +3398,75 @@ verifies 473 closed source trees and all original results before/after sharing
 315,813,888 allocated bytes. Active runs and failure filesystem archives are
 not eligible; every original source manifest remains identical.
 
+## Provider faults and an outside-world effect oracle
+
+The optional test gateway now has two separate modes. Its unchanged default
+inference path listens on loopback 4097. Explicit `--effect-only` listens on
+4098 and admits only bounded POST `/fixture/effects/apply` and
+`/fixture/effects/status`, without query strings. Each mode refuses the other's
+paths. Inspection/stop must specify the same mode, exact executable, nonce,
+birth and target network namespace; a successful stop still confirms pidfd exit.
+These helpers remain optional test-controller processes outside captured PID
+and mount trees, with no standalone-runtime dependency.
+
+Both native mode proofs pass on worker `ef7dcbe22aae4169a4642bb8df935f53`:
+
+- Ordinary inference gateway:
+  `factorybox-provider-gateway-35bafc7a2ee54a5c854a9907102f7943`.
+- Separate outside-effect gateway:
+  `factorybox-provider-gateway-4393c2866fcc4406b22b4656e9a0af72`.
+
+Their independent builds produce identical helper bytes, SHA-256
+`a1dc9d8f684562b1da37bbdf329813178538bcf4f674162e902e9c4253470175`.
+Both reject wrong-mode inspection and wrong-birth stop while preserving the
+original helper, forward the real bounded HTTP exchange and confirm clean exact
+stop/worker exit, cleanup and unchanged global sysctls. An effect-only proof
+cannot qualify external inference; its admission regression rejects it before
+any provider discovery or copying.
+
+The effect oracle is a host-controller Unix HTTP server. Only its socket is
+exposed to the worker; its process and fsynced hash-chained effect ledger stay
+outside the captured environment. The native effect case observes zero effects,
+commits one, deliberately loses its response and receives HTTP 502 through the
+gateway, then reconciles that same operation twice with exactly one application.
+The ledger does not deduplicate: the real HTTP unit regression repeats an apply
+with the same operation ID and observes two effects. Changed ledger data and
+invalid paths/operation IDs are rejected. This qualifies the oracle/transport,
+not an agent's handling of an uncertain external result.
+
+The additive `opencode_tool_probe.py --provider-faults` uses the actual shipped
+OpenCode 2.0.27 in its pinned consumer image, without external inference. Its
+first run, `factorybox-opencode-tool-13646d0b76ee487894894696d818f3d2`, remains
+failed with complete output. It exposes OpenCode's real synthetic continuation
+after a partial-stream transport failure: the original counterpart mistakenly
+treated that last synthetic user message as an unrelated request. The actual
+partial shell was already `executed: false`, `state: error`,
+`error.type: provider.transport`; no launch file existed.
+
+The corrected counterpart retains the latest explicit fault prompt across that
+synthetic input until an explicit new user prompt. Its real HTTP regression
+rejects the frozen old counterpart and passes the correction. Native repeat
+`factorybox-opencode-tool-32f2b5b28b6643b8bf861e5e10dfeda5` passes: an HTTP-400
+provider rejection produces `provider.invalid-request` and failed idle without
+an inference retry or tool call. A streamed incomplete shell call is marked
+not executed with a durable transport error. OpenCode retries inference once;
+the controlled retry rejection settles failed idle. An explicit new prompt in
+each same session then receives its exact token answer and successful idle.
+Actual tool launches remain zero. The original ordinary model/client assertions
+are unchanged. Expected injected errors qualify only these fault assertions,
+not availability or successful inference from an external provider.
+
+All six portable gates pass in
+`factorybox-checks-8eb2c9eb08564967a5d9851562d61217`.
+`factorybox-agent-provider-fault-notes-63d30d5c48504df4ad6f1fc7b8bbad10`
+binds both gateway results, identical current helper/agent inputs, the outside
+ledger, actual failed/continued agent transcripts, the preserved first failure
+and a fresh red HTTP replay of its old counterpart. Reference verification
+still checks all 232 files. Composing the actual agent with the outside effect
+through pause, worker replacement and fork, and preserving provider-fault state
+through that lifecycle on final bytes remain required. Final external model
+and all other release gates remain open; production qualification is false.
+
 ## Timing boundaries on the canonical-base candidate
 
 The single full passing Factory observation

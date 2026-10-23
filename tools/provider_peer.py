@@ -21,11 +21,12 @@ HELPER = "/provider-gateway"
 
 
 class Peer:
-    def __init__(self, worker, identity, owner, archive, output, helper_sha256):
+    def __init__(self, worker, identity, owner, archive, output, helper_sha256, *, effect_only=False):
         self.worker, self.identity, self.owner = worker, identity, owner
         self.archive, self.output = archive / "provider-gateway", output
         self.archive.mkdir()
         self.sha = helper_sha256
+        self.effect_only = effect_only
         self.entries, self.requests = {}, {}
         self.closed = False
         self.result = {"owner": owner, "worker_id": identity, "helper_sha256": helper_sha256,
@@ -58,6 +59,8 @@ class Peer:
     def command(self, operation, nonce, pid):
         command = [*reference.DOCKER, "exec", self.identity, HELPER, "--operation", operation,
                    "--nonce", nonce, "--sha256", self.sha, "--namespace-of", str(pid)]
+        if self.effect_only:
+            command += ["--effect-only"]
         if operation == "stop":
             saved = self.entries[nonce]["record"]["identity"]
             command += ["--expected-pid", str(saved["pid"]), "--expected-birth", saved["birth"]]
@@ -70,6 +73,8 @@ class Peer:
         target = self.target(request)
         command = [*reference.DOCKER, "exec", self.identity, "nsenter", "--net=/proc/" + str(target["pid"]) + "/ns/net", "--",
                    HELPER, "--nonce", nonce, "--sha256", self.sha, "--lifetime-seconds", "110"]
+        if self.effect_only:
+            command += ["--effect-only"]
         record = {"request": request, "command": command, "released": False}
         self.result["gateways"].append(record)
         stdout = (self.archive / (nonce + ".stdout")).open("x")
@@ -89,7 +94,8 @@ class Peer:
                 raise ValueError("gateway identity verification failed: " + done.stderr[-2048:])
             time.sleep(.05)
         self.target(request)
-        if saved["nonce"] != nonce or saved["executable_sha256"] != self.sha or saved["pid"] <= 1 or saved["schema"] != 1 or saved["address"] != "127.0.0.1:4097":
+        endpoint = "127.0.0.1:4098" if self.effect_only else "127.0.0.1:4097"
+        if saved["nonce"] != nonce or saved["executable_sha256"] != self.sha or saved["pid"] <= 1 or saved["schema"] != 1 or saved["address"] != endpoint:
             raise ValueError("gateway process differs from its actual frozen helper")
         record["identity"] = saved
         return {"gateway_pid": saved["pid"], "gateway_birth": saved["birth"], "gateway_sha256": self.sha, "gateway_network": saved["network_namespace"]}

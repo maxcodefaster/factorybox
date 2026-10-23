@@ -20,6 +20,7 @@ import uuid
 
 import build_worker
 import consumer_worker_loss
+import effect_ledger
 import reference
 import reference_lifecycle
 import upstream_unit
@@ -51,6 +52,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build", required=True)
+    parser.add_argument("--effect-only", action="store_true", help="Separate loopback effect gateway; commit one outside effect and lose its reply")
     options = parser.parse_args()
     _, worker = build_worker.load(options.worker_build)
     owner = uuid.uuid4().hex
@@ -63,7 +65,7 @@ def main():
         shutil.copyfile(reference.ROOT / file, source / file)
     shutil.copyfile(__file__, artifact / "runner.py")
     result = {"schema": 1, "owner": owner, "passed": False, "cleanup": False, "production_qualified": False,
-              "lifecycle_qualified": False, "worker_build": options.worker_build, "worker_image_id": worker["image_id"],
+              "lifecycle_qualified": False, "effect_only": options.effect_only, "worker_build": options.worker_build, "worker_image_id": worker["image_id"],
               "source_context": upstream_unit.context_manifest(source), "scope": __doc__}
     binary = artifact / "provider-gateway"
     env = dict(os.environ, GOOS="linux", GOARCH="amd64", CGO_ENABLED="0")
@@ -81,11 +83,15 @@ def main():
     attempted = False
     holder = gateway = None
     before = consumer_worker_loss.sysctls()
+    if options.effect_only:
+        shutil.copyfile(Path(effect_ledger.__file__), artifact / "effect_ledger.py")
     try:
         with tempfile.TemporaryDirectory(prefix="fbp-") as directory:
             socket = Path(directory) / "provider.sock"
-            with SyntheticRelay(str(socket), Handler) as relay:
-                relay.receipt, relay.requests = uuid.uuid4().hex, []
+            server = effect_ledger.Ledger(str(socket), artifact / "outside-effects") if options.effect_only else SyntheticRelay(str(socket), Handler)
+            with server as relay:
+                if not options.effect_only:
+                    relay.receipt, relay.requests = uuid.uuid4().hex, []
                 os.chmod(socket, 0o666)
                 thread = threading.Thread(target=relay.serve_forever, daemon=True)
                 thread.start()
@@ -121,11 +127,16 @@ def main():
                         nonce = uuid.uuid4().hex
                         serve = [*reference.DOCKER, "exec", identity, "nsenter", "--net=/proc/" + str(target) + "/ns/net", "--",
                                  "/provider-gateway", "--nonce", nonce, "--sha256", digest]
+                        if options.effect_only:
+                            serve += ["--effect-only"]
                         result["serve_command"] = serve
                         with (artifact / "gateway.stdout").open("x") as gateway_out, (artifact / "gateway.stderr").open("x") as gateway_err:
                             gateway = subprocess.Popen(serve, stdout=gateway_out, stderr=gateway_err)
                             inspect = [*reference.DOCKER, "exec", identity, "/provider-gateway", "--nonce", nonce,
-                                       "--sha256", digest, "--namespace-of", str(target), "--operation", "inspect"]
+                                       "--sha256", digest, "--namespace-of", str(target)]
+                            if options.effect_only:
+                                inspect += ["--effect-only"]
+                            inspect += ["--operation", "inspect"]
                             deadline = time.monotonic() + 10
                             while True:
                                 checked = subprocess.run(inspect, capture_output=True, text=True, timeout=5)
@@ -136,6 +147,13 @@ def main():
                                     raise ValueError("namespace gateway did not verify: " + checked.stderr[-2048:])
                                 time.sleep(.05)
                             result["gateway"] = saved
+                            wrong_mode = [value for value in inspect if value != "--effect-only"] if options.effect_only else [*inspect[:-2], "--effect-only", *inspect[-2:]]
+                            refused_mode = subprocess.run(wrong_mode, capture_output=True, text=True, timeout=5)
+                            (artifact / "wrong-mode.stdout").write_text(refused_mode.stdout)
+                            (artifact / "wrong-mode.stderr").write_text(refused_mode.stderr)
+                            result["foreign_mode_refused"] = refused_mode.returncode != 0 and "identity differs" in refused_mode.stderr
+                            if not result["foreign_mode_refused"] or gateway.poll() is not None:
+                                raise ValueError("another endpoint mode was accepted or harmed the actual gateway")
                             client = """import http.client,json
 c=http.client.HTTPConnection('127.0.0.1',4097,timeout=3)
 c.request('POST','/v1/chat/completions',body='{"synthetic":true}',headers={'Connection':'keep-alive','Content-Type':'application/json'})
@@ -143,11 +161,32 @@ r=c.getresponse(); body=r.read(); assert r.status==200 and r.will_close and c.so
 print(body.decode())
 c.close()
 """
+                            if options.effect_only:
+                                client = "import http.client,json,sys\noperation=" + repr(owner + owner) + "\n" + """
+def request(path):
+    c=http.client.HTTPConnection('127.0.0.1',4098,timeout=3)
+    c.request('POST',path,body=json.dumps({'operation':operation}),headers={'Connection':'keep-alive','Content-Type':'application/json'})
+    r=c.getresponse(); body=r.read(); assert r.will_close and c.sock is None
+    c.close()
+    return r.status,body
+before=None
+if sys.argv[1]=='0':
+    code,body=request('/fixture/effects/status'); assert code==200
+    before=json.loads(body)['applications']; assert before==0
+    code,body=request('/fixture/effects/apply')
+    assert code==502 and operation.encode() not in body
+code,body=request('/fixture/effects/status'); assert code==200
+status=json.loads(body); assert status['operation']==operation and status['applications']==1
+print(json.dumps({'before':before,'outside_status':status,'apply_response_lost':sys.argv[1]=='0'}))
+"""
                             client_command = [*reference.DOCKER, "exec", identity, "nsenter", "--net=/proc/" + str(target) + "/ns/net", "--", "python3", "-c", client]
                             for attempt in range(2):
-                                response = subprocess.run(client_command, capture_output=True, text=True, check=True, timeout=5)
+                                response = subprocess.run([*client_command, *([str(attempt)] if options.effect_only else [])], capture_output=True, text=True, check=True, timeout=5)
                                 observed = json.loads(response.stdout)
-                                if observed != {"receipt": relay.receipt, "body_sha256": hashlib.sha256(b'{"synthetic":true}').hexdigest()}:
+                                if options.effect_only:
+                                    if observed["outside_status"] != relay.status(owner + owner) or observed["apply_response_lost"] != (attempt == 0):
+                                        raise ValueError("effect gateway changed its actual outside-world observation")
+                                elif observed != {"receipt": relay.receipt, "body_sha256": hashlib.sha256(b'{"synthetic":true}').hexdigest()}:
                                     raise ValueError("synthetic gateway changed its actual request/response")
                                 (artifact / f"request-{attempt}.json").write_text(response.stdout)
                                 if attempt == 0:
@@ -161,9 +200,18 @@ c.close()
                             result["stopped"] = json.loads(stopped.stdout)
                             if result["stopped"] != {"nonce": nonce, "pid": saved["pid"], "stopped": True} or gateway.wait(timeout=5) != 0:
                                 raise ValueError("original gateway did not exit cleanly through its verified pidfd")
-                    result["relay_requests"] = relay.requests
-                    if len(relay.requests) != 2:
-                        raise ValueError("synthetic requests were repeated or omitted")
+                    if options.effect_only:
+                        applied = [row for row in relay.records if row["path"] == effect_ledger.APPLY]
+                        status = relay.status(owner + owner)
+                        if len(applied) != 1 or not applied[0]["committed"] or not applied[0].get("injected_lost_reply") or applied[0]["delivered"] or status["applications"] != 1:
+                            raise ValueError("outside effect was not committed exactly once before its lost reply")
+                        result["outside_effect"] = {"status": status, "effect_reply_lost": True,
+                                                   "ledger_sha256": reference.sha(relay.path), "requests": relay.records,
+                                                   "controller_pid": os.getpid(), "ledger_path": str(relay.path)}
+                    else:
+                        result["relay_requests"] = relay.requests
+                        if len(relay.requests) != 2:
+                            raise ValueError("synthetic requests were repeated or omitted")
                     reference.docker(["container", "stop", "--time=15", identity], timeout=20)
                     state = consumer_worker_loss.exact_worker(name, owner, identity)["State"]
                     if state["Running"] or state["Pid"] != 0 or state["ExitCode"] != 0 or state["OOMKilled"]:
