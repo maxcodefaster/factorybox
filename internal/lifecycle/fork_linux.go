@@ -112,6 +112,9 @@ func (e *Engine) Fork(ctx context.Context, sourceID, snapshotID, targetID string
 		intent, err = e.newForkIntent(ctx, sourceID, snapshotID, targetID)
 		metadataVerified = err == nil
 		if err == nil {
+			err = e.admitWorkerMetadata(ctx, workerMetadataDelta{Fork: &intent})
+		}
+		if err == nil {
 			err = e.root.Mkdir(operation, 0700)
 		}
 		if err == nil {
@@ -157,7 +160,7 @@ func (e *Engine) finishFork(ctx context.Context, lock *os.File, operation, objec
 	if err := e.forkOverlay(bundle, operation, intent); err != nil {
 		return View{}, err
 	}
-	record, err = e.prepareRecord(intent.TargetID, bundle, object, intent.OCI, intent.Owner, &intent.Origin)
+	record, err = e.prepareRecordContext(ctx, intent.TargetID, bundle, object, intent.OCI, intent.Owner, &intent.Origin)
 	if err != nil {
 		return View{Record: record}, err
 	}

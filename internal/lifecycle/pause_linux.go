@@ -54,6 +54,9 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 		if err := e.admitSandboxMetadata(record, false); err != nil {
 			return View{Record: record}, err
 		}
+		if err := e.admitWorkerMetadata(ctx, workerMetadataDelta{CaptureSource: &record, CaptureID: snapshot}); err != nil {
+			return View{Record: record}, err
+		}
 		if err := e.admitStorageWrite(); err != nil {
 			return View{Record: record}, err
 		}

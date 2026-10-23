@@ -16,6 +16,7 @@ import reference
 import reference_lifecycle
 import upstream_bats
 import upstream_unit
+import worker_metadata_native
 
 
 def main():
@@ -145,7 +146,10 @@ def main():
     if record_metadata:
         result['scope'] = 'Actual delivered committed pause with injected historical rejection metadata near the unchanged 1-MiB record reader bound. Resume must refuse before transition or backing, preserve the exact stopped source record and allow an independent useful fork of the prior checkpoint. Does not qualify other exit-ledger admission, epoch retirement or production.'
     if worker_metadata:
-        result['scope'] = 'Real committed stopped pauses, real public canonical base imports and explicitly injected readable legacy history place the complete exit metadata just below 4 MiB. A new public base import must refuse before intent even though its separate canonical 2-MiB budget fits, preserving all committed sources and prior backing. Minimal mode uses four pauses/one prior base; ordinary regression uses three pauses/200 prior bases. Not a claim of real repeated historical failures, general new-work admission, clean worker drain or production qualification.'
+        result['scope'] = 'A declared 2-GiB bounded store holds real committed stopped pauses, real public canonical base imports and explicitly injected readable legacy history just below the 4-MiB exit-metadata limit. A new public base import must refuse before intent even though its separate canonical 2-MiB budget fits. Both workers must stop cleanly; a fresh epoch must preserve all old backing and actual exit ledgers within 4 MiB and restore the original source with the unchanged bounded-loss RAM/files/independent-descendant assertions. Minimal mode uses four pauses/one prior base; ordinary regression uses three pauses/200 prior bases. Not real repeated historical failures, epoch retirement or production qualification.'
+        helper = artifact / 'worker-metadata-drain.py'
+        shutil.copyfile(worker_metadata_native.__file__, helper)
+        result['metadata_drain_helper_sha256'] = reference.sha(helper)
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = container = preserve = False
     identity = None
@@ -210,7 +214,7 @@ def main():
             command += ['--mount', f'type=bind,source={artifact / "timer-probe.py"},target=/timer-probe.py,readonly']
         for target in prototype_inputs:
             command += ['--mount', f'type=bind,source={artifact / target},target=/{target},readonly']
-        capacity = 1 << 30 if retirement else 512 << 20
+        capacity = 2 << 30 if worker_metadata else 1 << 30 if retirement else 512 << 20
         command += [worker['image'], '--store-id', owner, '--bounded-root', '/var/lib/sysbox/fixed-store', '--bounded-bytes', str(capacity)]
         result['command'] = command
         container = True
@@ -267,6 +271,7 @@ def main():
                     proof.get('canonical_base_bytes', 2 << 20) >= (2 << 20) - 32768):
                 raise ValueError('worker metadata admission proof incomplete')
             result['proof_sha256'] = reference.sha(proof_path)
+            worker_metadata_native.drain(artifact, result, command, name, owner, identity, deadline, proof)
         elif record_metadata:
             proof_path = output / 'record-metadata.json'
             proof = json.loads(proof_path.read_text())
@@ -399,6 +404,8 @@ def main():
         result['error'] = str(error)
     finally:
         try:
+            if result.get('worker_metadata_drain', {}).get('source_removed'):
+                container = False
             if container:
                 if identity:
                     consumer_worker_loss.exact_worker(name, owner, identity)
@@ -422,6 +429,10 @@ def main():
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])
             if args.timer_probe:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(artifact / 'timer-probe.py') == result['timer_probe_sha256']
+            if worker_metadata:
+                result['inputs_unchanged'] = (result['inputs_unchanged'] and
+                    reference.sha(helper) == result['metadata_drain_helper_sha256'] and
+                    reference.sha(Path(worker_metadata_native.__file__)) == result['metadata_drain_helper_sha256'])
             if prototype or kernel_prototype:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and all(reference.sha(artifact / name) == sha for name, sha in prototype_inputs.items())
             result['passed'] = (result['passed'] and result['cleanup'] and result['inputs_unchanged'] and

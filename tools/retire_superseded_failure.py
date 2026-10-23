@@ -31,13 +31,34 @@ def main():
     parser.add_argument("--reason", required=True, help="Concrete supersession and remaining reconstruction limits")
     parser.add_argument("--verify-only",action="store_true",help="Retain and verify diagnostics while keeping the complete source archive")
     args = parser.parse_args()
-    pattern = r"factorybox-(?:devx-lifecycle|consumer-worker-loss)-[0-9a-f]{32}"
+    pattern = r"factorybox-(?:devx-lifecycle|consumer-worker-loss|checkpoint-retirement)-[0-9a-f]{32}"
     if not all(re.fullmatch(pattern, name) for name in [args.source_run, args.replacement_proof]):
         raise ValueError("requires exact native consumer failure/proof IDs")
     run, proof = (reference.ROOT/"artifacts"/name for name in [args.source_run, args.replacement_proof])
     if run.resolve()!=run or proof.resolve()!=proof:
         raise ValueError("native evidence cannot be redirected through symlinks")
     source_result, replacement = (json.loads((path/"result.json").read_text()) for path in [run,proof])
+    if any(name.startswith('factorybox-checkpoint-retirement-') for name in [args.source_run, args.replacement_proof]):
+        # Only supersede a fixture that failed on an invalid CLI verb before
+        # its metadata assertions. Real runtime failures are not eligible.
+        log = (run / 'stdout.txt').read_text()
+        if (not all(name.startswith('factorybox-checkpoint-retirement-') for name in [args.source_run, args.replacement_proof]) or
+                source_result.get('suite') != 'record-metadata' or replacement.get('suite') != 'record-metadata' or
+                not any('unknown lifecycle command "' + verb + '"' in log for verb in ['status', 'inspect']) or
+                replacement.get('passed_tests') != 1 or
+                '--- PASS: TestNativeRecordMetadataResumeAdmission ' not in (proof / 'stdout.txt').read_text()):
+            raise ValueError('checkpoint fixture retirement requires an invalid-verb failure and a passing corrected full metadata test')
+        commands = lambda row: {key: value for key, value in row['source_context'].items()
+                                if key.startswith('cmd/') and not key.endswith('_test.go')}
+        if commands(source_result) != commands(replacement):
+            raise ValueError('invalid-verb supersession requires the same public command implementation')
+        checked = proof / 'output/record-metadata.json'
+        evidence = json.loads(checked.read_text())
+        if (reference.sha(checked) != replacement.get('proof_sha256') or
+                any(evidence.get(key) is not True for key in ['passed', 'injected_history',
+                    'resume_refused_before_transition', 'committed_pause_record_unchanged',
+                    'source_still_stopped', 'no_resume_backing', 'prior_checkpoint_independent'])):
+            raise ValueError('corrected metadata fixture proof is incomplete or changed')
     if any(path.is_symlink() for path in [run/"result.json",proof/"result.json",run/"failed-volume-0.tar.encoding.json"]):
         raise ValueError("native evidence receipts must not be symlinks")
     if source_result.get("passed") is not False or source_result.get("cleanup") is not True or replacement.get("passed") is not True or replacement.get("cleanup") is not True:

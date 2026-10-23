@@ -66,11 +66,9 @@ func recordPauseBound() *PauseOperation {
 		Resume: &operation}
 }
 
-// Admit the largest successful, failed and later resumed forms before touching
-// the original transition. A resume additionally reserves its next pause, so a
-// sandbox near its history limit can remain safely paused for worker replacement.
-// This is a bound on one sandbox record, not on the complete worker exit ledger.
-func (e *Engine) admitSandboxMetadata(record Record, afterResume bool) error {
+// Bound the changing fields of the next completed pause, preserving every
+// existing history entry. Shared worker admission uses the same outcome shape.
+func sandboxRecordOutcomeBound(record Record, afterResume bool) Record {
 	maximum := record
 	maximum.Phase = "resuming"
 	maximum.RootfsDevice, maximum.RootfsInode, maximum.RootfsMountID = math.MaxUint64, math.MaxUint64, math.MaxUint64
@@ -99,6 +97,15 @@ func (e *Engine) admitSandboxMetadata(record Record, afterResume bool) error {
 		maximum.PauseHistory = append(maximum.PauseHistory, previous)
 	}
 	maximum.Pause = recordPauseBound()
+	return maximum
+}
+
+// Admit the largest successful, failed and later resumed forms before touching
+// the original transition. A resume additionally reserves its next pause, so a
+// sandbox near its history limit can remain safely paused for worker replacement.
+// This is a bound on one sandbox record, not on the complete worker exit ledger.
+func (e *Engine) admitSandboxMetadata(record Record, afterResume bool) error {
+	maximum := sandboxRecordOutcomeBound(record, afterResume)
 	if _, err := sandboxRecordBytes(maximum); err != nil {
 		return fmt.Errorf("new sandbox metadata refused: lifecycle history leaves no room for a safe pause/resume outcome: %w", err)
 	}

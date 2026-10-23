@@ -487,10 +487,11 @@ replacement has a fresh controller epoch and a fresh metadata budget. Retained
 old payloads still consume the store's physical capacity. A new epoch does not
 free those bytes or authorize deleting old epoch directories.
 
-This guard covers canonical base imports only. Checkpoint aliases, fork/recovery
-metadata, pause histories and old epoch retirement remain separate release
-requirements. The existing full exit-ledger completion preflight still runs
-before any fence or release. This change alone does not qualify production.
+This 2-MiB guard covers canonical base imports. The aggregate candidate below
+also accounts for the other exit-ledger arrays. Old epoch retirement remains
+a separate release requirement. The existing full exit-ledger completion
+preflight still runs before any fence or release. These changes alone do not
+qualify production.
 
 ## Sandbox record admission candidate
 
@@ -538,6 +539,39 @@ unsaved application progress. Preserve that source for explicit reconciliation.
 The native case injects history into an actual owned paused source near the
 1-MiB limit. It proves refusal before transition or resume backing, unchanged
 source bytes and stopped identity, and a useful independent fork with the
-original private RAM/files. This is separate from a complete worker exit-ledger
-budget. Admission of aggregate checkpoint/fork/recovery aliases and paused
-arrays, old epoch retirement and final production qualification remain open.
+original private RAM/files. The aggregate candidate below adds a complete
+worker exit-ledger budget. Old epoch retirement and final production
+qualification remain open.
+
+## Aggregate worker metadata admission candidate
+
+Candidate `factorybox-build-worker-0b75abed9eb0490db9f722e0354ddfb4`
+applies a shared encoded-byte budget before admitting a new sandbox, base,
+checkpoint, pause, resume, fork or paused recovery in a bounded worker. It
+counts canonical bases, recovered bases, immutable capture/fork aliases and
+paused sandbox records, including pending fork/recovery inputs. It reserves
+the encoded next-pause outcome of each known active or unresolved sandbox,
+using the same maximum field/error widths as local record admission, capped
+by the independent 1-MiB publisher limit. An intent without its prepared
+record reserves the full 1 MiB. The next pause alias also counts. A committed
+paused record counts at its actual compact JSON size. The envelope includes both maximum-width
+timestamps and all array keys, brackets and separators within the unchanged
+4-MiB reader limit.
+
+The earlier 2-MiB canonical-base and local record/transport guards still apply.
+An unknown or incomplete inventory is not silently discounted. Retired capture
+aliases remain conservatively charged until worker replacement. This check
+reads metadata; it does not rehash all saved RAM pages for every new request,
+publish an exit fence, adopt old process identities or authorize cleanup. The
+strict exit integrity and ownership preflight remains independently required.
+
+On `new worker metadata refused`, retain the complete error and current data.
+Stop submitting new work to this worker epoch. Use exact completed requests
+for replay and inspect the owned sandbox states. Fully pause or delete live
+sandboxes through their existing lifecycle operations while admission permits
+it, require a successful normal worker stop, then replace it on the same owned
+store. Already committed pauses remain recovery inputs for the new epoch.
+If a legacy inventory already exceeds the bound, preserve it for explicit
+reconciliation; do not truncate histories or remove directories to force drain.
+A new epoch resets this metadata budget but does not reclaim old payload bytes
+or implement manual epoch retirement.

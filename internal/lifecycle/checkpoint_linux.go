@@ -114,6 +114,9 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 	if err := e.admitSandboxMetadata(record, false); err != nil {
 		return Checkpoint{}, err
 	}
+	if err := e.admitWorkerMetadata(ctx, workerMetadataDelta{CaptureSource: &record, CaptureID: snapshot}); err != nil {
+		return Checkpoint{}, err
+	}
 	if err := e.admitStorageWrite(); err != nil {
 		return Checkpoint{}, err
 	}

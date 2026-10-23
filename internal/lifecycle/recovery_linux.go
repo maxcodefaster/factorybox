@@ -159,6 +159,11 @@ func (e *Engine) importPaused(ctx context.Context, lock *os.File, request Recove
 		return intent, err
 	}
 	operation := "forks/" + targetID
+	proposal := forkIntent{TargetID: targetID, Checkpoint: saved,
+		Recovery: &RecoveryOrigin{Request: request}}
+	if err := e.admitWorkerMetadata(ctx, workerMetadataDelta{Fork: &proposal}); err != nil {
+		return intent, err
+	}
 	for _, path := range []string{operation, operation + "/recovery"} {
 		if err := e.root.Mkdir(path, 0700); err != nil {
 			return intent, err

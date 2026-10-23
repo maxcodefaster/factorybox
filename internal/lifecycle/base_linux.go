@@ -45,7 +45,7 @@ func (e *Engine) PrepareBase(ctx context.Context, id, source string) (Base, erro
 	if !errors.Is(err, os.ErrNotExist) {
 		return Base{}, err
 	}
-	if err := e.admitBaseImport(id, source); err != nil {
+	if err := e.admitBaseImport(ctx, id, source); err != nil {
 		return Base{}, err
 	}
 	if err := e.admitStorageWrite(); err != nil {

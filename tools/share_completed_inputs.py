@@ -31,6 +31,8 @@ def main():
                         help='Also share identical pinned component binaries of fully verified completed worker builds; source, CLI, packages and image identities stay unchanged')
     parser.add_argument('--include-completed-worker-packages', action='store_true',
                         help='Also share byte-identical tar packages of independently completed verified worker builds; keep every path directly usable and preserve build results')
+    parser.add_argument('--include-completed-worker-cli', action='store_true',
+                        help='Also share byte-identical immutable CLI executables of fully verified completed worker builds; retain every path, source, package, image and result')
     args=parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('immutable input sharing requires all Factorybox runs to finish')
@@ -47,16 +49,9 @@ def main():
         if info.st_uid != os.getuid():return
         if not expected or reference.sha(path)!=expected:raise ValueError('closed compiled input differs from its pinned hash: '+str(path))
         key=(role,expected,info.st_size,info.st_mode,info.st_uid,info.st_gid)
-        if key not in groups:groups[key]=path;return
-        original=groups[key]
-        if os.path.samefile(original,path) or info.st_nlink!=1:return
-        actions.append({'file':str(path),'canonical':str(original),'sha256':expected,'bytes':info.st_size,
-                        'before_identity':list(reference.artifact_storage.identity(path)),
-                        'mode':info.st_mode,'uid':info.st_uid,'gid':info.st_gid,
-                        'original_mtime_ns':info.st_mtime_ns,'shared_mtime_ns':original.stat().st_mtime_ns,
-                        'allocated_bytes':info.st_blocks*512})
+        groups.setdefault(key, []).append((path, expected, info))
     for run in sorted((reference.ROOT/"artifacts").iterdir()):
-        if (args.include_completed_worker_components or args.include_completed_worker_packages) and re.fullmatch(r'factorybox-build-worker-[0-9a-f]{32}',run.name):
+        if (args.include_completed_worker_components or args.include_completed_worker_packages or args.include_completed_worker_cli) and re.fullmatch(r'factorybox-build-worker-[0-9a-f]{32}',run.name):
             # load verifies the complete frozen source, runnable bundle,
             # recipe, tar package, Docker image and layer identities.
             result_path=run/'result.json'
@@ -69,6 +64,8 @@ def main():
                 for role,expected in result['bundle_sha256'].items():
                     if role.startswith('components/'):
                         consider(build/'image-context/bundle'/role,role,expected)
+            if args.include_completed_worker_cli:
+                consider(build/'image-context/bundle/factorybox','factorybox',result['bundle_sha256']['factorybox'])
             if args.include_completed_worker_packages:
                 consider(build/'factorybox-worker-linux-amd64.tar',
                          'worker-package',result['package_sha256'])
@@ -88,6 +85,18 @@ def main():
                                 for role in ("sysbox-runc", "sysbox-fs", "sysbox-mgr", "criu")})
         for role, expected in expected_inputs.items():
             consider(run/role,role,expected)
+    for rows in groups.values():
+        # Keep an existing shared inode as the canonical input. Choosing the
+        # first newly built unique file would skip every older multi-link
+        # copy and leave the new binary needlessly duplicated.
+        original, _, _ = max(rows, key=lambda row: row[2].st_nlink)
+        for path, expected, info in rows:
+            if os.path.samefile(original,path) or info.st_nlink!=1:continue
+            actions.append({'file':str(path),'canonical':str(original),'sha256':expected,'bytes':info.st_size,
+                            'before_identity':list(reference.artifact_storage.identity(path)),
+                            'mode':info.st_mode,'uid':info.st_uid,'gid':info.st_gid,
+                            'original_mtime_ns':info.st_mtime_ns,'shared_mtime_ns':original.stat().st_mtime_ns,
+                            'allocated_bytes':info.st_blocks*512})
     plan={"schema":1,"operation":"share_identical_closed_native_inputs","result_sha256":results,"actions":actions,
           'verified_worker_builds':workers,
           "scope":"Only exact compiled input roles of complete passing consumer proofs and explicitly included completed worker builds. Source, results, logs, executable bytes, modes, ownership, packages and image identities are unchanged. Identical files adopt the canonical inode's mtime; both original and shared mtimes are retained in this receipt. No archived input is rewritten in place."}

@@ -4066,3 +4066,238 @@ from `160dfcb2e86d914dadd45180e6ba8bca6560f8db0cc63ce70d2efc85fd99283c`
 to `20853f06f25f43b9436f240fa2a67d7bd670b7c28161fefa60ed5ea2ebeb631d`;
 the index retains the exact reconstructed patch and both sources. Runtime core
 bytes remain unchanged, and the first-release goal remains active.
+
+## Aggregate worker metadata admission candidate
+
+The common bounded-worker admission now includes canonical bases, recovered
+bases, immutable capture/fork aliases and paused sandbox records in one
+4-MiB completion budget. It reserves the full existing 1-MiB record bound for
+each active or prepared sandbox and a future pause alias. Committed paused
+records count at their actual compact JSON size. Pending fork/recovery inputs,
+array keys/brackets/commas, encoded string widths and both maximum completion
+timestamps count before new backing or intent. Unknown unfinished inventory
+refuses new work. Retired capture aliases stay conservatively charged until
+epoch replacement. Complete replay and the original strict exit integrity and
+ownership preflight remain unchanged. Admission reads metadata rather than
+rehashing all CRIU pages on every new request.
+
+Worker `factorybox-build-worker-4652f4cbbb3d4f529d16be2fc5d76774` and
+independent reproduction
+`factorybox-build-worker-3ab9e1e702ae4827b16934987cc92b25` have identical
+package SHA-256
+`6b8fe00f8e10b0a607048ddc1387fb74bd395a14369043134c0377df8d7a0fc6`,
+image ID
+`sha256:4975cb19fe3063c5915990433f622f39795c5fc3990d874e238c1e45e2769130`
+and CLI SHA-256
+`c6a41ed879f7ec408336b1a65114c5eec753cf31b82f9fdc6131b84b0e8a9c86`.
+Neither package is selected or production qualified.
+
+Four portable tests cover the real 1-MiB publisher boundary, preservation of
+encoded tree widths without input mutation, the complete pending recovered
+base/alias/record allowance and unknown inventory refusal without mutation.
+All six portable gates pass in
+`factorybox-checks-6c037423410f45a3a10bdb12d0839d29` before the later
+test-profile compatibility and maintenance-tool additions.
+
+The extended native driver now requires normal stop, a fresh worker epoch,
+both actual exit ledgers within 4 MiB and unchanged old source records,
+configuration, checkpoint payloads and filesystem trees. Its tree digest
+includes file contents, mode, owner, nanosecond mtime, inode/link count,
+extended attributes, symlinks and special-device identity. It runs every
+original `TestNativeBoundedLossRecover` assertion, including 32-MiB private
+RAM, private files, exact replay, independent descendants, pause/resume and
+useful work after source deletion. Both workers must exit with 0 and PID 0.
+The whole native lifecycle retains its 420-second deadline and resource limits.
+
+Initial extended run
+`factorybox-checkpoint-retirement-b2ef1270613c4d5197438bfee8ca9838`
+passes the new refusal test, clean source stop and preserved old backing/ledgers,
+but its later recovered-descendant checkpoint correctly refuses at 170,340,352
+available bytes. This is below the unchanged 64-MiB floor plus 128-MiB write
+reserve. Its overall result remains failed and the complete store remains
+reconstructable. Only this extended fixture receives a declared 2-GiB store
+to retain four real old pauses while executing every original descendant
+assertion. Compatibility receipt
+`factorybox-worker-metadata-fixture-compat-e33ad11fc67242e3b48757a8c570b302`
+binds the exact driver change and hashes.
+
+The next run `factorybox-checkpoint-retirement-04f1f26edea84a13926a66ba868d17de`
+fails the existing helper's exact 1-GiB profile assertion before preparing any
+sandbox. Compatibility receipt
+`factorybox-worker-metadata-profile-compat-ab5cc09053e14dbb8a68623f5a040a26`
+keeps that exact 1-GiB/direct-I/O check for every original bounded-loss case;
+only the separately declared worker-metadata fixture selects 2 GiB. The shared
+test SHA-256 changes from
+`131fc11423059c1c6709f4ec481f81bae0254d577f517968ca16b6176fe454bf`
+to `421fbc3c23a89f8c9f193e645aaf27e01f3147e2ef7b6bd31eb68abcdf964f82`.
+Every original recovery test body remains intact and vet stays enabled. This
+test-only overlay follows the completed independent reproduction; native core
+bytes still exactly match the delivered worker. Both earlier failures stay
+failed.
+
+Reduced green
+`factorybox-checkpoint-retirement-ee0c36dfaa3a4ef0b261e97c993aa1b7`
+passes refusal, clean stop, preserved backing, real recovery and clean
+replacement stop. Four committed pauses and one canonical base remain in the
+actual 4,192,256-byte completion. Admission and recovery take 14.76 and 14.24
+seconds respectively. The original three-pause/200-base regression
+`factorybox-checkpoint-retirement-f591932da9604a539bb579460c7ed036`
+passes the same complete assertions, taking 44.70 and 15.19 seconds. Its actual
+completion is 4,192,255 bytes. Both have zero skips, unchanged inputs/global
+settings and confirmed exact cleanup. Injected history remains explicitly
+synthetic; the pauses, base imports, RAM/files and recovery are real.
+
+The [operator procedure](worker-contract.md#aggregate-worker-metadata-admission-candidate)
+describes the shared refusal and same-store epoch replacement. Manual epoch
+retirement, the PID and busy-mount causes, final external-agent/operations
+evidence and final package acceptance remain open. The goal remains active
+and production qualification remains false.
+
+## Refine the shared reservation without dropping restore assertions
+
+The coarse candidate's first full regression attempt
+`factorybox-worker-metadata-regressions-15d77ddb8d28424e9c7328fe96d75c11`
+passes retirement and timer/signal groups, then the artifact headroom guard
+refuses the third run before it creates an artifact or worker. Its batch
+result remains failed. Repeated source-sharing plans themselves occupied
+12-18 MiB each. Lossless maintenance
+`factorybox-storage-compact-plans-fcf5fc11f01941c68810ecb4ab2f0c62`
+fully decodes and verifies four exact completed plans before retaining their
+encoded bytes and reconstruction receipts, reclaiming 56,094,720 allocated
+bytes. Their original results and plan-content hashes remain unchanged. The
+first command-order attempt `factorybox-storage-compact-plans-6460ca16309547f185075bc024f0d2a7`
+stays failed; its automatically produced redundant encoding was fully checked
+against the still-present original before removal and the fresh corrected run.
+
+The next batch
+`factorybox-worker-metadata-regressions-11c8e24d92b44828af253a88c63f181b`
+passes its first five groups but fails the unchanged restore-hold suite.
+`factorybox-checkpoint-retirement-9a531b7d61a64862856e74c6995940b4`
+passes fork, resume and both disconnect cases. The final wrong-ack case is
+refused because the common guard charges one full MiB for each small unresolved
+record. Existing fault cases deliberately preserve their unresolved records;
+the fourth reservation plus the envelope cannot fit 4 MiB. The fatal helper
+return also leaves its test-held lock until process exit, explaining the
+secondary fixture-delete `resource temporarily unavailable`. Both failures
+and the complete failed store remain preserved.
+
+The corrected guard shares the existing local maximum future-pause record
+constructor. Known records retain their complete old history, maximum changing
+field widths and bounded future errors; their compact future form is capped by
+the independent 1-MiB atomic publisher. A pending intent without its record
+still reserves the full MiB and its future pause alias. No local admission,
+reader, transport, writer or exit bound increases. The original local
+constructor's logic is extracted without changing its fields. No restore-hold
+assertion or fixture body changes.
+
+New worker `factorybox-build-worker-0b75abed9eb0490db9f722e0354ddfb4`
+and independent comparison build
+`factorybox-build-worker-926ddebd5e974f48831b7c12af460dc5`
+have identical package SHA-256
+`c0cdcf9724b7821540e4f587096189ce8d4ef6a02d57a869c4d2222b576a5a30`,
+image ID `sha256:2a29112f8af9dc2f1448d74ad00946861f41c00d9bbce8a847bff4c834740a50`
+and CLI SHA-256
+`d7ad8e410d0d7b6173e57a4b3bd8dea0530118ad413367b1135b8ad1ed7f91b8`.
+`factorybox-checkpoint-retirement-89b2ea25cef04b08b8c20cdb10760400`
+passes all five original restore-hold cases in 19.40 seconds on these bytes,
+with unchanged inputs/global settings and exact cleanup. All six portable
+gates pass in `factorybox-checks-d71ebd258e5d43b0a654feb64d26c85b`.
+Both aggregate boundaries now pass on the corrected bytes:
+`factorybox-checkpoint-retirement-a6ed1eb6195d45bba5d6fc46d366b84b`
+for four pauses/one base and
+`factorybox-checkpoint-retirement-ec302a47b4384b96812f2a052a196a14`
+for three pauses/200 bases. Both actual completion records are 4,192,256
+bytes; both old and replacement workers stop with 0 and PID 0. All old
+records, checkpoint payloads and filesystem identities remain unchanged.
+The original full recovered-descendant tests pass in 14.07 and 14.52 seconds
+respectively. Entire runner times are 39.80 and 72.34 seconds. These are
+functional regression durations, not latency-distribution observations.
+Neither package is selected or production qualified. The remaining regressions
+and full release acceptance still need these exact bytes.
+
+The completed-input sharing command can now explicitly include immutable worker
+CLI copies. It chooses an existing shared inode before a newly built unique
+copy, then only replaces byte/mode/owner-identical single-link duplicates.
+Whole frozen worker sources, bundles, packages, image identities and original
+results are verified before and after. Receipt
+`factorybox-storage-share-inputs-fb3561f9d8c242ecac67f39ba8865ac2`
+reclaims 86,716,416 allocated bytes; independently completed package/component/
+CLI pair receipt `factorybox-storage-share-inputs-b98d59b243c3421d997ce590a1494946`
+reclaims another 180,957,184 bytes. Every path stays directly usable and both
+original/shared mtimes are retained.
+
+The two obsolete invalid-CLI fixtures `d04d4ebb` and `ee60ee01` now have
+explicit retirement receipts
+`factorybox-storage-retirement-ec6c940a8e764b07a50a6bf3cf16b504` and
+`factorybox-storage-retirement-f0183425030242a19895066f4314a980`.
+Each entire original store stream is freshly decoded and verified before its
+46-MB encoding is retired. The public command implementation is identical to
+the later worker passing the corrected complete metadata test. Native source,
+results/logs and all archive member headers/hashes stay retained; these two
+invalid-verb fixture volumes are intentionally no longer reconstructable.
+They remain failed. The actual original record-metadata failure, both aggregate
+counterexamples, restore-hold red and original PID/signal/busy failure archives
+remain complete. Lossless repack
+`factorybox-storage-repack-10c7c63f824e4a8d8b66c3843924330b`
+also reclaims 19,262,764 bytes from the closed unselected ordinary-native
+capture archive after verifying all 790,626,304 original bytes; its full content
+remains reconstructable through the original encoding receipt and one pointer.
+
+All thirteen original native core groups pass on the refined package in
+`factorybox-worker-metadata-regressions-ab6ad782325b4428bbf8e450c8c5f938`.
+This includes every original restore-hold assertion, planned/abrupt bounded
+worker loss, actual guest capacity pressure and controller-loss/storage
+admission. Every leaf has exit 0, unchanged inputs/global settings and exact
+cleanup. The original near-1-MiB sandbox-history refusal/independent-fork case
+also passes in `factorybox-checkpoint-retirement-89bb7ca398f34924aa8f464fbf97a81d`.
+Its original 1,048,426-byte seeded record and all 32-MiB RAM/file assertions
+remain intact.
+
+Full Factory/Theia/OpenCode local-model worker replacement
+`factorybox-consumer-worker-loss-a668b6531fe645e9bc6d3d7187826cdf`
+passes on these exact CLI/component bytes with its 32-GiB bounded store.
+The old worker is removed before recovery; an empty separately owned worker
+forces the retained image from loop 0 to loop 1. All original consumer
+assertions pass, including exact replay, removal of saved source files,
+independent restored inputs, new checkpoint/fork, private mutations, original
+Theia connection and useful descendant work after source deletion. Native
+prepare/recover tests take 75.35/82.09 seconds. Both workers stop with 0 in
+4.232/5.486 seconds; the empty loop holder also stops cleanly. Owned cleanup,
+unchanged frozen inputs and unchanged global sysctls pass. Separate Theia
+admission `factorybox-theia-admission-729771ddb1624efdb6a9614de341495e`
+passes. This is a development regression with a local model, not an external
+provider result or part of the final predeclared ten-run acceptance series.
+
+A standalone Python test invocation accidentally used `/tmp`, a tmpfs with
+7,969,116,160 free bytes, below the unchanged 12-GiB host floor. Its 212 tests
+report seven failures and nine errors, all caused by that precondition rather
+than the supported disk-backed runner. Environment comparison
+`factorybox-checks-tempfs-comparison-6d91c2768acc4dbdbe07e310d4f9839d`
+retains a fresh same-source failing tmpfs run and a passing 212-test disk-backed
+control, with complete stdout/stderr and unchanged source hashes. No reserve
+or assertion changes. All six supported portable gates pass again in
+`factorybox-checks-650e2addfc144042b66484247a1040d4`.
+
+Encoded-probe sharing now recognizes the existing `factorybox-bounded-loss`
+run name and its checked executable hash. Receipt
+`factorybox-storage-share-test-encodings-f6206870399c41da952f28f6b17b51d5`
+shares 37 byte-identical closed executable encodings and reclaims 108,896,256
+allocated bytes. Canonical payloads are fully decoded; every encoded path,
+native source/result/log and encoding receipt remains available and unchanged.
+
+Verification recipe
+`factorybox-worker-metadata-notes-de923b79dbdb4d578b55f65aa5ad5833`
+checks both independent packages, complete frozen native source, all current
+gates and original failing evidence, fresh full decoding of all five selected
+metadata/restore failure stores, fixture compatibility, supported disk control,
+intentional invalid-verb retirements, the full Factory loop-remap proof and
+exact source patches. Its earlier `59e8ec3e` attempt fails because the verifier
+compares a hash with a manifest object instead of its `sha256` member. The
+`e1ca7290` attempt fixes that and fails when it expects a raw consumer test
+binary that normal closed-run retention has already encoded. The corrected
+recipe verifies the encoded helper against its original native hash and
+complete decompression receipt. Both earlier index results remain failed;
+no native verdict changes. The shared admission change is now functionally
+covered. Manual epoch retirement, original PID/busy-mount attribution, final
+external-agent/operations and first-release package acceptance remain open.
+The goal remains active and production qualification remains false.

@@ -3,6 +3,7 @@
 package lifecycle
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -42,7 +43,7 @@ func (e *Engine) baseImportBound(id, source string) (int, error) {
 
 // Hold the controller operation lock. Complete immutable replays bypass this
 // admission; failed imports and changed records are never silently discounted.
-func (e *Engine) admitBaseImport(id, source string) error {
+func (e *Engine) admitBaseImport(ctx context.Context, id, source string) error {
 	if e.config.BoundedStore == nil {
 		return nil
 	}
@@ -73,5 +74,5 @@ func (e *Engine) admitBaseImport(id, source string) error {
 		return fmt.Errorf("new base imports refused: canonical exit metadata=%d bytes, new import bound=%d, budget=%d; retain existing bases and drain to a new worker epoch",
 			used, prospective, baseExitMetadataLimit)
 	}
-	return nil
+	return e.admitWorkerMetadata(ctx, workerMetadataDelta{BaseBytes: prospective})
 }

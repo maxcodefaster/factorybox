@@ -69,6 +69,11 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 		if err := e.admitSandboxMetadata(record, true); err != nil {
 			return View{Record: record}, err
 		}
+		active := record
+		active.Phase = "resuming"
+		if err := e.admitWorkerMetadata(ctx, workerMetadataDelta{Record: &active}); err != nil {
+			return View{Record: record}, err
+		}
 		if err := e.admitStorageWrite(); err != nil {
 			return View{Record: record}, err
 		}

@@ -395,7 +395,7 @@ func (e *Engine) Start(ctx context.Context, id, bundle string) (View, error) {
 		if err := e.admitStorageWrite(); err != nil {
 			return View{}, err
 		}
-		record, err = e.prepare(id, bundle, object, input)
+		record, err = e.prepareRecordContext(ctx, id, bundle, object, input, "", nil)
 	}
 	if err != nil {
 		return View{}, err
@@ -451,6 +451,10 @@ func (e *Engine) prepare(id, bundle, object string, input []byte) (Record, error
 }
 
 func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner string, origin *ForkOrigin) (Record, error) {
+	return e.prepareRecordContext(context.Background(), id, bundle, object, input, owner, origin)
+}
+
+func (e *Engine) prepareRecordContext(ctx context.Context, id, bundle, object string, input []byte, owner string, origin *ForkOrigin) (Record, error) {
 	var record Record
 	var spec map[string]json.RawMessage
 	if err := json.Unmarshal(input, &spec); err != nil {
@@ -538,6 +542,9 @@ func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner st
 		record.Start.RequestedAt = origin.RequestedAt
 	}
 	if err := e.admitSandboxMetadata(record, false); err != nil {
+		return record, err
+	}
+	if err := e.admitWorkerMetadata(ctx, workerMetadataDelta{Record: &record}); err != nil {
 		return record, err
 	}
 	if err := e.root.Mkdir(object, 0700); err != nil {

@@ -56,7 +56,11 @@ func boundedLossStatusNow(t *testing.T) boundedLossStatus {
 	if err != nil || json.Unmarshal(data, &status) != nil || status.Lifecycle.BoundedStore == nil || status.Epoch == "" {
 		t.Fatal("live bounded worker status", err, string(data))
 	}
-	if status.Lifecycle.BoundedStore.Image.Bytes != 1<<30 || !status.Lifecycle.BoundedStore.DirectIO {
+	expectedBytes := int64(1 << 30)
+	if os.Getenv("FACTORYBOX_NATIVE_WORKER_METADATA") == "1" {
+		expectedBytes = 2 << 30
+	}
+	if status.Lifecycle.BoundedStore.Image.Bytes != expectedBytes || !status.Lifecycle.BoundedStore.DirectIO {
 		t.Fatal("unexpected bounded replacement profile", status.Lifecycle.BoundedStore)
 	}
 	return status
