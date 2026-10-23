@@ -298,6 +298,16 @@ Changed identities, corrupt state, missing publication and uncertain partial
 imports/restores are rejected. The caller must fence the old worker; a lease
 on a copied file is not distributed fencing.
 
+An actual 8-GiB full-consumer recovery attempt reached ENOSPC while copying
+private RAM images. Independent read-only verification of its complete saved
+image confirms that every published RAM/metadata file and all nine saved
+filesystem trees remain intact, with the original source still committed
+paused. That failed attempt remains failed. This integrity evidence does not
+authorize removing partial imports, adopting copied store identities or
+retrying uncertain operations. Useful recovery after reclaiming space still
+needs its separate acceptance. Exact evidence is indexed in
+[production progress](production-progress.md#external-provider-quota-and-original-enospc-checkpoint-integrity).
+
 The native proofs cover planned and abrupt same-host whole-worker loss after
 a complete committed pause. Running unsaved RAM, host reboot, lost storage,
 cross-node migration and changed hardware remain outside this contract.

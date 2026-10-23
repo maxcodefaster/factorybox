@@ -5322,3 +5322,77 @@ lifecycle or complete the predetermined final series. The original PID and
 busy-mount causes, broader final storage/operations and full package acceptance
 remain open. Goal/handoff bytes are unchanged; production qualification is
 false and the complete first-release goal stays active.
+
+## External-provider quota and original ENOSPC checkpoint integrity
+
+The complete ordinary external Factory/Theia lifecycle attempt
+`factorybox-consumer-worker-loss-455a85b21e124cf4b542d63b0d89978c` is failed.
+Its first actual provider request returns HTTP 429 `FreeUsageLimitError`, with
+`Retry-After: 8252`. The shipped OpenCode therefore never starts the intended
+held tool. The original native test fails after 113.58 seconds; no later
+lifecycle, fork or agent-result assertion is claimed as passed. No paid model,
+different identity or provider fallback is selected. The complete original
+request/response, frozen inputs and failed verdict remain. Owned cleanup and
+unchanged global settings pass. This provider limit blocks that external
+acceptance case; independent runtime work continues.
+
+Lossless maintenance
+`factorybox-storage-repack-db1819cb738f4665adffa9f3379ca58f` verifies all
+34,360,786,944 original decoded archive bytes before replacing its encoding.
+The new encoding is 698,101,731 bytes and reclaims 707,583,059 bytes. Original
+source/results/logs and the exact reconstruction pointer remain unchanged.
+The failed native verdict is not relabeled.
+
+The separate original 8-GiB failure `61eed6ca5db348adbcafa180cb582167` remains
+failed, with its complete archive still retained in
+`factorybox-storage-repack-730576f905d64c2796461a2731a413f1`.
+`factorybox-enospc-image-inspection-1084e17061d746189819b46614d73895` verifies
+all 8,590,983,168 decoded archive bytes and inventories its exact image.
+The image SHA-256 is
+`d0df6ea26c51eeabe20486f6704045ec7e1d2225c9d5aa3376b641944d177afd`.
+
+Offline inspection
+`factorybox-enospc-checkpoint-verification-276288564dfc4fb1a8f2fadbe1dfc5d1`
+then verifies the original checkpoint identity, still-committed paused record
+and every one of its 322 published RAM/opaque-metadata files, totaling
+501,546,418 bytes. Read-only debugfs leaves the copied image byte-identical.
+A preceding per-file compression calibration did not reduce accounted storage;
+the calibration is recorded and no compression-based budget reduction is
+assumed. The disposable image is removed only after its full hash and complete
+original encoded source are reverified; its reconstruction receipt remains.
+
+Native diagnostic `factorybox-enospc-retained-verify-bcedc7fb426d45839d576c062fdacdbd`
+first stops before content verification because its UUID comparison expects
+the internal unhyphenated spelling. It remains failed with successful cleanup.
+The exact superblock bytes independently confirm the canonical UUID spelling.
+The declared new-copy correction in
+`factorybox-enospc-retained-verify-68b88680fe1948c2afb371ace0b0970b/fixture.json`
+changes only that comparison, with exact before/after/patch hashes; all other
+diagnostic inputs and the verifier source remain identical.
+
+The corrected complete native diagnostic passes in 66.368 seconds. It verifies
+the entire original image before and after a private read-only ext4 mount with
+journal replay disabled. Its helper uses the unchanged
+`VerifyRetainedFilesystemSnapshot` implementation from the exact EEF packaged
+Go source. All nine original filesystem trees, including contents, metadata,
+xattrs, inode/base checks and alias checks, match their saved fingerprints;
+all 322 published files also match. The original source still has its complete,
+unresumed committed pause. The 3-CPU/3-GiB limit, 420-second deadline, exact
+read-only/autoclear loop ownership, ordinary unmount, loop release, container/
+volume cleanup and unchanged global settings all pass. No diagnostic device
+translation was needed in this observation.
+
+Its independent `closure.json` binds the frozen packaged core, identical
+diagnostic executable, original failed results, provider error and exact
+absence of all owned containers/volumes. Native helper vet, all 232 reference
+files, production fixture/ordered-extension verification and the diff check
+pass. No implementation changes require another runtime build in this step.
+
+This establishes that the original private-image-copy ENOSPC did not corrupt
+its confirmed checkpoint backing. It does not change the original failed
+recovery into success, exercise kernel restore or useful work after freeing
+space, adopt a copied image as a production store, or qualify general low-disk
+recovery. Those broader storage/operations requirements, ordinary external
+acceptance after the provider limit, original PID/busy-mount causes and final
+package/series acceptance remain open. No production component changes here;
+the full first-release goal and saved parallel-chat context remain unchanged.
