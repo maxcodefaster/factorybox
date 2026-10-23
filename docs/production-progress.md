@@ -5396,3 +5396,120 @@ recovery. Those broader storage/operations requirements, ordinary external
 acceptance after the provider limit, original PID/busy-mount causes and final
 package/series acceptance remain open. No production component changes here;
 the full first-release goal and saved parallel-chat context remain unchanged.
+
+## Original PID images, namespace controls and independent restore sequence
+
+Inspection `factorybox-failure-inspection-8164cb3403754598b1a716ced1bb09a0`
+fully decodes the original PID-failure archive and extracts the root and two
+shim namespace images. Together with the previously verified four inner images,
+they establish root PID/net/time namespace IDs 10/11/14 and primary inner IDs
+24/25/28, with user namespace ID 9 shared throughout. These are saved image
+identities, not an observation of the process occupying the conflicting PID.
+
+Small native controls keep the selected EEF Sysbox and CRIU bytes and all
+original actor/lifecycle assertions. Baseline
+`factorybox-pid-inner-net-control-2df5288a14b3442b89e8111ed9fc4c3b` passes once;
+private inner network `factorybox-pid-inner-net-36dbb8c33de64934ba4759bbba6bc7f4`
+passes three predetermined cases; private inner time
+`factorybox-pid-inner-time-direct-eb732ca25bfe4fd3b67f5fec9d377142` passes three.
+The time fixture verifies distinct time namespaces at zero initial offsets and
+the same network namespace. Network and time are separate single-variable
+controls. Their nonreproduction neither excludes an interaction nor qualifies
+the historical or final package lifecycle.
+
+Four earlier time-fixture setup failures remain failed with their complete
+results and cleanup. The initial launcher requested an unsupported BusyBox
+time option. Subsequent capability checks exposed a wrong-root executable/libc
+check and then an unnecessarily strict help requirement. The final fixture
+queries BusyBox inside its actual root and creates time through the direct
+unshare syscall. Exact before/after/patch hashes retain each correction; no
+original actor assertion or production runtime is changed.
+
+Predeclared sequence
+`factorybox-pid-image-sequence-607904b9022e445b8ad2346db86f8ccc` then completes
+ten independent restorations of the actual original process images, each with
+an exclusive worker and volume and stopping at the first failure. Every case
+fully verifies the 12,155,092,992-byte original decoded archive and all 330
+prepared image files, totaling 515,577,040 bytes, before restoring. It uses the
+original C9a worker image and Sysbox components with current read-only CRIU
+diagnostics `6263dd24...`. All ten fresh restores succeed, taking 1.827–1.931
+seconds; all owned resources close, inputs and global settings remain intact.
+These restore-only times are not useful-application latency measurements.
+
+One vetted diagnostic executable from completed helper build
+`factorybox-build-pid-image-tests-cead30c634bb42d2a46036e6e3eafa75`, SHA-256
+`e704934e412f76e7fae8c66e6ac1183f5d9c9081ca96c80bd1b8d47cd14a7e40`, is shared
+immutably across the cases. The added assertion makes a fresh observation of
+the exact original collision fatal immediately after saving its evidence.
+All prior assertions remain, including rejection by the unchanged filesystem
+guard because the historical archive lost nanosecond mtimes/xattrs/ACLs.
+No copied historical restore log counts as a new observation.
+
+The sequence's independent `closure.json` checks every native verdict, exact
+helper/core/component identities, full-decode receipt, fresh log, resource
+absence, original namespace bytes, retained setup failures and unchanged
+goal/handoff. The ten successes do not explain or fix the rare collision and
+are not members of the final complete-lifecycle acceptance series. The original
+failed lifecycle and strict replay remain failed and fully retained.
+
+The next concrete candidate is the old Sysbox pass-through path: some filesystem
+operations dispatch an nsenter agent into the requesting PID namespace, and
+its nsexec path forks after setns and creates a session. The closure pins the
+exact original source files. Actual occupation of the conflicting ID by such
+an agent during restore is unproven; it requires process/PID-lifetime evidence
+through the full checkpoint/pause/resume/restore chain. No runtime workaround
+or repair is selected from this source-level hypothesis. Production
+qualification stays false and the complete first-release goal remains active.
+
+The read-only lifetime observer is subsequently checked against an independent
+private PID-2 allocation/setsid/reap control. Initial image attempt
+`factorybox-pid-image-lifetime-21ca2ca1caf9421d8317a802510a5a62` fails its BTF
+preflight before restoring: syscall-wrapper symbols exist but lack BTF function
+records. Only prototypes for arguments actually read need those records;
+return probes still require actual attachment and the verified return-register
+layout. Corrected build `factorybox-build-pid-reference-tracer-b547294e38b142beaa0b0003951d23cf`
+loads, but control `factorybox-pid-trace-control-c3d055db54994129981a017aca24d447`
+fails because the namespace helper filters out descendants of the outer PID
+namespace. Zero loss counters alone did not establish coverage.
+
+Build `factorybox-build-pid-reference-tracer-ba2a3827a42143da8e206137a3560be0`
+keeps that loader and changes only membership lookup to the exact ancestor in
+the task's typed PID namespace chain. Control
+`factorybox-pid-trace-control-3ed1299a56a64a809fef76e8d50de99b` now matches the
+independently recorded PID 2, namespace, successful setsid and final PID-object
+release. All five probe miss counters and all loss/map/read error counters are
+zero. Both failed diagnostics remain failed with their full source/results.
+
+Observed original-image restore
+`factorybox-pid-image-lifetime-bb54440c659742be850cd1aff5742d6f` then passes with
+849 lifetime/session/group events and the same zero counters. Its original
+process-image executable is unchanged. In the primary namespace, a random PID
+2 is allocated by a caller named `runc:[1:CHILD]`; `runc:[2:INIT]` successfully
+creates session 2. Its final PID release occurs in `sysbox-fs` context, about
+11.97 ms before CRIU successfully allocates the saved PID 2. This is actual
+transient occupation of the needed ID during the restore, rather than a toy
+process that merely could reserve it. Caller names alone do not attest an
+executable or identify the occupant of the earlier historical failure.
+
+The independent `analyze.py`/`closure.json` checks the observer control, all
+849 records, primary namespace mapping, fresh original-image restore, complete
+cleanup and the remaining filesystem limitation. The original Sysbox-fs source
+receives the agent response and schedules its wait asynchronously; its general
+reaper can also reap completed agents. The next falsifiable experiment is to
+defer those actual reaping paths in an explicitly diagnostic component, then
+check whether the unchanged restore reproduces the exact historical collision.
+No runtime repair or causal closure follows from the successful observed run.
+
+Lossless maintenance retains the initial observer-preflight failure's complete
+2,824,863,744-byte dump in
+`factorybox-storage-repack-ad9402020de14ce0b2b2b2ffab9a22c3`, reclaiming
+392,921,131 encoded bytes. Subsequent closed-executable/stream compactions
+initially remain below the required native-start headroom; their failed capacity
+verdicts are preserved. Two still-selected gateway inputs were included too
+broadly and are reconstructed exactly, with directly usable original hashes,
+in `factorybox-storage-restore-selected-gateways-bdaee9184ce7477abf89576b4d4e65c2`.
+`factorybox-storage-share-new-encodings-fb5bf31be7c542f89138530b5c902d61` then
+shares 42 identical new encodings/inputs, reclaiming 175,243,264 allocated bytes
+and restoring the required headroom. The observed replay's closure fully
+decodes all 68 executable encodings, 15 streams and the retained failed dump;
+selected builds, original failures, source, results and logs remain intact.
