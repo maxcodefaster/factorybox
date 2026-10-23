@@ -26,10 +26,10 @@ historische Nachweise. Produktionsqualifikation ist zu Beginn dieses Goals false
 
 - [ ] Endgültiges Paket unabhängig reproduzieren und alle erforderlichen
   bestehenden nativen, Verbraucher- und Upstream-Prüfungen bestehen.
-  Aktueller Gegenbeweis: Factory-Lifecycle verweigert beim erneuten Checkpoint
+  Erhaltener Gegenbeweis des Vorgängers: Factory-Lifecycle verweigert beim erneuten Checkpoint
   der Branch eine relative Timer-Aufnahme mit anstehendem gefangenem Signal,
   `factorybox-consumer-worker-loss-87d3d62a3d544fa8b2a0bba588c90b38`.
-  Vollständiger Fehlerzustand bleibt erhalten; dieser Pfad ist nicht abgenommen.
+  Der vollständige ursprüngliche Fehlerzustand bleibt unverändert erhalten.
   Die gezielte Signalprüfung und der vollständige Factory-Lifecycle bestehen
   inzwischen auf Kandidat `2d4ef2ecd68848979f86a6b8cf2c0f97`. Die ursprünglichen
   Fehler bleiben erhalten. Alle 13 nativen Kern-Prüfgruppen und der unabhängige

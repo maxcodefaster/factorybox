@@ -2932,6 +2932,104 @@ all twenty original cases. Both diagnostics pass exact cleanup, input checks
 and unchanged global sysctls. Neither reproduces the historical busy mount or
 identifies its owner, so no cleanup repair or release qualification is claimed.
 
+The component-control diagnostic
+`factorybox-proc-cleanup-old-sysbox-99ad111a9fcd4d838c4b53602d83b0ee`
+also passes the same twenty original cases. It substitutes only the verified
+old Sysbox component set from worker `5c281a6c...`, including the matching
+runtime digest. CRIU, the ordinary Go CLI, the test binary, GC settings and
+resource limits remain unchanged. Exact cleanup, all pinned input bytes and
+global sysctls pass. Sixty targeted observations have not reproduced the old
+unmount failure; neither a component regression nor a repair is inferred.
+
+## Reduced live-PID-2 restore topology diagnostic
+
+The original collision's selected `core-4463.img` identifies an alive `sleep`
+task, not a zombie, with own-namespace PID 2. Its process-tree image places it
+under nested init 1328, after a later exec-root process with own PID 132.
+The preserved four selected images remain the authoritative source; the
+conflicting restore occupant is still unknown.
+
+Private diagnostic `factorybox-pid-collision-topology-75012c51151542e7a983a3b6f300bb44`
+adds a new test to a copy of the ordinary worker source, leaving every existing
+Go file unchanged. Its first setup fails before any checkpoint because the
+diagnostic reads only the direct cgroup and assumes an absolute PID-namespace
+depth. Its complete 47,185,920-byte source archive is preserved. The next
+ordered version, `factorybox-pid-collision-topology-c3cee4769ba6451baac19955b11df6ff`,
+uses the production bounded recursive cgroup reader and records actual namespace
+vectors and namespace identities. It observes a nested init and its live PID 2.
+
+That second setup stops before any checkpoint for a separate harness error.
+CombinedOutput waits for a detached actor's inherited output pipe even after
+the runc command exits. The retained `detached-exec-pipes.json` identifies the
+same pipe in the test reader and both the nsenter parent and actor writers.
+The exact owned fixture is deliberately stopped, with its ownership/stop receipt
+and complete source archive retained. Generated initial-status output ownership
+is transferred to the invoking user with its own receipt; no input bytes change.
+The next fresh version writes runc startup output to a regular file and redirects
+the actual workload's standard descriptors to its own `/dev/null`, as the
+original native source fixture does. Its generated JSON is readable by the
+driver. These setup failures are not the historical PID collision and do not
+qualify any restore correction.
+
+The next version, `factorybox-pid-collision-topology-12853f91f2b547d1806b7378e7defc3b`,
+reaches a real checkpoint and restore. Its first restore fails before resume
+with `Can't find a session leader for 163`, which differs from the historical
+EEXIST. The exact selected log and process-tree image are retained in
+`factorybox-failure-inspection-2535c54a71ca43468dd6bc6e3831581e`, after full
+archive decompression verification. Its runc-exec helper is outside the captured
+root ancestry. This is a diagnostic topology mismatch, not the original failure.
+
+`factorybox-pid-collision-topology-c668d7b2d2844cba9fc451bf74d39cbf`
+instead starts both helpers below the source root and establishes real inner
+init and actor sessions. It passes the complete reduced lifecycle in 18.81 s,
+including private 32-MiB actor RAM, original deletion, fork of fork,
+pause/resume and fork of the resumed source. The actual inner actor PID is 132,
+alongside live sleep PID 2. No production Go source or existing test changes.
+
+The next control reproduces the saved child-list order 132-before-2 by using
+ordinary clone3 set_tid inside the fixture's own nested PID namespace. The
+single-threaded C init holds the first child until live PID 2 exists, then
+releases the unchanged Go actor. It writes no PID counters or sysctls. The
+actual kernel child order, sessions, private RAM, source hashes and exact
+owned cleanup are checked. This full reduced lifecycle passes in 16.16 s in
+`factorybox-pid-collision-order-453605e743f94468944557244ed3a6a3`.
+All ten predetermined serial cases then pass in
+`factorybox-pid-collision-order-308659aacd1f4bd89289bb15e6b96dba`, with separate
+proofs and unique source owners, zero skips, unchanged inputs and global
+sysctls, and first-failure stop enabled. These are targeted diagnostic cases;
+they do not replace either example's final regular repetition series.
+
+`factorybox-pid-proc-topology-13b652ae57394f4f99acb868489010a7`
+adds only a private mount namespace and a real proc mount belonging to that
+exact inner PID namespace. Both kernel namespace checks and the same complete
+reduced lifecycle pass in 16.69 s. Neither child order alone nor this one
+private-proc observation reproduces the old collision.
+
+`factorybox-pid-proc-children-a484607870d34fe88604563a179dc3cc`
+adds one multithreaded child through the unchanged original actor's
+`make-memory-child` route. Each actor has independently checked private 32-MiB
+RAM, including after source changes and deletion, fork of fork, pause/resume
+and fork of the resumed source. The same controlled child order and real inner
+proc mount remain. This complete reduced lifecycle passes in 18.85 s with zero
+skips, exact cleanup and unchanged inputs/global sysctls. A second actor alone
+does not reproduce the old PID collision; this diagnostic is not a repair or
+one of the final regular consumer repetitions.
+
+The original failure archive is inspected again for a concrete missing fact:
+the four inner process groups' saved process/thread PID requests. Full
+decompression verification in
+`factorybox-failure-inspection-070e2c70aee946e48e69ca2f9be672b8`
+retains only 25 bounded metadata files. Their separate parsed analysis,
+`factorybox-pid-image-analysis-f5635ece19a240268fc6a1e52f9e781c`, checks all
+21 core images from groups 1328, 4452, 4453 and 4463 against their exact hashes.
+All four namespace IDs are 24 and these selected saved own-PID/TID requests
+are unique. The sleep request is alive PID 2. This does not identify a live
+restore-time occupant or prove anything about other retained references.
+All 2,224 files of the original and current CRIU source contexts are also
+compared: only `criu/cr-restore.c` differs, by the bounded read-only EEXIST
+logging patch. No intervening CRIU repair is inferred. The historical PID
+collision and busy-overlay defect remain open.
+
 ## Initial local release scope agreed on 2026-10-23
 
 The user approved a controlled first release on the existing Linux AMD64 host,
