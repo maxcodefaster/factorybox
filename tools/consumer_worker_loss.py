@@ -26,6 +26,7 @@ import native_base
 import external_lifecycle
 import effect_lifecycle
 import provider_peer
+import external_cancel
 import reference
 import reference_lifecycle
 import theia_admission
@@ -68,7 +69,8 @@ def require_agent_cancel_recovery(result):
     epochs = [row["startup"]["status"]["epoch"] for row in phases]
     if not all(epochs) or epochs[0] == epochs[1]:
         raise ValueError("cancellation requires two distinct worker epochs")
-    continuation = require_agent_cancel_continuation(recovered)
+    continuation = (external_cancel.require_continuation(recovered) if result.get("external_provider_enabled")
+                    else require_agent_cancel_continuation(recovered))
     return {"passed": True, "phases": ["prepare", "recover"], "worker_epochs": epochs,
             "same_cancellation": True, "session_id": prepared["agent"]["session_id"],
             "call_sha256": prepared["agent"]["call_sha256"], "continuation": continuation}
@@ -213,13 +215,13 @@ def main():
     if options.external_disconnect and (not options.external_provider_proof or options.probe != "lifecycle"):
         parser.error("the completed-response disconnect is a separate complete external-agent lifecycle")
     if options.external_provider_proof and (options.example != "factory" or not options.opencode_flow or
-            options.probe not in {"lifecycle", "worker-loss"} or options.baseline_runtime_build or options.consumer_request_profile):
+            options.probe not in {"lifecycle", "worker-loss", "agent-cancel"} or options.baseline_runtime_build or options.consumer_request_profile):
         parser.error("external inference requires the complete Factory agent lifecycle or committed-pause worker-loss case")
     if options.example == "minimal" and options.theia_image:
         parser.error("the unchanged minimal consumer has no IDE")
     if options.probe == "agent-cancel" and (options.example != "factory" or not options.opencode_flow or
-            options.external_provider_proof or options.theia_image or options.bounded_bytes is None or options.baseline_runtime_build):
-        parser.error("agent cancellation requires the bounded Factory/local-agent replacement case without extra peers")
+            options.theia_image or options.bounded_bytes is None or options.baseline_runtime_build):
+        parser.error("agent cancellation requires the bounded Factory agent replacement case without an IDE or baseline substitution")
     if bool(options.effect_gateway_proof) != (options.probe == "agent-effect"):
         parser.error("the outside-effect case and its exact effect-only gateway proof must be selected together")
     if options.probe == "agent-effect" and (options.example != "factory" or not options.opencode_flow or

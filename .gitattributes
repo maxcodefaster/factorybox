@@ -9,3 +9,5 @@ tests/compatibility/external-provider-gateway.patch whitespace=-space-before-tab
 tests/compatibility/pid-diagnostic-builder.patch whitespace=-blank-at-eol
 tests/compatibility/startup-gc-diagnostic.patch whitespace=-blank-at-eol
 tests/compatibility/busy-overlay-diagnostic.patch whitespace=-space-before-tab
+tests/compatibility/external-cancel-agent_cancel_linux_test.go.patch whitespace=-space-before-tab,-blank-at-eol
+tests/compatibility/external-cancel-fixture_linux.go.patch whitespace=-space-before-tab

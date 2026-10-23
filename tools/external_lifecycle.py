@@ -12,6 +12,7 @@ import tempfile
 import threading
 
 import free_model_probe
+import external_cancel
 import model_relay
 import reference
 import reference_lifecycle
@@ -38,7 +39,7 @@ def prepare(artifact, proof_name, worker_image, result):
     (artifact / "provider-gateway").chmod(0o555)
     shutil.copyfile(reference.ROOT / "tests/opencode-external/lifecycle-client.cjs", artifact / "opencode-flow/client.cjs")
     shutil.copyfile(reference.ROOT / "tests/opencode-external/lifecycle-client.cjs", artifact / "external-client.cjs")
-    for file in ["external_lifecycle.py", "provider_peer.py", "model_relay.py", "free_model_probe.py"]:
+    for file in ["external_lifecycle.py", "external_cancel.py", "provider_peer.py", "model_relay.py", "free_model_probe.py"]:
         shutil.copyfile(reference.ROOT / "tools" / file, artifact / file)
     discovery = {}
     for label, url in [("catalog", free_model_probe.CATALOG), ("pricing", free_model_probe.PRICES)]:
@@ -65,6 +66,8 @@ def prepare(artifact, proof_name, worker_image, result):
                                    "gateway_proof": proof_name, "gateway_proof_sha256": reference.sha(proof / "result.json"),
                                    "gateway_sha256": record["binary_sha256"], "selected": False,
                                    "scope": "Quiescent external inference only. Exact gateway pidfd exit before each capture; a fresh gateway for later inference. No in-flight external TCP restore."}
+    if result.get("probe") == "agent-cancel":
+        external_cancel.prepare(artifact, result)
 
 
 class Service:
@@ -93,6 +96,8 @@ class Service:
         if len(self.relay.records) < 2 or not all(row["passed"] for row in self.relay.records):
             raise ValueError("actual external inference is missing or failed; retain every attempt")
         records = sorted(self.relay.records, key=lambda row: row["number"])
+        if self.result.get("probe") == "agent-cancel":
+            external_cancel.require_exchanges(self.artifact, records, self.result)
         dropped = [row for row in records if row.get("injected_disconnect")]
         if not self.disconnect:
             if dropped or not all(row["delivered"] for row in records):

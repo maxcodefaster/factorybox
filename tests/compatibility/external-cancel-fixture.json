@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "files": {
+    "tests/devx-lifecycle/agent_cancel_linux_test.go": {
+      "before_sha256": "06b4fe5764d0daeef001583dd5e1121becfbf5ab460c6172d2186c8b8e822a2c",
+      "after_sha256": "95c6871e82a1f87edceca87a3a3f5fba0d5014744515110af7b3746f4f052041",
+      "before_file": "factorybox-external-cancel-inputs-599ab279185949f9b1d39c473e9e56d2/tests/devx-lifecycle/agent_cancel_linux_test.go",
+      "patch": "tests/compatibility/external-cancel-agent_cancel_linux_test.go.patch",
+      "patch_sha256": "c7859553e3f18aa1bae46e5401fd21ae1a88b79b119073a2e28db763a1e13748"
+    },
+    "tests/provider-fixture/fixture_linux.go": {
+      "before_sha256": "c90744662f3403801843689b081e62dad705eb4352b6e757b1ff602164513df7",
+      "after_sha256": "fa54c29889f940395e802d4673ae34104d9bf0e09cf6a78b2933739780ea55d3",
+      "before_file": "factorybox-external-cancel-inputs-599ab279185949f9b1d39c473e9e56d2/tests/provider-fixture/fixture_linux.go",
+      "patch": "tests/compatibility/external-cancel-fixture_linux.go.patch",
+      "patch_sha256": "298b1f730fafaf6afed6a66d7ca652b2d0ac3f7cee60bf7b12bbcfac089802bc"
+    },
+    "tools/provider_peer.py": {
+      "before_sha256": "f6e629c42897e937af13047966334ecd02eb7550c95b38f0fd62fec0c3fe5ae6",
+      "after_sha256": "506126356461076c8eb557c4182a2c706089390c07d0fda771b9015e7d5bee89",
+      "before_file": "factorybox-external-cancel-inputs-599ab279185949f9b1d39c473e9e56d2/tools/provider_peer.py",
+      "patch": "tests/compatibility/external-cancel-provider_peer.py.patch",
+      "patch_sha256": "570327654492f05033721a8a8c651c84a78e6bd164ec0c13a22a9b90684aa39a"
+    }
+  },
+  "scope": "Add an explicit real-provider cancellation path and continue-only gateway lease. Preserve the complete original local cancellation/continuation assertions, all lifecycle/recovery/independence checks, default 30-second local context and 420-second whole-case deadline. Actual external continuation gets 90 seconds, exact gateway exit before capture, dynamic original call/error and independent wire verification. Vet remains enabled."
+}

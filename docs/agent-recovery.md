@@ -54,3 +54,25 @@ The separate provider-fault component proof checks that an incomplete streamed
 tool call is recorded as not executed, that an inference retry is distinct from
 a tool execution, and that explicit new prompts work after a failed inference.
 Final package, external model and other release checks remain required.
+
+The separate real-provider cancellation case uses `--probe agent-cancel`, an
+explicit matching `--external-provider-proof` and the bounded Factory store.
+It interrupts the one actual foreground shell, confirms its process has ended,
+and retains the original structured error and actual provider tool-call ID.
+After a confirmed pause and worker replacement, it creates an independent
+checkpoint/fork. Both descendants must process a different explicit new prompt
+in the original session, quote the original error and finish without launching
+another tool. The fork continues after its recovered source has been deleted.
+
+The host checks the actual provider requests independently. Each continuation
+must contain its saved error as the original tool result, rather than receiving
+the error text in the new user prompt. The test retains the complete synthetic
+requests and responses. A lost response, extra inference, repeated tool, missing
+branch or mismatched call cannot qualify this case. Every optional gateway must
+exit before a later capture. The deterministic cancellation path and all its
+existing assertions remain separate.
+
+An interrupted process does not establish whether an outside mutation happened.
+Use the reconciliation procedure above before considering another mutation.
+Cancellation evidence cannot substitute for the separate uncertain-effect test
+or the final package's full acceptance.

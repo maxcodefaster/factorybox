@@ -76,7 +76,7 @@ func Exchange(ctx context.Context, directory string, request Request) (Reply, er
 	}
 	if request.Schema != 1 || !token.MatchString(request.Nonce) ||
 		(request.Phase != "attach" && request.Phase != "release") ||
-		(request.Operation != "arm" && request.Operation != "finish") ||
+		(request.Operation != "arm" && request.Operation != "finish" && request.Operation != "continue") ||
 		!token.MatchString(request.Target.RunOwner) || !token.MatchString(request.Target.Owner) ||
 		!sandbox.MatchString(request.Target.Sandbox) || request.Target.PID <= 1 ||
 		request.Target.Runtime == "" || request.Target.Created == "" {

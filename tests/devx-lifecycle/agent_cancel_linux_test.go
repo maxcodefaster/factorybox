@@ -24,6 +24,7 @@ type canceledAgent struct {
 	Launches   int    `json:"launches"`
 	ToolStatus string `json:"tool_status"`
 	CallSHA256 string `json:"call_sha256"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
 	ToolError  struct {
 		Type     string `json:"type"`
 		Message  string `json:"message"`
@@ -62,6 +63,7 @@ type canceledContinuation struct {
 	Launches           int    `json:"launches"`
 	ToolCallID         string `json:"tool_call_id"`
 	ContentSHA256      string `json:"content_sha256"`
+	ErrorSHA256        string `json:"error_sha256,omitempty"`
 	UserMessageID      string `json:"user_message_id"`
 	AssistantMessageID string `json:"assistant_message_id"`
 	IdleMessageID      string `json:"idle_message_id"`
@@ -85,13 +87,26 @@ func (f *fixture) canceledAgentOutput(view lifecycle.View, operation string) []b
 		}
 		anchors = append(anchors, file)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	duration := 30 * time.Second
+	external := os.Getenv("FACTORYBOX_DEVX_EXTERNAL_PROVIDER") == "1"
+	if external && operation == "continue" {
+		duration = 90 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
+	client := "/opt/factorybox/opencode-flow/cancel-client.cjs"
+	if external {
+		client = "/opt/factorybox/opencode-flow/external-cancel-client.cjs"
+		if operation == "continue" {
+			closeProvider := f.canceledExternalProvider(ctx, view)
+			defer closeProvider()
+		}
+	}
 	command := exec.CommandContext(ctx, "nsenter",
 		"--mount=/proc/self/fd/3", "--root=/proc/self/fd/4", "--wd=/proc/self/fd/4",
 		"--pid=/proc/self/fd/5", "--net=/proc/self/fd/6", "--user=/proc/self/fd/7",
 		"--setuid=0", "--setgid=0", "--", "/usr/local/bin/node",
-		"/opt/factorybox/opencode-flow/cancel-client.cjs", operation)
+		client, operation)
 	command.ExtraFiles = anchors
 	command.Env = []string{"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/root"}
 	output, err := command.CombinedOutput()
@@ -129,6 +144,9 @@ func (f *fixture) canceledAgent(view lifecycle.View, operation string) canceledA
 
 func (f *fixture) continueCanceledAgent(view lifecycle.View, saved canceledAgent) canceledContinuation {
 	f.t.Helper()
+	if os.Getenv("FACTORYBOX_DEVX_EXTERNAL_PROVIDER") == "1" {
+		return f.continueCanceledExternalAgent(view, saved)
+	}
 	output := f.canceledAgentOutput(view, "continue")
 	var observed canceledContinuation
 	decoder := json.NewDecoder(strings.NewReader(string(output)))

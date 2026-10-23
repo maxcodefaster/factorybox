@@ -5062,3 +5062,177 @@ complete package, bundle and image. This refreshes the selected core gate for
 the current CRIU component. It is not the complete ZDTM matrix, final worker
 acceptance, a PID-conflict repair or production qualification. The full goal,
 both historical causes and remaining release gates stay open.
+
+## Real-provider continuation after cancellation on the current worker
+
+The current worker is still
+`factorybox-build-worker-eef7eaea107d4feea182733019cbd4eb`; no production runtime
+or packaged component changes in this step. Read-only discovery
+`factorybox-free-model-discovery-541110171dc14822aaed958fe2b9de9a` confirms the
+explicit free pricing and protocol identity for `glm-5.3-flash-free`.
+The matching ordinary native gateway proof
+`factorybox-provider-gateway-c418e046b63a4991811df017b52d429a` passes. The separate
+pinned OpenCode 2.0.27 protocol proof
+`factorybox-external-opencode-95c58a67d29b464e884ec2d3e2d3870c` passes its actual
+foreground shell, private RAM/watch and model result/exit ingestion. That small
+probe does not claim a checkpoint or restore.
+
+The additive real-provider cancellation path keeps the deterministic client's
+original assertions. Its fixture compatibility declaration is
+`tests/compatibility/external-cancel-fixture.json`, with exact before/after and
+ordered patch hashes. The original inputs are retained in
+`factorybox-external-cancel-inputs-599ab279185949f9b1d39c473e9e56d2`.
+Only explicit external continuation gets a fresh `continue` gateway lease and
+a 90-second operation context. All other cancellation calls keep 30 seconds;
+the complete native case keeps its 420-second deadline. The host peer still
+checks exact sandbox ownership and actual helper birth, network namespace and
+confirmed pidfd exit. The local literal tool-ID and model-log assertions remain
+in their original path. The real path instead requires the actual dynamic
+call ID, durable structured error, original process exit, independent new
+prompts and actual error acknowledgement. Independent host verification checks
+that the error reached the provider as the original tool result, rather than
+being supplied in the new user prompt.
+
+All six portable gates pass in
+`factorybox-checks-fd9831da98c64253a90aad6fa2d7a5c9`, including 233 Python tests,
+the negative wire-input cases, gateway continuation lease checks, reference and
+fixture verification and enabled Go vet.
+
+The first full attempt,
+`factorybox-consumer-worker-loss-61eed6ca5db348adbcafa180cb582167`, uses an
+incorrectly chosen 8-GiB test store instead of this full case's earlier 32 GiB.
+The actual model/tool interruption and committed pause pass. Recovery fails
+while copying private images with ENOSPC. This is a failed overall attempt,
+not a passed low-disk safety test. Lossless replacement
+`factorybox-storage-repack-730576f905d64c2796461a2731a413f1` retains all
+8,590,983,168 original archive bytes after complete decompression verification.
+Its encoding is 1,130,514,152 bytes. The original result remains failed.
+
+The complete 32-GiB attempt,
+`factorybox-consumer-worker-loss-a53c1101a9424fba8fc173c7e7a34ae7`, uses identical
+native test bytes. Both native phases pass, taking 67.14 and 135.73 seconds.
+They preserve the actual canceled tool/session through committed pause, a
+distinct worker epoch, exact recovery replay and an independent checkpoint/fork.
+The recovered parent and the fork each acknowledge their saved tool error in
+a new prompt without another tool launch. The fork does so after deletion of
+its recovered source. All three optional gateways are released and both
+workers are removed.
+
+The complete parent verdict remains **failed**. Actual provider exchanges 2
+through 6 return HTTP 429 with `Endpoint is unavailable`. OpenCode retries the
+same inference request byte for byte; successful exchanges 7 and 8 then serve
+the two independent new prompts. All eight attempts are retained. The default
+acceptance guard rejects the provider failures; the same eight records cannot
+qualify the required clean three-exchange case. This is evidence of the actual
+native continuation through an observed provider outage, not a passed complete
+external acceptance or a reason to discard failed attempts. No model/version
+switch or mutating prompt retry is introduced. The complete failed store is
+preserved. Clean external acceptance, abrupt replacement, uncertain outside
+effects and all other first-release gates remain open. The full goal remains
+active and production qualification is false.
+
+To preserve the pre-run storage reserve, maintenance
+`factorybox-passed-admission-retirement-44b20798dc7c4e289ea7ca7638996645` retires
+only eight obsolete passing admission stores. Every former named assertion is
+present in the stronger retained complete three-repetition original-binary
+proof. Maintenance
+`factorybox-passed-worker-loss-retirement-6789c53462dc4601bc50315434484c43`
+similarly retires three obsolete passing worker-loss stores and retains the
+later complete twelve-test store. Each original stream is fully decompressed
+and hashed before retirement; every member header and file hash plus selected
+diagnostic contents remain. Original source, component/build inputs, native
+results and logs are unchanged. Those eleven obsolete complete stores are
+intentionally no longer reconstructable. The original unresolved EBUSY and PID
+stores, selected stronger proofs and both new cancellation failures remain.
+
+The full 32-GiB cancellation failure is losslessly retained by
+`factorybox-storage-repack-2ea7c3caf1e1493f97b65727d2bf83b8`: all 34,360,786,944
+original bytes are verified before the old encoding is removed; the new
+encoding is 1,315,496,047 bytes. Both new native failure verdicts stay false.
+Evidence verification is
+`factorybox-external-cancel-notes-988288fc703a42959a66a5d6da22225a`. Its scope is
+verification of actual phase results, exact inference retries, error ingestion,
+resource cleanup and preservation of failed provider acceptance. It does not
+qualify either failed overall attempt.
+
+Additional maintenance
+`factorybox-storage-retirement-fc2245f11e394b7d94365b78ec3a259b` fully verifies
+and retires only the old `7bf56d0e` 90-second preparation-fixture timeout store.
+The already passing complete `19cdf028` replacement on the same D724 package
+uses the declared 180-second full-tree retirement bound, preserves all original
+Factory/Theia/agent/successor assertions and records actual retirement at
+175.778 seconds followed by exact replay. The old failed result, source, logs,
+separate timeout diagnostic and complete member/hash inventory remain; that
+superseded complete 32-GiB store is intentionally no longer reconstructable.
+This does not retire the original PID, EBUSY or caught-signal failures, either
+new cancellation failure, or waive the final EEF consumer/retirement acceptance.
+
+`factorybox-passed-pre-signal-retirement-2a9a9c9601364ffbb33399f806b53f25`
+likewise verifies and retires only the old passing `f9fc7488` admission store.
+The retained `ef76c4cb` full seventeen-test admission proof uses the same
+selected Sysbox binaries, the current signal-capable CRIU and every old named
+assertion. Both frozen source/component inputs and native results/logs remain;
+the obsolete old complete store is intentionally no longer reconstructable.
+After maintenance, allocated generated artifacts are 25,686,261,760 bytes, below
+the pre-run threshold with eight GiB headroom. Host reserve checks also pass.
+
+## Clean planned and abrupt real-provider cancellation acceptance
+
+The separately identified clean complete cases both pass on the unchanged EEF
+worker and identical native test executable:
+
+- `factorybox-consumer-worker-loss-ca5642913ab742a89b57aa385e3d5cdb`, planned
+  replacement, has three actual HTTP-200 provider exchanges. The prepare and
+  recover tests take 75.62 and 95.35 seconds.
+- `factorybox-consumer-worker-loss-5fbcbf7dc7774800b4242e0cf465a591`, actual
+  abrupt loss after its confirmed pause, also has three actual HTTP-200
+  exchanges. The recovery test takes 82.64 seconds. The preparation deliberately
+  waits after publishing its completed pause so the controller can kill that
+  exact worker; it is not reported as an ordinarily returned Go test.
+
+Both complete parent verdicts, cleanup and unchanged global settings pass.
+Each requires two distinct worker epochs, exact recovery replay, the original
+canceled tool/session/error, an independent checkpoint/fork, separate new
+prompts in both descendants, and useful branch work after source deletion.
+The actual launch count remains one in each descendant. The wire verifier
+checks both original tool-result IDs and error contents independently. All
+three optional gateways in each case have confirmed exits; both workers and
+the exactly owned volume are absent after cleanup. No failed attempt is
+discarded or relabeled.
+
+`factorybox-external-cancel-complete-8277bb2a417a47059a20cc6e1a4e40a2` verifies
+both complete frozen sources, native inputs, raw provider responses and their
+exact request/error checks. It also revalidates the independent identical EEF
+and `85fa866c` packages and image. Both cases use native executable SHA-256
+`b4354d84eb4ef0ef9f2cbfcc0e6684f6e9991a49ab9df990fb8c3c36c12d690f`, packaged
+CLI `42381f1aaf7696d14ebd62ed296ed57329c718c026054aa27e93f21d05183566` and
+CRIU `6263dd24728ecb8350486ca829c8776e27f62090bd493f6c733d02d0e7f836d0`.
+The compatibility-input verification additionally proves the original complete
+native cancellation test body is byte-identical and the original local
+continuation body is byte-identical except for dispatch to the additional
+explicit external case.
+
+This closes the actual external cancellation/new-prompt case on the current
+candidate for both loss modes. The real-model uncertain-outside-effect case,
+remaining ordinary external/final-package acceptance, PID and busy-mount causes,
+broader operations/storage requirements and the complete first-release goal
+remain open. These development cases are not the predetermined final regular
+series, a latency distribution or production qualification. The goal and saved
+parallel-chat handoff remain byte-identical.
+
+After the clean replacements pass, maintenance
+`factorybox-storage-retirement-605d8ed628704450b398f7cbd0f625b8` fully decodes and
+hashes the superseded `a53c1101` provider-outage store before retiring its
+1,315,496,047-byte encoding. All eight actual request/response bodies, original
+failed result, source, native logs and exact-retry verification remain. The
+complete obsolete store is intentionally no longer reconstructable. The
+earlier 8-GiB ENOSPC store, original rare-PID/EBUSY/caught-signal stores and clean
+replacement proofs remain available. Failed verdicts and the full goal do not
+change.
+
+Final portable verification is
+`factorybox-checks-c6b49eaf04c64b61b9333fc918956e36`: all six gates, 233 Python
+tests, enabled Go vet, unchanged reference/fixture checks and the staged diff
+check pass. The existing per-file patch-context whitespace convention now also
+covers the two new byte-pinned Go patches; production source whitespace checks
+remain enabled.

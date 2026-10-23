@@ -1,0 +1,11 @@
+--- a/tools/provider_peer.py
++++ b/tools/provider_peer.py
+@@ -42,7 +42,7 @@
+     def target(self, request):
+         target = request.get("target", {})
+         if (request.get("schema") != 1 or not TOKEN.fullmatch(request.get("nonce", "")) or
+-                request.get("phase") not in {"attach", "release"} or request.get("operation") not in {"arm", "finish"} or
++                request.get("phase") not in {"attach", "release"} or request.get("operation") not in {"arm", "finish", "continue"} or
+                 target.get("run_owner") != self.owner or not TOKEN.fullmatch(target.get("owner", "")) or
+                 not SANDBOX.fullmatch(target.get("sandbox", "")) or type(target.get("pid")) is not int or target["pid"] <= 1):
+             raise ValueError("provider request lacks its exact native target")
