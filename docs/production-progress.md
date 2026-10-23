@@ -3659,3 +3659,84 @@ sleep's own PID is 2, but the observed mechanism alone does not prove a group
 or session reservation caused that restore failure. The next reproduction
 needs the actual requested-ID, namespace and holder observations. No restore
 repair, final native qualification or production readiness is claimed.
+
+## Historical replay stops at lost archive metadata
+
+Inventory `factorybox-pid-replay-inventory-d7902aad38274a7fbd33de0c09d3aad9`
+fully decodes and verifies all 12,155,092,992 bytes of the original PID-failure
+archive. Its 216,799-entry index identifies a closed selection of the failed
+fork, target record and original immutable base: 2,719,848,203 logical payload
+bytes, with every selected hardlink target inside that selection. No original
+archive, source, result or failure verdict changes.
+
+Three isolated historical replay attempts remain failed:
+
+- `factorybox-pid-historical-replay-3350530c1e2e4fd0b55568f994be3fcf`
+  stops at unpacking because the old image has libzstd but no zstd executable.
+- `factorybox-pid-historical-replay-9e6686e71400455c8064d923f768ca7d`
+  fully verifies the encoded and decoded original archive through its pinned
+  libzstd, then fails before the test because the new fixture made the worker
+  root read-only. The original manager needs its container-local sub-ID files.
+- `factorybox-pid-historical-replay-66a6a85f253c49cbba78c88eeff325e5`
+  corrects that fixture setting and starts the original Sysbox services. The
+  unchanged original filesystem digest rejects the reconstructed lower tree
+  after 8.68 seconds. No restore is attempted. Its fresh mount/cgroup-record
+  setup exists only in a disposable test copy; no production retry or identity
+  rule is relaxed.
+
+The archive itself proves one concrete metadata loss. The immutable-base
+record saves its root mtime as `1792654540440218967` ns. The original tar header
+contains `1792654540000000000` ns and no PAX headers. This difference is an input
+to the original tree digest. The archive preserves its recorded tar bytes, but
+those bytes cannot establish reconstruction of the original filesystem metadata.
+Whole-stream compression verification never established that stronger property.
+The original PID-failure archive remains complete and unchanged; its lost
+subsecond metadata cannot be recovered from that tar.
+
+The stopped-volume archive command previously omitted PAX, xattrs and ACLs.
+Its existing real-GNU-tar round-trip regression now includes nonzero nanosecond
+mtimes, hardlinks, a symlink and a binary user xattr, retaining every original
+byte/size/mode assertion. The unchanged old command fails three timestamp
+subtests and loses the xattr in
+`factorybox-archive-metadata-red-9d25e0e917034802b13d8de695d0abbc`.
+The corrected command passes the same test in
+`factorybox-archive-metadata-green-e78f256ffaa645c8b3718efd68075adf`.
+
+New archives use PAX with numeric owners, sparse files, all xattr namespaces
+and POSIX ACLs. The exact-owned, stopped, read-only volume helper retains its
+1-CPU/1-GiB limits and gains CAP_SYS_ADMIN to read trusted xattrs. There is no
+host configuration change. The complete archive stream is still hashed and
+verified before owned cleanup, with the existing disk caps unchanged.
+
+Native probe `factorybox-archive-metadata-native-f70b0ab177b54e509bf356eddda60436`
+passes through the actual container archive helper and a separate fresh volume.
+All eight entries have identical content and metadata, including fractional
+mtimes, numeric UID/GID, modes, hardlink topology, symlink, FIFO, character
+device 0:0, an 8-MiB preallocated store, user/trusted xattrs, file capabilities
+and access/default ACLs. Exact cleanup and unchanged global sysctls pass.
+The first native fixture attempt, `2dbc8bceeb784c139a18759602faa5ae`, remains
+failed: it used a hash helper absent from the image's Python. The corrected
+fixture streams the same hash and corrects its own eight-entry count.
+This covers the named file types and metadata, not Unix socket-node export or
+preservation of kernel mount/cgroup/inode identities. This diagnostic tar is
+not a newly qualified production recovery format.
+
+All six portable gates pass in
+`factorybox-checks-d9f38c3cacae4015b995ddf37c104130`.
+`factorybox-archive-metadata-notes-d5fc7f4fe63e4ae78c7a74a695a70888` binds the
+red/green regression, native metadata match, failed replay inputs and complete
+archives, and the actual original tar-header mtime after another full decode.
+
+Lossless repacks `6b3bffb6ccf543e6a59f28aa9d134ba1` and
+`a3ad1fbd6c0443eca751dc378b45b6e2` preserve both reconstructed failed stores.
+Maintenance `a5ad0d1fe3d2408ca75959a68cd3c584` and
+`fd6c94f692a84380a729802821d0136a` also verify complete decompression before
+encoding closed generated test executables and offline metadata, including the
+inventory index. All four operations reclaim 1,253,218,748 allocated bytes
+without retiring any archive payload or changing a result. Encoding receipts
+reconstruct every original byte; future inventory readers must use that receipt.
+
+The rare restore PID collision is still unexplained. A future original-state
+claim needs a faithful new capture; an explicitly metadata-limited diagnostic
+of the old process images would not qualify the complete original lifecycle.
+The selected worker and all other first-release requirements remain unchanged.

@@ -157,12 +157,21 @@ def archive_stopped_volumes(archive, name, owner, volumes, image, result, *, tim
             "--label", "com.factorybox.run=" + owner, "--network=none",
             "--cpus=1", "--memory=1g", "--memory-swap=1g", "--pids-limit=16", "--read-only",
             "--log-driver=none",
-            "--cap-drop=ALL", "--cap-add=DAC_READ_SEARCH", "--security-opt=no-new-privileges",
+            # Reading trusted.* xattrs requires CAP_SYS_ADMIN. The helper
+            # only archives its ownership-checked, stopped, read-only volume.
+            "--cap-drop=ALL", "--cap-add=DAC_READ_SEARCH", "--cap-add=SYS_ADMIN",
+            "--security-opt=no-new-privileges",
             "--mount", f"type=volume,source={volume},target=/input,readonly",
             "--entrypoint", "/bin/tar", image, "--numeric-owner", "--sparse",
+            "--format=pax", "--xattrs", "--xattrs-include=*", "--acls",
             "--blocking-factor=2048",
         ]
         command += ["-C", "/input", "-cpf", "-", "."]
+        result.setdefault("failed_volume_archive_format", {})[volume] = {
+            "format": "pax", "nanosecond_mtimes": True,
+            "extended_attributes": "all", "posix_acls": True,
+            "hardlinks_and_sparse_files": True, "kernel_identities_preserved": False,
+        }
         try:
             maximum = archive_file_limit(archive)
             result.setdefault("archive_file_limits", {})[volume] = maximum

@@ -31,7 +31,13 @@ class BatsEvidenceTests(unittest.TestCase):
                     stream.seek(offset)
                     stream.write(bytes(range(256)) * 2)
             payload.chmod(0o600)
-            os.utime(payload, (1700000000, 1700000000))
+            os.setxattr(payload, "user.factorybox-evidence", b"saved\x00metadata\xff")
+            os.utime(payload, ns=(1700000000123456789, 1700000000987654321))
+            hardlink, symlink = source / "hardlink", source / "symlink"
+            os.link(payload, hardlink)
+            symlink.symlink_to(payload.name)
+            os.utime(symlink, ns=(1700000010123456789, 1700000010987654321), follow_symlinks=False)
+            os.utime(source, ns=(1700000020123456789, 1700000020987654321))
             original = hashlib.sha256(payload.read_bytes()).hexdigest()
             def docker(args):
                 if args[:2] == ["volume", "inspect"]:
@@ -52,11 +58,23 @@ class BatsEvidenceTests(unittest.TestCase):
                     mock.patch.object(upstream_bats.subprocess, "run", side_effect=save):
                 upstream_bats.archive_stopped_volumes(archive, name, owner, [volume], "image", result)
             row = result["failed_volume_archives"][volume]
-            run(["tar", "-xpf", str(archive / row["file"]), "-C", str(restored)], check=True)
+            run(["tar", "--xattrs", "--xattrs-include=*", "--acls", "-xpf",
+                 str(archive / row["file"]), "-C", str(restored)], check=True)
             copy = restored / payload.name
             self.assertEqual(copy.stat().st_size, payload.stat().st_size)
             self.assertEqual(copy.stat().st_mode, payload.stat().st_mode)
-            self.assertEqual(copy.stat().st_mtime_ns, payload.stat().st_mtime_ns)
+            with self.subTest(metadata="file nanosecond mtime"):
+                self.assertEqual(copy.stat().st_mtime_ns, payload.stat().st_mtime_ns)
+            with self.subTest(metadata="directory nanosecond mtime"):
+                self.assertEqual(restored.stat().st_mtime_ns, source.stat().st_mtime_ns)
+            with self.subTest(metadata="symlink nanosecond mtime"):
+                self.assertEqual((restored / symlink.name).lstat().st_mtime_ns, symlink.lstat().st_mtime_ns)
+            with self.subTest(metadata="extended attribute"):
+                self.assertEqual(os.getxattr(copy, "user.factorybox-evidence"),
+                                 os.getxattr(payload, "user.factorybox-evidence"))
+            self.assertEqual((restored / hardlink.name).stat().st_ino, copy.stat().st_ino)
+            self.assertTrue((restored / symlink.name).is_symlink())
+            self.assertEqual(os.readlink(restored / symlink.name), payload.name)
             self.assertEqual(hashlib.sha256(copy.read_bytes()).hexdigest(), original)
             self.assertEqual(hashlib.sha256(payload.read_bytes()).hexdigest(), original)
 
