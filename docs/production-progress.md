@@ -3133,6 +3133,62 @@ It does not reclaim old physical storage. Other new-work budgets, verified epoch
 retirement, the two unexplained historical defects and final-package acceptance
 remain open. Production qualification remains false.
 
+## Predetermined complete Factory PID diagnostic sequence
+
+`tools/restore_collision_probe.py` now accepts an explicit frozen CRIU base
+lock, verified already-tested consumer helpers and the bounded-store setting.
+Its unchanged CRIU loader still requires the complete current CRIU recipe to
+match that frozen base. The lock and runner are copied and hashed in the new
+sequence. The original one-to-ten bound, first-failure stop, all full lifecycle
+assertions and independent owned resources remain. The result additionally
+checks the delivered CLI and requested store capacity. No production runtime
+or CRIU behavior changes.
+
+`factorybox-build-consumer-tests-7e4500546355429997281f677807f25d` freezes the
+exact helper bytes of complete passing native proof
+`factorybox-consumer-worker-loss-21efb535c9f74b168f9f0e961b2ba5fd` for worker
+`ef7dcbe22aae4169a4642bb8df935f53`. Compressed helpers are fully decoded and
+hash-verified into this new immutable build. Each future case verifies the
+complete original source tree and shares only these read-only inputs; workload
+stores and processes remain independent.
+
+Sequence `factorybox-restore-collision-probe-f112407045fc455fa559fd7cf54b454f`
+declares ten full Factory lifecycles before its first case. It uses the same
+32-GiB bounded worker, separate Theia, local OpenCode fixture and read-only CRIU
+collision diagnostics. The 3-CPU/3-GiB worker, 1-CPU/768-MiB Theia, two-sandbox
+limit and 420-second native lifecycle deadline remain. It stops on the first
+failed case and retains that failure; successful cases do not identify the
+historical occupant or qualify a repair. This is a diagnostic sequence, not the
+final regular acceptance series or a latency comparison. At this checkpoint,
+the first three cases have passed with cleanup:
+`factorybox-consumer-worker-loss-59c7b2a7f6fd42cabea6cdbcd2ecab5c`,
+`factorybox-consumer-worker-loss-5186cc6c2bfa418aa4c977d5ce8ca0fc` and
+`factorybox-consumer-worker-loss-9f2aab9132f84c8c839f7f564a69a43b`.
+The sequence remains active; its result/rows are authoritative for later cases.
+All six portable gates pass for the driver change in
+`factorybox-checks-4271fe4b28d141b487b270ba9c5914c8`.
+
+Offline inspection
+`factorybox-failure-inspection-164efc81407543f4bce00de2221e8ebf` verifies all
+12,155,092,992 decoded bytes of the original collision archive again and retains
+only `ids-1169.img` and `core-1169.img`. They identify an alive multithreaded
+`MainThread` init with own TID 1 in PID namespace image 17. The known sh init
+1328 has own TID 1 in namespace image 24. Thus the original has two distinct
+inner PID namespaces, a feature absent from the previous reduced control.
+`factorybox-pid-sibling-namespace-fc8fb432e79f46ef9033f2c20a9c29a9` contains a
+prepared, not yet executed private extension with a sibling multithreaded init
+owning TID 2. Its pending-native receipt requires the active full sequence to
+finish before a new native run. No result or PID correction is claimed for
+that prepared source.
+
+Before this sequence, maintenance
+`factorybox-storage-compact-pid-tests-f897c0dc608b4e8f8d58286a33dda4c4`
+reclaims 59,478,016 allocated bytes by completely decoding/verifying seven
+closed generated test executables before replacing their raw encodings.
+All source, original results/logs, selected unresolved failures and reconstruction
+receipts remain. The initial-release goal and both unexplained failures remain
+open; production qualification is false.
+
 ## Initial local release scope agreed on 2026-10-23
 
 The user approved a controlled first release on the existing Linux AMD64 host,
