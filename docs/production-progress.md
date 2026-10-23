@@ -4975,3 +4975,90 @@ are outside this inventory. An empty observed set cannot exonerate the runtime.
 The original busy mount and rare PID conflict remain unresolved. No production
 runtime code, upstream assertion, imported overlay or release scope changes;
 the full first-release goal remains active and unqualified.
+
+## Focused Proc repetition and observation after failure only
+
+The diagnostic runner now has an explicit `--focus-proc` mode. Both original
+`TestProcDirectoryAdmissionNative` cases run twenty times, preserving the held
+case immediately before the transient case, every assertion and the original
+immediate unmount. All eleven adapter tests still run once. Its exact expected
+inventory is 31 top-level and 101 subtest passes. This focused selection is
+not the full six-test main admission suite or the final acceptance series.
+
+`factorybox-historical-admission-3efc5930914a47f6b36f4f8a72ab00eb` passes that
+complete inventory on the byte-identical original test/CLI/components. The
+749,989 kernel events have zero error and miss counters. All 80 original-test
+unmounts, comprising source and fork cleanup, return zero. The complete
+3,169,845,248-byte store is fully verified before compression; its original
+SHA-256 is `607c1aa2a8aaa55627eddf6afc54631c7cfe6e43e54d8697c4a12fccc2bc6039`.
+Cleanup, immutable inputs and global sysctls checks pass. The original EBUSY
+is not reproduced.
+
+To reduce observation before failure, build
+`factorybox-historical-busy-observer-53cb0072f0814550a8cfcd3d82002551` first
+rebuilds the untouched historical context. Its binary exactly reproduces
+`4e516bc7ccc8f02c4d5c780c2b7d64b55ec335016abebc35e6286291158969db`.
+It then applies only the already declared
+`tests/compatibility/busy-overlay-diagnostic.patch`, adds its read-only helper
+and a separate deliberate fault-control test. The existing production fixture
+declaration supplies the engine-test before/after hashes. Every original
+production source and assertion remains intact, with explicit vet enabled.
+The diagnostic binary SHA-256 is
+`9d2ac535a4fae674c5a49025544cb338d02bbc93e75100e5014cf51be3e68c55`.
+This is a diagnostic test binary, not a new production worker.
+
+Deliberate control
+`factorybox-busy-observer-control-571c9b5b1ed945cfaa679abc8dc96fdf` holds an
+owned O_PATH across the original immediate unmount. Its native parent remains
+failed with exit 1. A separate evaluation verifies that the post-failure report
+finds exactly PID 130, FD 7 and mount 786, with the expected O_PATH flags and
+rootfs target. Closing that exact reference and then normally unmounting the
+control succeeds. The separate evaluation passes observation coverage only;
+it does not reinterpret the original assertion or the historical failure.
+
+`--busy-observer-build` accepts only a completed build that reproduces the
+original binary, passes vet and preserves the exact source inventory outside
+the three declared test files. It verifies the engine-test bytes differ only
+by the post-failed-unmount call. A changed production source, original
+assertion, binary, baseline result or missing vet proof is rejected.
+
+Without any kernel tracer,
+`factorybox-historical-admission-937991bac29c49618b7dbaac391fc3d2` passes the
+same twenty repetitions and complete 31/101 inventory on this declared
+diagnostic binary. No busy-overlay report is generated. The complete
+3,167,748,096-byte store is fully verified before compression, original SHA-256
+`a4ea5630e151632125d8029d7a395b30b4fd3a701f29c3eee5e742ef8f8b85d5`.
+Inputs, global sysctls and exact cleanup pass. This does not establish whether
+the previous continuous tracing affected reproduction probability. During
+the first archive, the normal eight-GiB headroom guard rejects a new build;
+that build starts only after verified compression finishes.
+
+All six portable gates pass in
+`factorybox-checks-8cbe2269976840e594878846d873a05a`, including 230 Python tests,
+the negative observer-build controls, reference/fixture checks and Go vet.
+The combined verification is
+`factorybox-proc-observer-notes-db4214b02d084947921532c3e44ab31d`. It preserves
+two failed analysis attempts: an older run lacks later optional metadata fields,
+and forty Proc subcases perform eighty source/fork unmounts. The corrected
+analysis verifies the actual frozen binaries and all eighty events; native
+results are unchanged. Neither focused run attributes the original busy mount.
+
+## CRIU core gate on the current packaged component
+
+`factorybox-criu-core-1ca92c87ed0a4ee7a902c85a2d790fcf` passes all eighteen
+existing selected ZDTM C cases with two actual dump/restore cycles and their
+original final assertions. All 1,030 upstream test files remain unchanged.
+The native Linux AMD64 kernel/page-size checks, zero hugepages before/after,
+owned archive and complete cleanup pass. The tests run in the existing private
+native fixture with `/proc/sys/vm` read-only; no host tuning is performed.
+
+The tested CRIU SHA-256 is
+`6263dd24728ecb8350486ca829c8776e27f62090bd493f6c733d02d0e7f836d0`, from
+`factorybox-build-criu-retained-a3a1bd4425e9455fb58416e2af4d5315`. Combined
+verification above reads every archived per-case result, requires both cycles
+and final exit zero, and matches these bytes to current worker
+`factorybox-build-worker-eef7eaea107d4feea182733019cbd4eb` after verifying its
+complete package, bundle and image. This refreshes the selected core gate for
+the current CRIU component. It is not the complete ZDTM matrix, final worker
+acceptance, a PID-conflict repair or production qualification. The full goal,
+both historical causes and remaining release gates stay open.
