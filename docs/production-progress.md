@@ -3740,3 +3740,115 @@ The rare restore PID collision is still unexplained. A future original-state
 claim needs a faithful new capture; an explicitly metadata-limited diagnostic
 of the old process images would not qualify the complete original lifecycle.
 The selected worker and all other first-release requirements remain unchanged.
+
+## Historical process-image diagnostic and stale-observation refusal
+
+`factorybox-pid-image-diagnostic-d8c668af512b4e5bbf2197dfb751ef05`
+reaches CRIU and restores the preserved process images successfully in
+1.992 seconds. It verifies all 330 original prepared image/metadata files,
+515,577,040 bytes, against the original preparation record before restoration.
+The original Go runtime and old Sysbox components run in a new owned private
+worker; only CRIU gains the previously built read-only PID diagnostics. The
+original boot is checked. The restored target is observed, deleted by its exact
+runtime identity, and its owned overlay and alias are unmounted. Exit 0, no
+skips, exact outer cleanup, unchanged input hashes and unchanged global sysctls
+pass.
+
+This diagnostic deliberately does not reconstruct the original complete
+filesystem metadata. The unchanged original digest still rejects its lower
+tree, and that refusal is retained in the result. Fresh mount/cgroup/start
+identities exist only in the disposable record. The original disk manifests,
+strict replay, archived source and production guards are unchanged. Successful
+restoration here does not reproduce or fix the original PID collision and does
+not qualify a complete lifecycle.
+
+Earlier observations remain visible, including one rejected green result:
+
+- `factorybox-pid-image-diagnostic-92bde3ad71324e7ca4de4322a4f62e4e`
+  fails before restore. Its new test hashes the formatted intent file rather
+  than `json.Marshal(intent)`, which the original runtime uses. Corrected
+  attempts retain the canonical intent check and all 330 file assertions.
+- `factorybox-pid-image-diagnostic-d786db92682440f99d39ed06ce220d19`
+  records a passing result and claims reproduction, but that verdict is
+  rejected. The runtime actually refuses an uncaptured external bind before
+  CRIU. The test mistakenly reads the historical `restore.log` copied with the
+  images. Its bytes are the original 1,215-byte failure log, SHA-256
+  `182835efdd4a361bec21b2b4a34273600d6b05391352db8bc8312d3459205065`.
+  The saved result is not rewritten or counted as successful reproduction.
+- `factorybox-pid-image-diagnostic-b31be3a5bb644294b0fa7eac56ca35d7`
+  fixes the fixture's Sysbox-fs path to the original `/var/lib/sysbox/store/fs`.
+  It saves the copied historical log outside the image directory, removes only
+  that private copy and requires absence before attempting restoration. It
+  correctly fails with `new_restore_log=false`: the unchanged runtime refuses
+  the copied old `restore-work` directory before CRIU can create a new log.
+- The successful `d8c668af` diagnostic preserves that old work directory by
+  renaming it inside the new owned copy after verifying it is not a separate
+  mount. It requires the original path to be absent and a new restore log to
+  exist. That fresh log has no PID collision. Nonfatal address-configuration
+  messages and image-readability warnings remain visible; success is established
+  by the unchanged runtime's completion and observed live target, not by
+  filtering those messages.
+
+`factorybox-pid-image-input-proof-3e8998c578e34c009ba0278c6bbbab22`
+binds only the corrected daemon-startup and 330-file preparation phases of the
+failed `b31be3a5` attempt. It explicitly does not call that complete attempt a
+passing replay. This narrowly verified replacement permits retirement of two
+superseded fixture-only volume copies: the old read-only-root startup failure
+`9e6686e7` and the formatted-intent-hash failure `92bde3ad`. Receipts
+`factorybox-storage-retirement-d1674351b3b2477d88505680d5838747` and
+`factorybox-storage-retirement-ce21098678b34934bfbf2958d2a2bbd1`
+verify complete decompression, retain every member header and regular-file
+hash plus selected small controller/image diagnostics, and retain all original
+source, results and logs. Their old full diagnostic volumes intentionally
+become unreconstructable. The original PID failure, strict metadata-loss replay
+`66a6a85f` and latest fresh-log refusal `b31be3a5` keep their complete archives.
+
+Storage maintenance also retains byte-for-byte reconstruction receipts:
+
+- Repacks `852d9858fd79408798c771c48f69a0f2` and
+  `a0d065902d8c499299723f75124ceba0` verify the complete new failed-store tar
+  streams before replacing their encodings. The first is subsequently retired
+  with the explicitly superseded fixture above; the second remains complete.
+- `factorybox-storage-compact-historical-tools-3ad821d782374a53b3b978829e58dd6d`
+  compacts 46 groups at 247 closed unselected paths, verifies every full decoded
+  payload and shares identical encodings. Original results are unchanged;
+  selected failure inputs and component builds stay directly available.
+- `factorybox-storage-compact-test-caches-c20d9f82a26d4139a3a154d86ab44af1`
+  archives seven closed OpenCode output caches. All 4,910 entries, file hashes,
+  numeric ownership, modes and nanosecond mtimes are checked before removal;
+  the full 155,432,960-byte tar is verified. All cache bytes remain
+  reconstructable. Earlier maintenance errors are recorded, including a partial
+  removal of 697 already-verified leaves before a directory-permission failure;
+  the resumed operation revalidates the archive and remaining files. This changes
+  no consumer input, source, result or session observation.
+- Closed diagnostic executables and the cache manifest are encoded with complete
+  verification. Two more completed source-sharing plans are encoded in
+  `factorybox-storage-compact-source-plans-ea437591e58540d288fde34ea3f9c38d`.
+  Readers must use their encoding receipts, as for the earlier inventory index.
+
+Unselected worker `factorybox-build-worker-2d7d95abaad440e4bffefc96ab2d9f08`
+assembles CRIU `a3a1bd44` with the current Sysbox SHM correction. Its package
+SHA-256 is `2044248c688e2044d364d8bd23465d2746ae93e5e8861a25240f5b605fef02dd`
+and image ID is
+`sha256:7c2b3df2900fa63464c2a2ede733a9e69352a7aad7b83538ece44d769be2e7f7`.
+Its CLI is byte-identical to selected worker `ef7dcbe2`; the CRIU diagnostics
+change the package and image identities. It is an instrumented candidate, not
+the selected release or an independent reproducibility proof.
+
+Full bounded Factory/Theia/OpenCode lifecycle diagnostic
+`factorybox-consumer-worker-loss-0d9e6e93ae2044f0b953efe2e4c8bdfd`
+passes all original lifecycle assertions on these bytes. The native developer
+test takes 153.69 seconds, including a fork of the resumed source and retention
+of the same external Theia connection. Its earlier independent Theia admission
+`factorybox-theia-admission-863808c27e684531aa8872589ec28ee7`
+passes. Exact cleanup and unchanged inputs/global sysctls pass. This one
+diagnostic has a 32-GiB bounded store and the existing resource/deadline limits;
+it is not a worker-replacement case or a member of the final predetermined
+acceptance series. No PID collision is observed.
+
+`factorybox-pid-image-diagnostic-notes-7a21ef109db64613a7e252ff65e74b08`
+binds the failed/rejected/successful observations, source and artifact hashes,
+retention receipts and new unselected worker. The original PID cause, busy
+mount attribution, remaining admission/manual retirement, final external-agent
+and operations/package acceptance requirements remain open. The goal remains
+active and production qualification remains false.
