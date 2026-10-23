@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "file": "tests/devx-lifecycle/opencode_flow_linux_test.go",
+  "before_sha256": "242bd96138f257e9a0617af9c09abc29d266fa7a94aae2f54e5e4b8d64456114",
+  "after_sha256": "b7bb2ff10b46af03c7bfe3ab47e2963f76595c6fa339c2169bfc5bc26469b6e4",
+  "patch": "tests/compatibility/external-effect-gateway.patch",
+  "patch_sha256": "622cbe3490b15244efcde8b4f025b7ea3c728ef71dd8fd01c2bb3cef4b578b90",
+  "anchor": "\toptions := []string{",
+  "insertion": "\tif external && os.Getenv(\"FACTORYBOX_DEVX_EXTERNAL_EFFECT\") == \"1\" {\n\t\tcloseEffect := f.externalEffectProvider(ctx, view, operation)\n\t\tdefer closeEffect()\n\t}\n",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Patch only a new combined-consumer source copy. Add a second independently owned effect-only gateway beside the original inference lease. Preserve every original native/client assertion, context, namespace anchor and confirmed exit before capture. Keep the 420-second complete deadline and vet enabled. The root production-declared fixture stays byte-identical."
+}

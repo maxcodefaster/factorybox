@@ -25,5 +25,16 @@
       "patch_sha256": "570327654492f05033721a8a8c651c84a78e6bd164ec0c13a22a9b90684aa39a"
     }
   },
-  "scope": "Add an explicit real-provider cancellation path and continue-only gateway lease. Preserve the complete original local cancellation/continuation assertions, all lifecycle/recovery/independence checks, default 30-second local context and 420-second whole-case deadline. Actual external continuation gets 90 seconds, exact gateway exit before capture, dynamic original call/error and independent wire verification. Vet remains enabled."
+  "scope": "Add an explicit real-provider cancellation path and continue-only gateway lease. Preserve the complete original local cancellation/continuation assertions, all lifecycle/recovery/independence checks, default 30-second local context and 420-second whole-case deadline. Actual external continuation gets 90 seconds, exact gateway exit before capture, dynamic original call/error and independent wire verification. Vet remains enabled.",
+  "followups": [
+    {
+      "file": "tools/provider_peer.py",
+      "before_sha256": "506126356461076c8eb557c4182a2c706089390c07d0fda771b9015e7d5bee89",
+      "after_sha256": "93a56f48e747ac3c756f826486f7d87bbeb0a986aa603998319b5b207e6fff07",
+      "before_file": "factorybox-external-effect-inputs-e1b60916e7fd46ac8fe3563b232b9544/tools/provider_peer.py",
+      "patch": "tests/compatibility/external-effect-peer.patch",
+      "patch_sha256": "78a3020a06ff8ec9b4f6d62d07b464ac3805129ec4a26b0bbbaa4afff3e112ba",
+      "reason": "Add an optional fixed outside-effect Unix socket only to effect-only peers. Existing inference, cancellation, default sockets and ownership/birth/pidfd checks stay unchanged."
+    }
+  ]
 }

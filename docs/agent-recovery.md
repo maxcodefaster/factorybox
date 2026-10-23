@@ -76,3 +76,27 @@ An interrupted process does not establish whether an outside mutation happened.
 Use the reconciliation procedure above before considering another mutation.
 Cancellation evidence cannot substitute for the separate uncertain-effect test
 or the final package's full acceptance.
+
+The real-provider `agent-effect` variant combines the same outside ledger with
+the pinned external model. It uses separate inference and effect gateways on
+loopback ports 4097 and 4098. Only this combined fixture acquires both leases;
+both exact processes must exit before capture. The original consumer source is
+patched only in a new test copy, with declared before/after and patch hashes.
+The local-model path keeps its existing client, model and result assertions.
+
+Before releasing the restored held tool, the controller performs the read-only
+outside lookup described above. The tool then supplies the actual operation,
+application count, commit hash and explicit `do-not-retry` decision in its
+stdout, together with its original uncertainty and real private-RAM result.
+The real model must acknowledge both markers and its actual nonce/hash/exit.
+The host independently verifies those contents in each actual provider request,
+the original model-issued tool-call ID, the stable outside controller and the
+one fsynced effect. Both the recovered parent and its independent fork follow
+this procedure, including branch completion after deletion of the parent.
+
+The planned and abrupt same-boot worker-replacement cases pass on the current
+candidate. Their evidence is indexed in
+`factorybox-external-effect-notes-b28824897c2041f685eae16c878b24db`. This validates
+the explicit reconciliation procedure for the synthetic test operation. An
+application still needs its own outside lookup and retry policy; final package
+acceptance and the other release requirements remain open.

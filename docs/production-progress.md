@@ -5236,3 +5236,89 @@ tests, enabled Go vet, unchanged reference/fixture checks and the staged diff
 check pass. The existing per-file patch-context whitespace convention now also
 covers the two new byte-pinned Go patches; production source whitespace checks
 remain enabled.
+
+## Real external model and uncertain outside effects on the current worker
+
+The independent effect-only namespace/stop proof
+`factorybox-provider-gateway-683f24afe7e747318fcd2cd62848f436` passes on the EEF
+worker. It preserves its endpoint separation, foreign birth/mode refusals,
+confirmed process exit, cleanup and unchanged global settings. Its helper bytes
+match ordinary inference proof `c418e046`. No production component or worker
+package changes in this step.
+
+The combined fixture now keeps an inference peer and a separate outside-effect
+peer. Both independently verify the owned sandbox, executable, birth, network
+namespace and pidfd exit. A second private IPC directory and explicit outside
+Unix socket keep the channels separate. Only arm/finish inference operations in
+the combined source copy acquire the additional effect lease. The original
+root `opencode_flow_linux_test.go` remains byte-identical to its production
+fixture declaration. The ordered copied-source patch and exact hashes are in
+`tests/compatibility/external-effect-gateway.json`; the original inputs are in
+`factorybox-external-effect-inputs-e1b60916e7fd46ac8fe3563b232b9544`.
+
+The prior cancellation declaration retains its original before/after rows and
+patches. An explicit ordered follow-up records only the peer's optional fixed
+outside socket. Default inference and cancellation behavior, ownership, birth
+and stop checks are preserved. A preflight exercises the existing real-provider
+cancellation preparation through this chain. Unknown/redirection sockets are
+rejected.
+
+For the real model, the existing uncertain-effect wrapper still submits once,
+retains the HTTP-502 unknown outcome and delegates the ordinary client. Only
+its explicit remote arm/finish delegation gets 85 seconds inside the original
+90-second external context; other calls keep 25 seconds. The complete case
+still has its original 420-second deadline. All original RAM, watch, nonce,
+counter, exit/result, recovery, replay and independent-consumer assertions stay.
+The local deterministic model/client path remains unchanged.
+
+After an actual read-only outside lookup, the held tool appends the exact
+reconciliation to its ordinary stdout before the same deliberate exit 37.
+The real model must acknowledge the original uncertainty, operation/commit ID
+and `DO_NOT_RETRY` alongside its real nonce, RAM hash and exit. Independent
+host verification reads the actual provider messages, confirms the receipt is
+an original tool result rather than a supplied user-prompt hash, and preserves
+the originally model-issued call ID through replacement and fork. The outside
+counter deliberately does not deduplicate repeated applications.
+
+An initial portable preflight in
+`factorybox-checks-784d0cbf99014742bae0ad07dbad6b6b` rejects inconsistent generated
+patch headers before any combined native run. The corrected generator names
+the same complete source path as its declaration. Its portable replacement
+`factorybox-checks-8addc7a12d1242e2a5d7f5c9cf76ba04` passes; after the additional
+peer-chain controls, all six gates pass in
+`factorybox-checks-694efd4ef4d942a9baa832dcaad47b4d`, including 241 Python tests,
+enabled Go vet and unchanged reference/production-fixture verification.
+
+Both complete real-model native cases pass on the unchanged EEF package:
+
+- `factorybox-consumer-worker-loss-db7d6fd52dce4851a71d7840b6605fd3`, planned
+  replacement. Preparation and recovery tests take 58.93 and 107.74 seconds.
+- `factorybox-consumer-worker-loss-4b1f18b6eb054a03972647c863907433`, actual
+  abrupt loss after the committed pause. Its preparation deliberately waits
+  for the controller's exact worker kill; the recovery test takes 119.60 seconds.
+
+Each case has one actual outside application, a lost acknowledgment, the same
+outside controller/status through prepare, replacement and completion, and
+three delivered HTTP-200 real-model exchanges. Both independent descendants
+consume their original unknown result and explicit outside reconciliation;
+their launch count remains one. All six optional gateways exit with 0, both
+workers are removed and the exact owned volume is absent. The fork remains
+useful and completes after deletion of its recovered source. Inputs, global
+settings and complete parent cleanup pass.
+
+`factorybox-external-effect-notes-b28824897c2041f685eae16c878b24db` independently
+checks both frozen sources and complete inputs, the copied-source delta,
+hash-chained ledger and actual status/apply/status/status sequence, original
+provider tool IDs, response bytes and all six gateway exits. It revalidates the
+independent identical EEF/85fa package and image. The native test executable SHA-256 is
+`f64612c00301f7ac0a0aa6590308fe247669e005abc216b919e234ec7a011352`; the packaged
+CLI and CRIU remain `42381f1a...` and `6263dd24...`. No new runtime build is
+needed for these test-controller additions.
+
+This closes the real-model uncertain-effect reconciliation case on the current
+candidate for both loss modes. It does not supply a general exactly-once
+guarantee, restore an outside service, qualify the ordinary final external
+lifecycle or complete the predetermined final series. The original PID and
+busy-mount causes, broader final storage/operations and full package acceptance
+remain open. Goal/handoff bytes are unchanged; production qualification is
+false and the complete first-release goal stays active.

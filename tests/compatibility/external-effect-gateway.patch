@@ -1,0 +1,13 @@
+--- a/tests/devx-lifecycle/opencode_flow_linux_test.go
++++ b/tests/devx-lifecycle/opencode_flow_linux_test.go
+@@ -70,6 +70,10 @@
+ 				f.t.Fatal("external provider did not fully exit before capture", err)
+ 			}
+ 		}()
++	}
++	if external && os.Getenv("FACTORYBOX_DEVX_EXTERNAL_EFFECT") == "1" {
++		closeEffect := f.externalEffectProvider(ctx, view, operation)
++		defer closeEffect()
+ 	}
+ 	options := []string{"--mount=/proc/self/fd/3", "--root=/proc/self/fd/4", "--wd=/proc/self/fd/4",
+ 		"--pid=/proc/self/fd/5", "--net=/proc/self/fd/6", "--user=/proc/self/fd/7", "--setuid=0", "--setgid=0", "--",

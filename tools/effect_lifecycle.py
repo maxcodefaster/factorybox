@@ -27,10 +27,18 @@ def prepare(artifact, proof_name, worker_image, result):
             upstream_unit.context_manifest(proof / "source/tests/provider-gateway") != upstream_unit.context_manifest(reference.ROOT / "tests/provider-gateway") or
             reference.sha(proof / "provider-gateway") != saved["binary_sha256"]):
         raise ValueError("outside-effect gateway lacks its current complete native qualification")
-    shutil.copyfile(proof / "provider-gateway", artifact / "provider-gateway")
+    if (artifact / "provider-gateway").exists():
+        if reference.sha(artifact / "provider-gateway") != saved["binary_sha256"]:
+            raise ValueError("inference and effect proofs do not share the same exact gateway executable")
+    else:
+        shutil.copyfile(proof / "provider-gateway", artifact / "provider-gateway")
     (artifact / "provider-gateway").chmod(0o555)
     for file in ["effect_lifecycle.py", "effect_ledger.py", "provider_peer.py"]:
         shutil.copyfile(reference.ROOT / "tools" / file, artifact / file)
+    if result.get("external_provider_enabled"):
+        import external_effect
+        external_effect.prepare_inputs(artifact, proof_name, proof, saved, result)
+        return
     model = artifact / "opencode-flow/model.cjs"
     before = model.read_text()
     command = "/opt/factorybox/opencode-flow/held-tool.cjs "

@@ -13,8 +13,19 @@ def prepare(artifact, result):
     value = json.loads(declaration.read_text())
     if value["schema"] != 1 or not value["assertions_preserved"] or value["upstream_assertions_modified"]:
         raise ValueError("external cancellation changed its fixture contract")
+    if any(row["file"] not in value["files"] for row in value.get("followups", [])):
+        raise ValueError("external cancellation follow-up names an unknown fixture")
     for name, row in value["files"].items():
-        if (reference.sha(reference.ROOT / name) != row["after_sha256"] or
+        final = row["after_sha256"]
+        for followup in value.get("followups", []):
+            if followup["file"] != name:
+                continue
+            if (followup["before_sha256"] != final or
+                    reference.sha(reference.ROOT / followup["patch"]) != followup["patch_sha256"] or
+                    reference.sha(reference.ROOT / "artifacts" / followup["before_file"]) != final):
+                raise ValueError("external cancellation follow-up breaks its ordered fixture chain")
+            final = followup["after_sha256"]
+        if (reference.sha(reference.ROOT / name) != final or
                 reference.sha(reference.ROOT / row["patch"]) != row["patch_sha256"] or
                 reference.sha(reference.ROOT / "artifacts" / row["before_file"]) != row["before_sha256"]):
             raise ValueError("external cancellation fixture bytes differ: " + name)

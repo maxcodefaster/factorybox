@@ -27,6 +27,7 @@ import external_lifecycle
 import effect_lifecycle
 import provider_peer
 import external_cancel
+import external_effect
 import reference
 import reference_lifecycle
 import theia_admission
@@ -215,7 +216,7 @@ def main():
     if options.external_disconnect and (not options.external_provider_proof or options.probe != "lifecycle"):
         parser.error("the completed-response disconnect is a separate complete external-agent lifecycle")
     if options.external_provider_proof and (options.example != "factory" or not options.opencode_flow or
-            options.probe not in {"lifecycle", "worker-loss", "agent-cancel"} or options.baseline_runtime_build or options.consumer_request_profile):
+            options.probe not in {"lifecycle", "worker-loss", "agent-cancel", "agent-effect"} or options.baseline_runtime_build or options.consumer_request_profile):
         parser.error("external inference requires the complete Factory agent lifecycle or committed-pause worker-loss case")
     if options.example == "minimal" and options.theia_image:
         parser.error("the unchanged minimal consumer has no IDE")
@@ -225,8 +226,8 @@ def main():
     if bool(options.effect_gateway_proof) != (options.probe == "agent-effect"):
         parser.error("the outside-effect case and its exact effect-only gateway proof must be selected together")
     if options.probe == "agent-effect" and (options.example != "factory" or not options.opencode_flow or
-            options.bounded_bytes is None or options.external_provider_proof or options.theia_image or options.baseline_runtime_build):
-        parser.error("outside effects require the bounded Factory/local-agent worker replacement without unrelated peers")
+            options.bounded_bytes is None or options.theia_image or options.baseline_runtime_build):
+        parser.error("outside effects require the bounded Factory agent worker replacement without an IDE or baseline substitution")
     if options.consumer_empty_features and (options.probe != "lifecycle" or options.baseline_runtime_build):
         parser.error("the consumer optimization requires the full selected-runtime lifecycle without a baseline substitution")
     if options.consumer_request_profile and (options.example != "factory" or options.probe != "lifecycle" or not options.consumer_empty_features):
@@ -412,6 +413,8 @@ traceDependency({event: 'module-loaded'});
     if options.epoch_retirement:
         result["epoch_fixture"] = consumer_epoch_retirement.apply_fixture(artifact, source)
         shutil.copyfile(Path(consumer_epoch_retirement.__file__), artifact/"consumer_epoch_retirement.py")
+    if options.external_provider_proof and options.effect_gateway_proof:
+        result["external_effect_fixture"] = external_effect.apply_fixture(artifact, source)
     if options.probe == "agent-cancel":
         setup = artifact/"consumer-worker-setup.sh"
         before = setup.read_text()
@@ -459,9 +462,13 @@ traceDependency({event: 'module-loaded'});
     try:
         if options.external_provider_proof:
             external_lifecycle.prepare(artifact, options.external_provider_proof, worker["image_id"], result)
-            service = external_lifecycle.Service(artifact, result, disconnect=options.external_disconnect)
         if options.effect_gateway_proof:
             effect_lifecycle.prepare(artifact, options.effect_gateway_proof, worker["image_id"], result)
+        if options.external_provider_proof and options.effect_gateway_proof:
+            service = external_effect.Service(artifact, result)
+        elif options.external_provider_proof:
+            service = external_lifecycle.Service(artifact, result, disconnect=options.external_disconnect)
+        elif options.effect_gateway_proof:
             service = effect_lifecycle.Service(artifact, result)
         if options.opencode_flow:
             result["opencode_flow_inputs"] = upstream_unit.context_manifest(artifact/"opencode-flow")
@@ -523,6 +530,8 @@ traceDependency({event: 'module-loaded'});
             if baseline_receipt: command += ["--env","FACTORYBOX_DEVX_BASELINE_RUNTIME=1"]
             if options.opencode_flow: command += ["--env","FACTORYBOX_DEVX_OPENCODE=1","--env","FACTORYBOX_DEVX_OPENCODE_FLOW=1"]
             if service: command += ["--env","FACTORYBOX_DEVX_EXTERNAL_PROVIDER=1"]
+            if options.external_provider_proof and options.effect_gateway_proof:
+                command += ["--env", "FACTORYBOX_DEVX_EXTERNAL_EFFECT=1"]
             if peer: command += ["--env","FACTORYBOX_DEVX_THEIA=1"]
             mounts = [(output,"/output",False),(components,"/component-input",True),(artifact/"example","/example",True),
                       (consumers_path/"runtime-rootfs.tar","/runtime-rootfs.tar",True),(projects_path/"images.tar","/project-images.tar",True),
@@ -533,6 +542,8 @@ traceDependency({event: 'module-loaded'});
                 mounts += [(artifact/"opencode-flow","/opencode-flow",True),(artifact/"opencode-probe.cjs","/opencode-probe.cjs",True)]
             if service:
                 mounts += [(Path(service.directory.name),"/external-provider",True),(artifact/"provider-gateway","/provider-gateway",True)]
+                if options.external_provider_proof and options.effect_gateway_proof:
+                    mounts += [(Path(service.effect_directory.name), "/outside-effect", True)]
             if baseline_receipt: mounts += [(artifact/"baseline-criu","/baseline-criu",True)]
             if options.consumer_empty_features:
                 mounts += [(artifact/file,"/"+file,True) for file in ["consumer-patch.py","consumer-patch.json"]]
@@ -556,8 +567,11 @@ traceDependency({event: 'module-loaded'});
                 record["bounded_store_before"] = consumer_bounded_store.verify_capacity(record["startup"]["status"], capacity, options.bounded_bytes, owner)
             gateway_key = "effect_oracle" if options.effect_gateway_proof else "external_provider"
             peer_key = "effect_gateway" if options.effect_gateway_proof else "external_provider"
-            provider = provider_peer.Peer(container,identity,owner,phase_artifact,output,result[gateway_key]["gateway_sha256"],
-                                          effect_only=bool(options.effect_gateway_proof)) if service else None
+            if options.external_provider_proof and options.effect_gateway_proof:
+                provider = external_effect.Peer(container, identity, owner, phase_artifact, output, result[gateway_key]["gateway_sha256"])
+            else:
+                provider = provider_peer.Peer(container,identity,owner,phase_artifact,output,result[gateway_key]["gateway_sha256"],
+                                              effect_only=bool(options.effect_gateway_proof)) if service else None
             if provider: providers.append(provider)
             probe_command = [*reference.DOCKER,"exec",identity,"/bin/bash","/consumer-worker-setup.sh"]
             probe_start = time.monotonic()
