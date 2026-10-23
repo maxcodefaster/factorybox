@@ -15,6 +15,11 @@ import reference
 import reference_lifecycle
 
 
+def file_sha(path):
+    with Path(path).open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def require_closed_source(run, source):
     """Bind a reconciled failure to its exact successful retention receipt."""
     closed_path = run / "result.json"
@@ -69,7 +74,7 @@ def main():
     before = reference.artifact_storage.identity(source)
     if (receipt.get("whole_decompressed_payload_verified") is not True or
             receipt["encoded"]["file"] != source.name or receipt["encoded"]["bytes"] != before[2] or
-            receipt["encoded"]["sha256"] != reference.sha(source)):
+            receipt["encoded"]["sha256"] != file_sha(source)):
         raise ValueError("original compressed evidence differs from its verified receipt")
     pointer = source.with_name(source.name+".repacked.json")
     if pointer.exists() or pointer.is_symlink():
@@ -121,7 +126,7 @@ def main():
                 raise ValueError("complete replacement decompression differs")
         if reference.artifact_storage.identity(source)!=before:
             raise ValueError("original evidence changed during repack")
-        result.update(encoded_sha256=reference.sha(target),encoded_bytes=target.stat().st_size,whole_decoded_bytes_verified=True)
+        result.update(encoded_sha256=file_sha(target),encoded_bytes=target.stat().st_size,whole_decoded_bytes_verified=True)
         if result["encoded_bytes"]>=before[2]:raise ValueError("replacement reclaims no storage; original retained")
         # Commit verified facts before removing any original. The pointer binds
         # a final receipt; the original result/encoding records stay unchanged.
