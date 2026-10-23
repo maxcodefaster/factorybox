@@ -104,5 +104,8 @@ func (e *Engine) ReleaseRetainedCheckpointSelection(ctx context.Context, request
 		return CheckpointSelection{}, err
 	}
 	defer oldLock.Close()
+	if err := old.epochRetirementFence(); err != nil {
+		return CheckpointSelection{}, err
+	}
 	return old.releaseCheckpointSelection(ctx, request.CheckpointRequest, id)
 }

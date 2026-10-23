@@ -4428,3 +4428,73 @@ Manual epoch retirement, original PID/busy-mount attribution, final external
 agent and full first-release acceptance remain open; the full goal is active.
 Exact source patches and current proof bindings are recorded in
 `factorybox-retained-inspection-notes-e5a47382374f49129900acc78667f754`.
+
+## Durable retirement maintenance survives another worker loss
+
+The read-only observer
+`factorybox-epoch-layout-23d4ee76f0594e97b42f609736b5eedb` inventories the actual
+old controller after exact worker SIGKILL/removal. It leaves payload trees
+unread and inventories regular runtime/capture/guard metadata. Every original
+retained-selection and complete bounded-recovery assertion then passes in
+`factorybox-bounded-loss-f457f4017347417a890c4ec556e57882`. This confirms retained
+runtime files exist after abrupt loss; their presence grants no deletion or
+old-process authority.
+
+Candidate `factorybox-build-worker-64b08fd2a21c4561adbb418680985034` adds an
+internal durable maintenance fence. Its package SHA-256 is
+`0cde27f1d718ef53fdec2f1cd34df258f929a7abf646e26ee0f94a195f7f7313`, image
+`sha256:e0f683d7a4ece223caa1ac80c9b3bfcd9d34fe9b17326cb7ab49115afc39fc66`
+and CLI `ffbdee27d41714d29978d42216a055cb36d07dd1076b938593ff0c88a6470f53`.
+It is not selected. Store-wide refusal protects successor inputs across
+controller invocations and worker replacement, including explicit CLI options
+without a worker profile. Source preparation and acceptance remain permanent
+source fences. An accepted retry binds the same preparation, original fence
+inode, complete contents and persistent image. Only device/mount IDs may be
+translated after independently verified same-image reattachment; original
+inventories are not rewritten. Completion cannot clear a remaining payload
+or a successor at its path. A same-byte successor fence and an external
+hardlink are refused.
+
+The native coordination fixture first runs the complete unchanged retained
+selection/recovery scenario and its original cleanup. It retires three exact
+obsolete checkpoints through the delivered public API, preserving the original
+1-GiB capacity assertion. It independently recovers the old pause, advances
+its private RAM/files, and commits a new complete successor pause. Its
+internal retirement inventory deliberately covers only the original old RAM
+image directory. A second actual worker SIGKILL/removal follows acceptance;
+an empty separately owned 512-MiB worker then holds the old loop slot. The next
+worker must replay the original acceptance on loop 1, refuse premature
+completion, remove the exact authorized original images, clear only the
+original fence, retain the source tombstone and recover the useful successor
+with its complete private state. Exact finish replay also passes.
+
+Both first-loss variants pass: abrupt in
+`factorybox-bounded-loss-c4b88440625542e88e7a9fa7a08acd13`, planned in
+`factorybox-bounded-loss-c5a5efff3e034cfa9c5faf4d75ed2861`. Whole driver
+observations are 44.52 and 43.20 seconds. All original assertions, input hashes,
+global settings and exact cleanup pass; both empty loop holders stop with 0.
+These durations are test observations, not runtime latency distributions.
+
+Two failed predecessors remain failed and completely reconstructable.
+`factorybox-bounded-loss-9c7be3248bb142449562aed8378d56f3` exposes a false
+new-fixture assumption: all three distinct worker epochs legitimately receive
+numeric mount ID 786 in separate namespaces. The corrected fixture uses exact
+old-worker removal and a forced different loop device.
+`factorybox-bounded-loss-19ec1c86f2984442a8eda256cc5fbf9e` passes those fence
+checks but correctly refuses new recovery with only 172,318,720 available
+bytes against the unchanged 201,326,592-byte floor-plus-reserve. The extended
+fixture now explicitly retires its three obsolete checkpoints before adding
+more work. No original assertion or capacity bound is removed or raised.
+Complete archive re-encoding preserves every decoded byte and reconstruction
+receipts for both failures.
+
+Production source bytes match the delivered candidate. Its frozen new native
+fixture predates these two corrections; the exact before/after test hashes
+and ordered fixture patch are recorded separately. Every pre-existing native
+test remains unchanged. An independent build of the full final retirement
+implementation remains required, along with its package and complete tests.
+There is no public epoch-retirement entry point yet. Complete source inventory,
+unknown-entry rejection, cross-epoch dependencies, handover admission and full
+epoch payload deletion remain open. The full goal remains active, production
+qualification false. Source patches and proofs are bound by
+`factorybox-epoch-retirement-fence-notes-5ef7cc49b1f34e8f889116d70cc31a74`.

@@ -623,3 +623,25 @@ file-byte field excludes filesystem-tree payloads and does not measure store
 capacity. This report grants no deletion authority, releases no committed
 pause, and does not establish a recovery handover. Manual epoch retirement
 still needs its full dependency, interruption and owned-payload protocol.
+
+## Internal retirement maintenance fence candidate
+
+The candidate implements an internal store-wide maintenance fence. Once an
+exact authorized preparation has been accepted, ordinary lifecycle work,
+recovery inspection and selection release are refused until deletion and
+durable completion are verified. The refusal also applies to explicit
+controller options and to replacement workers on this same store and boot.
+Private source preparation and acceptance remain as a permanent source fence.
+
+An exact retry retains the original acceptance and fence identity. A file with
+identical bytes at a successor inode, an external hardlink, changed attachment
+identity or premature completion cannot clear that fence. Only verified
+same-image reattachment can translate former device/mount IDs. Stored original
+plans are preserved; translation produces a separate in-memory plan.
+
+There is no public command to start or clear this internal mechanism. Full
+epoch inventory admission, cross-epoch dependency checks, recovery handover
+admission and deletion of every authorized epoch payload remain unfinished.
+The native coordination fixture authorizes only its complete original RAM image
+directory and then recovers a separately preserved useful successor. It does
+not qualify complete epoch retirement or provide an operator cleanup shortcut.

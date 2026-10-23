@@ -72,6 +72,9 @@ func (e *Engine) InspectRetainedCheckpoint(ctx context.Context, request Retained
 		return report, err
 	}
 	defer oldLock.Close()
+	if err := old.epochRetirementFence(); err != nil {
+		return report, err
+	}
 	saved, err := old.inspectRetainedCheckpoint(ctx, request.CheckpointRequest)
 	if err != nil {
 		return report, err

@@ -56,3 +56,8 @@ An explicit transfer from an old committed pause to an independently preserved
 committed pause after verified recovery. Its successor may include independent
 work performed after recovery. Releasing a recovery selection alone is not a
 handover.
+
+**Retirement maintenance**:
+An exclusive period during accepted retirement when operations may not change
+the saved inputs needed for safe deletion and recovery. It ends after deletion
+and durable completion are confirmed, including after an interrupted attempt.

@@ -22,6 +22,9 @@ func (e *Engine) recoveryLock(request RecoveryRequest) (_ *os.File, resultErr er
 			lock.Close()
 		}
 	}()
+	if err := e.epochRetirementFence(); err != nil {
+		return nil, err
+	}
 	var intent workerBaseRelease
 	err = e.readCheckpointJSON("worker-exit.json", &intent)
 	if errors.Is(err, os.ErrNotExist) {

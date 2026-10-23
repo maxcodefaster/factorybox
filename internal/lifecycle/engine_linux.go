@@ -206,6 +206,10 @@ func (e *Engine) lock() (*os.File, error) {
 			return nil, fmt.Errorf("controller epoch is closed for worker exit: %v", exitErr)
 		}
 	}
+	if err := e.epochRetirementFence(); err != nil {
+		file.Close()
+		return nil, err
+	}
 	return file, nil
 }
 

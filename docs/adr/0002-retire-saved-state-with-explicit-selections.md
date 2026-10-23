@@ -42,3 +42,19 @@ IDs as current authority. Retained immutable base metadata and full content
 need a read-only check against the exact current store attachment before an
 owned deletion plan can be prepared. These are retirement admission rules;
 successful inspection alone grants no deletion authority.
+
+For the first manual path, retirement maintenance will block lifecycle work
+throughout the store until its exact durable completion. This reduces
+availability during maintenance, but avoids separate per-checkpoint leases and
+their release/recovery ordering. The fence must also apply to explicit
+controller CLI options and to a fresh worker using the same store. An old
+source tombstone remains after the active store fence is removed.
+
+The internal fence implementation binds an immutable preparation to the actual
+private fence inode, full bytes and store image. Replacing an attachment permits
+only a separately authorized device/mount-ID translation, preserving original
+inode, ownership, modes and hashes. A completion file alone cannot clear the
+fence while any inventoried payload path remains. This coordination mechanism
+does not itself authorize a complete epoch inventory, resolve dependencies or
+prove a recovery handover. The public retirement path must supply those checks
+before acceptance; it remains unimplemented and this decision stays proposed.
