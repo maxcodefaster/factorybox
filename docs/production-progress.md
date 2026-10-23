@@ -3189,6 +3189,51 @@ All source, original results/logs, selected unresolved failures and reconstructi
 receipts remain. The initial-release goal and both unexplained failures remain
 open; production qualification is false.
 
+## Shipped agent interruption source inspection
+
+`factorybox-agent-cancel-source-b5c4814456124ffdadf7caeb4f8089dd` verifies eight
+small source files from the exact sealed consumer rootfs. Its four chained
+receipts pin every file and the 1,801,467,904-byte input archive. This is bounded
+read-only inspection, with no consumer image or active native fixture changes.
+Its successful result explicitly has `native_executed: false`.
+
+The shipped OpenCode 2.0.27 protocol exposes POST
+`/api/session/:sessionID/interrupt`, with optional boolean `resume`. The actual
+session operation delegates through an uninterruptible effect to execution,
+which defaults the reason to `user`. Settling that interruption calls
+`jobs.cancel(sessionID)` unless the reason is `shutdown`. Source inspection
+therefore distinguishes user cancellation from server shutdown, but proves
+neither a tool's actual exit nor absence of an earlier external effect.
+
+The original held-tool client has no interrupt operation. The previous external
+disconnect proof loses a completed provider response after tool completion;
+it does not cover interruption of a running tool or partial tool-call output.
+`findings.md` records those precise gaps and the native cases still required,
+including cancellation through pause/replacement and an effect counter outside
+the captured environment. No cancellation/error qualification is claimed.
+
+## Timing boundaries on the canonical-base candidate
+
+The single full passing Factory observation
+`factorybox-consumer-worker-loss-21efb535c9f74b168f9f0e961b2ba5fd` is on worker
+`ef7dcbe22aae4169a4642bb8df935f53`. The existing strict
+`benchmark_lifecycle.observations` extractor verifies its complete three
+checkpoint timings, eight useful-work observations and pause receipt.
+Prepared useful work is 22.279 s. Separate preparation is 34.241 s and worker
+startup is 0.740 s, making cold worker-to-useful work 57.260 s in this observation.
+
+Fork useful work from an existing checkpoint is 10.878 s. Source checkpoint
+creation costs another 11.241 s, so capture plus useful fork is 22.119 s.
+The corresponding resumed-source capture plus useful fork costs 27.028 s.
+Pause is 9.523 s and useful resume is 6.812 s. These boundaries must remain
+separate; fork latency alone is not capture-plus-fork latency.
+
+The pause receipt records source anonymous memory falling from 208,478,208
+bytes to zero, and 549,224,448 resident snapshot bytes falling to zero. Residual
+source cgroup memory is 10,485,760 bytes. This neither says the complete worker
+uses zero memory nor establishes a latency distribution, matched optimization
+gain or final-package performance qualification.
+
 ## Initial local release scope agreed on 2026-10-23
 
 The user approved a controlled first release on the existing Linux AMD64 host,
