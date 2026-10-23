@@ -23,6 +23,7 @@ import devx_lifecycle
 import criu_candidate
 import native_base
 import external_lifecycle
+import effect_lifecycle
 import provider_peer
 import reference
 import reference_lifecycle
@@ -42,6 +43,7 @@ PROBE_PHASES = {
     "lifecycle": ("prepare",),
     "warm-preparation": ("prepare",),
     "agent-cancel": ("prepare", "recover"),
+    "agent-effect": ("prepare", "recover"),
 }
 
 
@@ -151,6 +153,7 @@ def main():
     parser.add_argument("--theia-image")
     parser.add_argument("--opencode-flow",action="store_true",help="Preserve the real agent's running local tool and consume its actual result")
     parser.add_argument("--external-provider-proof",help="Use the actual admitted free model and helper from this exact native gateway proof")
+    parser.add_argument("--effect-gateway-proof",help="Exact effect-only native gateway proof for the outside-effect worker-loss case")
     parser.add_argument("--external-disconnect",action="store_true",help="Drop the second completed provider response once; require exact client replay and no repeated shell")
     parser.add_argument("--consumer-empty-features",action="store_true",help="Candidate exact consumer patch: omit the feature-control lookup for zero features only")
     parser.add_argument("--consumer-request-profile",action="store_true",help="Optional copied Factory example telemetry around its first dependency fetches")
@@ -166,7 +169,7 @@ def main():
             options.theia_image or options.opencode_flow or options.external_provider_proof or options.baseline_runtime_build):
         parser.error("stop tracing is a separate bounded lifecycle diagnostic without optional peers")
     if options.bounded_bytes is not None and (options.bounded_bytes % (1 << 30) or not 4 << 30 <= options.bounded_bytes <= 32 << 30 or
-            options.baseline_runtime_build or options.probe not in {"lifecycle", "worker-loss", "incomplete-pause", "warm-preparation", "agent-cancel"}):
+            options.baseline_runtime_build or options.probe not in {"lifecycle", "worker-loss", "incomplete-pause", "warm-preparation", "agent-cancel", "agent-effect"}):
         parser.error("bounded consumers require 4-32 whole GiB and a selected-runtime lifecycle/recovery fixture")
     if options.external_disconnect and (not options.external_provider_proof or options.probe != "lifecycle"):
         parser.error("the completed-response disconnect is a separate complete external-agent lifecycle")
@@ -178,6 +181,11 @@ def main():
     if options.probe == "agent-cancel" and (options.example != "factory" or not options.opencode_flow or
             options.external_provider_proof or options.theia_image or options.bounded_bytes is None or options.baseline_runtime_build):
         parser.error("agent cancellation requires the bounded Factory/local-agent replacement case without extra peers")
+    if bool(options.effect_gateway_proof) != (options.probe == "agent-effect"):
+        parser.error("the outside-effect case and its exact effect-only gateway proof must be selected together")
+    if options.probe == "agent-effect" and (options.example != "factory" or not options.opencode_flow or
+            options.bounded_bytes is None or options.external_provider_proof or options.theia_image or options.baseline_runtime_build):
+        parser.error("outside effects require the bounded Factory/local-agent worker replacement without unrelated peers")
     if options.consumer_empty_features and (options.probe != "lifecycle" or options.baseline_runtime_build):
         parser.error("the consumer optimization requires the full selected-runtime lifecycle without a baseline substitution")
     if options.consumer_request_profile and (options.example != "factory" or options.probe != "lifecycle" or not options.consumer_empty_features):
@@ -242,6 +250,8 @@ def main():
         result["scope"] = "Whole-worker SIGKILL at an actual blocked filesystem-copy permission event during an unconfirmed second pause; reject incomplete recovery and recover the earlier complete independent pause."
     if options.probe == "agent-cancel":
         result["scope"] = "Actual shipped OpenCode user interruption and settled tool cancellation through committed pause, same-boot worker replacement and independent fork. Local launch counter only; no uncertain external-effect or general exactly-once qualification."
+    if options.probe == "agent-effect":
+        result["scope"] = "Actual shipped agent's one uncertain outside effect through committed pause, worker replacement and independent fork. Reconcile applied status outside captured state before completing each tool result. Every original consumer assertion remains; local deterministic model, no general exactly-once or real external inference qualification."
     if options.probe == "warm-preparation":
         result["scope"] = "Compose the existing immutable-base API for two independent fresh starts; charge initial import, incremental preparation and first useful work separately. No new base-cache algorithm."
     if options.drain_interrupt_inputs:
@@ -405,6 +415,9 @@ traceDependency({event: 'module-loaded'});
         if options.external_provider_proof:
             external_lifecycle.prepare(artifact, options.external_provider_proof, worker["image_id"], result)
             service = external_lifecycle.Service(artifact, result, disconnect=options.external_disconnect)
+        if options.effect_gateway_proof:
+            effect_lifecycle.prepare(artifact, options.effect_gateway_proof, worker["image_id"], result)
+            service = effect_lifecycle.Service(artifact, result)
         if options.opencode_flow:
             result["opencode_flow_inputs"] = upstream_unit.context_manifest(artifact/"opencode-flow")
         inputs_started = time.monotonic()
@@ -492,7 +505,10 @@ traceDependency({event: 'module-loaded'});
             if options.bounded_bytes is not None:
                 capacity = json.loads(reference.docker(["exec", identity, "/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox", "capacity"]))
                 record["bounded_store_before"] = consumer_bounded_store.verify_capacity(record["startup"]["status"], capacity, options.bounded_bytes, owner)
-            provider = provider_peer.Peer(container,identity,owner,phase_artifact,output,result["external_provider"]["gateway_sha256"]) if service else None
+            gateway_key = "effect_oracle" if options.effect_gateway_proof else "external_provider"
+            peer_key = "effect_gateway" if options.effect_gateway_proof else "external_provider"
+            provider = provider_peer.Peer(container,identity,owner,phase_artifact,output,result[gateway_key]["gateway_sha256"],
+                                          effect_only=bool(options.effect_gateway_proof)) if service else None
             if provider: providers.append(provider)
             probe_command = [*reference.DOCKER,"exec",identity,"/bin/bash","/consumer-worker-setup.sh"]
             probe_start = time.monotonic()
@@ -520,7 +536,7 @@ traceDependency({event: 'module-loaded'});
                             if peer and (not peer.closed or not peer.result.get("cleanup")): raise ValueError("old IDE helper still exists at intentional worker loss")
                             if provider:
                                 provider.close()
-                                record["external_provider"] = provider.result
+                                record[peer_key] = provider.result
                             if not exact_worker(container,owner,identity)["State"]["Running"]: raise ValueError("worker disappeared before intentional loss")
                             reference.docker(["container","kill","--signal=KILL",identity]); break
                         if time.monotonic() >= deadline: raise TimeoutError("consumer whole lifecycle exceeded 420 seconds")
@@ -542,7 +558,7 @@ traceDependency({event: 'module-loaded'});
                     if expected == 0:
                         log = (phase_artifact/"stdout.txt").read_text()
                         test_name={"attached-exec":"TestNativeAttachedExecBoundary","topology":"TestNativeSessionTopology","worker-loss":"TestNativeConsumerWorkerLoss","incomplete-pause":"TestNativeConsumerWorkerLoss",
-                                   "warm-preparation":"TestNativeWarmPreparation", "agent-cancel":"TestNativeAgentCancellation",
+                                   "warm-preparation":"TestNativeWarmPreparation", "agent-cancel":"TestNativeAgentCancellation", "agent-effect":"TestNativeConsumerWorkerLoss",
                                    "lifecycle":"TestNativeMinimalLifecycle" if options.example=="minimal" else "TestNativeDeveloperLifecycle"}[options.probe]
                         if "--- PASS: "+test_name+" " not in log or "--- SKIP:" in log: raise ValueError("consumer worker assertions omitted or skipped")
                         if options.probe=="lifecycle":
@@ -563,7 +579,7 @@ traceDependency({event: 'module-loaded'});
                             record["warm_preparation"]=json.loads((output/"warm-preparation.json").read_text())
                         if provider:
                             provider.close()
-                            record["external_provider"] = provider.result
+                            record[peer_key] = provider.result
                         if options.bounded_bytes is not None:
                             capacity = json.loads(reference.docker(["exec", identity, "/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox", "capacity"]))
                             record["bounded_store_after"] = consumer_bounded_store.verify_capacity(record["startup"]["status"], capacity, options.bounded_bytes, owner)
@@ -611,6 +627,8 @@ traceDependency({event: 'module-loaded'});
             if state["Running"] or state["Pid"] != 0 or state["OOMKilled"] or state["ExitCode"] != worker_expected: raise ValueError("consumer worker did not fully exit")
             reference.owned_delete("container",container,owner); containers.remove(container)
             record["worker_removed"],record["passed"] = True,True
+            if options.effect_gateway_proof:
+                service.snapshot(phase)
         if (upstream_unit.context_manifest(artifact/"source") != result["source_context"] or
                 upstream_unit.context_manifest(artifact/"example") != result["example_manifest"] or
                 any(reference.sha(artifact/file)!=digest for file,digest in result["inputs_sha256"].items())):
@@ -659,6 +677,9 @@ traceDependency({event: 'module-loaded'});
             result["passed"] = result["passed"] and result["cleanup"] and result["global_sysctls_unchanged"]
         finally:
             if service: service.close()
+            if options.effect_gateway_proof and result.get("effect_oracle", {}).get("cleanup") is not True:
+                result["passed"] = result["cleanup"] = False
+                result.setdefault("error", "outside effect service did not close")
             reference_lifecycle.write_json(artifact/"result.json",result)
             print(json.dumps({"evidence":str(artifact),"passed":result["passed"],"cleanup":result["cleanup"],"error":result.get("error")}),flush=True)
             reference.artifact_storage.compact_closed_run(artifact, reference.ROOT)

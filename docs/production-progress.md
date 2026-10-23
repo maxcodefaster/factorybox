@@ -3276,7 +3276,8 @@ After both complete planned/abrupt replacement proofs pass, qualified retirement
 that complete stream and retires its 641,382,782-byte encoding. Host observations,
 source, results, logs and outer-archive member metadata/hashes remain. The old
 mutable filesystem is intentionally no longer reconstructable. The separate
-later ESRCH failure remains complete as described below.
+later ESRCH failure's retention and subsequent qualified retirement are
+described below.
 The repacker now hashes large compressed files as streams instead of loading
 an entire archive into memory; its receipt/decompression guards remain.
 
@@ -3346,8 +3347,8 @@ The corresponding abrupt attempt,
 `factorybox-consumer-worker-loss-e461286146df4396b17c7d7c05c2b79a`, fails before
 worker loss: the original tool is already durably aborted/interrupted, but a
 proc-stat read races its exit and returns ESRCH. The new client accepted only
-ENOENT as absence. Its actual failed observation and full 34,360,786,944-byte
-store remain preserved, SHA-256
+ENOENT as absence. Its actual failed observation remains preserved. Its complete
+34,360,786,944-byte store was fully verified, SHA-256
 `cfcbd861c998977b3028164e39c1d9cb5151332725d38b67d29e70d4a6a58344`.
 Lossless repack `factorybox-storage-repack-d7ff8b09ee964622aaed88d0a26a1ded`
 verifies both complete decoded streams and reclaims 711,715,132 encoded bytes.
@@ -3385,6 +3386,15 @@ archive. It explicitly refuses the historical cancellation-only proof for this
 new-prompt requirement. Provider errors, partial tool-call output, uncertain
 external effects, the final external gateway/model proof and other release
 requirements remain open. Production qualification is false.
+
+After both corrected complete cases and their aggregate verification pass,
+qualified retirement
+`factorybox-storage-retirement-5e81e478652b4f1f926e6e7de67a2da6` verifies that
+entire ESRCH failure stream again and retires its 771,061,835-byte encoding.
+All host observations, source, results, logs and outer-archive metadata/hashes
+remain. The old mutable filesystem is intentionally no longer reconstructable.
+The original runtime PID, busy-mount and selected unresolved failures are
+unchanged.
 
 Maintenance `factorybox-storage-share-cancel-inputs-6bc75493540849618af8b81bad53b469`
 fully decodes/verifies 24 compacted test inputs before and after sharing 17
@@ -3462,10 +3472,77 @@ All six portable gates pass in
 binds both gateway results, identical current helper/agent inputs, the outside
 ledger, actual failed/continued agent transcripts, the preserved first failure
 and a fresh red HTTP replay of its old counterpart. Reference verification
-still checks all 232 files. Composing the actual agent with the outside effect
-through pause, worker replacement and fork, and preserving provider-fault state
-through that lifecycle on final bytes remain required. Final external model
-and all other release gates remain open; production qualification is false.
+still checks all 232 files. At this component stage, composition of the actual
+agent with an outside effect through pause, replacement and fork was still
+missing; the following section supplies that candidate proof. These component
+fault observations alone do not prove preserved provider-fault state through
+that lifecycle on final bytes. Final external model and all other release
+gates remain open; production qualification is false.
+
+## Uncertain outside effect through complete worker replacement
+
+The additive `agent-effect` probe runs the original
+`TestNativeConsumerWorkerLoss` and every existing consumer assertion. Only new
+private model/client copies are patched, with exact before/after hashes and
+reconstructable diffs. The original ordinary client is retained byte for byte
+as the delegate and executes its normal arm/state/watch/advance/finish checks.
+Every original model assertion remains. The original held tool still owns its
+16-MiB private RAM, nonce, filesystem watch and nonzero result/exit semantics.
+
+Its wrapper submits one outside request. The host ledger fsyncs the effect,
+drops the reply and the tool observes HTTP 502 without acknowledgment. The
+connection fully closes before the held tool starts. Its uncertain receipt and
+stdout marker remain inside the saved environment; neither records a successful
+outside result. The optional gateway's exact exit is confirmed before pause.
+The host-owned ledger/controller survive independently of the old worker.
+
+Both complete cases pass on worker `ef7dcbe22aae4169a4642bb8df935f53`:
+
+- Planned replacement:
+  `factorybox-consumer-worker-loss-7a3b38c00ff24d85928ac58deee1297e`.
+- Abrupt replacement:
+  `factorybox-consumer-worker-loss-961c7a37429e45f09a0e0ea22b7d51c9`.
+
+Their complete Go/agent input manifests match, including the unchanged native
+test executable, SHA-256
+`e928db57fd44f2b44070ed3110d1e2c20248634829eeaa7ddff9821d62d14457`.
+Both confirm zero source anonymous and resident snapshot memory after pause,
+distinct worker epochs, exact recovery replay, removal of the old saved source
+files, another checkpoint/fork and independent RAM/filesystem/application
+mutations. In each descendant the operator client performs a read-only outside
+lookup and records the confirmed application with `do-not-retry` before
+releasing the held tool. The actual agent must ingest its original uncertain
+output, result/exit, outside operation and verified commit ID. The independent
+fork does this after its recovered source has been deleted. The same uncertain
+receipt hash remains in both descendants.
+
+The outside ledger contains one application. Its operation, committed hash and
+controller identity are identical at preparation, replacement recovery and
+completion; the one application has no delivered response. The oracle does not
+deduplicate, so a replay would increase that count. All three gateway leases
+per case close by exact pidfd, including before the intentional worker SIGKILL.
+That old worker exits 137; every other worker exits zero. Cleanup and unchanged
+global sysctls pass. The whole-case 420-second bound, sandbox ceilings and all
+original assertions remain unchanged.
+
+All six portable gates pass in
+`factorybox-checks-97734a0486b14de2aec2a6ec7376de2c`. Negative completion tests
+reject omitted recovery/descendants, reused epochs, unclosed workers, repeated
+outside effects, a changed outside controller, an automatic-retry decision,
+changed uncertainty and missing agent acknowledgment.
+`factorybox-agent-effect-notes-78555d1df6624ee5aa2f2d950470ac4a` verifies both
+complete results, current inputs, reconstructed model/client patches, every
+original assertion, fully decoded native test inputs, direct result receipts,
+the outside hash chain and all gateway/worker closures. Reference verification
+still checks all 232 files.
+
+The [agent recovery procedure](agent-recovery.md) describes holding an unresolved
+job, looking up the actual outside operation and recording the no-retry decision
+in every descendant. There is no new generic runtime reconciliation command.
+This local-model observation is not a general exactly-once guarantee, support
+for host restart or migration, or final-package qualification. The PID conflict,
+busy mount, remaining storage admission/manual retirement, final external model,
+operations and final acceptance requirements remain open.
 
 ## Timing boundaries on the canonical-base candidate
 
