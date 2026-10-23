@@ -61,3 +61,8 @@ handover.
 An exclusive period during accepted retirement when operations may not change
 the saved inputs needed for safe deletion and recovery. It ends after deletion
 and durable completion are confirmed, including after an interrupted attempt.
+
+**Retirement preparation cancellation**:
+Withdrawal of an unaccepted retirement attempt's temporary metadata. It leaves
+the saved environments intact. It cannot reverse accepted retirement or release
+its maintenance protection.

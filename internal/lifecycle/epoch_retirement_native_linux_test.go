@@ -40,7 +40,7 @@ func epochRetirementNativeEnabled(t *testing.T) {
 	}
 }
 
-func epochRetirementCLI(t *testing.T, operation string, request EpochRetirementRequest, name string) ([]byte, error) {
+func epochRetirementCLI(t *testing.T, operation string, request any, name string) ([]byte, error) {
 	t.Helper()
 	path := "/output/" + name
 	data, err := json.Marshal(request)
@@ -272,6 +272,21 @@ func TestNativeEpochRetirementRecover(t *testing.T) {
 	if replay, err := epochRetirementCLI(t, "begin-epoch-retirement", request, "epoch-retirement-request.json"); err != nil || !bytes.Equal(replay, acceptedBytes) {
 		t.Fatal("public acceptance replay changed", err)
 	}
+	acceptedStage, err := ownedtree.Capture(context.Background(), old.root, []string{epochRetirementDirectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := boundedLossCommand("--worker-run-root", "/run/factorybox", "inspect-epoch-preparation", "--source-root", old.config.Root); err == nil || !strings.Contains(err.Error(), "accepted") {
+		t.Fatal("accepted retirement allowed cancellation inspection", err)
+	}
+	if _, err := boundedLossCommand("--worker-run-root", "/run/factorybox", "cancel-epoch-preparation", "--request-file", "/output/epoch-preparation-cancellation.json"); err == nil || !strings.Contains(err.Error(), "accepted") {
+		t.Fatal("accepted retirement allowed stale preparation cancellation", err)
+	}
+	if err := ownedtree.ValidateComplete(context.Background(), old.root, acceptedStage); err != nil {
+		t.Fatal("accepted cancellation refusal changed metadata", err)
+	}
+	boundedLossSave(t, "epoch-preparation-accepted-refusals.json", map[string]any{"passed": true, "request": request, "acceptance_sha256": accepted.AcceptanceSHA256,
+		"inspection_refused": true, "cancellation_refused": true, "accepted_metadata_unchanged": true})
 	// Observe the actual public unlink loop, then stop only this exact child.
 	// The registered base supplies enough real owned files for a checked
 	// interruption window without changing any original lifecycle assertion.
@@ -446,12 +461,103 @@ func epochRetirementPreparationENOSPC(t *testing.T, current, old *Engine, recove
 	inspect := retirementArgs("inspect-recovery-checkpoint", oldRequest, "")
 	inspect = append([]string{inspect[0], "--source-root", old.config.Root}, inspect[1:]...)
 	boundedLossAction(t, inspect...)
-	// No public protocol retry is claimed. Remove only this test's exact
-	// unaccepted stage after the public child has exited, with a complete owned
-	// inventory. Keep its full content/identity plan in the external evidence.
+	// Inspect and cancel through the delivered public CLI. The test keeps its
+	// independent full inventory only to verify that the public operation
+	// removes this stage and preserves every original payload.
 	stage, err := ownedtree.Capture(context.Background(), old.root, []string{epochRetirementDirectory})
 	if err != nil || len(stage.Entries) < 3 {
 		t.Fatal("real ENOSPC did not leave its observed partial preparation", err)
+	}
+	inspected := boundedLossAction(t, "inspect-epoch-preparation", "--source-root", old.config.Root)
+	var inspection map[string]any
+	if err := json.Unmarshal(inspected, &inspection); err != nil {
+		t.Fatal("public partial-preparation inspection", err)
+	}
+	var projected struct {
+		Version    int            `json:"version"`
+		SourceRoot string         `json:"source_root"`
+		Inventory  ownedtree.Plan `json:"inventory"`
+	}
+	if err := json.Unmarshal(inspected, &projected); err != nil || projected.Version != 1 || projected.SourceRoot != old.config.Root || !reflect.DeepEqual(projected.Inventory, stage) {
+		t.Fatal("public inspection differs from independently captured exact stage", err)
+	}
+	refusals := 0
+	for _, field := range []string{"inventory_sha256", "source_root", "directory_birth"} {
+		var changed map[string]any
+		if err := json.Unmarshal(inspected, &changed); err != nil {
+			t.Fatal(err)
+		}
+		changed[field] = strings.Repeat("f", 64)
+		if field == "source_root" {
+			changed[field] = current.config.Root
+		}
+		if _, err := epochRetirementCLI(t, "cancel-epoch-preparation", changed, "epoch-preparation-wrong.json"); err == nil {
+			t.Fatal("public cancellation accepted altered inspection", field)
+		}
+		if err := ownedtree.ValidateComplete(context.Background(), old.root, stage); err != nil {
+			t.Fatal("wrong cancellation changed original stage", err)
+		}
+		refusals++
+	}
+	metadata := epochRetirementDirectory + "/retirement-payload.json.gz"
+	originalMetadata, err := old.root.ReadFile(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := old.root.WriteFile(metadata, append(append([]byte(nil), originalMetadata...), byte('x')), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := epochRetirementCLI(t, "cancel-epoch-preparation", inspection, "epoch-preparation-wrong.json"); err == nil {
+		t.Fatal("changed metadata was cancelled using its old content hash")
+	}
+	if err := old.root.WriteFile(metadata, originalMetadata, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ownedtree.ValidateComplete(context.Background(), old.root, stage); err != nil {
+		t.Fatal("restore only the test's exact unaccepted metadata", err)
+	}
+	refusals++
+	foreign := epochRetirementDirectory + "/foreign-test-input"
+	file, err := old.root.OpenFile(foreign, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, writeErr := file.Write([]byte("preserve foreign cancellation input\n"))
+	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
+		t.Fatal(err)
+	}
+	foreignPlan, err := ownedtree.Capture(context.Background(), old.root, []string{foreign})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := boundedLossCommand("--worker-run-root", "/run/factorybox", "inspect-epoch-preparation", "--source-root", old.config.Root); err == nil {
+		t.Fatal("public inspection accepted foreign metadata")
+	}
+	if _, err := epochRetirementCLI(t, "cancel-epoch-preparation", inspection, "epoch-preparation-wrong.json"); err == nil {
+		t.Fatal("old inspection removed a stage with foreign input")
+	}
+	if err := ownedtree.ValidateComplete(context.Background(), old.root, foreignPlan); err != nil {
+		t.Fatal("foreign input changed on cancellation refusal", err)
+	}
+	if err := ownedtree.RemoveRemaining(context.Background(), old.root, foreignPlan); err != nil {
+		t.Fatal("remove only this exact test-created foreign input", err)
+	}
+	refusals++
+	// The directory changed during the negative control, so the operator must
+	// obtain a fresh complete inspection. Keep the real pressure allocated.
+	inspected = boundedLossAction(t, "inspect-epoch-preparation", "--source-root", old.config.Root)
+	if err := json.Unmarshal(inspected, &inspection); err != nil {
+		t.Fatal(err)
+	}
+	var atCancellation unix.Statfs_t
+	if err := unix.Fstatfs(int(pressure.Fd()), &atCancellation); err != nil || int64(atCancellation.Bavail)*atCancellation.Bsize > remaining {
+		t.Fatal("public cancellation no longer has actual bounded pressure", atCancellation, err)
+	}
+	if output, err := epochRetirementCLI(t, "cancel-epoch-preparation", inspection, "epoch-preparation-cancellation.json"); err != nil {
+		t.Fatal("public cancellation of the exact unaccepted stage under actual pressure", err, string(output))
+	}
+	if _, err := old.root.Lstat(epochRetirementDirectory); !os.IsNotExist(err) {
+		t.Fatal("public cancellation left its preparation directory", err)
 	}
 	if err := pressure.Truncate(0); err != nil {
 		t.Fatal(err)
@@ -462,15 +568,19 @@ func epochRetirementPreparationENOSPC(t *testing.T, current, old *Engine, recove
 	if err := os.Remove(pressurePath); err != nil {
 		t.Fatal(err)
 	}
+	after, err = ownedtree.Capture(context.Background(), old.root, before.Paths)
+	if err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatal("public cancellation changed original saved data", err)
+	}
 	boundedLossSave(t, "epoch-retirement-enospc.json", map[string]any{"passed": true, "request": request,
 		"actual_preparation_enospc": true, "error": rejected.Error(), "free_blocks_after_pressure": capacity.Bfree,
 		"available_blocks_before_pressure": initial.Bavail, "available_blocks_after_pressure": capacity.Bavail, "pressure_allocations": allocations,
 		"block_bytes": capacity.Bsize, "original_backing_unchanged": true, "intact_recovery_reader_available": true,
 		"retained_checkpoint_inspected": true, "no_acceptance_or_completion": true, "global_acceptance_fence_absent": true,
-		"partial_stage": stage, "test_owned_partial_stage_cleanup": true, "public_preparation_retry_qualified": false})
-	if err := ownedtree.RemoveRemaining(context.Background(), old.root, stage); err != nil {
-		t.Fatal("retire only the exact test-owned unaccepted stage", err)
-	}
+		"partial_stage": stage, "test_owned_partial_stage_cleanup": false, "public_preparation_inspected": true,
+		"public_preparation_cancelled": true, "public_cancellation_preserved_original_backing": true,
+		"public_cancellation_under_pressure": true, "public_cancellation_refusals": refusals,
+		"available_blocks_at_cancellation": atCancellation.Bavail})
 }
 
 func TestNativeEpochRetirementFinish(t *testing.T) {

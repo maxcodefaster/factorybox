@@ -56,5 +56,22 @@ only a separately authorized device/mount-ID translation, preserving original
 inode, ownership, modes and hashes. A completion file alone cannot clear the
 fence while any inventoried payload path remains. This coordination mechanism
 does not itself authorize a complete epoch inventory, resolve dependencies or
-prove a recovery handover. The public retirement path must supply those checks
-before acceptance; it remains unimplemented and this decision stays proposed.
+prove a recovery handover. The candidate public retirement path supplies those
+checks before acceptance. Its current native development proofs are indexed in
+`factorybox-epoch-used-base-notes-ee369ef7a8124cba88c86996d05f3f69`; full first-release
+qualification remains open and this decision stays proposed.
+
+Unaccepted preparation can fail before it has enough space to publish a
+complete plan or allocate its reserve. The manual cancellation path therefore
+uses a fresh complete inspection saved outside the bounded store. It removes
+only the exact known private preparation metadata, requires every inspected
+object to remain intact, and refuses any source acceptance/completion or store
+acceptance fence. Directory birth/change times prevent a later generation
+from inheriting an old inspection even if its inode number is reused.
+
+This avoids allocating a second cancellation journal inside a full store. The
+cost is that interrupted cancellation requires a fresh inspection of the
+remaining metadata, rather than granting missing-entry replay authority to an
+unaccepted operation. Accepted retirement retains its original durable
+continuation protocol and cannot be cancelled through this path. A complete
+new retirement attempt must repeat its entire dependency and handover admission.

@@ -235,13 +235,26 @@ def main():
                 if (any(enospc.get(key) is not True for key in
                         ['passed', 'actual_preparation_enospc', 'original_backing_unchanged',
                          'intact_recovery_reader_available', 'retained_checkpoint_inspected',
-                         'no_acceptance_or_completion', 'global_acceptance_fence_absent', 'test_owned_partial_stage_cleanup']) or
+                         'no_acceptance_or_completion', 'global_acceptance_fence_absent',
+                         'public_preparation_inspected', 'public_preparation_cancelled',
+                         'public_cancellation_preserved_original_backing', 'public_cancellation_under_pressure']) or
                         enospc.get('request') != finished['report']['request'] or
-                        enospc.get('public_preparation_retry_qualified') is not False or
+                        enospc.get('test_owned_partial_stage_cleanup') is not False or
+                        enospc.get('public_cancellation_refusals', 0) < 5 or
+                        enospc.get('available_blocks_at_cancellation', -1) < 0 or
+                        enospc['available_blocks_at_cancellation'] * enospc['block_bytes'] > 512 << 10 or
                         enospc.get('available_blocks_after_pressure', -1) < 0 or
                         enospc['available_blocks_after_pressure'] * enospc['block_bytes'] > 512 << 10):
-                    raise ValueError('actual retirement preparation ENOSPC proof is incomplete or overclaims public retry')
+                    raise ValueError('actual preparation ENOSPC lacks public cancellation and original-data preservation')
                 result['preparation_enospc_sha256'] = reference.sha(enospc_file)
+                refusal_file = output / 'epoch-preparation-accepted-refusals.json'
+                refusal = json.loads(refusal_file.read_text())
+                if (any(refusal.get(key) is not True for key in
+                        ['passed', 'inspection_refused', 'cancellation_refused', 'accepted_metadata_unchanged']) or
+                        refusal.get('request') != finished['report']['request'] or
+                        refusal.get('acceptance_sha256') != finished['report']['acceptance_sha256']):
+                    raise ValueError('accepted retirement lacks exact public cancellation refusals')
+                result['accepted_cancellation_refusals_sha256'] = reference.sha(refusal_file)
             if any(finished.get(key) is not True for key in required) or finished.get('full_epoch_retirement_qualified') is not False:
                 raise ValueError('retirement fence proof incomplete or overclaims full epoch admission')
             result['retirement_fence_sha256'] = reference.sha(finished_file)

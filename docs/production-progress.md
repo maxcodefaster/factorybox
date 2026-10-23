@@ -4793,3 +4793,73 @@ All six portable gates pass in
 Source reconstruction, exact native fixture differences and the full-consumer
 proof are indexed in
 `factorybox-epoch-used-base-notes-ee369ef7a8124cba88c86996d05f3f69`.
+
+## Public cancellation of unaccepted preparation
+
+The exact extended fixture in
+`factorybox-epoch-cancellation-plan-68a14469393b4a7681e5750555dc08b9` replaces
+only its private partial-stage cleanup with public inspection and cancellation.
+The previous D724 package fails in
+`factorybox-bounded-loss-971eee0d40cc438e8e239f97cb7ab3c2` at the missing
+`inspect-epoch-preparation` command, after the complete original recovery and
+actual preparation ENOSPC assertions pass. Its complete failure store, source,
+result and outer logs are preserved; cleanup and input checks pass.
+
+Initial candidate `factorybox-build-worker-7112f109db4448d1a6288825b11c4cfc`
+passes exactly that same native fixture in
+`factorybox-bounded-loss-62eb81e2c6944b288a00fcfcb80d8563`. The public command
+removes the observed preparation metadata, complete original payload inventories
+remain unchanged, and the following ordinary retirement admission, real unlink
+interruption, worker replacement and useful independent successor all pass.
+This first case cancels after releasing the fixture's pressure allocation.
+
+The candidate then adds a strict directory generation check using filesystem
+birth/change times. Cancellation requires the complete fresh inventory, exact
+current source controller, same-boot verified attachment and every expected
+original object. Accepted or uncertain source/store state always refuses;
+unknown metadata, altered content, ownership, mounts or external hardlinks refuse.
+Only known preparation metadata can be removed. Cancellation neither interprets
+partial encoded plans as payload authority nor removes a committed checkpoint.
+An interrupted cancellation requires a new complete inspection of its remainder.
+
+The ordered additive fixture extension
+`factorybox-epoch-cancellation-controls-plan-dfa8faf2e8d649b18205646709e35918`
+preserves the complete first public case and adds public refusals for modified
+inspection hashes, current-epoch substitution, wrong directory birth, changed
+metadata bytes, unknown input and actual retirement acceptance. It requires
+cancellation while at most 512 KiB remains available, before releasing pressure,
+then complete original-data equality and the full subsequent retirement path.
+All original recovery/retirement assertions and the 420-second limit remain.
+The six portable gates pass in
+`factorybox-checks-e619553cde0348bfb6d253401fe05dec`.
+
+Both stronger native cases pass on
+`factorybox-build-worker-eef7eaea107d4feea182733019cbd4eb`:
+`factorybox-bounded-loss-ac7164466cf2426682095725f3d861dd` is planned and
+`factorybox-bounded-loss-8ac11380f9834e2b8ec9a00714c2d1ef` is abrupt. They take
+131.478 and 131.748 seconds respectively. Both public cancellations execute
+with only four available 4096-byte blocks, before pressure is released.
+Five altered/foreign-input controls and both actual accepted-state refusals
+pass; accepted metadata and all original saved payloads remain intact.
+The following ordinary acceptance, actual public unlink interruption, forced
+replacement loop change, two retired epochs and useful independent successor
+all pass. Cleanup, unchanged frozen inputs and unchanged global settings pass.
+These are development cases, not the predetermined final acceptance series.
+
+Independent build
+`factorybox-build-worker-85fa866ca223485b9902fdade526e645` reproduces every
+package/image byte from EEF. CLI SHA-256 is
+`42381f1aaf7696d14ebd62ed296ed57329c718c026054aa27e93f21d05183566`,
+raw package SHA-256 is
+`6166bfa7d0d2f18e4a7e688ff3fcb77782c8cfa413d5e7f556c7a110e2bedf22`,
+and image identity is
+`sha256:bb732d6846e33b951942b5c681fbadc72f05c02535793e6ecb0ec45c6f5a9667`.
+Source reconstruction, exact fixture layers, the original missing-command
+counterexample and both passing pressure cases are indexed in
+`factorybox-epoch-cancellation-notes-2e452dda65b449d18837f5ed009c2035`.
+
+The public manual unaccepted-preparation cancellation gap now has concrete
+bounded native evidence. Broader final-package/consumer qualification, the
+original rare PID and busy-overlay causes, external model acceptance, operating
+acceptance and the predetermined series remain open. Production and full
+epoch-retirement qualification remain false; the complete goal stays active.

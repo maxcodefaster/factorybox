@@ -647,13 +647,14 @@ That evidence does not qualify the full public retirement protocol below.
 
 The unselected candidate adds `begin-epoch-retirement` and `retire-epoch`.
 They require the current verified `--worker-run-root` and an exact JSON
-`--request-file`, without positional sandbox arguments. Two bounded actor
-cases pass the public protocol, including replacement after accepted partial
-deletion and a second epoch with fork/resume history. Full Factory, registered
-base and actual interruption of the public unlink process remain separate
-checks. This is not a production cleanup procedure yet. Exact sources and
-results are indexed in
-`factorybox-epoch-retirement-notes-d2bd74d4ad6349d98eac63296119c864`.
+`--request-file`, without positional sandbox arguments. Bounded actor cases
+cover replacement after accepted partial deletion, a registered unused base,
+actual interruption of the public unlink process and a second epoch with
+fork/resume history. The separate full Factory case also retires its actually
+used base and original RAM backing while preserving a useful independent
+successor. These development results and their package boundaries are indexed
+in `factorybox-epoch-used-base-notes-ee369ef7a8124cba88c86996d05f3f69`.
+Complete final-package qualification remains required before production use.
 
 First drain all sandboxes in this store to fully committed pauses or confirmed
 deletions. Release every active selection protecting a source checkpoint through
@@ -696,6 +697,38 @@ An unaccepted partial preparation preserves access to intact recovery inputs;
 it does not authorize deleting its files or clearing a store fence by hand.
 After acceptance, keep the store out of service until its exact continuation
 completes. A failed retry remains a failure and retains the fence.
+
+The new candidate also provides `inspect-epoch-preparation --source-root PATH`
+and `cancel-epoch-preparation --request-file INSPECTION.json`. Both require the
+current verified worker. Inspection needs no new allocation in the bounded
+store; save its output outside that store. It reports the complete exact private
+preparation metadata, including inode, mount, mode, owner and full content hashes.
+The directory's birth time and change time bind the observation to that exact
+generation, including when a filesystem later reuses an inode number.
+An incomplete encoded inventory is metadata to cancel, never deletion authority
+over the RAM/filesystem paths it might describe.
+
+After checking the reported source and inventory, pass that unchanged JSON to
+the cancellation command. Cancellation locks the controller forest, refuses any
+store acceptance fence or source acceptance/completion, and requires every
+inspected object to remain present and unchanged. Only the known private
+preparation names can be removed. Unknown files, symlinks, external hardlinks,
+changed content, ownership, attachment or covering mounts refuse. Caller inputs,
+checkpoint/base payloads and recovery handovers are outside this operation.
+
+If cancellation is interrupted, inspect the remaining metadata again and use
+that new complete inspection. The old inspection cannot authorize missing
+entries or a newly created stage at the same path. If the stage is already
+absent, cancellation has nothing to remove; prepare a new retirement request
+through the ordinary complete admission. An accepted retirement must instead
+continue through `retire-epoch` with its original request. Planned and abrupt
+bounded cases verify these commands under actual preparation ENOSPC with
+16 KiB available, including refusal of changed/foreign metadata and accepted
+retirement, original-data equality and complete subsequent useful recovery.
+Their independently reproduced candidate package and exact evidence are in
+`factorybox-epoch-cancellation-notes-2e452dda65b449d18837f5ed009c2035`.
+This is separate from the earlier fixture-only cleanup evidence and does not
+qualify the complete first release.
 
 The payload inventory covers controller-owned registered bases, published RAM
 and saved filesystem trees, private imported/forked backing and completed resume

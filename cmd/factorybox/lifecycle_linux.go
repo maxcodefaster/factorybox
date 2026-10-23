@@ -67,7 +67,20 @@ func runLifecycle(args []string) error {
 	var selectionID string
 	var retainedRoot string
 	var epochRequest lifecycle.EpochRetirementRequest
-	if command == "retire-epoch" || command == "begin-epoch-retirement" {
+	var epochPreparation lifecycle.EpochPreparationInspection
+	epochOperation := command == "retire-epoch" || command == "begin-epoch-retirement" || command == "cancel-epoch-preparation"
+	epochInspection := command == "inspect-epoch-preparation"
+	if epochInspection {
+		operation := flag.NewFlagSet(command, flag.ContinueOnError)
+		operation.StringVar(&retainedRoot, "source-root", "", "exact old controller with an unaccepted preparation")
+		if err := operation.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = operation.Args()
+		if workerRunRoot == "" || retainedRoot == "" || len(remaining) != 0 {
+			return fmt.Errorf("inspect-epoch-preparation requires --worker-run-root and --source-root without sandbox arguments")
+		}
+	} else if epochOperation {
 		operation := flag.NewFlagSet(command, flag.ContinueOnError)
 		requestFile := operation.String("request-file", "", "exact old epoch and explicit recovery handovers as JSON")
 		if err := operation.Parse(remaining); err != nil {
@@ -89,7 +102,11 @@ func runLifecycle(args []string) error {
 		limited := &io.LimitedReader{R: file, N: (4 << 20) + 1}
 		decoder := json.NewDecoder(limited)
 		decoder.DisallowUnknownFields()
-		decodeErr := decoder.Decode(&epochRequest)
+		var target any = &epochRequest
+		if command == "cancel-epoch-preparation" {
+			target = &epochPreparation
+		}
+		decodeErr := decoder.Decode(target)
 		if decodeErr == nil {
 			if err := decoder.Decode(new(any)); err != io.EOF || limited.N <= 0 {
 				decodeErr = fmt.Errorf("epoch retirement request has trailing or excessive data")
@@ -171,7 +188,7 @@ func runLifecycle(args []string) error {
 	if command == "capacity" && len(remaining) != 0 {
 		return fmt.Errorf("capacity requires no sandbox ID")
 	}
-	if command != "capacity" && command != "retire-epoch" && command != "begin-epoch-retirement" && len(remaining) != 1 {
+	if command != "capacity" && !epochOperation && !epochInspection && len(remaining) != 1 {
 		return fmt.Errorf("%s requires one sandbox ID", command)
 	}
 	engine, err := lifecycle.Open(config)
@@ -188,6 +205,20 @@ func runLifecycle(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if epochInspection {
+		result, err := engine.InspectEpochPreparation(ctx, retainedRoot)
+		if result.Version != 0 {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
+	if command == "cancel-epoch-preparation" {
+		result, err := engine.CancelEpochPreparation(ctx, epochPreparation)
+		if result.Version != 0 {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
 	if command == "retire-epoch" || command == "begin-epoch-retirement" {
 		var result lifecycle.EpochRetirement
 		if command == "begin-epoch-retirement" {
