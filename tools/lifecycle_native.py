@@ -2,8 +2,10 @@
 """Prove the extracted local lifecycle against real Sysbox in an owned fixture."""
 import argparse
 import datetime
+import difflib
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -21,6 +23,45 @@ EXPECTED_TESTS = 6
 EXPECTED_CAPTURE_SUBTESTS = 17
 EXPECTED_ADAPTER_TESTS = 11
 EXPECTED_ADAPTER_SUBTESTS = 61
+ADAPTER_TESTS = (
+    "TestImmutableBaseNative", "TestFilesystemBaseRecoveryNative",
+    "TestPrivateConfigViewPreservesSysboxState", "TestCheckpointWatchSearchAdmission",
+    "TestCriuFeatures", "TestFilesystemHookAdmission", "TestFilesystemCopyNative",
+    "TestImageOwnershipNative", "TestFilesystemMaterializationNative",
+    "TestNetworkRollbackAdmission", "TestSocketRollbackAdmission",
+)
+
+
+def select_adapter_fixture(archive):
+    """Keep all original adapter cases in their original unbounded fixture.
+
+    The added bounded-device case has its own real ext4 worker fixture in
+    base_recovery_native.py. Running it here without that backing only skips
+    it; pretending that this ordinary directory is ext4 would misstate proof.
+    Original test sources and the zero-skip/count requirements stay unchanged.
+    """
+    path = archive / "lifecycle-native.sh"
+    before = path.read_bytes()
+    original = b"  /sysboxcapture.test -test.v -test.timeout=30s\n"
+    if before.count(original) != 1 or len(set(ADAPTER_TESTS)) != EXPECTED_ADAPTER_TESTS:
+        raise ValueError("original adapter fixture call or case inventory changed")
+    pattern = "^(" + "|".join(ADAPTER_TESTS) + ")$"
+    after = before.replace(original,
+                           ("  /sysboxcapture.test -test.v -test.timeout=30s -test.run='" + pattern + "'\n").encode())
+    (archive / "lifecycle-native.before.sh").write_bytes(before)
+    patch = archive / "adapter-fixture-selection.patch"
+    patch.write_text(''.join(difflib.unified_diff(before.decode().splitlines(True), after.decode().splitlines(True),
+                     fromfile="a/lifecycle-native.sh", tofile="b/lifecycle-native.sh")))
+    path.write_bytes(after)
+    declaration = {"schema": 1, "source": "tests/lifecycle-native.sh",
+                   "before_sha256": reference.sha(archive / "lifecycle-native.before.sh"),
+                   "after_sha256": reference.sha(path), "patch_sha256": reference.sha(patch),
+                   "original_adapter_tests": list(ADAPTER_TESTS), "assertions_modified": False,
+                   "zero_skip_requirement_unchanged": True,
+                   "separate_required_case": "TestFilesystemBaseDeviceRecoveryNative",
+                   "separate_required_fixture": "tools/base_recovery_native.py"}
+    reference_lifecycle.write_json(archive / "adapter-fixture-selection.json", declaration)
+    return declaration
 
 
 def builder_command(build, components, archive, name, *, component_inputs):
@@ -87,11 +128,19 @@ def main():
     inputs = parser.add_mutually_exclusive_group()
     inputs.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
     inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
+    parser.add_argument("--criu-base-lock", type=Path,
+                        help="Exact frozen selected-base lock for a retained candidate; current CRIU recipe must still match")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for checkpoint-based suites")
     parser.add_argument("--test", help="One exact native diagnostic test")
     parser.add_argument("--candidate-platform", choices=["linux/amd64"],
                         help="Use a separate unqualified test build pinned to this Docker host's kernel")
+    parser.add_argument("--ordinary-build", action="store_true",
+                        help="Use the delivered AMD64 platform check and ordinary compile flags")
     options = parser.parse_args()
+    if options.criu_base_lock and not options.retained_candidate:
+        parser.error("--criu-base-lock requires --retained-candidate")
+    if options.ordinary_build and not options.candidate_platform:
+        parser.error("--ordinary-build requires the explicit AMD64 target")
     if options.test and not re.fullmatch(r"TestNative[A-Za-z0-9_]+", options.test):
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
@@ -114,7 +163,7 @@ def main():
     host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
     native_base.require_native_host(target, host)
     compile_options = []
-    if options.candidate_platform:
+    if options.candidate_platform and not options.ordinary_build:
         if not re.fullmatch(r"[A-Za-z0-9_.+-]+", host["KernelVersion"]):
             raise ValueError("unsupported candidate kernel release encoding")
         compile_options = ["-tags=factorybox_candidate_amd64", "-ldflags=-X=" +
@@ -207,7 +256,8 @@ def main():
                   "No CRIU capture; not checkpoint/fork/pause/resume qualification."),
         "immutable_base": options.suite in ["base", "base-pause"],
         "passed": False, "cleanup": False, "production_qualified": False,
-        "platform": target, "candidate_platform": bool(options.candidate_platform),
+        "platform": target, "candidate_platform": bool(options.candidate_platform and not options.ordinary_build),
+        "ordinary_build": options.ordinary_build,
         "native_lifecycle_qualified": False,
         "host": {key: host[key] for key in ["OSType", "Architecture", "KernelVersion"]},
         "compile_options": compile_options,
@@ -238,6 +288,8 @@ def main():
                             "./internal/sysboxcapture"], cwd=context, env=env, check=True, timeout=120)
         for script in ["lifecycle-native.sh", "private-cgroup-delegation.sh"]:
             shutil.copyfile(ROOT / "tests" / script, archive / script)
+        if capture_mode:
+            result["adapter_fixture_selection"] = select_adapter_fixture(archive)
         shutil.copyfile(ROOT / "tests/capture-archive.sh", archive / "capture-archive.sh")
         input_files = [binary, cli, archive / "lifecycle-native.sh",
                        archive / "private-cgroup-delegation.sh"]
@@ -263,7 +315,14 @@ def main():
                     source, inputs / component, ROOT, components["binary_sha256"][component])
             if capture_mode:
                 if options.retained_candidate:
-                    criu_build, criu, _, _ = criu_candidate.load(options.retained_candidate)
+                    base_lock = None
+                    if options.criu_base_lock:
+                        if options.criu_base_lock.is_symlink():
+                            raise ValueError("frozen CRIU base lock must not be a symlink")
+                        base_lock = archive / "criu-base-source-lock.json"
+                        shutil.copyfile(options.criu_base_lock, base_lock)
+                        result["criu_base_source_lock_sha256"] = reference.sha(base_lock)
+                    criu_build, criu, _, _ = criu_candidate.load(options.retained_candidate, base_lock=base_lock)
                 else:
                     criu_build, criu = reference_lifecycle.component_build(
                         options.criu_build, "factorybox-build-criu-")

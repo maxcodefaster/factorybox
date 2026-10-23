@@ -2872,6 +2872,66 @@ The separate proof index and ordered source reconstruction are
 `factorybox-signal-admission-notes-584c2b7b4ed24c44b8649ef8e0865b16`.
 Production qualification remains false.
 
+## Native admission fixture coverage on ordinary worker bytes
+
+The first renewed native-admission invocation,
+`factorybox-runtime-32aa77839b4840c08b406d13ab752f68`, stops before any native
+container starts: its older driver does not accept the retained CRIU build's
+exact frozen base lock after unrelated Sysbox recipe changes. The driver now
+accepts the same explicit frozen lock as the worker builder. The original
+loader still verifies its exact hash, all CRIU inputs and equality of the full
+current CRIU component recipe. The frozen lock is retained in the new run.
+
+The next full run, `factorybox-runtime-2acafe42a6e5422f885556619db6e6a6`, passes
+all seventeen tests and 78 subtests but remains failed. Its blanket adapter
+invocation also discovers the newer `TestFilesystemBaseDeviceRecoveryNative`;
+that test requires a separate bounded ext4 fixture and is skipped here.
+This result is not reclassified as a pass. The original zero-skip requirement
+and all original assertions remain unchanged.
+
+The private native-script copy now explicitly selects all eleven original
+adapter tests, with an ordered patch. Original script SHA-256
+`598bfbbf547168fbfab2af17827deecddd06cb9c0ab49083938f1369208859b9`
+becomes `1324326d46c4d1624ae5b9ee4320b736b0be83a871551709daab474730bc6b34`;
+patch SHA-256 is
+`29b99ca106fe7462c10ce803b4832a7391f0a0d21f21727e656c5740a2e38138`.
+No original repository fixture or Go test is edited. The additional bounded
+device test remains required in `tools/base_recovery_native.py` and passes,
+together with its original strict base-recovery case, on the actual delivered
+512-MiB ext4 worker in
+`factorybox-base-recovery-55a2ee7163af4206ace8d53a944ee394`. Exact cleanup,
+unchanged inputs and unchanged global sysctls pass there.
+
+`tools/lifecycle_native.py --ordinary-build`, with the explicit AMD64/native
+base and frozen CRIU lock, now passes the complete unchanged admission suite
+in `factorybox-runtime-f9fc7488833a48fe9ce36ca80c9d3341`: seventeen tests,
+78 subtests, zero skips and complete owned cleanup. Its CLI SHA-256 is
+`eb031e5f1f23ba24ebaa5979fe50a2973eec58a4c9f12a3ec26af75ab83b2094`,
+byte-identical to the independently reproduced worker above. Both foreign-proc
+cases and their original immediate unmount assertions pass. The historical
+busy-overlay failure is still unexplained; one green full suite is not a fix.
+All six portable gates pass after these driver changes in
+`factorybox-checks-e97c9757747343c98f9fd11304683095`.
+
+The unchanged transient foreign-proc-directory case then passes twenty fixed
+diagnostic repetitions in
+`factorybox-proc-cleanup-diagnostic-7952e9bb33dc4bd78125a0515d93f61a`.
+The first-failure stop flag is set before the run. Every original assertion
+and immediate overlay unmount is retained. The frozen ordinary test binary
+is reconstructed into the new artifact and verified in full, without writing
+into its closed source artifact. A separate ordered shell patch narrows only
+the selected case and sets the repetition count. The eleven original adapter
+cases still execute.
+
+The next declared diagnostic changes only the test executable's GC settings
+and those inherited by its short-lived CLI children: GOGC=off and a 1-GiB soft
+limit. Sysbox daemons retain their original environment, the actor retains its
+explicit environment and the outer 3-CPU/3-GiB ceiling remains.
+`factorybox-proc-cleanup-gc-off-0eba53968ae14ecfbc331d8ad7c8c3ab` also passes
+all twenty original cases. Both diagnostics pass exact cleanup, input checks
+and unchanged global sysctls. Neither reproduces the historical busy mount or
+identifies its owner, so no cleanup repair or release qualification is claimed.
+
 ## Initial local release scope agreed on 2026-10-23
 
 The user approved a controlled first release on the existing Linux AMD64 host,
