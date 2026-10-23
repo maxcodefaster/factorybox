@@ -3267,10 +3267,16 @@ that the error is a string. Inspection of the exact exported schema in
 `factorybox-agent-cancel-schema-5d83e3037ecc4cecbbb82adce4760a4c` confirms an
 error object with `type` and `message`. The corrected fixture also requires the
 durable session outcome `interrupted`. The original failed result stays intact.
-Its complete 34,360,786,944-byte failed-store stream remains reconstructable,
+Its complete 34,360,786,944-byte failed-store stream was fully verified,
 SHA-256 `bf9e3a7691fb65b682756927535d5097e951d954dceddb4445a22eb315a80148`.
 Lossless repack `factorybox-storage-repack-3ae270ef71874e7a905d164d87b74881`
 verifies both complete decoded streams and reclaims 824,267,368 encoded bytes.
+After both complete planned/abrupt replacement proofs pass, qualified retirement
+`factorybox-storage-retirement-4002510a2b2d499da2309fe1734eb975` again verifies
+that complete stream and retires its 641,382,782-byte encoding. Host observations,
+source, results, logs and outer-archive member metadata/hashes remain. The old
+mutable filesystem is intentionally no longer reconstructable. The separate
+later ESRCH failure remains complete as described below.
 The repacker now hashes large compressed files as streams instead of loading
 an entire archive into memory; its receipt/decompression guards remain.
 
@@ -3311,11 +3317,86 @@ native test executable, SHA-256
 results, reconstructed fixture patches, verified encoded native inputs and
 complete first-failure archive; it checks the historical partial result is
 refused and reference verification still checks all 232 files. These are
-specific local-model cancellation observations. A new user prompt after
-cancellation, provider errors/partial tool-call output, and uncertain external
-effects with a counter outside the captured environment remain required.
+specific local-model cancellation observations. The next section adds explicit
+new user prompts after cancellation. Provider errors/partial tool-call output
+and uncertain external effects with a counter outside the captured environment remain required.
 The final package's external gateway/model proof and all other first-release
 gates also remain open. Production qualification is false.
+
+## Explicit new agent prompts after acknowledged cancellation
+
+The additional cancellation model reply accepts only an explicit new prompt
+with a fresh 128-bit token and the actual original tool-call ID/error. The
+ordinary model's result and duplicate-tool assertions remain unchanged in an
+ordered private patch. The client submits each mutating prompt once, requires
+its own durable user message, matching assistant answer and successful idle,
+and verifies the original canceled tool part is byte-identical with one launch.
+An uncertain submission fails instead of silently resubmitting.
+
+The recovery test submits different prompts in the recovered source and its
+independent fork. Before continuing the fork, it verifies source continuation
+did not change the fork, deletes the recovered source and rechecks the useful
+application/cancellation. Both responses must ingest the original error and
+reach successful idle without another shell. Completion admission rejects a
+historical cancellation-only proof or either missing new-prompt receipt.
+
+The first expanded planned case,
+`factorybox-consumer-worker-loss-e6991b5b97814ea28ded1417f6ec3fd9`, passes.
+The corresponding abrupt attempt,
+`factorybox-consumer-worker-loss-e461286146df4396b17c7d7c05c2b79a`, fails before
+worker loss: the original tool is already durably aborted/interrupted, but a
+proc-stat read races its exit and returns ESRCH. The new client accepted only
+ENOENT as absence. Its actual failed observation and full 34,360,786,944-byte
+store remain preserved, SHA-256
+`cfcbd861c998977b3028164e39c1d9cb5151332725d38b67d29e70d4a6a58344`.
+Lossless repack `factorybox-storage-repack-d7ff8b09ee964622aaed88d0a26a1ded`
+verifies both complete decoded streams and reclaims 711,715,132 encoded bytes.
+
+The deterministic regression in
+`factorybox-agent-cancel-esrch-red-47cd87e7eeff4c0a85711cf8c93ef640` exercises
+the actual unchanged client identity/gone functions and fails on ESRCH. The
+correction accepts ENOENT or ESRCH from that exact proc read; EACCES, EPERM and
+EIO still propagate, and a live process with the same birth remains live.
+All six portable gates pass in
+`factorybox-checks-3c21206990304f5b8f34238a99d5e60e`, including those negative
+identity assertions and all 232 immutable reference files.
+
+Both complete native cases on the corrected exact inputs now pass:
+
+- Planned replacement:
+  `factorybox-consumer-worker-loss-81443edb880e4f478beaa97e427027b5`.
+- Abrupt replacement:
+  `factorybox-consumer-worker-loss-9695d3ad05bc470299cd27968645d550`.
+
+They share the same complete source/agent manifests and native test binary,
+SHA-256 `e928db57fd44f2b44070ed3110d1e2c20248634829eeaa7ddff9821d62d14457`.
+Each uses distinct old/new worker epochs, preserves settled cancellation and
+recovery replay, completes a new prompt in the recovered source and a different
+new prompt in the independent fork after source deletion, and observes one
+tool launch in each environment. The original tool error remains unchanged.
+The intentionally killed old worker exits 137; every other worker exits zero.
+All owned resources close and global sysctls remain unchanged.
+
+`factorybox-agent-cancel-continuation-notes-02ca6c47ce304523824f248fa1630bf4`
+verifies both complete results, direct prompt/cancellation receipts, every
+original model assertion, reconstructable fixture patches, identical current
+inputs, fully decoded test executables and the complete ESRCH failed-store
+archive. It explicitly refuses the historical cancellation-only proof for this
+new-prompt requirement. Provider errors, partial tool-call output, uncertain
+external effects, the final external gateway/model proof and other release
+requirements remain open. Production qualification is false.
+
+Maintenance `factorybox-storage-share-cancel-inputs-6bc75493540849618af8b81bad53b469`
+fully decodes/verifies 24 compacted test inputs before and after sharing 17
+byte-identical encodings, reclaiming 109,199,360 allocated bytes. Original
+results, source, logs, encoding receipts and all failure filesystem archives
+are unchanged. Every old and shared mtime is recorded. This is artifact
+maintenance, with no runtime optimization or production qualification.
+`factorybox-storage-share-sources-03d128a770db40a4b4f6f78ce7210bd6` additionally
+verifies 473 closed source trees and all original results before/after sharing
+30,763 byte- and metadata-identical immutable source files, reclaiming
+315,813,888 allocated bytes. Active runs and failure filesystem archives are
+not eligible; every original source manifest remains identical.
 
 ## Timing boundaries on the canonical-base candidate
 

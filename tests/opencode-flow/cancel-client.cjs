@@ -1,4 +1,4 @@
-// Exact shipped OpenCode interruption API; never sends a new prompt or tool call.
+// Exact shipped OpenCode interruption and explicit post-cancellation prompt API.
 const fs = require('node:fs');
 const http = require('node:http');
 const crypto = require('node:crypto');
@@ -44,7 +44,7 @@ function identity(pid) {
     const stat = fs.readFileSync('/proc/' + pid + '/stat', 'utf8');
     const fields = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/);
     return {state: fields[0], birth: fields[19]};
-  } catch (error) { if (error.code === 'ENOENT') return undefined; throw error; }
+  } catch (error) { if (error.code === 'ENOENT' || error.code === 'ESRCH') return undefined; throw error; }
 }
 function gone(saved) {
   const current = identity(saved.pid);
@@ -58,7 +58,8 @@ async function call(session) {
   if (calls.length !== 1 || calls[0].name !== 'shell' || calls[0].state?.input?.command !== command || calls[0].state.input.timeout !== 0) {
     throw new Error('cancellation target is not its single exact held shell');
   }
-  return {part: calls[0], interrupted: (messages.data || []).some(message => message.type === 'idle' && message.outcome === 'interrupted')};
+  return {part: calls[0], interrupted: (messages.data || []).some(message => message.type === 'idle' && message.outcome === 'interrupted'),
+    messages: messages.data || []};
 }
 function noCompletion() {
   if (fs.existsSync(root + '/.factorybox-tool-release') || fs.existsSync(root + '/.factorybox-tool-result.json')) {
@@ -102,7 +103,7 @@ async function main() {
       original_nonce: armed.nonce, idle_repeat: true, original_process_gone: true, execution_interrupted: true};
     fs.writeFileSync(path, JSON.stringify(receipt), {mode: 0o600, flag: 'wx'});
     console.log(JSON.stringify(receipt));
-  } else if (process.argv[2] === 'verify') {
+  } else if (['verify', 'continue'].includes(process.argv[2])) {
     const saved = JSON.parse(fs.readFileSync(path));
     const observed = await call(session);
     if (saved.session_id !== session.id || !saved.canceled || observed.part.state.status !== 'error' || !observed.interrupted ||
@@ -110,7 +111,56 @@ async function main() {
     const idle = await api('/api/session/' + session.id + '/interrupt?resume=false', {});
     if (idle.interrupted !== false) throw new Error('canceled session unexpectedly active');
     noCompletion();
-    console.log(JSON.stringify(saved));
+    const continuationPath = root + '/.factorybox-cancel-continuation.json';
+    if (process.argv[2] === 'verify') {
+      const continued = fs.existsSync(continuationPath);
+      const model = JSON.parse(fs.readFileSync(root + '/.factorybox-model.json'));
+      if (model.observed.filter(item => item.kind === 'cancel-result').length !== (continued ? 1 : 0)) {
+        throw new Error('agent continuation leaked between independent descendants');
+      }
+      console.log(JSON.stringify(saved));
+      return;
+    }
+    if (fs.existsSync(continuationPath)) throw new Error('post-cancellation prompt already submitted');
+    const oldIDs = new Set(observed.messages.map(message => message.id));
+    const token = crypto.randomBytes(16).toString('hex');
+    const prompt = 'FACTORYBOX_CANCEL_CONTINUE_' + token + ' Acknowledge the canceled tool result. Do not execute another tool.';
+    const ack = 'FACTORYBOX_CANCEL_ACK_' + token;
+    // One mutating submission. An uncertain response must fail, never resubmit.
+    await api('/api/session/' + session.id + '/prompt', {text: prompt, resume: true});
+    for (const deadline = Date.now() + 15000; ; ) {
+      const current = await call(session);
+      fs.writeFileSync(root + '/.factorybox-interruption-observed.json', JSON.stringify(current), {mode: 0o600});
+      if (current.part.state.status !== 'error' || digest(current.part) !== saved.call_sha256 || !gone(saved.original_target)) {
+        throw new Error('new prompt changed or restarted the canceled tool');
+      }
+      noCompletion();
+      const messages = current.messages.filter(message => !oldIDs.has(message.id));
+      const users = messages.filter(message => message.type === 'user' && message.text === prompt);
+      const assistants = messages.filter(message => message.type === 'assistant' &&
+        (message.content || []).some(part => part.type === 'text' && part.text === ack));
+      const idles = messages.filter(message => message.type === 'idle' && message.outcome === 'succeeded');
+      if (users.length === 1 && assistants.length === 1 && idles.length === 1) {
+        const model = JSON.parse(fs.readFileSync(root + '/.factorybox-model.json'));
+        const ingested = model.observed.filter(item => item.kind === 'cancel-result');
+        if (ingested.length !== 1 || ingested[0].token !== token || ingested[0].call_id !== current.part.id ||
+            !ingested[0].content.includes(saved.tool_error.message)) throw new Error('new prompt did not ingest its exact saved error');
+        const idle = await api('/api/session/' + session.id + '/interrupt?resume=false', {});
+        if (idle.interrupted !== false) throw new Error('new prompt did not settle');
+        const receipt = {session_id: session.id, call_sha256: saved.call_sha256, prompt_token: token, ack,
+          completed: true, tool_error_consumed: true, launches: 1, tool_call_id: ingested[0].call_id,
+          content_sha256: crypto.createHash('sha256').update(ingested[0].content).digest('hex'),
+          user_message_id: users[0].id, assistant_message_id: assistants[0].id, idle_message_id: idles[0].id};
+        fs.writeFileSync(continuationPath, JSON.stringify(receipt), {mode: 0o600, flag: 'wx'});
+        console.log(JSON.stringify(receipt));
+        return;
+      }
+      if (messages.some(message => message.type === 'idle' && message.outcome !== 'succeeded')) {
+        throw new Error('post-cancellation prompt failed: ' + JSON.stringify(messages));
+      }
+      if (Date.now() >= deadline) throw new Error('post-cancellation prompt did not complete: ' + JSON.stringify(messages));
+      await sleep(50);
+    }
   } else throw new Error('unknown cancel operation');
 }
 main().catch(error => { console.error(error.stack); process.exit(1); });

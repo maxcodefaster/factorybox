@@ -65,9 +65,33 @@ def require_agent_cancel_recovery(result):
     epochs = [row["startup"]["status"]["epoch"] for row in phases]
     if not all(epochs) or epochs[0] == epochs[1]:
         raise ValueError("cancellation requires two distinct worker epochs")
+    continuation = require_agent_cancel_continuation(recovered)
     return {"passed": True, "phases": ["prepare", "recover"], "worker_epochs": epochs,
             "same_cancellation": True, "session_id": prepared["agent"]["session_id"],
-            "call_sha256": prepared["agent"]["call_sha256"]}
+            "call_sha256": prepared["agent"]["call_sha256"], "continuation": continuation}
+
+
+def require_agent_cancel_continuation(recovered):
+    agent = recovered["agent"]
+    continuations = recovered.get("continuations", {})
+    if set(continuations) != {"recovered", "branch"}:
+        raise ValueError("cancellation requires new prompts in both independent descendants")
+    tokens = []
+    for receipt in continuations.values():
+        if (receipt.get("session_id") != agent["session_id"] or receipt.get("call_sha256") != agent["call_sha256"] or
+                receipt.get("completed") is not True or receipt.get("tool_error_consumed") is not True or
+                receipt.get("launches") != 1 or receipt.get("tool_call_id") != "call_factorybox_held"):
+            raise ValueError("new prompt did not consume its original cancellation without tool replay")
+        token = receipt.get("prompt_token", "")
+        digest = receipt.get("content_sha256", "")
+        if (len(token) != 32 or len(digest) != 64 or any(char not in "0123456789abcdef" for char in token + digest) or
+                receipt.get("ack") != "FACTORYBOX_CANCEL_ACK_" + token or
+                any(not receipt.get(key, "").startswith("msg_") for key in ["user_message_id", "assistant_message_id", "idle_message_id"])):
+            raise ValueError("new prompt lacks its actual independent response and completion")
+        tokens.append(token)
+    if tokens[0] == tokens[1]:
+        raise ValueError("descendants reused the same continuation prompt")
+    return {"passed": True, "targets": ["recovered", "branch"], "distinct_prompts": True, "launches_each": 1}
 
 
 def sysctls():
@@ -294,13 +318,22 @@ traceDependency({event: 'module-loaded'});
             if before.count(old) != 1:
                 raise ValueError("exact held-tool model command changed")
             after = before.replace(old, "/opt/factorybox/opencode-flow/cancel-held-tool.cjs ")
+            anchor = "      if (results.length) {"
+            if after.count(anchor) != 1:
+                raise ValueError("exact original model result boundary changed")
+            after = after.replace(anchor,
+                "      const cancellation = require('./cancel-model.cjs')(input, results, sequence);\n"
+                "      if (cancellation) {\n"
+                "        observed.push(cancellation.observation);\n"
+                "        ({delta, finish} = cancellation);\n"
+                "      } else if (results.length) {")
             (artifact/"cancel-model.before.cjs").write_text(before)
             patch = artifact/"cancel-model.patch"
             patch.write_text(''.join(difflib.unified_diff(before.splitlines(True), after.splitlines(True), fromfile="a/model.cjs", tofile="b/model.cjs")))
             model.write_text(after)
             result["agent_cancel_model"] = {"before_sha256": reference.sha(artifact/"cancel-model.before.cjs"),
                 "after_sha256": reference.sha(model), "patch_sha256": reference.sha(patch), "assertions_preserved": True,
-                "scope": "Only the new cancellation case wraps its exact held command with a local launch counter; every model assertion and the original held-tool source remain unchanged."}
+                "scope": "Only the cancellation case wraps its held command with a launch counter and adds explicit post-cancellation replies that require the actual tool error. All original assertions and held-tool source remain unchanged."}
         shutil.copyfile(reference.ROOT/"tests/opencode-probe.cjs",artifact/"opencode-probe.cjs")
         path=artifact/"devx-sandbox.sh"
         text=path.read_text()

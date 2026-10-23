@@ -52,7 +52,22 @@ type canceledConsumerProof struct {
 	Agent      canceledAgent    `json:"agent"`
 }
 
-func (f *fixture) canceledAgent(view lifecycle.View, operation string) canceledAgent {
+type canceledContinuation struct {
+	SessionID          string `json:"session_id"`
+	CallSHA256         string `json:"call_sha256"`
+	Token              string `json:"prompt_token"`
+	Ack                string `json:"ack"`
+	Completed          bool   `json:"completed"`
+	ToolErrorConsumed  bool   `json:"tool_error_consumed"`
+	Launches           int    `json:"launches"`
+	ToolCallID         string `json:"tool_call_id"`
+	ContentSHA256      string `json:"content_sha256"`
+	UserMessageID      string `json:"user_message_id"`
+	AssistantMessageID string `json:"assistant_message_id"`
+	IdleMessageID      string `json:"idle_message_id"`
+}
+
+func (f *fixture) canceledAgentOutput(view lifecycle.View, operation string) []byte {
 	f.t.Helper()
 	if view.Runtime == nil || view.Runtime.PID <= 1 {
 		f.t.Fatal("canceled agent lacks its exact live sandbox")
@@ -89,6 +104,15 @@ func (f *fixture) canceledAgent(view lifecycle.View, operation string) canceledA
 		}
 		f.t.Fatalf("actual agent cancellation %s: %v: %s", operation, err, output)
 	}
+	if err := os.WriteFile("/output/agent-cancel-"+operation+"-"+view.Record.ID+".json", output, 0600); err != nil {
+		f.t.Fatal(err)
+	}
+	return output
+}
+
+func (f *fixture) canceledAgent(view lifecycle.View, operation string) canceledAgent {
+	f.t.Helper()
+	output := f.canceledAgentOutput(view, operation)
 	var observed canceledAgent
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
 	decoder.DisallowUnknownFields()
@@ -100,8 +124,27 @@ func (f *fixture) canceledAgent(view lifecycle.View, operation string) canceledA
 		observed.OriginalTarget.PID <= 1 || observed.OriginalTarget.Birth == "" || !observed.IdleRepeat || !observed.ProcessGone {
 		f.t.Fatal("incomplete actual cancellation proof", observed)
 	}
-	if err := os.WriteFile("/output/agent-cancel-"+operation+"-"+view.Record.ID+".json", output, 0600); err != nil {
+	return observed
+}
+
+func (f *fixture) continueCanceledAgent(view lifecycle.View, saved canceledAgent) canceledContinuation {
+	f.t.Helper()
+	output := f.canceledAgentOutput(view, "continue")
+	var observed canceledContinuation
+	decoder := json.NewDecoder(strings.NewReader(string(output)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&observed); err != nil {
 		f.t.Fatal(err)
+	}
+	if observed.SessionID != saved.SessionID || observed.CallSHA256 != saved.CallSHA256 ||
+		len(observed.Token) != 32 || observed.Ack != "FACTORYBOX_CANCEL_ACK_"+observed.Token ||
+		!observed.Completed || !observed.ToolErrorConsumed || observed.Launches != 1 || observed.ToolCallID != "call_factorybox_held" ||
+		len(observed.ContentSHA256) != 64 || !strings.HasPrefix(observed.UserMessageID, "msg_") ||
+		!strings.HasPrefix(observed.AssistantMessageID, "msg_") || !strings.HasPrefix(observed.IdleMessageID, "msg_") {
+		f.t.Fatal("missing actual new prompt after cancellation", observed)
+	}
+	if actual := f.canceledAgent(view, "verify"); !reflect.DeepEqual(actual, saved) {
+		f.t.Fatal("new prompt changed the original cancellation", actual, saved)
 	}
 	return observed
 }
@@ -235,6 +278,10 @@ func TestNativeAgentCancellation(t *testing.T) {
 	if actual := canceledConsumerApp(t, branch, "", time.Second); !reflect.DeepEqual(actual, proof.App) {
 		t.Fatal("canceled-agent branch shares mutable source state", actual, proof.App)
 	}
+	recoveredContinuation := f.continueCanceledAgent(restored, proof.Agent)
+	if actual := f.canceledAgent(branch, "verify"); !reflect.DeepEqual(actual, proof.Agent) {
+		t.Fatal("source continuation changed its independent branch", actual, proof.Agent)
+	}
 	f.command("delete", "recovered")
 	if actual := canceledConsumerApp(t, branch, "", time.Second); !reflect.DeepEqual(actual, proof.App) {
 		t.Fatal("branch depended on deleted recovered source", actual, proof.App)
@@ -242,8 +289,13 @@ func TestNativeAgentCancellation(t *testing.T) {
 	if actual := f.canceledAgent(branch, "verify"); !reflect.DeepEqual(actual, proof.Agent) {
 		t.Fatal("source deletion changed descendant cancellation", actual, proof.Agent)
 	}
+	branchContinuation := f.continueCanceledAgent(branch, proof.Agent)
+	if branchContinuation.Token == recoveredContinuation.Token {
+		t.Fatal("independent descendants reused the same new prompt")
+	}
 	saveCanceledConsumer(t, "/output/opencode-cancel-recover.json", map[string]any{
 		"schema": 1, "phase": phase, "passed": true, "agent": proof.Agent, "independent_branch": true,
-		"source_deleted": true, "recovery_replay": true, "original_proof": proof})
+		"source_deleted": true, "recovery_replay": true, "original_proof": proof,
+		"continuations": map[string]canceledContinuation{"recovered": recoveredContinuation, "branch": branchContinuation}})
 	readableConsumerOutput(t)
 }
