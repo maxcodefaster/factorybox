@@ -64,6 +64,7 @@ func runLifecycle(args []string) error {
 	var recovery lifecycle.RecoveryRequest
 	var checkpointRequest lifecycle.CheckpointRequest
 	var selectionID string
+	var retainedRoot string
 	if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
 		start.StringVar(&bundle, "bundle", "", "administrator-prepared OCI bundle")
@@ -74,7 +75,7 @@ func runLifecycle(args []string) error {
 		if bundle == "" {
 			return fmt.Errorf("start requires --bundle")
 		}
-	} else if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" {
+	} else if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" || command == "release-recovery-selection" {
 		operation := flag.NewFlagSet(command, flag.ContinueOnError)
 		operation.StringVar(&checkpointRequest.SnapshotID, "snapshot-id", "", "exact published checkpoint ID")
 		operation.StringVar(&checkpointRequest.SourceOwner, "source-owner", "", "exact saved source owner")
@@ -82,12 +83,18 @@ func runLifecycle(args []string) error {
 		if command != "retire-checkpoint" {
 			operation.StringVar(&selectionID, "selection-id", "", "immutable recovery selection ID")
 		}
+		if command == "release-recovery-selection" {
+			operation.StringVar(&retainedRoot, "source-root", "", "exact earlier controller in the current worker's bounded store")
+		}
 		if err := operation.Parse(remaining); err != nil {
 			return err
 		}
 		remaining = operation.Args()
 		if checkpointRequest.SnapshotID == "" || checkpointRequest.SourceOwner == "" || checkpointRequest.CheckpointSHA256 == "" || command != "retire-checkpoint" && selectionID == "" {
 			return fmt.Errorf("%s requires exact checkpoint, owner, hash and any selection identity", command)
+		}
+		if command == "release-recovery-selection" && (workerRunRoot == "" || retainedRoot == "") {
+			return fmt.Errorf("release-recovery-selection requires --worker-run-root and --source-root")
 		}
 	} else if command == "checkpoint" || command == "pause" || command == "resume" {
 		checkpoint := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -148,7 +155,7 @@ func runLifecycle(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
-	if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" {
+	if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" || command == "release-recovery-selection" {
 		checkpointRequest.SourceID = remaining[0]
 		if command == "retire-checkpoint" {
 			result, err := engine.RetireCheckpoint(ctx, checkpointRequest)
@@ -160,6 +167,9 @@ func runLifecycle(args []string) error {
 		var result lifecycle.CheckpointSelection
 		if command == "select-checkpoint" {
 			result, err = engine.SelectCheckpoint(ctx, checkpointRequest, selectionID)
+		} else if command == "release-recovery-selection" {
+			result, err = engine.ReleaseRetainedCheckpointSelection(ctx, lifecycle.RetainedCheckpointRequest{
+				SourceRoot: retainedRoot, CheckpointRequest: checkpointRequest}, selectionID)
 		} else {
 			result, err = engine.ReleaseCheckpointSelection(ctx, checkpointRequest, selectionID)
 		}

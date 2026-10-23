@@ -575,3 +575,26 @@ If a legacy inventory already exceeds the bound, preserve it for explicit
 reconciliation; do not truncate histories or remove directories to force drain.
 A new epoch resets this metadata budget but does not reclaim old payload bytes
 or implement manual epoch retirement.
+
+## Releasing a recovery selection retained by an earlier worker
+
+The unselected bounded-store candidate provides `release-recovery-selection`
+through the validated current `--worker-run-root /run/factorybox`. Supply
+`--source-root` naming the exact earlier controller, the positional source
+sandbox ID, `--snapshot-id`, `--source-owner`, `--checkpoint-sha256` and
+`--selection-id`. The source must be a distinct epoch of this same bounded
+store, on the same boot and with the same pinned runtime/CRIU recipe. Its
+persisted image identity must match the current attachment; a former loop
+number is not reused as authority. Unbounded or explicit controller options
+cannot invoke this command.
+
+Ordinary `release-checkpoint` remains an operation of its original live
+controller and obeys the worker-exit fence. The maintenance command instead
+locks the current controller and then the existing retained controller. It
+opens no old runtime state and initializes no old directory. It publishes only
+the release of the exact selected generation, preserving its original selection
+and selected timestamp. An exact retry returns the same durable result.
+Other selections remain effective. Releasing all selections still leaves an
+unresumed committed pause protected, and does not remove any payload or reopen
+the old lifecycle. Checkpoint/epoch backing retirement remains a separate
+operation requiring its own dependency and ownership proof.

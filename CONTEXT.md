@@ -39,7 +39,9 @@ after the supported loss of its worker.
 
 **Recovery selection**:
 A particular saved state deliberately retained as an input for recovery. Its
-retention ends only when that selection is explicitly released.
+retention ends only when that selection is explicitly released. Worker
+replacement does not release it. Releasing a selection does not withdraw a
+committed pause or discard its saved state.
 
 **Checkpoint retirement**:
 Permanent withdrawal of a checkpoint's stored backing while its original

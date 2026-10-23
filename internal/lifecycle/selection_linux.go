@@ -150,6 +150,12 @@ func (e *Engine) ReleaseCheckpointSelection(ctx context.Context, request Checkpo
 		return CheckpointSelection{}, err
 	}
 	defer lock.Close()
+	return e.releaseCheckpointSelection(ctx, request, id)
+}
+
+// The caller must hold this controller's lock. Retained-epoch maintenance may
+// release one exact selection without reopening the closed lifecycle.
+func (e *Engine) releaseCheckpointSelection(ctx context.Context, request CheckpointRequest, id string) (CheckpointSelection, error) {
 	if err := ctx.Err(); err != nil {
 		return CheckpointSelection{}, err
 	}

@@ -4301,3 +4301,51 @@ no native verdict changes. The shared admission change is now functionally
 covered. Manual epoch retirement, original PID/busy-mount attribution, final
 external-agent/operations and first-release package acceptance remain open.
 The goal remains active and production qualification remains false.
+
+## Release exact selections retained by a replaced worker
+
+An ordinary controller operation correctly refuses a sealed worker epoch. That
+also prevents its original `release-checkpoint` command from releasing a retained
+selection after a clean worker replacement. New `release-recovery-selection`
+uses the validated current worker profile and an exact old controller, source,
+checkpoint hash/owner and selection ID. It validates the same persistent image,
+store, boot and runtime/CRIU identities as bounded device recovery, then locks
+current controller followed by the existing old controller. It initializes no
+old directory or runtime and publishes only the exact release record. The
+existing ordinary exit fence remains enforced.
+
+Worker `factorybox-build-worker-f89547e7acea4c15a32d7f7ead2ef81b` contains this
+path. Independent offline comparison build
+`factorybox-build-worker-5ce353a6b9964ccb8a3d5cb8549abdef` reproduces its package
+SHA-256 `3e8b4ec24efdc79f7bdd21168f8bf8421221f5fd7762af14eb5baac100fdc4fb`
+and image `sha256:8c51078021366f00fa3ff14954656c1809046c318789023d54f7238385b5d481`
+exactly. Portable checks `factorybox-checks-c045c4ff9c7d4bb9a8fc2232d994e294` pass
+all six gates, including the unchanged retained-image identity controls,
+212 Python checks, 232 immutable imported files and fixture-extension checks.
+No existing native test or setup assertion is changed. A separate setup runs
+new wrappers that call both complete original bounded-loss test bodies.
+
+Native `factorybox-bounded-loss-b5a472e21e7c4f768f1e7b34a26ea99f` passes after
+clean stop/removal, and `factorybox-bounded-loss-045032eb517e4006b4cfcfdfe3c05dd4`
+passes after exact old-worker SIGKILL/removal. Both use the delivered CLI,
+an unchanged 1-GiB bounded image and a real committed 32-MiB private RAM pause.
+The clean case first verifies the original lifecycle's exit-fence refusal.
+Each rejects six wrong source/owner/hash/selection requests without publishing
+a release, replays an exact release byte for byte, and leaves a second selection
+protected until its separate explicit release. After both releases, the original
+retirement dependency check still refuses the unresumed pause. All original recovery, private RAM
+and file, independent fork, pause/resume, fork of resumed descendant and useful
+work after source deletion assertions then pass. A complete owned-object/content
+inventory of the old objects/forks/bases is identical afterward except for the
+two specifically requested new release records. Both runs confirm exact cleanup,
+unchanged frozen inputs and unchanged global sysctls. Entire runner durations
+are 25.50 and 23.33 seconds, not performance-distribution observations.
+
+Only the selection protection is released. A committed pause remains separately
+protected; checkpoint payload deletion, manual epoch retirement, the original
+PID/busy-mount attribution and final external-agent/package acceptance remain
+open. The previous selected baseline is unchanged and the full goal stays active.
+
+The exact source patches, independent package identities, both complete native
+proofs and fully decoded retained probe identities are linked by
+`factorybox-retained-selection-notes-ea59ee422b19442181f301ce6ba87662`.

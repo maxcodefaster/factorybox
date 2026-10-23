@@ -21,6 +21,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
     parser.add_argument('--loss', choices=['planned', 'abrupt'], required=True)
+    parser.add_argument('--retained-selection', action='store_true',
+                        help='release exact old recovery selections through the replacement before all original recovery assertions')
     args = parser.parse_args()
     _, worker = build_worker.load(args.worker_build)
     native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
@@ -36,7 +38,8 @@ def main():
     for file in ['go.mod', 'go.sum']:
         shutil.copyfile(reference.ROOT / file, source / file)
     shutil.copyfile(__file__, artifact / 'runner.py')
-    shutil.copyfile(reference.ROOT / 'tests/bounded-loss-setup.sh', artifact / 'setup.sh')
+    setup = 'retained-selection-setup.sh' if args.retained_selection else 'bounded-loss-setup.sh'
+    shutil.copyfile(reference.ROOT / 'tests' / setup, artifact / 'setup.sh')
     manifest = upstream_unit.context_manifest(source)
     core = lambda rows: {k: v for k, v in rows.items() if not k.endswith('_test.go')}
     if core(manifest) != core(worker['source_context']):
@@ -49,7 +52,8 @@ def main():
     output.mkdir()
     result = {'schema': 1, 'owner': owner, 'passed': False, 'cleanup': False, 'production_qualified': False,
               'worker_build': args.worker_build, 'worker_image_id': worker['image_id'], 'source_context': manifest,
-              'loss': args.loss, 'runner_sha256': reference.sha(artifact / 'runner.py'),
+              'loss': args.loss, 'retained_selection': args.retained_selection,
+              'runner_sha256': reference.sha(artifact / 'runner.py'),
               'setup_sha256': reference.sha(artifact / 'setup.sh'), 'rootfs_sha256': busybox['sha256'],
               'global_sysctls_before': consumer_worker_loss.sysctls(), 'workers': [],
               'scope': 'Actual same-host/same-boot bounded worker replacement after a committed 32-MiB anonymous '
@@ -79,6 +83,8 @@ def main():
                        '--privileged', '--cgroupns=private', '--cpus=3', '--memory=3g', '--pids-limit=512', '--network=none',
                        '--env', 'GOMAXPROCS=2', '--env', 'GOMEMLIMIT=256MiB', '--env', 'FACTORYBOX_NATIVE_BOUNDED_LOSS=1',
                        '--mount', f'type=volume,source={name},target=/var/lib/sysbox']
+            if args.retained_selection:
+                command += ['--env', 'FACTORYBOX_NATIVE_RETAINED_SELECTION=1']
             for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                            (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
                 command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -96,8 +102,9 @@ def main():
             row[stage] = {'seconds': time.monotonic()-stamp, 'exit_code': done.returncode}
             state = consumer_worker_loss.exact_worker(row['name'], owner, row['id'])['State']
             log = (artifact / (stage + '.stdout')).read_text()
+            test = 'TestNativeRetainedSelection' if args.retained_selection else 'TestNativeBoundedLoss'
             if (done.returncode or state['OOMKilled'] or not state['Running'] or
-                    sum(line.startswith('--- PASS: TestNativeBoundedLoss' + stage) for line in log.splitlines()) != 1 or
+                    sum(line.startswith('--- PASS: ' + test + stage + ' ') for line in log.splitlines()) != 1 or
                     '--- SKIP:' in log):
                 raise ValueError('native bounded replacement stage failed or skipped: ' + stage)
 
@@ -130,6 +137,17 @@ def main():
                 proof['status']['lifecycle']['bounded_store']['image'] != paused['status']['lifecycle']['bounded_store']['image']):
             raise ValueError('bounded replacement proof lacks required assertions')
         result['recovered_sha256'] = reference.sha(recovered_file)
+        if args.retained_selection:
+            selection_file = output / 'retained-selection-released.json'
+            selection = json.loads(selection_file.read_text())
+            required = ['passed', 'exact_release_replayed', 'other_selection_preserved',
+                        'unresumed_pause_still_protected', 'original_backing_inventory_unchanged',
+                        'full_original_recovery_assertions_passed']
+            if (any(selection.get(key) is not True for key in required) or
+                    selection.get('wrong_requests_refused') != 6 or
+                    selection.get('old_lifecycle_fence_preserved') != (args.loss == 'planned')):
+                raise ValueError('retained selection release proof incomplete')
+            result['retained_selection_sha256'] = reference.sha(selection_file)
         result['passed'] = True
     except Exception as error:
         result['error'] = str(error)
