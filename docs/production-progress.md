@@ -3601,3 +3601,61 @@ repeated lifecycle/pressure/fault cases and bounded 24-hour soak; a reduced,
 independently reproducible worker package and operations instructions; required
 native and upstream suites on the selected delivered bytes. Missing or failed
 required assertions continue to block production qualification.
+
+## PID reservations without a live process leader
+
+On kernel `7.2.8-9-omarchy`, isolated native control
+`factorybox-pid-reservation-control-5ccfd1a12f12455caec64ac95ba31311`
+demonstrates a blind spot in the existing EEXIST diagnostics. A reaped PID-2
+leader has no `/proc/2/status` and `pidfd_open(2)` returns ESRCH, while an owned
+PID-3 child retains its process group, session, or both. Each exact clone3
+request for PID 2 returns EEXIST until that last holder exits and is reaped.
+The same exact PID request then succeeds. All three variants pass. This is a
+kernel mechanism control, not identification of the historical restore occupant.
+
+Its first attempt,
+`factorybox-pid-reservation-control-854e9f2d56ad43d984fc1f617f7bcdf7`, fails
+before container creation because Docker rejects the new runner's invalid
+`--pid=private` argument. Its original failed verdict and output remain.
+The corrected command uses Docker's default private PID namespace and verifies
+its actual namespace inode differs from the host. No workload from that first
+attempt starts; a subsequent exact-name inspection finds no container.
+
+`factorybox-pid-reference-diagnostics-134619240f274ed0b22c693886a34641`
+executes the exact proposed CRIU reference-scanning functions with those real
+kernel states. All six cases pass: each of the three reference types through
+both a local proc view and an inherited ancestor proc descriptor. The latter
+maps visible proc IDs 10, 13 and 16 to actual local holder PID 3. Namespace
+inode checks and the final NSpid component precede local getpgid/getsid queries.
+Each case identifies exactly its remaining holder and preserves EEXIST; after
+owned pipe release and exact reap, PID 2 is available. The scan also visits
+non-leader thread entries, although these six cases use single-thread holders.
+The inputs and global sysctls stay unchanged; exact owned cleanup passes.
+
+The additive ordered
+`criu-pid-collision-references-candidate.patch` retains the original diagnostic
+patch and runs only after nested clone3 EEXIST. It observes task/group/session
+references in the caller's actual PID namespace. For a two-ID CLONE_NEWPID
+request it examines the caller-level ID, rather than the new namespace's PID 1.
+Different active and child PID namespaces cause an explicit diagnostic refusal.
+The racy snapshot is bounded to 4,096 examined entries and 32 matches, with a
+250-ms elapsed-budget check between entries. It is never cleanup authority.
+It sends no signal, writes no PID counter, retries no fork and preserves errno.
+
+Candidate build `factorybox-build-criu-retained-a3a1bd4425e9455fb58416e2af4d5315`
+passes, binary SHA-256
+`6263dd24728ecb8350486ca829c8776e27f62090bd493f6c733d02d0e7f836d0`.
+Its original source/tests remain intact; only the ordered cr-restore diagnostic
+changes from the previous CRIU candidate. The default builder path and selected
+worker remain unchanged. The builder fixture's complete original-to-current
+patch and exact hashes are updated in the production compatibility declaration;
+all original assertions and build/resource checks remain. Frozen before/after
+inputs are in `factorybox-pid-reference-inputs-c6336b5a30684db9a781b74afc2d7262`.
+All six portable gates pass in
+`factorybox-checks-310e057a779b47b78d180fc03816f109`.
+
+The original full PID-failure archive is unchanged and retained. Its saved
+sleep's own PID is 2, but the observed mechanism alone does not prove a group
+or session reservation caused that restore failure. The next reproduction
+needs the actual requested-ID, namespace and holder observations. No restore
+repair, final native qualification or production readiness is claimed.

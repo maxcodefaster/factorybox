@@ -62,6 +62,9 @@ if options.pid_collision_diagnostics:
     patch_inputs.append(
         (root / "upstream/patches/criu-pid-collision-diagnostics-candidate.patch",
          "pid-collision-diagnostics.patch"))
+    patch_inputs.append(
+        (root / "upstream/patches/criu-pid-collision-references-candidate.patch",
+         "pid-collision-references.patch"))
 lock = json.loads((root / "upstream/lock.json").read_text())
 original = lock["components"]["criu"]
 sources.validate_inputs(original)
@@ -192,7 +195,8 @@ if options.pid_collision_diagnostics:
     result["pid_collision_diagnostics"] = True
     result["scope"] += (
         " Read-only bounded diagnostics only when nested clone3 fails with EEXIST: "
-        "requested IDs, current process status and an occupant pidfd's metadata. "
+        "requested IDs, current process status, an occupant pidfd's metadata, "
+        "and bounded namespace-matched task/group/session references. "
         "No signal, PID-counter modification, retry or change to the original failure errno. "
         "This is not a PID collision fix or a selected performance change."
     )

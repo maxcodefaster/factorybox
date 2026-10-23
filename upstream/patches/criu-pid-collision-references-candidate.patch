@@ -1,0 +1,208 @@
+--- a/criu/cr-restore.c
++++ b/criu/cr-restore.c
+@@ -7,6 +7,8 @@
+ #include <string.h>
+ 
+ #include <fcntl.h>
++#include <dirent.h>
++#include <time.h>
+ 
+ #include <sys/syscall.h>
+ #include <sys/types.h>
+@@ -1259,6 +1261,175 @@
+ 	pr_err("PID-COLLISION bounded %s bytes=%zd:\n%s\n", path, count, buffer);
+ }
+ 
++/* Bounded read-only PID references, including references without a leader.
++ * The supplied proc directory may belong to an ancestor PID namespace.
++ * NSpid is used only after matching the task's actual PID namespace inode.
++ * Syscalls interpret the resulting local ID in the caller's namespace.
++ * This is a racy diagnostic snapshot, never an ownership/cleanup authority.
++ */
++struct nested_pid_reference_scan {
++	struct timespec started;
++	struct stat ns;
++	pid_t requested;
++	unsigned int examined, matched, errors;
++	int stopped;
++};
++
++static int nested_pid_reference_budget(struct nested_pid_reference_scan *scan)
++{
++	struct timespec now;
++	long long elapsed;
++
++	if (scan->stopped)
++		return 0;
++	if (clock_gettime(CLOCK_MONOTONIC, &now)) {
++		scan->errors++;
++		scan->stopped = 1;
++		return 0;
++	}
++	elapsed = (now.tv_sec - scan->started.tv_sec) * 1000000000LL +
++		  now.tv_nsec - scan->started.tv_nsec;
++	if (elapsed >= 250000000LL || scan->examined >= 4096 || scan->matched >= 32) {
++		scan->stopped = 1;
++		return 0;
++	}
++	scan->examined++;
++	return 1;
++}
++
++static int nested_pid_reference_numeric(const char *name)
++{
++	const unsigned char *p = (const unsigned char *)name;
++
++	if (!*p)
++		return 0;
++	for (; *p; p++)
++		if (*p < '0' || *p > '9')
++			return 0;
++	return 1;
++}
++
++static void nested_pid_reference_task(int procfd, const char *path,
++				      struct nested_pid_reference_scan *scan)
++{
++	char status[4097], *line, *end;
++	struct stat ns;
++	pid_t local = 0, group, session;
++	long value;
++	ssize_t count;
++	int fd, taskfd;
++
++	taskfd = openat(procfd, path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++	if (taskfd < 0)
++		goto error;
++	if (fstatat(taskfd, "ns/pid", &ns, 0))
++		goto error_close;
++	if (ns.st_dev != scan->ns.st_dev || ns.st_ino != scan->ns.st_ino)
++		goto out;
++	fd = openat(taskfd, "status", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
++	if (fd < 0)
++		goto error_close;
++	count = read(fd, status, sizeof(status) - 1);
++	close(fd);
++	if (count <= 0 || count == (ssize_t)(sizeof(status) - 1))
++		goto error_close;
++	status[count] = '\0';
++	line = strstr(status, "\nNSpid:");
++	if (!line)
++		goto error_close;
++	line += strlen("\nNSpid:");
++	while (*line == ' ' || *line == '\t') {
++		errno = 0;
++		value = strtol(line, &end, 10);
++		if (errno || line == end || value <= 0 || value > INT_MAX)
++			goto error_close;
++		local = (pid_t)value;
++		line = end;
++	}
++	if (*line != '\n' || local <= 0)
++		goto error_close;
++	group = getpgid(local);
++	session = getsid(local);
++	if (local == scan->requested || group == scan->requested || session == scan->requested) {
++		pr_err("PID-COLLISION reference proc=%s local_tid=%d pgid=%d sid=%d ns=%lu:%lu\n",
++		       path, local, group, session, (unsigned long)ns.st_dev, (unsigned long)ns.st_ino);
++		scan->matched++;
++	}
++	goto out;
++error_close:
++	scan->errors++;
++out:
++	close(taskfd);
++	return;
++error:
++	scan->errors++;
++}
++
++static int nested_pid_collision_references(int procfd, pid_t requested)
++{
++	struct nested_pid_reference_scan scan = { .requested = requested };
++	struct dirent *process, *thread;
++	struct stat child_ns;
++	DIR *processes = NULL, *threads;
++	char path[96];
++	int saved = errno, fd;
++
++	if (clock_gettime(CLOCK_MONOTONIC, &scan.started) ||
++	    fstatat(procfd, "self/ns/pid", &scan.ns, 0)) {
++		pr_err("PID-COLLISION reference namespace unavailable errno=%d\n", errno);
++		goto out;
++	}
++	if (fstatat(procfd, "self/ns/pid_for_children", &child_ns, 0) ||
++	    scan.ns.st_dev != child_ns.st_dev || scan.ns.st_ino != child_ns.st_ino) {
++		pr_err("PID-COLLISION reference scan refused: caller and child PID namespaces differ\n");
++		goto out;
++	}
++	fd = openat(procfd, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++	if (fd < 0)
++		goto error;
++	processes = fdopendir(fd);
++	if (!processes) {
++		close(fd);
++		goto error;
++	}
++	while (nested_pid_reference_budget(&scan) && (process = readdir(processes))) {
++		if (!nested_pid_reference_numeric(process->d_name))
++			continue;
++		nested_pid_reference_task(procfd, process->d_name, &scan);
++		/* A group leader can have exited while non-leader threads remain. */
++		snprintf(path, sizeof(path), "%.10s/task", process->d_name);
++		fd = openat(procfd, path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
++		if (fd < 0) {
++			scan.errors++;
++			continue;
++		}
++		threads = fdopendir(fd);
++		if (!threads) {
++			close(fd);
++			scan.errors++;
++			continue;
++		}
++		while (nested_pid_reference_budget(&scan) && (thread = readdir(threads))) {
++			if (!nested_pid_reference_numeric(thread->d_name) ||
++			    !strcmp(thread->d_name, process->d_name))
++				continue;
++			snprintf(path, sizeof(path), "%.10s/task/%.10s", process->d_name, thread->d_name);
++			nested_pid_reference_task(procfd, path, &scan);
++		}
++		closedir(threads);
++	}
++	goto out;
++error:
++	scan.errors++;
++out:
++	if (processes)
++		closedir(processes);
++	pr_err("PID-COLLISION references target=%d examined=%u matched=%u errors=%u bounded_stop=%d racy_snapshot=1\n",
++	       requested, scan.examined, scan.matched, scan.errors, scan.stopped);
++	errno = saved;
++	return scan.matched;
++}
++
+ static void nested_pid_collision(struct pstree_item *item, pid_t *requested, int nr)
+ {
+ 	int saved = errno;
+@@ -1270,6 +1441,20 @@
+ 	pr_err("PID-COLLISION saved_pid=%d own_pid=%d caller=%d set_tid_size=%d tid0=%d tid1=%d flags=%lx\n",
+ 	       vpid(item), item->own_ns_pid, getpid(), nr, nr > 0 ? requested[0] : -1,
+ 	       nr > 1 ? requested[1] : -1, rsti(item)->clone_flags);
++	{
++		int index = (rsti(item)->clone_flags & CLONE_NEWPID) ? 1 : 0;
++		int procfd;
++
++		/* A new namespace's PID 1 has no pre-existing occupant. With two
++		 * requested IDs, inspect the caller-level ID instead. */
++		if (nr > index) {
++			procfd = open_proc(PROC_GEN, ".");
++			if (procfd >= 0) {
++				nested_pid_collision_references(procfd, requested[index]);
++				close(procfd);
++			}
++		}
++	}
+ 	nested_pid_collision_file("/proc/self/status");
+ 	if (nr > 0) {
+ 		snprintf(path, sizeof(path), "/proc/%d/status", requested[0]);
