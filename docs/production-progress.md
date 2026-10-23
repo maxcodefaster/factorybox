@@ -3030,6 +3030,40 @@ compared: only `criu/cr-restore.c` differs, by the bounded read-only EEXIST
 logging patch. No intervening CRIU repair is inferred. The historical PID
 collision and busy-overlay defect remain open.
 
+The saved complete 680-byte process-tree image also establishes a job-group
+difference missing from the earlier control: child 4453 has its own group 4453
+inside parent session 4452, mapping to inner child PID/group 144 and session
+132. `historical-sessions.json` retains all sixteen parsed entries and exact
+source/parser hashes without expanding the original archive again.
+
+`factorybox-pid-child-pgrp-6dc199348f1d484b9fc992abef8a1492` adds only that
+own-group relationship to the reduced test. Its private copy of the original
+actor inserts `Setpgid: true` before the existing memory-child start; every
+original line and assertion remains. The original actor file itself is unchanged.
+The private fixture SHA-256 changes from
+`25091444a47038125cab13a1989e84557b3097997e0d17daa2afd1ca0f053667`
+to `ce833d469b157f38d8ee6ff1a089c6d69010dcd250f3f16f1ba723a48fd76bed`;
+ordered patch SHA-256 is
+`72735ecd0b4b4c9072412b123a2c5b037a42633c2214d6820976d2ec9e35407a`.
+The real kernel reports child PID/group 17 and session 132. The complete reduced
+lifecycle passes in 18.46 s, including both independent 32-MiB actor states.
+
+`factorybox-pid-high-thread-range-4b59ed39086142bd912afc5a1c8ba599` keeps that
+fixture and changes only the allocation range: ordinary temporary fork/reap
+advances the owned inner namespace through PID 137 before actor 132 starts.
+Every temporary child is reaped before capture. No PID counter or sysctl is
+written. The actual child now has PID/group 143, above its parent 132, in session
+132. This complete reduced lifecycle also passes, in 17.06 s, with zero skips,
+unchanged inputs/global sysctls and exact cleanup. It does not claim the original
+exact PID 144 or complete Factory process topology.
+
+`factorybox-pid-group-notes-3c222caa641e407593015e598c594ef5` verifies both
+results, the original bounded image, the declared actor-fixture change and exact
+reconstruction of every ordered diagnostic patch. The production Go sources,
+ordinary CLI and CRIU stay unchanged in both controls. These two negative
+observations still do not identify the historical restore occupant or qualify
+a PID correction. The PID collision and busy-overlay defect remain open.
+
 ## Canonical base admission before exit metadata exhaustion
 
 The preserved 540-base failure shows that safe refusal at worker exit is too
