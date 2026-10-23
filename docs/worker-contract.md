@@ -405,6 +405,21 @@ This qualifies same-boot process loss only; callers still fence the source and
 own the intact store. Host restart, power loss, migration and production
 qualification remain outside this evidence.
 
+Worker exit checks the encoded size of its full completion ledger before
+publishing the exit fence or releasing a canonical base mount. This uses the
+ordinary publisher's JSON encoder and 4-MiB limit, including the newline and
+the maximum UTC RFC3339Nano completion timestamp. A refused ledger leaves both
+fences absent and the backing bases intact. The native public-API cases cover
+both an oversized intent and a fitting intent whose completion would exceed
+the limit. Their trace requires zero canonical-base unmounts and observes the
+later busy-store close, so an inactive trace cannot satisfy the test.
+See [the size-admission evidence](production-progress.md#large-exit-ledger-admission).
+The independently reproduced package also passes all 13 native core gates,
+eight Stop protections, both base-library tests, twelve complete bounded
+consumer cases and four actual interrupted drains on these new bytes.
+This admission guard does not bound the number of accepted work items or
+qualify checkpoint/epoch retirement; those remain separate release work.
+
 `tools/build_worker.py` takes exact completed native-base, Sysbox and CRIU
 build IDs. It freezes the Go sources, toolchain and source lock, checks module
 inputs offline, assembles a deterministic package and builds a local image

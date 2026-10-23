@@ -125,6 +125,13 @@ func (e *Engine) ReleaseDeletedEpochBases(ctx context.Context) error {
 		}
 		intent.Aliases = append(intent.Aliases, aliases...)
 	}
+	// Completion adds a timestamp to this exact ledger. Admit its maximum
+	// UTC RFC3339Nano width before publishing a fence or releasing anything.
+	completion := intent
+	completion.CompletedAt = "9999-12-31T23:59:59.999999999Z"
+	if _, err := checkpointRecordBytes(completion); err != nil {
+		return fmt.Errorf("worker exit completion admission: %w", err)
+	}
 	// Existing controllers must acquire this same lock before every operation.
 	// Publish the irreversible epoch fence while holding it, before unmounting.
 	if err := e.publishCheckpoint(".", "worker-exit.json", intent); err != nil {

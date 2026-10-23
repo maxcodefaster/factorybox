@@ -252,16 +252,24 @@ func (e *Engine) checkpointResult(ctx context.Context, record Record, id, relati
 		Files: files, Filesystem: &filesystem}, nil
 }
 
+func checkpointRecordBytes(result any) ([]byte, error) {
+	data, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	if len(data)+1 > checkpointManifestLimit {
+		return nil, fmt.Errorf("checkpoint record exceeds size limit")
+	}
+	return data, nil
+}
+
 func (e *Engine) publishCheckpoint(relative, name string, result any) error {
 	if filepath.Base(name) != name {
 		return fmt.Errorf("checkpoint record name is not local")
 	}
-	data, err := json.Marshal(result)
+	data, err := checkpointRecordBytes(result)
 	if err != nil {
 		return err
-	}
-	if len(data)+1 > checkpointManifestLimit {
-		return fmt.Errorf("checkpoint record exceeds size limit")
 	}
 	directory, err := e.root.Open(relative)
 	if err != nil {

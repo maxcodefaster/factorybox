@@ -2625,6 +2625,73 @@ the exact observer/driver bytes and incomplete fence, both combined device
 changes, the unchanged prior core acceptance and preserved chat context.
 No power-loss, host-restart, migration or production qualification follows.
 
+## Large exit-ledger admission
+
+The public-API case
+`factorybox-exit-ledger-e4281649832b494988c7108edc0c13ab` imports 540 real tiny
+bases in an owned 512-MiB store. Valid longer canonical source paths enlarge
+their ordinary base records without rewriting runtime metadata. The minimum
+encoded ledger is 4,200,641 bytes, above the 4,194,304-byte reader/publisher
+limit. The exact size refusal occurs before any canonical-base umount2. A
+targeted supervisor trace also sees the later bounded-store Close fail with
+EBUSY, proving the observer stayed active through cleanup. All 540 payloads,
+inode/metadata and base intent/record hashes survive fresh worker replacement;
+both fence files are absent, and the empty replacement stops with 0.
+
+The narrow completion case
+`factorybox-exit-ledger-83c2bfe08ac147a0baf6d85f2fa73b6a` remains failed.
+Every base again comes from the public CLI. Its actual intent is 4,194,289 bytes,
+only 15 bytes below the limit. The trace observes all 540 canonical unmounts and
+a successful store unmount; then completion publication refuses its larger
+record. Worker exit is 1, intent remains, completion is absent. All persistent
+backing and base records remain unchanged. The complete failed store archive,
+trace, source, original result and diagnostics are retained. This is a late
+admission failure, not evidence of lost payload data.
+
+The candidate checks a copy of the complete exit ledger with maximum-width UTC
+RFC3339Nano completed_at before publishing the fence or releasing anything.
+It uses the same encoded-size checker as the actual publisher. JSON encoding,
+the original 4-MiB limit and all existing assertions stay unchanged. Portable
+checks pass in `factorybox-checks-8ac506fd3f1149d9b1453201fbc54dcf`.
+Worker `factorybox-build-worker-5c281a6c3d6d4f08808be45deb0b75f1` contains
+this fix; the separate build
+`factorybox-build-worker-231c41a288f648209bf1aecc88004cf5` reproduces its
+package, image and layers exactly. The package SHA-256 is
+`2b02541fcbf99b7babd70dfeb842390846ba53d6fb648806572bde77350e3b07`;
+the CLI SHA-256 is
+`74ee224a033a88bc557ebd0d32fd150eb8068b37ed3287fcd1d575f50b179073`.
+
+The corrected narrow case
+`factorybox-exit-ledger-9dcf6a311184455fb6ce2ea9b065a87a` again prepares
+540 real bases. Its minimum ledger is 4,194,260 bytes; adding the maximum
+request timestamp still leaves only 14 bytes below the limit. Completion
+preflight refuses before either fence or any canonical-base unmount. The
+oversized case
+`factorybox-exit-ledger-b052c57114584ae4890c1c0864565c27` also passes on
+these exact delivered bytes. Both require the later EBUSY store-close trace,
+preserve every base's contents and identity through fresh worker replacement,
+and finish with exact owned cleanup. All 13 native core regression gates,
+eight Stop protection cases and both base-library tests pass on the new
+package. All twelve full consumers pass in
+`factorybox-ledger-consumers-bb5cc13ae07f4b1a8e7faa1d1ac1fb12`, including
+the four forced-loop combinations, both incomplete-pause refusals and both
+normal lifecycles. All four actual interrupted-drain cases also pass in
+`factorybox-ledger-drain-consumers-65704437d09c4d97bc23e90d7ee10ed1`.
+Every consumer case is newly run on the new package; no earlier package result
+is substituted. Factory retains separate Theia and the local OpenCode fixture.
+The ordered index
+`factorybox-ledger-notes-cd1266fe9219423dbd9b5651d14e85fd` binds all seven
+completed groups, both native size boundaries, the independent rebuild,
+diagnostic reconstruction and exact implementation/documentation patches. It
+fully decodes and verifies the preserved narrow counterexample archive and
+rechecks the immutable reference and old-chat context. This is safe size
+refusal; bounded admission of new work, epoch retirement and the complete
+production goal remain open.
+
+The diagnostic recipe preserves exact before/after hashes and a patch for its
+copied umount2 filter and public-base scope label. Imported sources and frozen
+diagnostic executables remain unchanged. No latency claim follows from tracing.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

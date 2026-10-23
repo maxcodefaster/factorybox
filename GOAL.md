@@ -489,3 +489,22 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   Prozessverlust im selben Boot, keinen Stromausfall oder Host-Neustart.
   Große Exit-Belege, sämtliche übrigen Abnahmen und das vollständige Goal
   bleiben offen und aktiv.
+- Der echte Größen-Test importiert 540 kleine Basen über die öffentliche CLI.
+  Ein Beleg oberhalb von 4 MiB wird vor jeder kanonischen Unmount-Operation
+  verweigert; nach dem Ersatz sind sämtliche Daten und Datensätze unverändert.
+  Ein zweiter Test trifft einen Intent mit nur 15 Byte Reserve und zeigt einen
+  Fehler: Alle 540 Basismounts werden freigegeben, erst der größere Abschluss
+  scheitert. Intent und vollständiger Fehler-Store bleiben erhalten, Nutzdaten
+  sind unverändert. Der Kandidat prüft jetzt vor der Sperrveröffentlichung auch
+  die maximal große Abschlussform mit demselben Größenprüfer.
+  Das neue Paket `5c281a6c3d6d4f08808be45deb0b75f1` und sein unabhängiger
+  Nachbau stimmen exakt überein. Beide nativen Größenfälle bestehen: kein
+  kanonischer Unmount, beide Sperrdateien fehlen, alle 540 Basen unverändert
+  und der neue leere Worker stoppt mit 0. Alle 13 nativen Kerngates, acht
+  Stop-Schutzfälle und beide Basis-Tests bestehen ebenfalls. Die zwölf
+  vollständigen Verbraucher und alle vier echten Drain-Abbrüche bestehen auf
+  diesen neuen Bytes. Der Nachweisindex ist
+  `factorybox-ledger-notes-cd1266fe9219423dbd9b5651d14e85fd`; der ursprüngliche
+  vollständige Fehler-Store bleibt erhalten und wird vollständig verifiziert.
+  Begrenzte Aufnahme neuer Arbeit und Epochen-Stilllegung bleiben getrennte
+  offene Anforderungen. Das vollständige Goal bleibt aktiv.
