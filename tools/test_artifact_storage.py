@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -222,6 +223,39 @@ class ArtifactStorageTests(unittest.TestCase):
                         artifact_storage.compact(payload, root)
                     command.assert_not_called()
                 self.assertEqual(payload.read_bytes(), b"preserve")
+
+    @unittest.skipUnless(shutil.which('zstd'), 'compaction requires zstd')
+    def test_only_new_unpublished_worker_transport_can_be_encoded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / ('artifacts/factorybox-build-worker-' + 'a' * 32)
+            bundle = run / 'image-context/bundle'
+            bundle.mkdir(parents=True)
+            (bundle / 'build.json').write_text('{}')
+            package = run / 'factorybox-worker-linux-amd64.tar'
+            content = b'exact deterministic new transport\n' * 4096
+            package.write_bytes(content)
+            receipt = artifact_storage.compact(package, root, new_worker_package=True, compression_level=19)
+            self.assertEqual(artifact_storage.verify_compacted(package, receipt['original']), receipt['encoded'])
+            self.assertFalse(package.exists())
+            self.assertEqual(receipt['original']['sha256'], hashlib.sha256(content).hexdigest())
+
+    def test_new_package_option_never_rewrites_completed_or_unrelated_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, completed in [('factorybox-build-worker-' + 'a' * 32, True),
+                                    ('factorybox-build-criu-' + 'b' * 32, False)]:
+                run = root / 'artifacts' / name
+                bundle = run / 'image-context/bundle'; bundle.mkdir(parents=True)
+                (bundle / 'build.json').write_text('{}')
+                package = run / 'factorybox-worker-linux-amd64.tar'; package.write_bytes(b'frozen bytes')
+                if completed:
+                    (run / 'result.json').write_text('{"passed": true}')
+                with mock.patch.object(artifact_storage.subprocess, 'run') as codec:
+                    with self.assertRaises(ValueError):
+                        artifact_storage.compact(package, root, new_worker_package=True)
+                    codec.assert_not_called()
+                self.assertEqual(package.read_bytes(), b'frozen bytes')
 
     @unittest.skipUnless(shutil.which("zstd"), "compaction requires zstd")
     def test_closed_run_retention_preserves_complete_failed_evidence_and_its_result(self):

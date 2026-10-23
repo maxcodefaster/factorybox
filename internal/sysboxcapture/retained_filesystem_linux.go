@@ -113,26 +113,33 @@ func VerifyRetainedFilesystemSnapshot(ctx context.Context, generation string, sn
 		return err
 	}
 	for _, tree := range snapshot.Roots {
-		if tree.Immutable != nil {
-			if err := verifyRetainedAlias(ctx, tree, verify); err != nil {
-				return err
-			}
-			if err := VerifyRetainedFilesystemBase(ctx, tree, verify); err != nil {
-				return err
-			}
-			continue
-		}
-		root, err := openDirectory(tree.Saved)
-		if err != nil {
-			return err
-		}
-		readErr := retainedDirectoryMount(root, tree.Saved)
-		if readErr == nil {
-			readErr = fingerprintRetainedTree(ctx, root, tree)
-		}
-		if err := errors.Join(readErr, root.Close()); err != nil {
+		if err := VerifyRetainedFilesystemTree(ctx, tree, verify); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// VerifyRetainedFilesystemTree checks one separately authorized retained tree.
+// A caller checking a complete generation must use the snapshot entry point,
+// which also requires its exact complete root set and generation layout.
+func VerifyRetainedFilesystemTree(ctx context.Context, tree FilesystemTree, verify BaseRecoveryVerifier) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if tree.Immutable != nil {
+		if err := verifyRetainedAlias(ctx, tree, verify); err != nil {
+			return err
+		}
+		return VerifyRetainedFilesystemBase(ctx, tree, verify)
+	}
+	root, err := openDirectory(tree.Saved)
+	if err != nil {
+		return err
+	}
+	readErr := retainedDirectoryMount(root, tree.Saved)
+	if readErr == nil {
+		readErr = fingerprintRetainedTree(ctx, root, tree)
+	}
+	return errors.Join(readErr, root.Close())
 }

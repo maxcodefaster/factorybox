@@ -226,7 +226,7 @@ def verified_replacement(payload, encoded, expected):
     }
 
 
-def compact(path, root):
+def compact(path, root, *, new_worker_package=False, compression_level=1):
     """Replace one explicit offline payload only after complete byte verification."""
     supplied_root = Path(root).absolute()
     path = Path(path).absolute()
@@ -238,18 +238,28 @@ def compact(path, root):
     if path.resolve() != expected:
         raise ValueError("payload path must not contain symlinks")
     path = expected
+    if compression_level not in (1, 9, 19):
+        raise ValueError('unsupported bounded compression level')
+    fresh_package = (new_worker_package and len(relative.parts) == 2 and
+                     relative.parts[0].startswith('factorybox-build-worker-') and
+                     relative.parts[1] == 'factorybox-worker-linux-amd64.tar' and
+                     not (path.parent / 'result.json').exists() and
+                     not (path.parent / 'result.json').is_symlink() and
+                     (path.parent / 'image-context/bundle/build.json').is_file())
+    if new_worker_package and not fresh_package:
+        raise ValueError('only this new unpublished worker package may be encoded during its build')
     if len(relative.parts) > 1 and relative.parts[0].startswith("factorybox-"):
         run = root / "artifacts" / relative.parts[0]
-        if relative.parts[0].startswith((
+        if not fresh_package and relative.parts[0].startswith((
                 "factorybox-build-", "factorybox-devx-inputs-",
                 "factorybox-devx-project-images-", "factorybox-bats-images-",
                 "factorybox-docker-profile-input-")):
             raise ValueError("frozen inputs and component builds must remain directly usable")
         result_file = run / "result.json"
-        if result_file.is_symlink() or not result_file.is_file():
+        if not fresh_package and (result_file.is_symlink() or not result_file.is_file()):
             raise ValueError("active or unrecorded run cannot be compacted")
-        result = json.loads(result_file.read_text())
-        closed = result.get("cleanup") is True
+        result = {} if fresh_package else json.loads(result_file.read_text())
+        closed = fresh_package or result.get("cleanup") is True
         for reconciliation in (run / "reconciliations").glob("*/result.json"):
             if not reconciliation.is_symlink() and not reconciliation.parent.is_symlink():
                 closed = closed or json.loads(reconciliation.read_text()).get("cleanup") is True
@@ -273,7 +283,7 @@ def compact(path, root):
         resource.setrlimit(resource.RLIMIT_FSIZE, (cap, cap))
     try:
         with partial.open("xb") as output:
-            subprocess.run(["zstd", "-q", "-T1", "-1", "--long=27", "--stdout", "--", str(path)],
+            subprocess.run(["zstd", "-q", "-T1", '-' + str(compression_level), "--long=27", "--stdout", "--", str(path)],
                            stdout=output, check=True, timeout=600,
                            preexec_fn=limit_child)
             output.flush()
@@ -301,7 +311,7 @@ def compact(path, root):
         record = {
             "schema": 1, "original": {"file": path.name, "bytes": count,
                                      "sha256": digest.hexdigest()},
-            "codec_parameters": ["-T1", "-1", "--long=27"],
+            "codec_parameters": ["-T1", '-' + str(compression_level), "--long=27"],
             "encoded": {"file": encoded.name, "bytes": partial.stat().st_size,
                         "sha256": encoded_sha},
             "whole_decompressed_payload_verified": True,

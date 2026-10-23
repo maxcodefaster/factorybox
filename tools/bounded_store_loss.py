@@ -26,8 +26,12 @@ def main():
                         help='release exact old recovery selections through the replacement before all original recovery assertions')
     parser.add_argument('--retirement-fence', action='store_true',
                         help='retain every original assertion, then test durable retirement protection across another worker loss')
+    parser.add_argument('--epoch-retirement', action='store_true',
+                        help='full public epoch admission, exact partial deletion, worker loss and completion with useful successor')
     args = parser.parse_args()
-    args.retained_selection = args.retained_selection or args.retirement_fence
+    if args.epoch_retirement and args.retirement_fence:
+        raise ValueError('choose full epoch retirement or the internal fence fixture')
+    args.retained_selection = args.retained_selection or args.retirement_fence or args.epoch_retirement
     _, worker = build_worker.load(args.worker_build)
     native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
@@ -43,8 +47,8 @@ def main():
         shutil.copyfile(reference.ROOT / file, source / file)
     shutil.copyfile(__file__, artifact / 'runner.py')
     setup = 'retained-selection-setup.sh' if args.retained_selection else 'bounded-loss-setup.sh'
-    if args.retirement_fence:
-        setup = 'epoch-retirement-fence-setup.sh'
+    if args.retirement_fence or args.epoch_retirement:
+        setup = 'epoch-retirement-setup.sh' if args.epoch_retirement else 'epoch-retirement-fence-setup.sh'
         shutil.copyfile(consumer_loop_holder.__file__, artifact / 'consumer_loop_holder.py')
     shutil.copyfile(reference.ROOT / 'tests' / setup, artifact / 'setup.sh')
     manifest = upstream_unit.context_manifest(source)
@@ -61,6 +65,7 @@ def main():
               'worker_build': args.worker_build, 'worker_image_id': worker['image_id'], 'source_context': manifest,
               'loss': args.loss, 'retained_selection': args.retained_selection,
               'retirement_fence': args.retirement_fence,
+              'epoch_retirement': args.epoch_retirement,
               'runner_sha256': reference.sha(artifact / 'runner.py'),
               'setup_sha256': reference.sha(artifact / 'setup.sh'), 'rootfs_sha256': busybox['sha256'],
               'global_sysctls_before': consumer_worker_loss.sysctls(), 'workers': [],
@@ -68,7 +73,7 @@ def main():
                        'RAM pause. All lifecycle actions use the delivered CLI. Exact image preservation, new epoch, '
                        'negative hash, exact recovery replay, independent descendants and fork of resumed descendant. '
                        'Not full consumer, reboot, migration or production qualification.'}
-    if args.retirement_fence:
+    if args.retirement_fence or args.epoch_retirement:
         result['loop_holder_input_sha256'] = reference.sha(artifact / 'consumer_loop_holder.py')
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = preserve = False
@@ -98,6 +103,8 @@ def main():
                 command += ['--env', 'FACTORYBOX_NATIVE_RETAINED_SELECTION=1']
             if args.retirement_fence:
                 command += ['--env', 'FACTORYBOX_NATIVE_EPOCH_RETIREMENT_FENCE=1']
+            if args.epoch_retirement:
+                command += ['--env', 'FACTORYBOX_NATIVE_EPOCH_RETIREMENT=1']
             for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                            (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
                 command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -118,6 +125,8 @@ def main():
             test = 'TestNativeRetainedSelection' if args.retained_selection else 'TestNativeBoundedLoss'
             if args.retirement_fence:
                 test = 'TestNativeEpochRetirementFence'
+            if args.epoch_retirement:
+                test = 'TestNativeEpochRetirement'
             if (done.returncode or state['OOMKilled'] or not state['Running'] or
                     sum(line.startswith('--- PASS: ' + test + stage + ' ') for line in log.splitlines()) != 1 or
                     '--- SKIP:' in log):
@@ -163,7 +172,7 @@ def main():
                     selection.get('old_lifecycle_fence_preserved') != (args.loss == 'planned')):
                 raise ValueError('retained selection release proof incomplete')
             result['retained_selection_sha256'] = reference.sha(selection_file)
-        if args.retirement_fence:
+        if args.retirement_fence or args.epoch_retirement:
             # The accepted fence, not a still-running process or flock, must
             # protect every successor while its owning worker disappears.
             consumer_worker_loss.exact_worker(replacement['name'], owner, replacement['id'])
@@ -183,12 +192,27 @@ def main():
             final = create_worker('maintenance-replacement')
             consumer_loop_holder.verify_replacement(loop_holder, final['startup']['status'])
             run_stage(final, 'Finish')
-            finished_file = output / 'epoch-retirement-fence-finished.json'
+            finished_file = output / ('epoch-retirement-finished.json' if args.epoch_retirement else 'epoch-retirement-fence-finished.json')
             finished = json.loads(finished_file.read_text())
             required = ['passed', 'worker_loss_after_acceptance', 'loop_device_changed', 'exact_acceptance_replayed',
                         'successor_recovered_and_useful', 'same_byte_successor_fence_refused',
                         'external_fence_link_refused', 'premature_completion_refused',
                         'source_tombstone_preserved', 'exact_finish_replayed']
+            if args.epoch_retirement:
+                required = ['passed', 'public_epoch_retirement_passed', 'partial_payloads_removed_before_worker_loss',
+                            'all_authorized_epoch_payloads_absent', 'source_metadata_preserved', 'request_replay_exact',
+                            'independent_successor_recovered_and_useful', 'source_tombstone_retained', 'global_fence_cleared_exactly',
+                            'prepared_source_reader_available', 'unknown_source_entry_refused', 'foreign_covering_mount_refused',
+                            'active_selection_preserved', 'full_original_lifecycle_assertions_passed',
+                            'fork_resume_epoch_retired', 'descendant_handover_verified',
+                            'foreign_entries_after_acceptance_refused']
+                if finished.get('wrong_requests_refused', 0) < 10:
+                    raise ValueError('public epoch retirement lacks required admission refusals')
+                before = finished.get('report', {}).get('before', {}).get('filesystem_available_bytes')
+                after = finished.get('report', {}).get('after', {}).get('filesystem_available_bytes')
+                if type(before) is not int or type(after) is not int or after <= before:
+                    raise ValueError('public epoch retirement did not observe returned filesystem capacity')
+                result['retired_epoch_observed_capacity_bytes'] = after - before
             if any(finished.get(key) is not True for key in required) or finished.get('full_epoch_retirement_qualified') is not False:
                 raise ValueError('retirement fence proof incomplete or overclaims full epoch admission')
             result['retirement_fence_sha256'] = reference.sha(finished_file)
@@ -227,7 +251,7 @@ def main():
             result['inputs_unchanged'] = (upstream_unit.context_manifest(source) == manifest and
                                           reference.sha(artifact / 'runner.py') == result['runner_sha256'] and
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])
-            if args.retirement_fence:
+            if args.retirement_fence or args.epoch_retirement:
                 result['inputs_unchanged'] = (result['inputs_unchanged'] and
                     reference.sha(artifact / 'consumer_loop_holder.py') == result['loop_holder_input_sha256'])
             result['passed'] = (result['passed'] and result['cleanup'] and result['inputs_unchanged'] and

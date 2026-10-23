@@ -621,8 +621,8 @@ Successful output is a fresh observation with the exact request, verification
 time, serialized checkpoint-file count/bytes and filesystem-tree count. The
 file-byte field excludes filesystem-tree payloads and does not measure store
 capacity. This report grants no deletion authority, releases no committed
-pause, and does not establish a recovery handover. Manual epoch retirement
-still needs its full dependency, interruption and owned-payload protocol.
+pause, and does not establish a recovery handover. The separate candidate
+protocol below performs its own dependency and owned-payload admission.
 
 ## Internal retirement maintenance fence candidate
 
@@ -639,9 +639,71 @@ identity or premature completion cannot clear that fence. Only verified
 same-image reattachment can translate former device/mount IDs. Stored original
 plans are preserved; translation produces a separate in-memory plan.
 
-There is no public command to start or clear this internal mechanism. Full
-epoch inventory admission, cross-epoch dependency checks, recovery handover
-admission and deletion of every authorized epoch payload remain unfinished.
-The native coordination fixture authorizes only its complete original RAM image
-directory and then recovers a separately preserved useful successor. It does
-not qualify complete epoch retirement or provide an operator cleanup shortcut.
+The earlier native coordination fixture authorizes only its complete original
+RAM image directory and then recovers a separately preserved useful successor.
+That evidence does not qualify the full public retirement protocol below.
+
+## Manual epoch retirement candidate
+
+The unselected candidate adds `begin-epoch-retirement` and `retire-epoch`.
+They require the current verified `--worker-run-root` and an exact JSON
+`--request-file`, without positional sandbox arguments. Two bounded actor
+cases pass the public protocol, including replacement after accepted partial
+deletion and a second epoch with fork/resume history. Full Factory, registered
+base and actual interruption of the public unlink process remain separate
+checks. This is not a production cleanup procedure yet. Exact sources and
+results are indexed in
+`factorybox-epoch-retirement-notes-d2bd74d4ad6349d98eac63296119c864`.
+
+First drain all sandboxes in this store to fully committed pauses or confirmed
+deletions. Release every active selection protecting a source checkpoint through
+`release-recovery-selection`. Each committed pause in the retiring epoch must
+have an explicit successor: recover its exact checkpoint into another epoch,
+perform useful work, and commit a new complete pause. An independently paused
+fork of that recovered sandbox is also eligible after its parent is deleted;
+the original recovery and fork records must still prove the complete lineage.
+
+The request names `source_root` and a `handovers` array. Each handover contains
+`source` with `source_id`, `snapshot_id`, `source_owner` and
+`checkpoint_sha256`, plus `successor` with the same fields and its distinct
+`source_root`. Use the actual published IDs and SHA-256 values. A missing,
+running, changed, unrelated or incomplete successor cannot withdraw an old
+committed pause. An epoch containing only deleted sandboxes needs no handovers.
+
+Run the candidate CLI inside the current worker:
+
+```sh
+/opt/factorybox/factorybox --worker-run-root /run/factorybox \
+  begin-epoch-retirement --request-file /output/retirement-request.json
+/opt/factorybox/factorybox --worker-run-root /run/factorybox \
+  retire-epoch --request-file /output/retirement-request.json
+```
+
+`begin-epoch-retirement` verifies the complete source inventory, independent
+successor RAM and filesystem, all other locked controller epochs and current
+mount dependencies. It admits completion metadata before any deletion and
+allocates a real 1-MiB completion reserve. The largest serialized completion
+must fit half that reserve, retaining the other half for publication metadata.
+Its durable acceptance closes the
+whole store to ordinary lifecycle mutations, recovery readers and selection
+release. It removes no payload. `retire-epoch` can perform both stages directly
+or continue exactly this accepted request after partial deletion and a worker
+replacement on the same host and boot. Preserve the request unchanged.
+
+Unknown entries, changed metadata, replaced directories, external hardlinks,
+covering mounts, live dependencies and incomplete operations cause refusal.
+An unaccepted partial preparation preserves access to intact recovery inputs;
+it does not authorize deleting its files or clearing a store fence by hand.
+After acceptance, keep the store out of service until its exact continuation
+completes. A failed retry remains a failure and retains the fence.
+
+The payload inventory covers controller-owned registered bases, published RAM
+and saved filesystem trees, private imported/forked backing and completed resume
+images. Original requests, records, configuration, provenance and retirement
+receipts remain. Caller input bundles and vendor-manager storage outside the
+controller remain outside this deletion authority. Source inspection remains
+permanently closed after successful retirement; the verified successors become
+usable after the original global fence is removed. An exact completed retry
+returns the saved report while still verifying retained metadata and payload
+absence. Capacity before and after is observed; absent names do not promise a
+particular number of released blocks. Automatic retention remains deferred.

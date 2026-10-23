@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -65,7 +66,39 @@ func runLifecycle(args []string) error {
 	var checkpointRequest lifecycle.CheckpointRequest
 	var selectionID string
 	var retainedRoot string
-	if command == "start" {
+	var epochRequest lifecycle.EpochRetirementRequest
+	if command == "retire-epoch" || command == "begin-epoch-retirement" {
+		operation := flag.NewFlagSet(command, flag.ContinueOnError)
+		requestFile := operation.String("request-file", "", "exact old epoch and explicit recovery handovers as JSON")
+		if err := operation.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = operation.Args()
+		if workerRunRoot == "" || *requestFile == "" || len(remaining) != 0 {
+			return fmt.Errorf("retire-epoch requires --worker-run-root and --request-file, without sandbox arguments")
+		}
+		file, err := os.OpenFile(*requestFile, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+		if err != nil {
+			return err
+		}
+		info, err := file.Stat()
+		if err != nil || !info.Mode().IsRegular() || info.Size() > 4<<20 {
+			file.Close()
+			return fmt.Errorf("epoch retirement request is not a bounded regular JSON file")
+		}
+		limited := &io.LimitedReader{R: file, N: (4 << 20) + 1}
+		decoder := json.NewDecoder(limited)
+		decoder.DisallowUnknownFields()
+		decodeErr := decoder.Decode(&epochRequest)
+		if decodeErr == nil {
+			if err := decoder.Decode(new(any)); err != io.EOF || limited.N <= 0 {
+				decodeErr = fmt.Errorf("epoch retirement request has trailing or excessive data")
+			}
+		}
+		if err := errors.Join(decodeErr, file.Close()); err != nil {
+			return err
+		}
+	} else if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
 		start.StringVar(&bundle, "bundle", "", "administrator-prepared OCI bundle")
 		if err := start.Parse(remaining); err != nil {
@@ -138,7 +171,7 @@ func runLifecycle(args []string) error {
 	if command == "capacity" && len(remaining) != 0 {
 		return fmt.Errorf("capacity requires no sandbox ID")
 	}
-	if command != "capacity" && len(remaining) != 1 {
+	if command != "capacity" && command != "retire-epoch" && command != "begin-epoch-retirement" && len(remaining) != 1 {
 		return fmt.Errorf("%s requires one sandbox ID", command)
 	}
 	engine, err := lifecycle.Open(config)
@@ -155,6 +188,18 @@ func runLifecycle(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if command == "retire-epoch" || command == "begin-epoch-retirement" {
+		var result lifecycle.EpochRetirement
+		if command == "begin-epoch-retirement" {
+			result, err = engine.BeginEpochRetirement(ctx, epochRequest)
+		} else {
+			result, err = engine.RetireEpoch(ctx, epochRequest)
+		}
+		if result.Version != 0 {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
 	if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" || command == "release-recovery-selection" || command == "inspect-recovery-checkpoint" {
 		checkpointRequest.SourceID = remaining[0]
 		if command == "inspect-recovery-checkpoint" {

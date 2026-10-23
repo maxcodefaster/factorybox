@@ -10,6 +10,7 @@ import uuid
 
 import build_worker
 import reference
+import reference_lifecycle
 
 
 ROLES=("consumer-worker.test","devx-actor","devx-registry","minimal-actor","ide-filesystem",
@@ -33,6 +34,10 @@ def main():
                         help='Also share byte-identical tar packages of independently completed verified worker builds; keep every path directly usable and preserve build results')
     parser.add_argument('--include-completed-worker-cli', action='store_true',
                         help='Also share byte-identical immutable CLI executables of fully verified completed worker builds; retain every path, source, package, image and result')
+    parser.add_argument('--include-closed-startup-manager-inputs', action='store_true',
+                        help='Also share exact pinned component inputs of closed startup-manager diagnostics, including failures with confirmed unchanged inputs; preserve every diagnostic and outcome')
+    parser.add_argument('--include-closed-component-refusals', action='store_true',
+                        help='Also share pinned Sysbox copies of closed pre-run candidate-base refusals; retain the failed result and complete inputs')
     args=parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('immutable input sharing requires all Factorybox runs to finish')
@@ -51,6 +56,42 @@ def main():
         key=(role,expected,info.st_size,info.st_mode,info.st_uid,info.st_gid)
         groups.setdefault(key, []).append((path, expected, info))
     for run in sorted((reference.ROOT/"artifacts").iterdir()):
+        refused = re.fullmatch(r'factorybox-runtime-([0-9a-f]{32})', run.name)
+        if args.include_closed_component_refusals and refused:
+            result_path = run / 'result.json'
+            if run.is_symlink() or result_path.is_symlink() or not result_path.is_file():
+                continue
+            result = json.loads(result_path.read_text())
+            if (result.get('passed') is False and result.get('cleanup') is True and
+                    result.get('error') == 'retained-context candidate belongs to a different selected base' and
+                    'container_state' not in result and 'component_sha256' not in result):
+                if result.get('owner') != refused[1]:
+                    raise ValueError('closed component refusal owner differs')
+                component, pinned = reference_lifecycle.component_build(result['component_build'], 'factorybox-build-sysbox-')
+                results[str(result_path)] = reference.sha(result_path)
+                results[str(component / 'result.json')] = reference.sha(component / 'result.json')
+                for role in ['sysbox-runc', 'sysbox-fs', 'sysbox-mgr']:
+                    expected = pinned['binary_sha256'][role]
+                    if reference.sha(component / 'output' / role) != expected:
+                        raise ValueError('closed refusal pinned component changed')
+                    consider(run / 'components' / role, 'components/' + role, expected)
+                continue
+        startup = re.fullmatch(r'factorybox-startup-manager-([0-9a-f]{32})', run.name)
+        if args.include_closed_startup_manager_inputs and startup:
+            result_path = run / 'result.json'
+            if run.is_symlink() or result_path.is_symlink() or not result_path.is_file():
+                continue
+            result = json.loads(result_path.read_text())
+            if (result.get('cleanup') is not True or result.get('inputs_unchanged') is not True or
+                    result.get('container_state', {}).get('Running') is not False):
+                continue
+            if (result.get('owner') != startup[1] or
+                    set(result.get('inputs_sha256', {})) != {'sysbox-fs', 'sysbox-mgr'}):
+                raise ValueError('closed startup diagnostic lacks its exact pinned component identities')
+            results[str(result_path)] = reference.sha(result_path)
+            for role, expected in result['inputs_sha256'].items():
+                consider(run / 'components' / role, 'components/' + role, expected)
+            continue
         if (args.include_completed_worker_components or args.include_completed_worker_packages or args.include_completed_worker_cli) and re.fullmatch(r'factorybox-build-worker-[0-9a-f]{32}',run.name):
             # load verifies the complete frozen source, runnable bundle,
             # recipe, tar package, Docker image and layer identities.
@@ -99,7 +140,9 @@ def main():
                             'allocated_bytes':info.st_blocks*512})
     plan={"schema":1,"operation":"share_identical_closed_native_inputs","result_sha256":results,"actions":actions,
           'verified_worker_builds':workers,
-          "scope":"Only exact compiled input roles of complete passing consumer proofs and explicitly included completed worker builds. Source, results, logs, executable bytes, modes, ownership, packages and image identities are unchanged. Identical files adopt the canonical inode's mtime; both original and shared mtimes are retained in this receipt. No archived input is rewritten in place."}
+          'include_closed_startup_manager_inputs': args.include_closed_startup_manager_inputs,
+          'include_closed_component_refusals': args.include_closed_component_refusals,
+          "scope":"Only exact compiled input roles of complete passing consumer proofs, explicitly included completed worker builds and optionally closed startup-manager diagnostics with unchanged inputs and confirmed stopped containers or closed pre-run candidate-base refusals whose copied components match their pinned completed build. Failed outcomes and contents remain preserved. Source, results, logs, executable bytes, modes, ownership, packages and image identities are unchanged. Identical files adopt the canonical inode's mtime; both original and shared mtimes are retained in this receipt. No archived input is rewritten in place."}
     write(artifact/"plan.json",plan)
     done=[]
     try:

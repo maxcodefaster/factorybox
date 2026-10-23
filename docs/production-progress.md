@@ -4498,3 +4498,100 @@ unknown-entry rejection, cross-epoch dependencies, handover admission and full
 epoch payload deletion remain open. The full goal remains active, production
 qualification false. Source patches and proofs are bound by
 `factorybox-epoch-retirement-fence-notes-5ef7cc49b1f34e8f889116d70cc31a74`.
+
+## Public manual epoch-retirement candidate
+
+The candidate now exposes `begin-epoch-retirement` and `retire-epoch` through
+the validated current worker. Admission locks every controller in the store,
+requires committed pauses or confirmed deletions, verifies complete source
+backing and rejects current mount dependencies. Each old committed pause needs
+an independently verified successor checkpoint with exact recovery provenance.
+A paused descendant can provide that handover after its recovered parent has
+been deleted. Ordinary lifecycle operations remain fenced across worker loss
+until the exact accepted deletion completes. Old source metadata remains as a
+permanent tombstone. Caller bundles and vendor-manager storage outside the
+controller are outside this deletion authority.
+
+Unselected build `factorybox-build-worker-b9e78b21a3d44e42b6ebcf6a5dfed146`
+and independent offline rebuild
+`factorybox-build-worker-f9618142bae74796ba121ab8a179c7c9` reproduce package
+SHA-256 `ba479aaed20e07cf6ea37dce2984a1bbee6990ee95dcd52ecd66e995cb9f0097`
+and image
+`sha256:c5a2949551adfe9190bbc5654f3d4c47f8139ad742c87f191b27c6f8bb561a6e`.
+Both contain CLI SHA-256
+`0fd1bb9634bfb9ff0fbcef75d197a5b96a976acebe7dff9c83afa07496e347b2`.
+The native source and fixtures match this complete Go source manifest.
+
+The original complete retained-selection and 32-MiB recovery assertions remain
+intact. The new wrapper adds useful work in a recovered parent, an independent
+fork, parent deletion and a committed descendant pause. It refuses eight
+invalid requests before acceptance and two unknown-file additions after
+accepted partial deletion. Admission takes a complete metadata witness and a
+separate exact payload inventory. Before acceptance, every inventoried object
+must exist; afterward only inventoried payload objects may be absent. Root
+siblings and coordination metadata are checked as well. Replacement objects,
+changed metadata, active selections and foreign covering/overlay mounts refuse
+deletion. An unaccepted preparation marker preserves the intact recovery reader.
+
+After public acceptance the fixture removes exactly the original source RAM
+image directory using the owned-object remover, then the driver kills and
+removes the accepted worker. An independent empty owned holder forces Loop 0
+to Loop 1 on replacement. The public CLI completes the original accepted
+request, exactly replays its saved report, preserves metadata and observes all
+authorized source payload roots absent. Its successor is independently
+recovered and performs useful RAM/file work. The CLI then retires the next old
+epoch containing completed imports, forks, restore/resume backing and retired
+checkpoints. The current successor resumes and works after that deletion.
+This is real worker loss after injected partial deletion, not yet an observed
+SIGKILL during the public CLI's own unlink loop.
+
+Both native cases pass, including cleanup and unchanged inputs/global settings:
+abrupt first loss in
+`factorybox-bounded-loss-5e756e4b1e664633b3693397720f9d96`, and planned first
+loss in `factorybox-bounded-loss-bc359962709243f69cd84d35734e5436`.
+Their complete outer observations are 111.472 and 106.132 seconds; these are
+development checks, not a latency distribution or the final acceptance series.
+The first retired epoch observes 62,394,368 and 62,373,888 additional available
+filesystem bytes respectively. Unlinked names do not generally guarantee
+returned physical capacity. The original 1-GiB store, resource limits and
+420-second lifecycle ceiling remain unchanged.
+
+Four closed failed attempts remain fully reconstructable: `42065233` rejects
+an invalid external-overlay fixture; `b9431756` exposes the new inventory's
+incorrect capture-version check; `41730708` identifies the omitted exact fork
+bundle configuration; `75cb3c3f` identifies private restore overlay workdirs.
+The corrected inventory uses the pinned version-3 capture protocol, verifies
+the fork configuration against its original intent, and binds restore/resume
+workdir names to completed operations. It also refuses missing resume backing.
+Every original test assertion and imported reference remains unchanged.
+
+Portable regression
+`factorybox-epoch-completion-bound-3b4800d6e77b45939b8e5c299fc55c1c` first
+reproduces acceptance of a report larger than its real completion reserve.
+The corrected bound admits at most half of the allocated 1-MiB reserve for
+the largest serialized completion, leaving the other half for publication.
+The same test bytes fail before the correction and pass afterward. All six
+portable gates pass in
+`factorybox-checks-1e03602519774b139c26450683a302d0`.
+
+New worker packages can now be losslessly encoded during creation, before
+their result is published. Complete decompression verifies their exact raw
+tar bytes; loaders verify both encoding and raw identity. Existing completed
+builds stay directly usable. Complete pinned component reuse avoids fallback
+copies without changing any component bytes. Closed source/input sharing and
+lossless dump repacks retain their exact verification receipts. The superseded
+minimal paused-source Stop-refusal volume `71d2ec0d` is retired only after its
+complete passing replacement `805b260a`; receipt
+`factorybox-storage-retirement-f2b7ad3156644837b807d4e29528ac82` verifies all
+34,360,786,944 original tar bytes and member hashes before retiring its
+572,296,018-byte encoding. Frozen source, failed result and outer logs remain;
+the complete old volume is intentionally no longer reconstructable. The
+original PID, signal and busy-overlay evidence remain retained.
+
+The source patch, exact fixture hashes, failed stores, passing cases, independent
+build and storage receipts are indexed in
+`factorybox-epoch-retirement-notes-d2bd74d4ad6349d98eac63296119c864`.
+Full Factory/base retirement, actual public unlink interruption, real preparation
+ENOSPC controls, original PID/busy-mount attribution, external agent acceptance,
+final package gates and the predeclared final series remain open. The complete
+goal stays active; production and full epoch-retirement qualification stay false.

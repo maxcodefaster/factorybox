@@ -51,13 +51,24 @@ def load(name):
                 result["bundle_sha256"].get("source-patches/sysbox-shm-reexec.json") != declared["source_sha256"]):
             raise ValueError("worker SHM source patch differs from its frozen recipe")
     components = json.loads((bundle / "components.json").read_text())
+    package = artifact / 'factorybox-worker-linux-amd64.tar'
+    if 'package_encoding' in result:
+        if type(result.get('package_bytes')) is not int or result['package_bytes'] <= 0:
+            raise ValueError('encoded worker package has no exact raw byte bound')
+        encoded = reference.artifact_storage.verify_compacted(package, {
+            'file': package.name, 'bytes': result['package_bytes'], 'sha256': result['package_sha256']})
+        if encoded != result['package_encoding']:
+            raise ValueError('encoded worker package differs from build provenance')
+        package_sha256 = result['package_sha256']
+    else:
+        package_sha256 = reference.sha(package)
     if (recipe["source_lock_sha256"] != reference.sha(artifact / "source-lock.json") or
             recipe["go_source_sha256"] != sources.tree_sha(artifact / "source") or
             recipe["factorybox_sha256"] != result["bundle_sha256"]["factorybox"] or
             components["schema"] != 1 or components["binary_sha256"] != recipe["binary_sha256"] or
             {key.removeprefix("components/"): value for key, value in result["bundle_sha256"].items() if key.startswith("components/")} != recipe["binary_sha256"] or
             reference.sha(artifact / "image-context/Dockerfile") != result["dockerfile_sha256"] or
-            reference.sha(artifact / "factorybox-worker-linux-amd64.tar") != result["package_sha256"]):
+            package_sha256 != result["package_sha256"]):
         raise ValueError("worker build recipe/package differs from its frozen inputs")
     inspected = json.loads(reference.docker(["image", "inspect", result["image"]]))[0]
     if inspected["Id"] != result["image_id"] or inspected["RootFS"]["Layers"] != result["layers"]:
@@ -73,6 +84,8 @@ def main():
     parser.add_argument("--criu-base-lock", type=Path, help="Exact immutable selected-base lock for the retained CRIU build; current CRIU component must match in full")
     parser.add_argument("--compare", help="Require an identical package and image from a separate no-cache build")
     parser.add_argument("--discard-compiler-scratch", action="store_true", help="After a successful verified build, retain its generated compiler-cache inventory and remove only that new build's optional scratch cache")
+    parser.add_argument('--compress-package', action='store_true', help='Publish this new package as a completely verified lossless .tar.zst; completed builds stay unchanged')
+    parser.add_argument('--component-input-worker', help='Share byte-identical pinned components from one verified completed worker without changing the build recipe')
     options = parser.parse_args()
     base_image, base = native_base.load(options.native_base_build, candidate_platform="linux/amd64")
     sysbox_path, sysbox = reference_lifecycle.component_build(options.sysbox_build, "factorybox-build-sysbox-")
@@ -80,6 +93,7 @@ def main():
     if any(row.get("platform") != "linux/amd64" for row in [sysbox, criu]):
         raise ValueError("worker components have different target platforms")
     comparison = load(options.compare)[1] if options.compare else None
+    component_input = load(options.component_input_worker) if options.component_input_worker else None
     owner = uuid.uuid4().hex
     name = "factorybox-build-worker-" + owner
     artifact = reference.new_artifact(name)
@@ -139,6 +153,10 @@ def main():
             raise ValueError("incomplete component identity set")
         for name, digest in expected.items():
             original = criu_path / "criu" if name == "criu" else sysbox_path / "output" / name
+            if component_input is not None:
+                if component_input[1]['bundle_sha256']['components/' + name] != digest:
+                    raise ValueError('shared completed worker has different pinned components')
+                original = component_input[0] / 'image-context/bundle/components' / name
             reference.artifact_storage.share_frozen_input(original, components / name, reference.ROOT, digest)
         notices = json.loads((reference.ROOT / "upstream/licenses.json").read_text())
         for file, notice in notices.items():
@@ -197,6 +215,13 @@ def main():
                     with path.open("rb") as stream:
                         transport.addfile(info, stream)
         result["package_sha256"] = reference.sha(package)
+        if options.compress_package:
+            result['package_bytes'] = package.stat().st_size
+            encoding = reference.artifact_storage.compact(package, reference.ROOT,
+                        new_worker_package=True, compression_level=19)
+            if encoding['original']['sha256'] != result['package_sha256'] or encoding['original']['bytes'] != result['package_bytes']:
+                raise ValueError('new encoded package differs from the exact deterministic transport')
+            result['package_encoding'] = encoding['encoded']
         image_name = "factorybox-worker-" + owner
         command = [*reference.DOCKER, "build", "--provenance=false", "--progress=plain", "--network=none",
                    "--no-cache", "--platform=linux/amd64", "--build-arg", "NATIVE_BASE=" + base_image,
@@ -219,7 +244,7 @@ def main():
             cache = artifact / "go-cache"
             cache_manifest = upstream_unit.context_manifest(cache)
             reference_lifecycle.write_json(artifact / "compiler-scratch.json", {
-                "schema": 1, "scope": "Only this successful build's optional generated compiler scratch. Source, runnable bundle, package and image remain directly available.",
+                "schema": 1, "scope": "Only this successful build's optional generated compiler scratch. Source, runnable bundle, package bytes and image remain available; a declared encoded transport has its full reconstruction receipt.",
                 "cache_manifest": cache_manifest, "reconstruction": "Offline fresh compilation from preserved frozen sources with the exact pinned toolchain.",
                 "package_sha256": result["package_sha256"], "image_id": result["image_id"]})
             if upstream_unit.context_manifest(cache) != cache_manifest:

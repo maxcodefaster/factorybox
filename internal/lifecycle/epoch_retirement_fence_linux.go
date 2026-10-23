@@ -34,6 +34,9 @@ type epochRetirementRequest struct {
 	Handovers  []epochRecoveryHandover `json:"handovers"`
 }
 
+type EpochRetirementRequest = epochRetirementRequest
+type EpochRecoveryHandover = epochRecoveryHandover
+
 type epochRetirementPreparation struct {
 	Version         int                    `json:"version"`
 	Request         epochRetirementRequest `json:"request"`
@@ -42,6 +45,10 @@ type epochRetirementPreparation struct {
 	Attachment      storefs.Active         `json:"attachment"`
 	InventorySHA256 string                 `json:"inventory_sha256"`
 	PreparedAt      string                 `json:"prepared_at"`
+	WitnessSHA256   string                 `json:"witness_sha256,omitempty"`
+	Directory       KernelObject           `json:"directory,omitempty"`
+	Reserve         retirementReserve      `json:"reserve,omitempty"`
+	Before          StorageCapacity        `json:"before,omitempty"`
 }
 
 type epochRetirementFence struct {
@@ -63,11 +70,12 @@ type epochRetirementAcceptance struct {
 }
 
 type epochRetirementCompletion struct {
-	Version           int    `json:"version"`
-	SourceRoot        string `json:"source_root"`
-	PreparationSHA256 string `json:"preparation_sha256"`
-	AcceptanceSHA256  string `json:"acceptance_sha256"`
-	CompletedAt       string `json:"completed_at"`
+	Version           int              `json:"version"`
+	SourceRoot        string           `json:"source_root"`
+	PreparationSHA256 string           `json:"preparation_sha256"`
+	AcceptanceSHA256  string           `json:"acceptance_sha256"`
+	CompletedAt       string           `json:"completed_at"`
+	Report            *EpochRetirement `json:"report,omitempty"`
 }
 
 // Derive the location from the controller layout even for explicit unbounded
@@ -84,8 +92,32 @@ func epochStoreRoot(root string) string {
 }
 
 func (e *Engine) epochRetirementFence() error {
+	return e.epochRetirementFenceState(false)
+}
+
+// A preparation that could not be accepted must not make an intact old pause
+// unreadable under storage pressure. Writes remain fenced by its directory;
+// accepted retirement (including fence-before-intent) also fences readers.
+func (e *Engine) epochRetirementReadFence() error {
+	return e.epochRetirementFenceState(true)
+}
+
+func (e *Engine) epochRetirementFenceState(reader bool) error {
 	if _, err := e.root.Lstat(epochRetirementDirectory); !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("controller is closed for epoch retirement: %v", err)
+		if !reader {
+			return fmt.Errorf("controller is closed for epoch retirement: %v", err)
+		}
+		if err != nil {
+			return err
+		}
+		if err := privateDirectory(e.config.Root + "/" + epochRetirementDirectory); err != nil {
+			return err
+		}
+		for _, name := range []string{"intent.json", "complete.json"} {
+			if _, err := e.root.Lstat(epochRetirementDirectory + "/" + name); !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("controller is closed for epoch retirement: %v", err)
+			}
+		}
 	}
 	store := epochStoreRoot(e.config.Root)
 	if e.config.BoundedStore != nil {

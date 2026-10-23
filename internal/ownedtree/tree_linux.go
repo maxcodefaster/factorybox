@@ -329,6 +329,17 @@ func ValidateRemaining(ctx context.Context, root *os.Root, plan Plan) error {
 	return validate(ctx, int(anchor.Fd()), plan, true)
 }
 
+// ValidateComplete admits no absent original object. A prepared but unaccepted
+// deletion must still prove that nothing was removed before its durable fence.
+func ValidateComplete(ctx context.Context, root *os.Root, plan Plan) error {
+	anchor, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer anchor.Close()
+	return validate(ctx, int(anchor.Fd()), plan, false)
+}
+
 // RemoveRemaining never truncates payloads and never uses recursive RemoveAll.
 // Only inventoried original objects are unlinked; a live open reference retains
 // its data. The caller must observe filesystem capacity separately.

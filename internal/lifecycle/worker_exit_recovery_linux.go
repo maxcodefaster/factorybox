@@ -22,7 +22,7 @@ func (e *Engine) recoveryLock(request RecoveryRequest) (_ *os.File, resultErr er
 			lock.Close()
 		}
 	}()
-	if err := e.epochRetirementFence(); err != nil {
+	if err := e.epochRetirementReadFence(); err != nil {
 		return nil, err
 	}
 	var intent workerBaseRelease

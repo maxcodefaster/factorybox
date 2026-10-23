@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ import build_worker
 import reference
 import sources
 import upstream_unit
+import artifact_storage
 
 
 class WorkerBuildInputs(unittest.TestCase):
@@ -49,6 +51,23 @@ class WorkerBuildInputs(unittest.TestCase):
         self.assertEqual(build_worker.load(self.name)[0],self.artifact)
         self.docker.return_value = json.dumps([{"Id":"sha256:other","RootFS":{"Layers":["sha256:layer"]}}])
         with self.assertRaisesRegex(ValueError,"image identity"):
+            build_worker.load(self.name)
+
+    @unittest.skipUnless(shutil.which('zstd'), 'encoded transport requires zstd')
+    def test_encoded_package_preserves_complete_transport_and_rejects_corruption(self):
+        result_file = self.artifact / 'result.json'
+        result = json.loads(result_file.read_text())
+        # Model publication of a fresh build, not mutation of a closed one.
+        result_file.unlink()
+        package = self.artifact / 'factorybox-worker-linux-amd64.tar'
+        result['package_bytes'] = package.stat().st_size
+        receipt = artifact_storage.compact(package, self.root, new_worker_package=True)
+        result['package_encoding'] = receipt['encoded']
+        result_file.write_text(json.dumps(result))
+        self.assertEqual(build_worker.load(self.name)[0], self.artifact)
+        encoded = self.artifact / receipt['encoded']['file']
+        encoded.write_bytes(encoded.read_bytes() + b'corruption')
+        with self.assertRaisesRegex(ValueError, 'encoded payload'):
             build_worker.load(self.name)
 
     def test_explicit_criu_base_stays_immutable_and_matches_worker_recipe(self):
