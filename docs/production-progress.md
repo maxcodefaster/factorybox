@@ -3159,12 +3159,12 @@ collision diagnostics. The 3-CPU/3-GiB worker, 1-CPU/768-MiB Theia, two-sandbox
 limit and 420-second native lifecycle deadline remain. It stops on the first
 failed case and retains that failure; successful cases do not identify the
 historical occupant or qualify a repair. This is a diagnostic sequence, not the
-final regular acceptance series or a latency comparison. At this checkpoint,
-the first three cases have passed with cleanup:
+final regular acceptance series or a latency comparison. All ten cases now
+pass with cleanup, including the first three:
 `factorybox-consumer-worker-loss-59c7b2a7f6fd42cabea6cdbcd2ecab5c`,
 `factorybox-consumer-worker-loss-5186cc6c2bfa418aa4c977d5ce8ca0fc` and
 `factorybox-consumer-worker-loss-9f2aab9132f84c8c839f7f564a69a43b`.
-The sequence remains active; its result/rows are authoritative for later cases.
+The sequence terminates with exit zero; its result/rows identify all ten cases.
 All six portable gates pass for the driver change in
 `factorybox-checks-4271fe4b28d141b487b270ba9c5914c8`.
 
@@ -3176,10 +3176,29 @@ only `ids-1169.img` and `core-1169.img`. They identify an alive multithreaded
 1328 has own TID 1 in namespace image 24. Thus the original has two distinct
 inner PID namespaces, a feature absent from the previous reduced control.
 `factorybox-pid-sibling-namespace-fc8fb432e79f46ef9033f2c20a9c29a9` contains a
-prepared, not yet executed private extension with a sibling multithreaded init
-owning TID 2. Its pending-native receipt requires the active full sequence to
-finish before a new native run. No result or PID correction is claimed for
-that prepared source.
+private extension prepared before the sequence ends. It runs only after the
+complete sequence terminates. Its first execution fails before capture because
+the sibling init has five threads but the exact own-TID-2 precondition is false.
+This is a setup failure, not the historical restore EEXIST. Its complete
+48,234,496-byte failed-store archive is preserved and fully decoded/verified,
+SHA-256 `f99e2c52da224c1253f6499e1d60e2e69f7755a1ce3d369c5830c25981d78b6b`.
+
+The new private control
+`factorybox-pid-sibling-before-proc-aa3a349cc0bd4994b07d630a23480e44`
+creates and synchronizes the four auxiliary threads before the proc mount.
+Their own `gettid` reports are exactly 2, 3, 4 and 5, corroborated by worker-side
+per-thread status. The original control's exact TID-2 precondition and all other
+assertions remain. Its complete independent 32-MiB actor lifecycle passes in
+18.45 s, including fork of the resumed source, no skips, exact cleanup and
+unchanged inputs/global sysctls. No production Go or CRIU behavior changes.
+
+`factorybox-pid-sequence-notes-6fcda25c61c84018ae57c2a147fc01b8` checks all ten
+full results against the same frozen CLI, CRIU, worker image, core/test source,
+consumer and local-agent inputs. It checks every complete observation and pause
+receipt, fully verifies the failed sibling archive, and reconstructs the exact
+ordered sibling-source patch. Reference verification still checks 232 files.
+Both controls are negative observations: neither explains or fixes the original
+rare restore conflict, and neither replaces the final regular acceptance series.
 
 Before this sequence, maintenance
 `factorybox-storage-compact-pid-tests-f897c0dc608b4e8f8d58286a33dda4c4`
@@ -3188,6 +3207,15 @@ closed generated test executables before replacing their raw encodings.
 All source, original results/logs, selected unresolved failures and reconstruction
 receipts remain. The initial-release goal and both unexplained failures remain
 open; production qualification is false.
+
+After both sibling outcomes close, maintenance
+`factorybox-storage-compact-closed-pid-b938ba737fb348609b55d217ecf1a071`
+reclaims another 42,496,000 allocated bytes by fully verifying/decompressing
+five explicitly selected closed private test executables before removing their
+raw copies. It also fully decodes/verifies all four corresponding failed-store
+archives and preserves them. Native results, source, logs, current unresolved
+failures and selected runtime inputs remain unchanged; reconstruction receipts
+retain every executable's original bytes. No native worker overlaps maintenance.
 
 ## Shipped agent interruption source inspection
 
