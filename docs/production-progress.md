@@ -4595,3 +4595,201 @@ Full Factory/base retirement, actual public unlink interruption, real preparatio
 ENOSPC controls, original PID/busy-mount attribution, external agent acceptance,
 final package gates and the predeclared final series remain open. The complete
 goal stays active; production and full epoch-retirement qualification stay false.
+
+## Registered bases and observed public unlink interruption
+
+The additive epoch fixture now prepares an unused registered base containing
+5,000 files through the public CLI. After public retirement acceptance it starts
+the actual `retire-epoch` child, observes removal of its original last file,
+stops and kills only that child through its pidfd, and verifies that another
+original file survives and completion is absent. A complete worker replacement
+with forced Loop 0 to Loop 1 then finishes that exact request. Every authorized
+payload is absent, base provenance and all 5,000 caller-input files remain, and
+the independently preserved successor performs useful work. All preceding
+32-MiB recovery, second-epoch and negative-admission assertions remain intact.
+
+Both first-loss variants pass with unchanged inputs/global settings and cleanup:
+`factorybox-bounded-loss-ad614aaf6a134f658792d7d92778bf31` is planned;
+`factorybox-bounded-loss-1325fdc1f53f4e11bc515ad39ccb958e` is abrupt.
+Their outer observations are 121.885 and 128.216 seconds. These are development
+test durations, not a latency distribution. The exact additive fixture patch
+is declared in `factorybox-epoch-base-unlink-plan-b12a4d6cb3ff415da50df29db7cf58fc`.
+The planned runner additionally binds the original unlink receipt directly to
+the completed acceptance hash and registered base. The earlier abrupt runner
+predates that host-side binding; its unchanged native fixture has the same
+observations and assertions. Neither case is a full Factory used-base proof.
+
+The full Factory extension patches only a new, ownership-checked test copy.
+It replaces the original direct saved-source `RemoveAll` with a committed
+independent successor, public admission/deletion, exact replay, verification
+that every inventoried payload is absent, and useful resume. Every remaining
+original worker-recovery, Theia, agent, private-mutation and descendant assertion
+stays byte-identical. Original repository tests and imported overlays are intact;
+the bounded-path patch precedes this separately hashed operation patch.
+
+Its first run, `factorybox-consumer-worker-loss-f70e478d496847bf8280f3c67f9f7636`,
+fails on the previous B9 package at `criu-retained-2462.log`. The ownership-checked
+read-only archive helper exposes the original ARM's 170 threads and sixteen
+process leaders: source PID 131, final active PID 2304, and original leader 2462.
+The pinned producer opens a separate log for every serially active process.
+The inventory incorrectly authorized only the source PID's name. The correction
+uses only process leaders in the complete, bounded, ordered original ARM tree,
+with matching source/active identities and process-leader closure. Thread IDs,
+foreign names and incomplete trees grant no additional name; no old live PID
+is consulted. Regression `factorybox-epoch-retained-logs-3fb1aa9f521e487287e45760432f699c`
+records identical test bytes failing before the correction and passing after it,
+plus nine invalid-tree controls.
+
+New unselected package `factorybox-build-worker-d7241b59ad3a4d39a76e732d0c156e1b`
+contains CLI `989c7eec62297bafc2421ca3838392a353c30d5d59d411d80723cb634d86d62b`
+and raw package SHA-256
+`4681c5b631659e1f38c9c948b9f7d070c26004ceb8cd3bab28bb82a648deecaf`.
+All six portable gates pass in
+`factorybox-checks-7b441dd097a64aaf921655e1d4eafa75`, including 220 Python tests,
+unchanged reference/fixture verification and enabled Go vet. That portable pass
+alone does not qualify the package. Independent reproduction and the complete
+final-package gate set remain required.
+
+The first corrected full-consumer attempt, `7bf56d0e840d4c8998f6be876fb602aa`,
+gets past the log inventory but the new Begin call reaches the original
+fixture's 90-second per-command bound at 90.020 seconds. Its complete preparation
+and 1-MiB reserve already exist; durable acceptance has not been claimed.
+Read-only diagnostic `factorybox-epoch-timeout-diagnostic-399e8112edef4ac4b8a9abe8fb4a87f9`
+retains the original ARM, preparation and directory listings. Lossless repack
+`factorybox-storage-repack-0a0eadb093a147a5b74c16b7f1b27de5` preserves every raw
+byte of that complete failed store. This is a failed overall attempt.
+
+The declared full-consumer fixture now uses the ordinary complete public
+`retire-epoch` command, including its internal durable admission, followed by
+exact replay. Only these new full-tree calls get a 180-second bound. Every
+original lifecycle command/assertion and the complete 420-second driver bound
+stay unchanged. The additional standalone pre-recovery inspection is omitted
+from this composed case; public recovery and retirement still verify complete
+source/successor backing. Separate Begin/kill/replay has its dedicated native
+cases. The exact fixture change is frozen in
+`factorybox-consumer-epoch-direct-plan-8dc8577d5ad041cea7a4007c0ef79a34`.
+
+`factorybox-consumer-worker-loss-19cdf02881f4448ab096db43659260ce` passes this
+complete Factory/Theia/local-OpenCode path on the corrected D724 CLI, with the
+forced replacement loop change. All eleven authorized roots, including the
+actually used registered base and original RAM images, are absent. Base
+provenance and the caller-input marker remain. The independent committed
+successor resumes with its complete parent/child/app RAM and files; every
+original later checkpoint/fork, independent mutation, Theia edit, real agent
+tool completion and source-deletion assertion also passes. Both workers stop
+with 0; inputs/global settings and exact cleanup pass. The direct retirement
+is 175.778 seconds and exact replay 1.017 seconds. These are single development
+observations. The final worker has 18.965 seconds of the original whole-driver
+budget remaining before its successful 6.999-second Stop. This is not a final
+predetermined-series member, performance distribution or production release.
+
+After that complete replacement passes, receipt
+`factorybox-storage-retirement-6d82bf52112b42d8b01a9a55b3322750` fully decodes
+and verifies the earlier F70 guard-log failure before retiring its
+1,238,439,825-byte encoding. Source, failed result and outer logs remain. That
+superseded complete image is now intentionally unreconstructable. The separate
+complete prepared 7BF timeout image and original PID/signal/busy evidence stay.
+
+Storage maintenance preserves all decoded bytes of the new failed 34,360,786,944-byte
+volume through lossless repack `factorybox-storage-repack-993c487767234c699ccd8e036cd2ae27`.
+Two older, specifically superseded diagnostics are retired after complete
+decompression and passing replacements: attached-session admission `7922e2c4`
+through receipt `factorybox-storage-retirement-f051551d31fc4b1faecd7c87f1eb0b4e`,
+and the minimal image-tag assertion fixture `da763fe1` through
+`factorybox-storage-retirement-a13e6975e3c94537b38433421b241271`.
+Their source, failed results, outer logs, all tar member hashes and selected
+diagnostics remain; those two complete old volumes are intentionally no longer
+reconstructable. Original PID, signal, busy-mount and current Factory failure
+evidence are preserved.
+
+Completed source-sharing output plans can now be losslessly encoded only when
+their successful result binds the exact raw plan hash, operation and frozen
+recipe. Failed, changed and unrelated receipts refuse. Build/native inputs
+remain protected. `factorybox-storage-plan-compaction-810cc38b66224169b78167cf8cc771f1`
+preserves both raw plan identities and reconstruction receipts, reclaiming
+34,037,760 allocated bytes without changing any original source/result.
+
+`factorybox-storage-share-components-3bbc97e3f01c426488ba39669507c23e` verifies
+and shares 22 exact duplicate closed Sysbox outputs, reclaiming 491,999,232
+allocated bytes. All paths, bytes, modes, owners and original results remain;
+original/shared mtimes are explicit in its plan. Privilege is used only for
+protected hardlinks to existing root-owned outputs. Changed bytes/results,
+permissions and redirected paths refuse before replacement. No installation
+or host configuration changes.
+
+The earlier minimal listener failure D35 is independently decoded before
+retirement. Its retained log identifies `Can't restore sid (801), expected 91`,
+the same unsupported external-session boundary as the preserved attached-exec
+diagnostic. Complete minimal replacement and the exact negative attached-session
+admission both pass. Receipt
+`factorybox-storage-retirement-463652019f704c1aaf8079d1946a2407` retains every
+member hash/header and selected diagnostics; its old complete volume is now
+intentionally unavailable. This does not explain the separate rare PID collision.
+
+The two old systemd fixture volumes DE819 and CC1 are likewise superseded by
+complete passing suite `factorybox-bats-dd234e09657d459cb5493021e62ccc70`.
+Retention requires identical original source-tar bytes and all 243 verified
+test files, including the same two declared compatibility changes. Every
+formerly failed case must actually pass without a skip; missing assertions,
+changed input, lost verification and skipped replacements refuse. Receipts
+`factorybox-storage-retirement-12431cccabb84def93c0c9d55a423aea` and
+`factorybox-storage-retirement-7b02ff6662084a68b3654453994ab6e7` fully verify
+before retiring the superseded volumes. Their original failed outcomes, source,
+logs, member hashes and selected diagnostics remain. Both original unrelated
+systemd skips stay explicit; no final-package gate is reclassified.
+
+## Actual ENOSPC during epoch preparation
+
+The first extended pressure attempt
+`factorybox-bounded-loss-8255be709c264d94bc763d428a008623` fails in its new
+fixture's pressure allocator before calling public preparation. It requests
+free blocks including root-reserved space in one fallocate. The complete
+original recovery assertions pass; the overall case remains failed and its
+complete bounded image is retained.
+
+The corrected fixture first binds the open pressure descriptor to the actual
+current 1-GiB image device, store root and filesystem capacity. It refuses every
+other allocation target. It syncs only that private filesystem and fills in
+bounded steps using observed available blocks, leaving at most 512 KiB. Exact
+before/after hashes are declared in
+`factorybox-epoch-pressure-guard-plan-9ba92ab085b344a2bc2f33fc784f73dc` and
+`factorybox-epoch-pressure-allocator-plan-b4b7d0dd7bd4446abb370ba48b446641`.
+No production core or original assertion is changed by this fixture correction.
+
+Planned replacement
+`factorybox-bounded-loss-aeacd4061d434ca9a94e205f2458bf6a` passes on the D724
+CLI. Seventy-eight private allocations reduce available blocks from 79,568 to
+128 at 4096 bytes each; 4,224 free blocks remain, including reserved space.
+The actual public preparation returns ENOSPC and leaves a real partial stage,
+with no preparation completion, acceptance, deletion or global acceptance fence.
+The complete original backing is unchanged. Both its recovery lock and full
+public retained-checkpoint inspection still work under that pressure.
+
+After releasing pressure, only the test's exact unaccepted stage is removed
+using its complete owned-tree inventory. The same case then passes the full
+public acceptance, actual unlink pidfd-SIGKILL, complete worker replacement with
+forced loop change, exact deletion replay, two retired epochs and useful
+independent successor. Cleanup and unchanged inputs/global settings pass; outer
+observation is 133.229 seconds. The returned filesystem capacity observation
+is 82,919,424 bytes, not a guaranteed physical reclamation amount.
+
+This proves safe original-data preservation and read-only recovery after actual
+preparation ENOSPC. It does not qualify a public repair/cancellation or retry
+operation for an unaccepted partial preparation. Writes remain fenced and the
+fixture-only stage cleanup is not an operator API. That manual operating path,
+original PID/busy-mount attribution, external model acceptance, final package
+reproduction/gates and the predetermined final series remain open. Production
+and full epoch-retirement qualification stay false; the complete goal stays active.
+
+The matching abrupt first-loss case
+`factorybox-bounded-loss-28a3ea9d1eeb44d4b2ced39db33e5068` also passes the
+complete extended scenario in 133.770 seconds, including actual preparation
+ENOSPC, original-data/read-only recovery checks, public unlink interruption,
+forced replacement attachment change and useful successor. Cleanup and frozen
+inputs/global settings checks pass. Neither native case qualifies the fixture's
+private partial-stage cleanup as a public cancellation operation.
+All six portable gates pass in
+`factorybox-checks-fea709843eab4e63bd6193da1b28abe2`.
+Source reconstruction, exact native fixture differences and the full-consumer
+proof are indexed in
+`factorybox-epoch-used-base-notes-ee369ef7a8124cba88c86996d05f3f69`.

@@ -24,6 +24,30 @@ def sync_json(path, value):
         stream.write("\n"); stream.flush(); os.fsync(stream.fileno())
 
 
+def verify_bats_replacement(run, proof, old, new):
+    if (old.get('suite') != 'systemd' or new.get('suite') != 'systemd' or
+            old.get('target_platform') != 'linux/amd64' or new.get('target_platform') != 'linux/amd64' or
+            any(type(row.get('upstream_test_files_verified')) is not int or row['upstream_test_files_verified'] <= 0 or
+                row['upstream_test_files_verified'] != row['unchanged_upstream_test_files'] + row['declared_upstream_test_changes'] or
+                row.get('inputs_unchanged') is not True or
+                row.get('components_unchanged') is not True for row in [old, new]) or
+            old.get('unchanged_upstream_test_files') != new.get('unchanged_upstream_test_files') or
+            old.get('declared_upstream_test_changes') != new.get('declared_upstream_test_changes') or
+            not set(old['expected_titles']).issubset(new['expected_titles']) or
+            old['inputs_sha256'].get('source.tar') != new['inputs_sha256'].get('source.tar')):
+        raise ValueError('Bats supersession requires the same original upstream source and assertions')
+    cases = {row['name']: row for row in new['observed']['cases']}
+    if (new['observed'].get('complete') is not True or new['observed'].get('failed') or not old['observed']['failed'] or
+            any(name not in cases or cases[name].get('passed') is not True or cases[name].get('skipped') is not False
+                for name in old['observed']['failed'])):
+        raise ValueError('every formerly failed Bats assertion must actually pass without a skip')
+    for path, record in [(run, old), (proof, new)]:
+        for name, digest in record['inputs_sha256'].items():
+            supplied = path / name
+            if supplied.resolve() != supplied or not supplied.is_relative_to(path) or reference.sha(supplied) != digest:
+                raise ValueError('Bats frozen input changed before retention')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-run", required=True)
@@ -31,13 +55,18 @@ def main():
     parser.add_argument("--reason", required=True, help="Concrete supersession and remaining reconstruction limits")
     parser.add_argument("--verify-only",action="store_true",help="Retain and verify diagnostics while keeping the complete source archive")
     args = parser.parse_args()
-    pattern = r"factorybox-(?:devx-lifecycle|consumer-worker-loss|checkpoint-retirement)-[0-9a-f]{32}"
+    pattern = r"factorybox-(?:devx-lifecycle|consumer-worker-loss|checkpoint-retirement|bats)-[0-9a-f]{32}"
     if not all(re.fullmatch(pattern, name) for name in [args.source_run, args.replacement_proof]):
         raise ValueError("requires exact native consumer failure/proof IDs")
     run, proof = (reference.ROOT/"artifacts"/name for name in [args.source_run, args.replacement_proof])
     if run.resolve()!=run or proof.resolve()!=proof:
         raise ValueError("native evidence cannot be redirected through symlinks")
     source_result, replacement = (json.loads((path/"result.json").read_text()) for path in [run,proof])
+    bats = any(name.startswith('factorybox-bats-') for name in [args.source_run, args.replacement_proof])
+    if bats:
+        if not all(name.startswith('factorybox-bats-') for name in [args.source_run, args.replacement_proof]):
+            raise ValueError('Bats failure requires a complete Bats replacement')
+        verify_bats_replacement(run, proof, source_result, replacement)
     if any(name.startswith('factorybox-checkpoint-retirement-') for name in [args.source_run, args.replacement_proof]):
         # Only supersede a fixture that failed on an invalid CLI verb before
         # its metadata assertions. Real runtime failures are not eligible.
@@ -72,7 +101,7 @@ def main():
     native_originals=[row for row in source_result.get("failed_volume_archives",{}).values() if row.get("file")==original["file"]]
     if native_originals!=[original]:
         raise ValueError("encoding receipt differs from the original native failure result")
-    for path,record in [(run,source_result),(proof,replacement)]:
+    for path,record in ([] if bats else [(run,source_result),(proof,replacement)]):
         context=path/("source" if (path/"source").is_dir() else "context")
         if upstream_unit.context_manifest(context)!=record["source_context"]:
             raise ValueError("frozen native source context changed")

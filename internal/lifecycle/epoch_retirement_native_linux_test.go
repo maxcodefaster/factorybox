@@ -6,10 +6,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"factorybox/internal/ownedtree"
 	"golang.org/x/sys/unix"
@@ -21,7 +26,12 @@ type epochRetirementNativeState struct {
 	State         captureActorState      `json:"state"`
 	RemovedRoot   string                 `json:"removed_root"`
 	WrongRequests int                    `json:"wrong_requests"`
+	Base          Base                   `json:"base"`
 }
+
+const epochRetirementWindowFiles = 5000
+
+var epochRetirementWindowContent = []byte("owned epoch retirement window\n")
 
 func epochRetirementNativeEnabled(t *testing.T) {
 	t.Helper()
@@ -46,6 +56,24 @@ func epochRetirementCLI(t *testing.T, operation string, request EpochRetirementR
 func TestNativeEpochRetirementPrepare(t *testing.T) {
 	epochRetirementNativeEnabled(t)
 	TestNativeRetainedSelectionPrepare(t)
+	status := boundedLossStatusNow(t)
+	input := status.Store + "/epoch-retirement-base-input"
+	for _, directory := range []string{input, input + "/retirement-window"} {
+		if err := os.Mkdir(directory, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < epochRetirementWindowFiles; i++ {
+		if err := os.WriteFile(fmt.Sprintf("%s/retirement-window/%04d", input, i), epochRetirementWindowContent, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var base Base
+	if err := json.Unmarshal(boundedLossAction(t, "prepare-base", "--source", input, "retirement-base"), &base); err != nil ||
+		base.Version != 1 || base.ID != "retirement-base" || base.PreparedAt == "" || base.Tree.Immutable == nil || base.Tree.Entries < epochRetirementWindowFiles {
+		t.Fatal("registered base has no complete private input tree", base, err)
+	}
+	boundedLossSave(t, "epoch-retirement-base.json", base)
 }
 
 func TestNativeEpochRetirementRecover(t *testing.T) {
@@ -55,6 +83,8 @@ func TestNativeEpochRetirementRecover(t *testing.T) {
 	}
 	var pause boundedLossPause
 	epochFenceRead(t, "bounded-loss-pause.json", &pause)
+	var base Base
+	epochFenceRead(t, "epoch-retirement-base.json", &base)
 	status := boundedLossStatusNow(t)
 	engine, err := Open(status.Lifecycle)
 	if err != nil {
@@ -230,6 +260,7 @@ func TestNativeEpochRetirementRecover(t *testing.T) {
 		t.Fatal("an overlay outside the epoch still using its lower was accepted")
 	}
 	wrong++
+	epochRetirementPreparationENOSPC(t, engine, old, pause.Request, request)
 	acceptedBytes, err := epochRetirementCLI(t, "begin-epoch-retirement", request, "epoch-retirement-request.json")
 	if err != nil {
 		t.Fatal(err, string(acceptedBytes))
@@ -241,15 +272,71 @@ func TestNativeEpochRetirementRecover(t *testing.T) {
 	if replay, err := epochRetirementCLI(t, "begin-epoch-retirement", request, "epoch-retirement-request.json"); err != nil || !bytes.Equal(replay, acceptedBytes) {
 		t.Fatal("public acceptance replay changed", err)
 	}
-	// Interrupt after one real accepted payload root has been removed. This is
-	// the same exact owned-object remover as the complete public deletion path;
-	// a surviving RAM/file successor remains protected by the actual fence.
-	plan, err := ownedtree.Capture(context.Background(), old.root, []string{relative + "/images"})
+	// Observe the actual public unlink loop, then stop only this exact child.
+	// The registered base supplies enough real owned files for a checked
+	// interruption window without changing any original lifecycle assertion.
+	removed := base.Tree.Saved + "/retirement-window/4999"
+	survivor := base.Tree.Saved + "/retirement-window/0000"
+	for _, name := range []string{removed, survivor} {
+		if data, err := os.ReadFile(name); err != nil || !bytes.Equal(data, epochRetirementWindowContent) {
+			t.Fatal("interruption marker is not an exact original base file", name, err)
+		}
+	}
+	command := exec.Command("/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox", "retire-epoch", "--request-file", "/output/epoch-retirement-request.json")
+	command.WaitDelay = 2 * time.Second
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := false
+	defer func() {
+		if !waited {
+			command.Process.Kill()
+			command.Wait()
+		}
+	}()
+	pidfd, err := unix.PidfdOpen(command.Process.Pid, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ownedtree.RemoveRemaining(context.Background(), old.root, plan); err != nil {
+	defer unix.Close(pidfd)
+	start, err := processBirth(command.Process.Pid)
+	if err != nil {
 		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(30 * time.Second); ; {
+		_, missing := os.Lstat(removed)
+		if os.IsNotExist(missing) {
+			poll := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
+			if n, err := unix.Poll(poll, 0); err != nil || n != 0 {
+				t.Fatal("public retirement exited before its actual unlink interruption", err, stderr.String())
+			}
+			if err := unix.PidfdSendSignal(pidfd, unix.SIGSTOP, nil, 0); err != nil {
+				t.Fatal(err)
+			}
+			if err := unix.PidfdSendSignal(pidfd, unix.SIGKILL, nil, 0); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+		if missing != nil || time.Now().After(deadline) {
+			t.Fatal("actual public unlink window was not observed", missing, stderr.String())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := command.Wait(); err == nil {
+		t.Fatal("interrupted public retirement returned success", stdout.String())
+	}
+	waited = true
+	if status, ok := command.ProcessState.Sys().(syscall.WaitStatus); !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
+		t.Fatal("public retirement did not finish the exact requested SIGKILL", command.ProcessState)
+	}
+	if data, err := os.ReadFile(survivor); err != nil || !bytes.Equal(data, epochRetirementWindowContent) {
+		t.Fatal("public unlink completed before its interruption", err)
+	}
+	if _, err := old.root.Lstat(epochRetirementDirectory + "/complete.json"); !os.IsNotExist(err) {
+		t.Fatal("interruption was after public completion", err)
 	}
 	if _, err := old.root.Lstat(relative + "/images"); !os.IsNotExist(err) {
 		t.Fatal("partial retirement did not remove its exact original RAM root", err)
@@ -257,7 +344,133 @@ func TestNativeEpochRetirementRecover(t *testing.T) {
 	if _, err := boundedLossCommand("--worker-run-root", "/run/factorybox", "resume", "--snapshot-id", snapshot, "descendant"); err == nil || !strings.Contains(err.Error(), "epoch retirement") {
 		t.Fatal("accepted partial retirement failed to protect its successor", err)
 	}
-	boundedLossSave(t, "epoch-retirement-accepted.json", epochRetirementNativeState{Request: request, Accepted: accepted, State: state, RemovedRoot: relative + "/images", WrongRequests: wrong})
+	boundedLossSave(t, "epoch-retirement-interruption.json", map[string]any{"passed": true, "request": request, "acceptance_sha256": accepted.AcceptanceSHA256,
+		"pid": command.Process.Pid, "process_start": start, "removed_original_file": removed, "surviving_original_file": survivor,
+		"public_unlink_interrupted": true, "exact_child_sigkill": true, "completion_absent": true})
+	boundedLossSave(t, "epoch-retirement-accepted.json", epochRetirementNativeState{Request: request, Accepted: accepted, State: state, RemovedRoot: relative + "/images", WrongRequests: wrong, Base: base})
+}
+
+func epochRetirementPreparationENOSPC(t *testing.T, current, old *Engine, recovery RecoveryRequest, request EpochRetirementRequest) {
+	t.Helper()
+	store := epochStoreRoot(current.config.Root)
+	before, err := ownedtree.Capture(context.Background(), old.root, []string{"objects", "forks", "bases", "runtime"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pressurePath := store + "/epoch-retirement-owned-pressure"
+	pressure, err := os.OpenFile(pressurePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pressure.Close()
+	var capacity unix.Statfs_t
+	if err := unix.Fstatfs(int(pressure.Fd()), &capacity); err != nil {
+		t.Fatal(err)
+	}
+	var identity unix.Stat_t
+	if err := unix.Fstat(int(pressure.Fd()), &identity); err != nil || current.config.BoundedStore == nil ||
+		current.config.BoundedStore.Image.Bytes != 1<<30 || uint64(identity.Dev) != current.config.BoundedStore.BlockDevice ||
+		epochStoreRoot(old.config.Root) != store || capacity.Bsize <= 0 || capacity.Blocks == 0 ||
+		capacity.Blocks > (1<<30)/uint64(capacity.Bsize) {
+		t.Fatal("pressure descriptor is not the exact private 1-GiB image; refusing allocation", err)
+	}
+	if err := unix.Syncfs(int(pressure.Fd())); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Fstatfs(int(pressure.Fd()), &capacity); err != nil {
+		t.Fatal(err)
+	}
+	// Follow actual available blocks, including extent metadata and delayed
+	// allocation. Reserved free blocks need not be allocatable by this worker.
+	// Leave space for a partial preparation but less than its 1-MiB reserve.
+	const remaining = 512 << 10
+	if int64(capacity.Bavail)*capacity.Bsize <= remaining {
+		t.Fatal("ENOSPC fixture lacks space for its private bounded pressure")
+	}
+	initial := capacity
+	chunk := int64(4 << 20)
+	allocations := 0
+	for int64(capacity.Bavail)*capacity.Bsize > remaining {
+		allocations++
+		if allocations > 1024 {
+			t.Fatal("bounded pressure allocation did not converge", capacity)
+		}
+		size := min(chunk, int64(capacity.Bavail)*capacity.Bsize-remaining)
+		info, err := pressure.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		beforeAvailable := capacity.Bavail
+		err = unix.Fallocate(int(pressure.Fd()), 0, info.Size(), size)
+		if err != nil && !errors.Is(err, unix.ENOSPC) {
+			t.Fatal("allocate only the exact bounded image's private pressure", err)
+		}
+		if statErr := unix.Fstatfs(int(pressure.Fd()), &capacity); statErr != nil {
+			t.Fatal(statErr)
+		}
+		if errors.Is(err, unix.ENOSPC) && capacity.Bavail >= beforeAvailable {
+			if chunk <= capacity.Bsize {
+				t.Fatal("reported available blocks are not allocatable", capacity, err)
+			}
+			chunk = max(capacity.Bsize, chunk/2)
+		}
+	}
+	if err := pressure.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Fstatfs(int(pressure.Fd()), &capacity); err != nil || int64(capacity.Bavail)*capacity.Bsize > remaining {
+		t.Fatal("preparation pressure did not reach its actual physical bound", capacity, err)
+	}
+	output, rejected := epochRetirementCLI(t, "begin-epoch-retirement", request, "epoch-enospc-request.json")
+	if rejected == nil || !strings.Contains(rejected.Error(), unix.ENOSPC.Error()) {
+		t.Fatal("real partial preparation did not fail with ENOSPC", rejected, string(output))
+	}
+	for _, name := range []string{"prepare.json", "intent.json", "complete.json"} {
+		if _, err := old.root.Lstat(epochRetirementDirectory + "/" + name); !os.IsNotExist(err) {
+			t.Fatal("ENOSPC preparation published an accepted or completed retirement", name, err)
+		}
+	}
+	if _, err := os.Lstat(store + "/" + epochRetirementFenceName); !os.IsNotExist(err) {
+		t.Fatal("unaccepted ENOSPC preparation fenced successor work globally", err)
+	}
+	after, err := ownedtree.Capture(context.Background(), old.root, before.Paths)
+	if err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatal("ENOSPC preparation changed the complete original backing", err)
+	}
+	reader, err := old.recoveryLock(recovery)
+	if err != nil {
+		t.Fatal("actual unaccepted ENOSPC preparation lost its intact recovery reader", err)
+	}
+	reader.Close()
+	oldRequest := CheckpointRequest{recovery.SourceID, recovery.SnapshotID, recovery.SourceOwner, recovery.CheckpointSHA256}
+	inspect := retirementArgs("inspect-recovery-checkpoint", oldRequest, "")
+	inspect = append([]string{inspect[0], "--source-root", old.config.Root}, inspect[1:]...)
+	boundedLossAction(t, inspect...)
+	// No public protocol retry is claimed. Remove only this test's exact
+	// unaccepted stage after the public child has exited, with a complete owned
+	// inventory. Keep its full content/identity plan in the external evidence.
+	stage, err := ownedtree.Capture(context.Background(), old.root, []string{epochRetirementDirectory})
+	if err != nil || len(stage.Entries) < 3 {
+		t.Fatal("real ENOSPC did not leave its observed partial preparation", err)
+	}
+	if err := pressure.Truncate(0); err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(pressure.Sync(), pressure.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(pressurePath); err != nil {
+		t.Fatal(err)
+	}
+	boundedLossSave(t, "epoch-retirement-enospc.json", map[string]any{"passed": true, "request": request,
+		"actual_preparation_enospc": true, "error": rejected.Error(), "free_blocks_after_pressure": capacity.Bfree,
+		"available_blocks_before_pressure": initial.Bavail, "available_blocks_after_pressure": capacity.Bavail, "pressure_allocations": allocations,
+		"block_bytes": capacity.Bsize, "original_backing_unchanged": true, "intact_recovery_reader_available": true,
+		"retained_checkpoint_inspected": true, "no_acceptance_or_completion": true, "global_acceptance_fence_absent": true,
+		"partial_stage": stage, "test_owned_partial_stage_cleanup": true, "public_preparation_retry_qualified": false})
+	if err := ownedtree.RemoveRemaining(context.Background(), old.root, stage); err != nil {
+		t.Fatal("retire only the exact test-owned unaccepted stage", err)
+	}
 }
 
 func TestNativeEpochRetirementFinish(t *testing.T) {
@@ -333,6 +546,33 @@ func TestNativeEpochRetirementFinish(t *testing.T) {
 			t.Fatal("retired epoch payload or successor remains", name, err)
 		}
 	}
+	basePath := "bases/" + evidence.Base.ID + "/rootfs"
+	foundBase := false
+	for _, name := range plan.Paths {
+		foundBase = foundBase || name == basePath
+	}
+	if !foundBase || evidence.Base.Tree.Saved != old.config.Root+"/"+basePath {
+		t.Fatal("registered base was not in the exact retired payload inventory")
+	}
+	for i := 0; i < epochRetirementWindowFiles; i++ {
+		name := fmt.Sprintf("%s/retirement-window/%04d", evidence.Base.Source, i)
+		if data, err := os.ReadFile(name); err != nil || !bytes.Equal(data, epochRetirementWindowContent) {
+			t.Fatal("retirement changed caller-owned base input", name, err)
+		}
+	}
+	var interrupted struct {
+		Passed         bool                   `json:"passed"`
+		Request        EpochRetirementRequest `json:"request"`
+		AcceptanceSHA  string                 `json:"acceptance_sha256"`
+		PublicUnlink   bool                   `json:"public_unlink_interrupted"`
+		ExactSIGKILL   bool                   `json:"exact_child_sigkill"`
+		CompleteAbsent bool                   `json:"completion_absent"`
+	}
+	epochFenceRead(t, "epoch-retirement-interruption.json", &interrupted)
+	if !interrupted.Passed || !interrupted.PublicUnlink || !interrupted.ExactSIGKILL || !interrupted.CompleteAbsent ||
+		!reflect.DeepEqual(interrupted.Request, evidence.Request) || interrupted.AcceptanceSHA != completed.AcceptanceSHA256 {
+		t.Fatal("public completion lost the exact interrupted unlink request")
+	}
 	if _, err := os.Lstat(status.Store + "/" + epochRetirementFenceName); !os.IsNotExist(err) {
 		t.Fatal("global maintenance fence remains", err)
 	}
@@ -373,5 +613,6 @@ func TestNativeEpochRetirementFinish(t *testing.T) {
 		"source_tombstone_retained": true, "global_fence_cleared_exactly": true, "wrong_requests_refused": evidence.WrongRequests,
 		"prepared_source_reader_available": true, "unknown_source_entry_refused": true, "foreign_covering_mount_refused": true, "active_selection_preserved": true,
 		"full_original_lifecycle_assertions_passed": true, "fork_resume_epoch_retired": true, "descendant_handover_verified": true,
-		"foreign_entries_after_acceptance_refused": true, "full_epoch_retirement_qualified": false, "report": completed})
+		"foreign_entries_after_acceptance_refused": true, "public_unlink_interrupted": true, "registered_base_retired": true,
+		"caller_base_input_preserved": true, "full_epoch_retirement_qualified": false, "report": completed})
 }

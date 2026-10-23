@@ -14,6 +14,7 @@ import uuid
 import build_worker
 import consumer_test_inputs
 import consumer_bounded_store
+import consumer_epoch_retirement
 import consumer_loop_holder
 import consumer_drain_interrupt
 import consumer_stop_trace
@@ -190,9 +191,13 @@ def main():
     parser.add_argument("--consumer-empty-features",action="store_true",help="Candidate exact consumer patch: omit the feature-control lookup for zero features only")
     parser.add_argument("--consumer-request-profile",action="store_true",help="Optional copied Factory example telemetry around its first dependency fetches")
     parser.add_argument("--probe",choices=list(PROBE_PHASES),default="worker-loss")
+    parser.add_argument("--epoch-retirement",action="store_true",help="Replace direct old-source removal with public epoch retirement and a committed independent successor")
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
+    if options.epoch_retirement and (options.bounded_bytes is None or options.probe != "worker-loss" or
+            options.drain_interrupt_inputs or options.external_provider_proof or options.baseline_runtime_build):
+        parser.error("epoch retirement requires the complete bounded worker-loss fixture without unrelated substitutions")
     if options.drain_interrupt_inputs and (options.bounded_bytes is None or options.probe != "worker-loss" or options.loss != "planned" or options.stop_trace_inputs or options.external_provider_proof or options.baseline_runtime_build):
         parser.error("drain interruption requires a complete bounded planned fixture and no separate diagnostic/provider substitution")
     if options.replacement_loop_holder and (options.bounded_bytes is None or options.probe != "worker-loss"):
@@ -402,6 +407,9 @@ traceDependency({event: 'module-loaded'});
     for file in ["go.mod","go.sum"]: shutil.copyfile(reference.ROOT/file,source/file)
     if options.bounded_bytes is not None:
         result["bounded_fixture"] = consumer_bounded_store.apply_fixture(artifact, source, options.consumer_empty_features)
+    if options.epoch_retirement:
+        result["epoch_fixture"] = consumer_epoch_retirement.apply_fixture(artifact, source)
+        shutil.copyfile(Path(consumer_epoch_retirement.__file__), artifact/"consumer_epoch_retirement.py")
     if options.probe == "agent-cancel":
         setup = artifact/"consumer-worker-setup.sh"
         before = setup.read_text()
@@ -600,6 +608,9 @@ traceDependency({event: 'module-loaded'});
                                    "warm-preparation":"TestNativeWarmPreparation", "agent-cancel":"TestNativeAgentCancellation", "agent-effect":"TestNativeConsumerWorkerLoss",
                                    "lifecycle":"TestNativeMinimalLifecycle" if options.example=="minimal" else "TestNativeDeveloperLifecycle"}[options.probe]
                         if "--- PASS: "+test_name+" " not in log or "--- SKIP:" in log: raise ValueError("consumer worker assertions omitted or skipped")
+                        if options.epoch_retirement and phase == "recover":
+                            old_root = result["phases"][0]["startup"]["status"]["lifecycle"]["root"]
+                            record["epoch_retirement"] = consumer_epoch_retirement.verify_output(output, old_root)
                         if options.probe=="lifecycle":
                             required_phases={"prepared-start-first-use","fork-first-use","source-advance","branch-advance","source-independent","fork-of-fork-first-use","resume-first-use","fork-of-resumed-first-use"}
                             observed=json.loads((output/"devx-observations.json").read_text())

@@ -12,6 +12,38 @@ import reference
 
 
 class ArtifactStorageTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("zstd"), "receipt compaction requires zstd")
+    def test_only_completed_source_sharing_output_plan_can_be_encoded(self):
+        for scenario in ['closed', 'failed', 'changed-plan', 'wrong-operation']:
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                run = root / ('artifacts/factorybox-storage-share-sources-' + 'a'*32)
+                run.mkdir(parents=True)
+                runner = run / 'runner.py'
+                runner.write_bytes(b'closed immutable sharing recipe\n')
+                plan = run / 'plan.json'
+                plan.write_text(json.dumps({'schema': 1,
+                    'operation': 'other' if scenario == 'wrong-operation' else 'share_identical_closed_verified_source_inputs',
+                    'runner_sha256': reference.sha(runner), 'trees': [], 'actions': []}))
+                before = plan.read_bytes()
+                result = run / 'result.json'
+                result.write_text(json.dumps({'passed': scenario != 'failed', 'plan_sha256': reference.sha(plan)}))
+                result_bytes = result.read_bytes()
+                if scenario == 'changed-plan':
+                    plan.write_bytes(before + b'\n')
+                if scenario != 'closed':
+                    with self.assertRaisesRegex(ValueError, 'active or unresolved cleanup'):
+                        artifact_storage.compact(plan, root)
+                    self.assertTrue(plan.exists())
+                    self.assertFalse((run / 'plan.json.zst').exists())
+                else:
+                    receipt = artifact_storage.compact(plan, root)
+                    self.assertFalse(plan.exists())
+                    self.assertTrue(receipt['whole_decompressed_payload_verified'])
+                    self.assertEqual(receipt['original']['sha256'], hashlib.sha256(before).hexdigest())
+                    self.assertEqual(artifact_storage.verify_compacted(plan, receipt['original']), receipt['encoded'])
+                self.assertEqual(result.read_bytes(), result_bytes)
+
     def test_protected_hardlink_copy_preserves_bytes_and_rejects_source_changes(self):
         import errno
         import hashlib

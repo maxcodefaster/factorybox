@@ -166,6 +166,37 @@ func (b *epochInventoryBuilder) runtime(relative string, record Record, required
 	return nil
 }
 
+func epochRetainedLogNames(arm retainedCaptureArm) (map[string]bool, error) {
+	if arm.Version != 3 || arm.Mode != "process_tree_retained" || len(arm.Tree) == 0 || len(arm.Tree) > 512 {
+		return nil, fmt.Errorf("retained log inventory lacks its complete bounded original tree")
+	}
+	tree := map[int]retainedCaptureThread{}
+	previous := 1
+	for _, thread := range arm.Tree {
+		if thread.PID <= previous || thread.Process <= 1 || thread.Start == "" {
+			return nil, fmt.Errorf("retained log inventory has incomplete or unordered original threads")
+		}
+		tree[thread.PID], previous = thread, thread.PID
+	}
+	if tree[arm.SourcePID].Process != arm.SourcePID || tree[arm.SourcePID].Start != arm.SourceStart || arm.SourceStart == "" ||
+		tree[arm.ActivePID].Process != arm.ActivePID || tree[arm.ActivePID].Start != arm.ActiveStart || arm.ActiveStart == "" || arm.ActiveVirtualPID <= 0 {
+		return nil, fmt.Errorf("retained log inventory lost its original source or active process")
+	}
+	logs := map[string]bool{}
+	for _, thread := range arm.Tree {
+		if tree[thread.Process].Process != thread.Process {
+			return nil, fmt.Errorf("retained log inventory lacks an original process leader")
+		}
+		// The pinned CRIU producer opens one log for each serially active
+		// process. Its final ARM retains the complete original tree, even when
+		// a different process was active last. Thread IDs grant no log name.
+		if thread.PID == thread.Process {
+			logs["criu-retained-"+strconv.Itoa(thread.PID)+".log"] = true
+		}
+	}
+	return logs, nil
+}
+
 func (b *epochInventoryBuilder) guard(relative string, record Record) error {
 	entries, err := b.engine.exitEntries(relative)
 	if err != nil {
@@ -195,7 +226,13 @@ timer-activation-worker-intent.json timer-mutator-ready.json timer-prepare-compl
 			config.Source.ID != record.ID || config.Source.Owner != record.Owner || config.Source.RuntimeID != record.RuntimeID || config.Source.Rootfs != record.Rootfs {
 			return fmt.Errorf("retained capture log has no exact original arm identity")
 		}
-		allowed["criu-retained-"+strconv.Itoa(arm.SourcePID)+".log"] = true
+		logs, err := epochRetainedLogNames(arm)
+		if err != nil {
+			return err
+		}
+		for name := range logs {
+			allowed[name] = true
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -259,7 +260,19 @@ def compact(path, root, *, new_worker_package=False, compression_level=1):
         if not fresh_package and (result_file.is_symlink() or not result_file.is_file()):
             raise ValueError("active or unrecorded run cannot be compacted")
         result = {} if fresh_package else json.loads(result_file.read_text())
-        closed = fresh_package or result.get("cleanup") is True
+        # A completed source-sharing plan is an output receipt, never a build
+        # or native input. Keep its exact raw plan hash usable through the
+        # ordinary whole-decode encoding receipt without retaining large raw
+        # duplicates of every already verified source manifest.
+        source_plan = (len(relative.parts) == 2 and relative.parts[1] == 'plan.json' and
+                       re.fullmatch(r'factorybox-storage-share-sources-[0-9a-f]{32}', relative.parts[0]) and
+                       result.get('passed') is True and result.get('plan_sha256') == hashlib.sha256(path.read_bytes()).hexdigest())
+        if source_plan:
+            plan = json.loads(path.read_text())
+            source_plan = (plan.get('schema') == 1 and
+                           plan.get('operation') == 'share_identical_closed_verified_source_inputs' and
+                           plan.get('runner_sha256') == hashlib.sha256((run / 'runner.py').read_bytes()).hexdigest())
+        closed = fresh_package or result.get("cleanup") is True or source_plan
         for reconciliation in (run / "reconciliations").glob("*/result.json"):
             if not reconciliation.is_symlink() and not reconciliation.parent.is_symlink():
                 closed = closed or json.loads(reconciliation.read_text()).get("cleanup") is True

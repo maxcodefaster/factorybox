@@ -205,7 +205,8 @@ def main():
                             'prepared_source_reader_available', 'unknown_source_entry_refused', 'foreign_covering_mount_refused',
                             'active_selection_preserved', 'full_original_lifecycle_assertions_passed',
                             'fork_resume_epoch_retired', 'descendant_handover_verified',
-                            'foreign_entries_after_acceptance_refused']
+                            'foreign_entries_after_acceptance_refused', 'public_unlink_interrupted',
+                            'registered_base_retired', 'caller_base_input_preserved']
                 if finished.get('wrong_requests_refused', 0) < 10:
                     raise ValueError('public epoch retirement lacks required admission refusals')
                 before = finished.get('report', {}).get('before', {}).get('filesystem_available_bytes')
@@ -213,6 +214,34 @@ def main():
                 if type(before) is not int or type(after) is not int or after <= before:
                     raise ValueError('public epoch retirement did not observe returned filesystem capacity')
                 result['retired_epoch_observed_capacity_bytes'] = after - before
+                interruption_file = output / 'epoch-retirement-interruption.json'
+                interruption = json.loads(interruption_file.read_text())
+                base_file = output / 'epoch-retirement-base.json'
+                base = json.loads(base_file.read_text())
+                base_root = finished['report']['request']['source_root'] + '/bases/' + base['id'] + '/rootfs'
+                if (any(interruption.get(key) is not True for key in
+                        ['passed', 'public_unlink_interrupted', 'exact_child_sigkill', 'completion_absent']) or
+                        interruption.get('request') != finished['report']['request'] or
+                        interruption.get('acceptance_sha256') != finished['report']['acceptance_sha256'] or
+                        interruption.get('pid', 0) <= 1 or not interruption.get('process_start') or
+                        base['tree']['saved'] != base_root or
+                        interruption.get('removed_original_file') != base_root + '/retirement-window/4999' or
+                        interruption.get('surviving_original_file') != base_root + '/retirement-window/0000'):
+                    raise ValueError('public unlink interruption is not bound to its exact completed request and registered base')
+                result['public_unlink_interruption_sha256'] = reference.sha(interruption_file)
+                result['registered_base_sha256'] = reference.sha(base_file)
+                enospc_file = output / 'epoch-retirement-enospc.json'
+                enospc = json.loads(enospc_file.read_text())
+                if (any(enospc.get(key) is not True for key in
+                        ['passed', 'actual_preparation_enospc', 'original_backing_unchanged',
+                         'intact_recovery_reader_available', 'retained_checkpoint_inspected',
+                         'no_acceptance_or_completion', 'global_acceptance_fence_absent', 'test_owned_partial_stage_cleanup']) or
+                        enospc.get('request') != finished['report']['request'] or
+                        enospc.get('public_preparation_retry_qualified') is not False or
+                        enospc.get('available_blocks_after_pressure', -1) < 0 or
+                        enospc['available_blocks_after_pressure'] * enospc['block_bytes'] > 512 << 10):
+                    raise ValueError('actual retirement preparation ENOSPC proof is incomplete or overclaims public retry')
+                result['preparation_enospc_sha256'] = reference.sha(enospc_file)
             if any(finished.get(key) is not True for key in required) or finished.get('full_epoch_retirement_qualified') is not False:
                 raise ValueError('retirement fence proof incomplete or overclaims full epoch admission')
             result['retirement_fence_sha256'] = reference.sha(finished_file)
