@@ -13,6 +13,7 @@ import uuid
 import build_worker
 import consumer_test_inputs
 import consumer_bounded_store
+import consumer_loop_holder
 import consumer_stop_trace
 import devx_inputs
 import devx_project_images
@@ -77,6 +78,7 @@ def main():
     parser.add_argument("--worker-build",required=True)
     parser.add_argument("--probe-input-build",help="Exact already native-tested helper bytes; complete test/core source must match")
     parser.add_argument("--bounded-bytes",type=int,help="Explicit 4-32 GiB fixed store; relocate only new fixture copies and verify actual delivered capacity")
+    parser.add_argument("--replacement-loop-holder",action="store_true",help="Use a separate empty owned worker to force the retained store onto a different loop slot during recovery")
     parser.add_argument("--stop-trace-inputs",help="Exact signed diagnostic fixture; trace worker file syscalls after all bounded lifecycle assertions pass")
     parser.add_argument("--consumer-inputs",required=True)
     parser.add_argument("--project-images",required=True)
@@ -93,6 +95,8 @@ def main():
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
+    if options.replacement_loop_holder and (options.bounded_bytes is None or options.probe != "worker-loss"):
+        parser.error("replacement loop holder requires a complete bounded worker-loss case")
     if options.stop_trace_inputs and (options.bounded_bytes is None or options.probe != "lifecycle" or
             options.theia_image or options.opencode_flow or options.external_provider_proof or options.baseline_runtime_build):
         parser.error("stop tracing is a separate bounded lifecycle diagnostic without optional peers")
@@ -171,6 +175,8 @@ def main():
     if options.probe == "warm-preparation":
         result["scope"] = "Compose the existing immutable-base API for two independent fresh starts; charge initial import, incremental preparation and first useful work separately. No new base-cache algorithm."
     shutil.copyfile(__file__,artifact/"runner.py")
+    if options.replacement_loop_holder:
+        shutil.copyfile(Path(consumer_loop_holder.__file__), artifact/"consumer_loop_holder.py")
     if options.stop_trace_inputs:
         result["stop_trace_inputs"] = consumer_stop_trace.freeze(options.stop_trace_inputs, worker, artifact)
     shutil.copyfile(reference.ROOT/"tools/worker_readiness.py", artifact/"worker_readiness.py")
@@ -281,6 +287,7 @@ traceDependency({event: 'module-loaded'});
     before = sysctls()
     result["global_sysctls_before"] = before
     containers, peer, attempted = [], None, False
+    loop_holder = None
     service, provider, providers = None, None, []
     print(json.dumps({"running":str(artifact),"example":options.example,"loss":options.loss}),flush=True)
     try:
@@ -319,6 +326,10 @@ traceDependency({event: 'module-loaded'});
         reference.docker(["volume","create","--label","com.factorybox.run="+owner,name]); attempted=True
         deadline = time.monotonic()+420
         for phase in (["prepare","recover"] if options.probe in {"worker-loss","incomplete-pause"} else ["prepare"]):
+            if phase == "recover" and options.replacement_loop_holder:
+                loop_holder = consumer_loop_holder.new_case(name)
+                result["replacement_loop_holder"] = loop_holder
+                consumer_loop_holder.start(loop_holder, worker["image"], result["phases"][0]["startup"]["status"], deadline, ready)
             container = name+"-"+phase
             output = artifact/(phase+"-output"); output.mkdir()
             phase_artifact = artifact/phase; phase_artifact.mkdir()
@@ -365,6 +376,8 @@ traceDependency({event: 'module-loaded'});
             containers.append(container)
             identity = reference.docker(command)
             record["startup"] = ready(container,owner,identity,deadline)
+            if phase == "recover" and loop_holder is not None:
+                consumer_loop_holder.verify_replacement(loop_holder, record["startup"]["status"])
             if options.bounded_bytes is not None:
                 capacity = json.loads(reference.docker(["exec", identity, "/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox", "capacity"]))
                 record["bounded_store_before"] = consumer_bounded_store.verify_capacity(record["startup"]["status"], capacity, options.bounded_bytes, owner)
@@ -493,6 +506,13 @@ traceDependency({event: 'module-loaded'});
             if peer and not peer.closed: peer.close(True)
             for owned_provider in providers:
                 if not owned_provider.closed: owned_provider.close(aborted=True)
+            if loop_holder is not None:
+                consumer_loop_holder.close(loop_holder, exact_worker, artifact)
+                if not loop_holder["passed"]:
+                    result["passed"] = False
+                    result.setdefault("error", "replacement loop holder proof failed")
+                if not loop_holder["cleanup"]:
+                    preserve = True
             if attempted and not result["passed"]:
                 try:
                     upstream_bats.archive_stopped_volumes(
@@ -504,7 +524,8 @@ traceDependency({event: 'module-loaded'});
             result["global_sysctls_after"] = sysctls()
             result["global_sysctls_unchanged"] = before == result["global_sysctls_after"]
             result["cleanup"] = (not preserve and (peer is None or peer.result.get("cleanup") is True)
-                                 and all(owned.result.get("cleanup") is True for owned in providers))
+                                 and all(owned.result.get("cleanup") is True for owned in providers)
+                                 and (loop_holder is None or loop_holder.get("cleanup") is True))
             result["passed"] = result["passed"] and result["cleanup"] and result["global_sysctls_unchanged"]
         finally:
             if service: service.close()

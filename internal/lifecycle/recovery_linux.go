@@ -154,6 +154,10 @@ func (e *Engine) importPaused(ctx context.Context, lock *os.File, request Recove
 	if err != nil || sum(identity) != request.CheckpointSHA256 || !saved.SourceStopped {
 		return intent, fmt.Errorf("saved pause differs from its requested complete checkpoint: %v", err)
 	}
+	baseVerifier, err := old.recoveryBaseVerifier(source, saved.Filesystem)
+	if err != nil {
+		return intent, err
+	}
 	operation := "forks/" + targetID
 	for _, path := range []string{operation, operation + "/recovery"} {
 		if err := e.root.Mkdir(path, 0700); err != nil {
@@ -161,8 +165,8 @@ func (e *Engine) importPaused(ctx context.Context, lock *os.File, request Recove
 		}
 	}
 	generation := operation + "/recovery/input"
-	filesystem, err := sysboxcapture.RecoverFilesystemSnapshot(ctx,
-		old.config.Root+"/"+oldGeneration, e.config.Root+"/"+generation, saved.Filesystem)
+	filesystem, err := sysboxcapture.RecoverFilesystemSnapshotWithBaseVerifier(ctx,
+		old.config.Root+"/"+oldGeneration, e.config.Root+"/"+generation, saved.Filesystem, baseVerifier)
 	if err != nil {
 		return intent, err
 	}

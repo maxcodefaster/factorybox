@@ -374,9 +374,25 @@ identical package/image rebuild. Both examples pass planned/abrupt worker
 replacement and the original lifecycle. Interrupted incomplete pauses are
 refused while their earlier committed state remains recoverable. Factory
 includes its separate Theia peer and local OpenCode model fixture.
-Interruption of a live drain, a changed loop assignment, large-ledger admission,
+Interruption of a live drain, large-ledger admission,
 external-provider and all remaining release qualification stay open; see
 [the paused drain evidence](production-progress.md#bounded-committed-pause-drain-and-recovery).
+
+The next candidate also imports a committed base when the exact retained
+bounded store receives a different loop device. That translation requires the
+private persistent source epoch, matching boot/recipe/store owner and complete
+image identity, plus a fresh verification of the current mounted store. The
+exact committed base must retain its inode and all recorded metadata. Covering
+mount rejection, full content verification and a new independent read-only base
+remain required. The old process and peer fields are never adopted; callers
+still fence the old worker. Standalone imports keep the strict device check.
+The exact candidate passes all 13 native core gates, eight Stop protections,
+both base-library tests and twelve full bounded consumer cases, including all
+four minimal/Factory planned/abrupt forced-loop combinations. Its separate
+package/image reproduction is identical. Factory uses its separate Theia and
+local OpenCode fixture; external inference remains a separate release gate.
+See [the device-remap evidence](production-progress.md#retained-store-remounted-on-another-loop-device)
+for the preserved failure, offline inspection and acceptance scope.
 
 `tools/build_worker.py` takes exact completed native-base, Sysbox and CRIU
 build IDs. It freezes the Go sources, toolchain and source lock, checks module

@@ -2508,6 +2508,80 @@ is recorded in
 `factorybox-storage-share-closed-components-b3cb585d4367440aa05ce16c3945f518`.
 The 32-GiB artifact budget and required 8-GiB starting headroom remain enforced.
 
+## Retained store remounted on another loop device
+
+The bounded consumer driver can now reserve the released old loop slot with a
+separate empty owned worker and a 512-MiB store. The helper has the same
+3 CPU/3 GiB ceiling, creates no sandbox, and checks exact container/volume
+ownership before cleanup. The retained consumer image must remain identical
+while its new loop number and block device both differ. The original consumer
+assertions and 420-second lifecycle deadline remain unchanged.
+
+On the previous qualified intermediate package `c8578b8a`, the complete minimal
+planned case fails in
+`factorybox-consumer-worker-loss-00f48559850c4e1ea7a56ebb0bf03ecb`.
+The source pause and clean Stop pass; the helper holds loop 0, and the exact
+same retained image attaches to loop 1. Recovery refuses with
+`persisted base inode or metadata changed`. Both workers and the empty helper
+are cleaned up and the complete failed 32-GiB image is initially retained.
+
+Offline inspection
+`factorybox-recovery-device-inspection-29143efd2f45471e9a4b618a8e7b1adb`
+verifies the full archived tar and reconstructed sparse image. Read-only
+`debugfs -c` confirms unchanged filesystem UUID, inode, mode, UID/GID, mtime and
+ctime. Only the recorded kernel device changes from 1792 to 1793. The initial
+inspection `factorybox-recovery-device-inspection-74ba170eca834da0a344035d975fe72d`
+also verifies the entire tar/image but cannot open allocation bitmaps under its
+resource limit; it remains failed. The corrected inspection uses the installed
+manual's mode which omits those bitmaps and forces read-only access. Both
+temporary copies are removed; canonical evidence and receipts stay unchanged.
+
+Candidate `factorybox-build-worker-3d7bacfa1646433da4f0ce802fef80ac`, package
+SHA-256 `5d75c9e1b43f3567966c69998c566d545403ac6949bb61c23a74ddf444c8f462`,
+binds a changed-device base import to the persistent source worker envelope.
+The source boot, epoch, recipe, store owner and complete image identity must
+match the currently verified retained store. Only then can the exact committed
+base's old device be translated. Inode, all metadata, covering-mount checks,
+complete content verification, private independent copy and fresh read-only
+identity remain required. Standalone recovery retains its strict device check.
+The old envelope's process/peer information is never adopted and does not
+establish worker fencing.
+
+The 26-case source-identity unit test and all portable checks pass in
+`factorybox-checks-fd8e28f690fc42b68a7b690541bbecc1`.
+Both original and new native base tests pass in
+`factorybox-base-recovery-b17c9c2073374627bec894a2c692b22e`; the new case runs
+on the owned bounded ext4 store, retains default refusal, rejects an independent
+verifier's refusal, preserves foreign-mount and corrupted-content rejection,
+and proves the recovered copy survives original mutation/deletion.
+The complete minimal planned case with loop 0 held now passes in
+`factorybox-consumer-worker-loss-585c0ee025944ea8857a99ca0b9b2490`, including
+replay, new checkpoint/fork, independent useful work, exact cleanup and both
+clean worker exits. The independent build
+`factorybox-build-worker-60942f30d86d4279b9bbc94ccbab13b5` reproduces package,
+image and CLI exactly. All 13 native core regression gates pass in
+`factorybox-device-recovery-regressions-53caaaf7efa042b5a6245ea5be6b9532`, and
+all eight Stop protection cases pass in
+`factorybox-bounded-base-stop-25bc622b5f4c4da8ad361672aa5bc742`.
+The twelve-case batch
+`factorybox-device-consumers-27d3a6e63927443dac6f0b153e7bfd40` passes all eight
+original consumer cases plus minimal/Factory planned/abrupt forced-loop
+replacement. Each helper verifies the exact retained image and changed device,
+and ends with Exit 0 and exact owned cleanup. Factory preserves its separate
+Theia and local OpenCode model/tool fixture; this does not qualify external
+inference. No p95 or platform claim is made. The ordered proof index is
+`factorybox-device-recovery-notes-84957ba0430f45e0810ff6a869735fe3`.
+Live-drain interruption, large exit-ledger admission and the remaining production
+requirements stay open. Production qualification stays false.
+
+After all twelve consumer cases pass, the superseded opaque store image is
+intentionally retired in
+`factorybox-storage-retirement-6ab725eb0b084e5fae1ac6ddaa93beb0`.
+Complete decompression and every member hash are verified before removing its
+1,329,253,474-byte encoded payload. Source, results, logs, CLI inputs, the member
+index and both offline inspections remain unchanged. The full old image is no
+longer reconstructable. Selected unresolved failures and frozen inputs remain.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution

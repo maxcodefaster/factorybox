@@ -20,6 +20,16 @@ import (
 // Mutable roots are always copied independently. A partial destination remains
 // retained and cannot be overwritten by retrying this function.
 func RecoverFilesystemSnapshot(ctx context.Context, generation, destination string, saved *FilesystemSnapshot) (*FilesystemSnapshot, error) {
+	return recoverFilesystemSnapshot(ctx, generation, destination, saved, nil)
+}
+
+// RecoverFilesystemSnapshotWithBaseVerifier keeps the strict default recovery
+// checks while delegating only changed device-number authority to the caller.
+func RecoverFilesystemSnapshotWithBaseVerifier(ctx context.Context, generation, destination string, saved *FilesystemSnapshot, verify BaseRecoveryVerifier) (*FilesystemSnapshot, error) {
+	return recoverFilesystemSnapshot(ctx, generation, destination, saved, verify)
+}
+
+func recoverFilesystemSnapshot(ctx context.Context, generation, destination string, saved *FilesystemSnapshot, verify BaseRecoveryVerifier) (*FilesystemSnapshot, error) {
 	if !cleanAbsolute(generation) || !cleanAbsolute(destination) || generation == destination ||
 		strings.HasPrefix(generation, destination+"/") || strings.HasPrefix(destination, generation+"/") {
 		return nil, fmt.Errorf("recovery requires separate canonical filesystem roots")
@@ -58,7 +68,7 @@ func RecoverFilesystemSnapshot(ctx context.Context, generation, destination stri
 			if err := os.Mkdir(destination+"/base", 0700); err != nil {
 				return nil, err
 			}
-			base, err := RecoverFilesystemBase(ctx, tree, destination+"/base/rootfs")
+			base, err := recoverFilesystemBase(ctx, tree, destination+"/base/rootfs", verify)
 			if err != nil {
 				return nil, err
 			}

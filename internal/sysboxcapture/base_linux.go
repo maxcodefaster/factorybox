@@ -57,6 +57,15 @@ func PrepareFilesystemBase(ctx context.Context, source, destination string) (Fil
 // the saved checkpoint can establish a new immutable identity. Old mount IDs
 // and aliases are never treated as authority for the fresh base.
 func RecoverFilesystemBase(ctx context.Context, saved FilesystemTree, destination string) (FilesystemTree, error) {
+	return recoverFilesystemBase(ctx, saved, destination, nil)
+}
+
+// BaseRecoveryVerifier may authorize a changed kernel device number only after
+// its caller independently proves the exact retained filesystem and source
+// epoch. Inode, metadata, covering-mount and full content checks still apply.
+type BaseRecoveryVerifier func(saved FilesystemTree, currentDevice uint64) error
+
+func recoverFilesystemBase(ctx context.Context, saved FilesystemTree, destination string, verify BaseRecoveryVerifier) (FilesystemTree, error) {
 	base := saved.Immutable
 	if saved.Name != "lower" || base == nil || !cleanAbsolute(base.Root) ||
 		len(saved.SHA256) != 64 || strings.Trim(saved.SHA256, "0123456789abcdef") != "" ||
@@ -78,9 +87,12 @@ func RecoverFilesystemBase(ctx context.Context, saved FilesystemTree, destinatio
 	if err := unix.Fstat(int(root.Fd()), &stat); err != nil {
 		return FilesystemTree{}, err
 	}
-	if uint64(stat.Dev) != base.Device || stat.Ino != base.Inode || stat.Mode != base.Mode ||
+	if stat.Ino != base.Inode || stat.Mode != base.Mode ||
 		stat.Uid != base.UID || stat.Gid != base.GID || stat.Mtim.Sec != base.MtimeSec ||
 		stat.Mtim.Nsec != base.MtimeNano || stat.Ctim.Sec != base.CtimeSec || stat.Ctim.Nsec != base.CtimeNano {
+		return FilesystemTree{}, fmt.Errorf("persisted base inode or metadata changed")
+	}
+	if uint64(stat.Dev) != base.Device && verify == nil {
 		return FilesystemTree{}, fmt.Errorf("persisted base inode or metadata changed")
 	}
 	parent, err := openDirectory(filepath.Dir(base.Root))
@@ -97,6 +109,11 @@ func RecoverFilesystemBase(ctx context.Context, saved FilesystemTree, destinatio
 	if current.Mask&unix.STATX_MNT_ID == 0 || parentMount.Mask&unix.STATX_MNT_ID == 0 ||
 		current.Mnt_id == 0 || current.Mnt_id != parentMount.Mnt_id {
 		return FilesystemTree{}, fmt.Errorf("persisted base has an unexpected covering mount")
+	}
+	if uint64(stat.Dev) != base.Device {
+		if err := verify(saved, uint64(stat.Dev)); err != nil {
+			return FilesystemTree{}, fmt.Errorf("persisted base device translation refused: %w", err)
+		}
 	}
 	// The expected digest describes data, not the vanished kernel objects.
 	// No old immutable pointer may escape on a failed new preparation.

@@ -451,3 +451,26 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   ersetzt keine externe Anbieterabnahme. Unterbrochener Live-Drain, veränderte
   Loop-Zuordnung, große Exit-Belege und sämtliche weiteren Produktionsabnahmen
   bleiben offen. Das vollständige Goal bleibt aktiv.
+- Ein neuer vollständiger minimaler Test erzwingt beim Worker-Ersatz den Wechsel
+  von Loop 0 auf Loop 1. Das bisherige Paket scheitert am gespeicherten
+  Kernel-Device, obwohl die vollständig verifizierte Offline-Inspektion UUID,
+  Inode, Rechte, Eigentümer sowie mtime/ctime unverändert nachweist.
+  Kandidat `3d7bacfa1646433da4f0ce802fef80ac` bindet die Übersetzung deshalb
+  an die exakte persistente Worker-Epoche und das aktuell verifizierte Abbild.
+  Alle übrigen Identitäts-, Inhalts- und Mount-Prüfungen bleiben erhalten.
+  Der vollständige minimale Ersatz besteht damit einschließlich neuem Fork
+  und sauberem Stop. 26 negative Identitätsfälle und beide nativen Basis-Tests
+  bestehen ebenfalls. Quellen, Ergebnisse, Logs und vollständige Diagnose des
+  ursprünglichen Fehlers bleiben gesichert. Nach der breiten bestandenen Abnahme
+  ist sein großes Abbild mit vollständiger Stream-Verifikation und Beleg
+  `factorybox-storage-retirement-6ab725eb0b084e5fae1ac6ddaa93beb0`
+  bewusst nicht mehr rekonstruierbar.
+  Der unabhängige Nachbau reproduziert Paket und Image exakt. Alle 13 nativen
+  Kern-Regressionsgates, acht Stop-Schutzfälle und zwölf vollständige
+  Verbraucherfälle bestehen auf diesen Bytes. Dazu gehören die acht bisherigen
+  Fälle und alle vier Kombinationen aus minimal/Factory und geplant/abrupt mit
+  erzwungenem Loop-Wechsel. Factory enthält separate Theia und die lokale
+  OpenCode-Fixture. Der Nachweisindex ist
+  `factorybox-device-recovery-notes-84957ba0430f45e0810ff6a869735fe3`.
+  Echter unterbrochener Drain und sämtliche weiteren Produktionsanforderungen
+  bleiben offen; das vollständige Goal bleibt aktiv.
