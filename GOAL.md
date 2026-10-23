@@ -30,6 +30,11 @@ historische Nachweise. Produktionsqualifikation ist zu Beginn dieses Goals false
   der Branch eine relative Timer-Aufnahme mit anstehendem gefangenem Signal,
   `factorybox-consumer-worker-loss-87d3d62a3d544fa8b2a0bba588c90b38`.
   Vollständiger Fehlerzustand bleibt erhalten; dieser Pfad ist nicht abgenommen.
+  Die gezielte Signalprüfung und der vollständige Factory-Lifecycle bestehen
+  inzwischen auf Kandidat `2d4ef2ecd68848979f86a6b8cf2c0f97`. Die ursprünglichen
+  Fehler bleiben erhalten. Alle 13 nativen Kern-Prüfgruppen und der unabhängige
+  identische Paketnachbau bestehen ebenfalls. Die endgültige Paketabnahme
+  einschließlich der übrigen offenen Anforderungen bleibt erforderlich.
 - [ ] Seltenen Restore-PID-Konflikt erklären und beheben. Den betroffenen
   vollständigen Lifecycle erst nach belegter Korrektur freigeben.
 - [ ] Offenen Busy-Mount-Aufräumfehler dem Test oder der Laufzeit zuordnen;

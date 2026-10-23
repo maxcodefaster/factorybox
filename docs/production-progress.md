@@ -2791,6 +2791,87 @@ inspection. Evidence is indexed in
 does not turn that failed integration into a pass. The original historical and
 new failed results remain preserved. Production qualification is false.
 
+## Pending caught signal before timer admission
+
+The new native `TestNativeTimerAdmissionSignal` reduces the Factory failure
+class to one static syscall/ABI actor and one real SIGUSR1. It queues the signal
+through an exact pidfd after the original source cgroup reaches its first
+checkpoint freeze, before timer preparation or CRIU. The existing signal
+assembly and every original raw-EINTR, register, flags, stack and read-only
+request assertion are retained. Successful checkpoint, exact replay and an
+independent fork with one handler result are required.
+
+`factorybox-checkpoint-retirement-aafd2e4cf6aa49f5ba18f46ec68f04c5` fails on
+the delivered `2a83453ad0f54b6a9580dc194bf5cdba` worker in 1.28 seconds with the
+same caught-signal admission error. Its actual proc status records SIGUSR1
+shared-pending and caught, both mask 0x200, with no signal blocked. The source
+cgroup is populated and thawed after refusal. The second preserved failure,
+`factorybox-checkpoint-retirement-b90efd68208843aeb5f73bbddce505ff`, has the
+same pending/caught state and thawed source on the earlier `5c281a6c...` worker
+with the original Sysbox components and byte-identical Go CLI. The SHM change
+is therefore unnecessary for this failure class. Both retain the complete
+one-GiB private store and pass exact outer cleanup, unchanged inputs and global
+sysctls. The full Factory failure's exact signal was not captured and is not
+retroactively identified as SIGUSR1.
+
+The candidate gives this specific pre-capture condition a bounded opportunity
+to settle through ordinary source execution. Every new freeze repeats
+descriptor, namespace, filesystem and timer admission. Only a typed pending
+caught-signal refusal from timer admission can enter that path. The source must
+be unprepared, have no completed timer plan and pass its existing original-task
+and untraced/frozen-tree checks before release. A two-second settling window,
+at most 32 inspections, backoff and the caller context bound the work. The
+pending-signal check during actual timer mutation remains strict. A separate
+private receipt records attempts and the first/last pending masks. Safe
+pre-capture timer rejections also use the existing guarded replay path.
+
+Portable checks pass all six gates in
+`factorybox-checks-7d9d571fb97745d4afe9a035b11930af`. Candidate worker
+`factorybox-build-worker-2d4ef2ecd68848979f86a6b8cf2c0f97` builds with Go CLI
+SHA-256 `eb031e5f1f23ba24ebaa5979fe50a2973eec58a4c9f12a3ec26af75ab83b2094`.
+Its native regression, independent reproduction, original timer/fault suites
+and full Factory retry remain required. The original failures stay failed.
+
+The separate native regression now passes on this candidate in
+`factorybox-checkpoint-retirement-8b644cb24d294615831670cb311e25e0`.
+Its first admission observes the actual pending SIGUSR1 mask 0x200; the
+second admission succeeds. The original actor processes its handler exactly
+once, retains its raw EINTR and ABI assertions, and preserves the result
+through exact checkpoint replay and an independent fork. Source release,
+exact outer cleanup, unchanged inputs and unchanged global sysctls pass.
+
+The complete Factory lifecycle also passes in
+`factorybox-consumer-worker-loss-ca69a93a251944cb9e4a393d35ddcc3c`, including
+fork of fork, pause, resume, fork of the resumed source, the separate native
+Theia connection and complete owned cleanup. The native test takes 192.12 s.
+This single shared-host observation records prepared first useful work at
+28.342 s, fork at 15.292 s, pause at 16.248 s and resume at 12.184 s. Preparation
+and the separately completed source checkpoint are excluded from the
+corresponding first-use values. It is not a matched performance comparison or
+a latency distribution. This green run addresses the full pending-signal
+counterexample; it neither explains the separate historical PID collision nor
+replaces final package qualification. Independent reproduction and the
+original timer/fault gates remain required.
+
+All thirteen original serialized native regression gates now pass in
+`factorybox-signal-admission-regressions-a7b9e441db764ece9fb50bf67fa5a04b`.
+These cover checkpoint retirement; post-preparation signal, timer remainder and
+protection; real tracer exit, restore hold, orphan/guard loss; bounded guest
+capacity; planned and abrupt worker replacement; admission and controller loss.
+Each step passes exact cleanup, unchanged inputs and unchanged global settings.
+The new pre-admission signal proof above is additional to these original cases.
+The separately defined full native filesystem-admission suite and final release
+matrix remain required.
+
+Independent build `factorybox-build-worker-a9de0a87414646118eff83338265c5ac`
+reproduces the complete package, bundle and image exactly. Package SHA-256 is
+`f5b815ee321c27b58c447a3d5512b08d87f6ea90bbc2e0e904ad1332255a6070`;
+image identity is
+`sha256:db9309a97fb850efc17994eebe39459169157b12e95e36f3804a7be26880818c`.
+The separate proof index and ordered source reconstruction are
+`factorybox-signal-admission-notes-584c2b7b4ed24c44b8649ef8e0865b16`.
+Production qualification remains false.
+
 ## Initial local release scope agreed on 2026-10-23
 
 The user approved a controlled first release on the existing Linux AMD64 host,

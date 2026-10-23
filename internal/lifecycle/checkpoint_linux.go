@@ -169,24 +169,7 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 	if err := guard.freeze(true); err != nil {
 		return Checkpoint{}, err
 	}
-	kind := "descriptors"
-	admissionErr := guard.admitCheckpointDescriptors(ctx)
-	if admissionErr == nil {
-		kind = ""
-		admissionErr = guard.admitCheckpointNamespaces(features.RootOwnedTimeNamespaces)
-	}
-	if admissionErr == nil {
-		kind = "filesystem"
-		admissionErr = sysboxcapture.AdmitFilesystem(sysboxcapture.Request{
-			RuntimeRoot: e.config.Root + "/runtime", RuntimeID: record.RuntimeID,
-			Owner: record.Owner, Rootfs: record.Rootfs, Bundle: record.InputBundle,
-			ManagerRoot: e.config.ManagerRoot, Base: record.Base,
-		})
-	}
-	if admissionErr == nil {
-		kind = "timers"
-		admissionErr = guard.admitCheckpointTimers()
-	}
+	kind, admissionErr := e.admitCheckpointSource(ctx, guard, record, features.RootOwnedTimeNamespaces)
 	if admissionErr != nil {
 		admission = &checkpointAdmissionError{kind: kind, cause: admissionErr, rejectedAt: now()}
 		evidenceErr := e.publishCheckpoint(relative, "admission-rejected.json", checkpointAdmissionRejection{

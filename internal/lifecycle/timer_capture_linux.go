@@ -38,6 +38,18 @@ type timerMutatorReady struct {
 	Start       string `json:"start"`
 }
 
+type timerPendingCaughtSignal struct {
+	TID     int    `json:"tid"`
+	Pending uint64 `json:"pending"`
+	Blocked uint64 `json:"blocked"`
+	Caught  uint64 `json:"caught"`
+}
+
+func (signal *timerPendingCaughtSignal) Error() string {
+	return fmt.Sprintf("relative timer has an unprocessed caught signal (tid %d, pending %#x, blocked %#x, caught %#x); source continuation remains unconfirmed",
+		signal.TID, signal.Pending, signal.Blocked, signal.Caught)
+}
+
 func (guard *captureGuard) admitCheckpointTimers() error {
 	if err := captureGuardValidate(guard.config, guard.anchor); err != nil {
 		return err
@@ -152,7 +164,8 @@ func timerNoPendingCaughtSignal(tid int) error {
 		return fmt.Errorf("timer task signal state is incomplete")
 	}
 	if (values["SigPnd:"]|values["ShdPnd:"])&values["SigCgt:"] & ^values["SigBlk:"] != 0 {
-		return fmt.Errorf("relative timer has an unprocessed caught signal; source continuation remains unconfirmed")
+		return &timerPendingCaughtSignal{TID: tid, Pending: values["SigPnd:"] | values["ShdPnd:"],
+			Blocked: values["SigBlk:"], Caught: values["SigCgt:"]}
 	}
 	return nil
 }
