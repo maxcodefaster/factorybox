@@ -474,3 +474,18 @@ diesen Betrieb erforderlichen Arbeiten und Nachweise vorliegen.
   `factorybox-device-recovery-notes-84957ba0430f45e0810ff6a869735fe3`.
   Echter unterbrochener Drain und sämtliche weiteren Produktionsanforderungen
   bleiben offen; das vollständige Goal bleibt aktiv.
+- Ein externer Beobachter trifft jetzt die tatsächliche Drain-Sperre und beendet
+  ausschließlich den exakt geprüften eigenen Worker per pidfd-SIGKILL. Der
+  passende Intent bleibt nach bestätigtem Prozessende unverändert erhalten,
+  der Abschluss fehlt. Alle Beobachter-Handles sind vor dem Ersatz geschlossen.
+  Minimal und Factory bestehen danach vollständig; beide bestehen zusätzlich
+  mit erzwungenem Loop-Wechsel. Alle vier Fälle liegen unter
+  `factorybox-interrupted-drain-consumers-d128a70160f44b85a831aae4fddb5d50`.
+  Runtime und Komponenten bleiben unverändert. Der Nachweisindex ist
+  `factorybox-interrupted-drain-notes-ffc74b3b9e414ac1bc8f0948c613462a`.
+  Der erste fehlgeschlagene Python-API-Vorversuch bleibt erhalten; der korrigierte
+  Beobachter verweigert falsche/veraltete Prozessidentitäten und signalisiert im
+  positiven Vorversuch ausschließlich den eigenen Kindprozess. Dies belegt
+  Prozessverlust im selben Boot, keinen Stromausfall oder Host-Neustart.
+  Große Exit-Belege, sämtliche übrigen Abnahmen und das vollständige Goal
+  bleiben offen und aktiv.

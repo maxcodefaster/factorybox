@@ -14,6 +14,7 @@ import build_worker
 import consumer_test_inputs
 import consumer_bounded_store
 import consumer_loop_holder
+import consumer_drain_interrupt
 import consumer_stop_trace
 import devx_inputs
 import devx_project_images
@@ -78,6 +79,7 @@ def main():
     parser.add_argument("--worker-build",required=True)
     parser.add_argument("--probe-input-build",help="Exact already native-tested helper bytes; complete test/core source must match")
     parser.add_argument("--bounded-bytes",type=int,help="Explicit 4-32 GiB fixed store; relocate only new fixture copies and verify actual delivered capacity")
+    parser.add_argument("--drain-interrupt-inputs",help="Exact preflighted host watcher to SIGKILL the owned worker after publication of its committed exit fence")
     parser.add_argument("--replacement-loop-holder",action="store_true",help="Use a separate empty owned worker to force the retained store onto a different loop slot during recovery")
     parser.add_argument("--stop-trace-inputs",help="Exact signed diagnostic fixture; trace worker file syscalls after all bounded lifecycle assertions pass")
     parser.add_argument("--consumer-inputs",required=True)
@@ -95,6 +97,8 @@ def main():
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
+    if options.drain_interrupt_inputs and (options.bounded_bytes is None or options.probe != "worker-loss" or options.loss != "planned" or options.stop_trace_inputs or options.external_provider_proof or options.baseline_runtime_build):
+        parser.error("drain interruption requires a complete bounded planned fixture and no separate diagnostic/provider substitution")
     if options.replacement_loop_holder and (options.bounded_bytes is None or options.probe != "worker-loss"):
         parser.error("replacement loop holder requires a complete bounded worker-loss case")
     if options.stop_trace_inputs and (options.bounded_bytes is None or options.probe != "lifecycle" or
@@ -174,7 +178,11 @@ def main():
         result["scope"] = "Whole-worker SIGKILL at an actual blocked filesystem-copy permission event during an unconfirmed second pause; reject incomplete recovery and recover the earlier complete independent pause."
     if options.probe == "warm-preparation":
         result["scope"] = "Compose the existing immutable-base API for two independent fresh starts; charge initial import, incremental preparation and first useful work separately. No new base-cache algorithm."
+    if options.drain_interrupt_inputs:
+        result["scope"] = "Whole-worker pidfd SIGKILL after the actual committed-pause exit fence appears; require incomplete exit with no completion record, then the full original consumer recovery assertions."
     shutil.copyfile(__file__,artifact/"runner.py")
+    if options.drain_interrupt_inputs:
+        result["drain_interrupt_inputs"] = consumer_drain_interrupt.freeze(options.drain_interrupt_inputs, artifact)
     if options.replacement_loop_holder:
         shutil.copyfile(Path(consumer_loop_holder.__file__), artifact/"consumer_loop_holder.py")
     if options.stop_trace_inputs:
@@ -464,7 +472,12 @@ traceDependency({event: 'module-loaded'});
                         record["worker_stop_grace_seconds"] = grace
                         record["worker_stop_remaining_lifecycle_seconds"] = remaining
                         try:
-                            reference.docker(["container","stop","--time=" + str(grace),identity],timeout=remaining)
+                            if options.drain_interrupt_inputs and phase == "prepare":
+                                record["drain_interruption"] = consumer_drain_interrupt.stop(
+                                    container, owner, identity, worker, record["startup"]["status"],
+                                    artifact, phase_artifact, output, deadline, exact_worker)
+                            else:
+                                reference.docker(["container","stop","--time=" + str(grace),identity],timeout=remaining)
                         finally:
                             record["worker_stop_seconds"] = time.monotonic() - stop_started
                 finally:
@@ -480,7 +493,9 @@ traceDependency({event: 'module-loaded'});
             (phase_artifact/"worker.log").write_text(logs.stdout+logs.stderr)
             if record.get("stop_tracer"):
                 record["stop_trace"] = consumer_stop_trace.collect(identity, phase_artifact)
-            if state["Running"] or state["Pid"] != 0 or state["OOMKilled"] or state["ExitCode"] != expected: raise ValueError("consumer worker did not fully exit")
+            worker_expected = 137 if options.drain_interrupt_inputs and phase == "prepare" else expected
+            record["expected_worker_exit"] = worker_expected
+            if state["Running"] or state["Pid"] != 0 or state["OOMKilled"] or state["ExitCode"] != worker_expected: raise ValueError("consumer worker did not fully exit")
             reference.owned_delete("container",container,owner); containers.remove(container)
             record["worker_removed"],record["passed"] = True,True
         if (upstream_unit.context_manifest(artifact/"source") != result["source_context"] or

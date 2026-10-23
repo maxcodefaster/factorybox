@@ -2582,12 +2582,55 @@ Complete decompression and every member hash are verified before removing its
 index and both offline inspections remain unchanged. The full old image is no
 longer reconstructable. Selected unresolved failures and frozen inputs remain.
 
+## Actual interruption after the worker exit fence
+
+The optional `--drain-interrupt-inputs` consumer mode uses a frozen host observer
+after the original prepare probe has passed. It checks the exact Docker-owned
+host PID/birth, delivered CLI digest, live ready envelope, host boot and private
+controller directory on the bounded device. Only an inotify event for the exact
+committed-pause exit fence can trigger pidfd SIGKILL. After confirmed process
+death, the unchanged intent must remain while completion is absent. The observer
+closes every directory, mount, inotify and process handle and exits before a
+replacement can start. No runtime hook or original assertion changes.
+
+The pinned host Python lacks the high-level pidfd APIs. The first owned-child
+preflight fails before any signal in
+`factorybox-drain-watch-inputs-210267eb2f1d486aa43f8621357cf3ba`.
+The corrected input
+`factorybox-drain-watch-inputs-6fb5b0ca979c4d66846194fb1c930fb2` binds the Linux
+AMD64 syscalls checked against the installed header. It rejects wrong birth,
+wrong executable, stale process and invalid/init/group PIDs, and proves a
+positive pidfd signal reaches only its own child. That is diagnostic preflight;
+the full consumer separately establishes the actual drain boundary.
+
+The complete minimal case passes in
+`factorybox-consumer-worker-loss-199ba9bdd9aa436e93ae4dc8c43beee9`, and the
+Factory/Theia/local-OpenCode case passes in
+`factorybox-consumer-worker-loss-b7b04619f3a247c28f80b5e1cfc944d8`.
+The source probes exit 0, their workers exit 137 from the selected fault, and
+full recovery, exact replay, independent useful work and a later checkpoint/fork
+pass. Recovery workers end with 0 and cleanup. The minimal combined case with
+the released old loop slot held also passes in
+`factorybox-consumer-worker-loss-ee014cf8addd4febaac0a1fd38c3f981`.
+All six portable checks pass in
+`factorybox-checks-178c1c30be494fe6a7828cc7157656d4`.
+Runtime, Sysbox and CRIU bytes are unchanged from the independently reproduced
+3d7 package. The final combined Factory case also passes in
+`factorybox-consumer-worker-loss-4e8c91618e2f43c88c0f9a343cdbfe1e`.
+All four cases are bound by
+`factorybox-interrupted-drain-consumers-d128a70160f44b85a831aae4fddb5d50`.
+The ordered index
+`factorybox-interrupted-drain-notes-ffc74b3b9e414ac1bc8f0948c613462a` verifies
+the exact observer/driver bytes and incomplete fence, both combined device
+changes, the unchanged prior core acceptance and preserved chat context.
+No power-loss, host-restart, migration or production qualification follows.
+
 ## Release work still required
 
 Broader cancellation and uncertain external side-effect handling; resolution
 of the PID collision and new admission-fixture busy-mount cleanup; a predetermined
 repeated performance comparison; verified base reuse in the supplied
-operational path; full-consumer bounded-store recovery and broader low-disk cases;
+operational path; external-provider bounded-store recovery and broader low-disk cases;
 broader signal/error and interrupted timer preparation handling, final-consumer
 checkpoint retirement qualification and epoch retirement;
 explanation of the preserved Sysbox-fs timeout;
