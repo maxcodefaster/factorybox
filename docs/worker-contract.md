@@ -491,3 +491,53 @@ This guard covers canonical base imports only. Checkpoint aliases, fork/recovery
 metadata, pause histories and old epoch retirement remain separate release
 requirements. The existing full exit-ledger completion preflight still runs
 before any fence or release. This change alone does not qualify production.
+
+## Sandbox record admission candidate
+
+Candidate `factorybox-build-worker-b8724db2ca594eb9b86989129604a411`
+refuses new sandbox metadata before starting a new sandbox, checkpoint, pause
+or resume when the complete prospective record or capture request would exceed
+its existing reader. The durable sandbox record has a 1-MiB limit including
+its final newline. The complete source guard has a separate 16-KiB packet
+limit, and the sealed capture/timer request has a 64-KiB limit. Long paths and
+JSON escaping count toward these encoded-byte limits; no fixed number of
+accepted pause cycles is promised.
+
+Admission reserves successful and failed pause outcomes and completion metadata.
+A resume also reserves its following pause. New durable lifecycle error
+summaries are limited to 4 KiB of raw text, retaining the original error's
+prefix, byte count and SHA-256. The caller still receives the full error.
+Existing errors, history, ownership and snapshot identities are never shortened
+to make admission pass. The atomic record publisher independently refuses an
+oversized replacement before creating a temporary record file.
+
+On `new sandbox metadata refused`, stop sending new work to that sandbox and
+retain the complete command result and diagnostics. Inspect `state` using the
+same worker and sandbox identity. Do not edit `record.json`, erase its history,
+retry an uncertain transition with a different request, or delete backing to
+make the request fit. Free disk space does not increase a JSON reader limit.
+
+For a confirmed `paused` record with the exact completed pause checkpoint and
+the original stopped runtime, the tested alternative is an independent public
+`fork` from that checkpoint into a new sandbox ID. Use its exact original
+source and snapshot IDs with the ordinary command prefix above, for example:
+
+```sh
+/opt/factorybox/factorybox --worker-run-root /run/factorybox fork \
+  --source source --snapshot-id "$confirmed_pause_snapshot" replacement
+```
+
+Supply the snapshot from the verified original pause, and verify the new
+sandbox's application/RAM/file state before choosing it as the continuation.
+Keep the source and its recovery checkpoint protected. This route applies to
+a known admission refusal with an intact committed pause; it does not resolve
+an uncertain attempted restore. A running source that cannot admit another
+checkpoint remains running, but its earlier checkpoint cannot stand in for
+unsaved application progress. Preserve that source for explicit reconciliation.
+
+The native case injects history into an actual owned paused source near the
+1-MiB limit. It proves refusal before transition or resume backing, unchanged
+source bytes and stopped identity, and a useful independent fork with the
+original private RAM/files. This is separate from a complete worker exit-ledger
+budget. Admission of aggregate checkpoint/fork/recovery aliases and paused
+arrays, old epoch retirement and final production qualification remain open.

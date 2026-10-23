@@ -179,8 +179,8 @@ func readCaptureTimerRequest() (captureRequest, captureGuardAnchors, *os.File, e
 	if err != nil || seals&captureRequestSeals != captureRequestSeals {
 		return request, anchors, file, fmt.Errorf("timer request is not sealed: %v", err)
 	}
-	data, err := io.ReadAll(io.NewSectionReader(file, 0, (64<<10)+1))
-	if err != nil || len(data) > 64<<10 {
+	data, err := io.ReadAll(io.NewSectionReader(file, 0, captureRequestLimit+1))
+	if err != nil || len(data) > captureRequestLimit {
 		return request, anchors, file, fmt.Errorf("timer request exceeds bound: %v", err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))

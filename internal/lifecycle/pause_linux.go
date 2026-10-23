@@ -51,6 +51,9 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 		return View{Record: record, Runtime: state}, nil
 	}
 	if record.Phase == "running" {
+		if err := e.admitSandboxMetadata(record, false); err != nil {
+			return View{Record: record}, err
+		}
 		if err := e.admitStorageWrite(); err != nil {
 			return View{Record: record}, err
 		}
@@ -102,7 +105,7 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 				return View{Record: record, Runtime: state}, errors.Join(err, stateErr,
 					fmt.Errorf("rejected pause lacks its confirmed original running source"))
 			}
-			record.Pause.RejectedAt, record.Pause.Error = rejectedAt, failure
+			record.Pause.RejectedAt, record.Pause.Error = rejectedAt, sandboxErrorSummary(failure)
 			record.PauseHistory = append(record.PauseHistory, *record.Pause)
 			record.Pause, record.Phase = nil, "running"
 			return View{Record: record, Runtime: state}, errors.Join(err, e.write(record))

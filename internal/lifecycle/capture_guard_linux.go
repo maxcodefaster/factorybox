@@ -35,6 +35,8 @@ type captureGuardConfig struct {
 	Criu       string `json:"criu,omitempty"`
 }
 
+const captureGuardPacketLimit = 16 << 10
+
 type captureGuardAnchors struct {
 	group, pid, evidence, root *os.File
 }
@@ -341,7 +343,7 @@ func captureGuardRead(fd int, timeoutMS int) ([]byte, error) {
 			break
 		}
 	}
-	data := make([]byte, 16<<10)
+	data := make([]byte, captureGuardPacketLimit)
 	for {
 		n, _, flags, _, err := unix.Recvmsg(fd, data, nil, 0)
 		if errors.Is(err, unix.EINTR) {

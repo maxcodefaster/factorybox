@@ -521,7 +521,7 @@ func (e *Engine) reconcileFork(ctx context.Context, lock *os.File, intent forkIn
 			return View{Record: record}, err
 		}
 		if err := e.restore(ctx, lock, record, request); err != nil {
-			record.Start.Error = err.Error()
+			record.Start.Error = sandboxErrorSummary(err.Error())
 			return View{Record: record}, errors.Join(err, e.write(record))
 		}
 	}

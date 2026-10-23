@@ -27,6 +27,7 @@ type captureRequest struct {
 }
 
 const captureRequestSeals = unix.F_SEAL_WRITE | unix.F_SEAL_GROW | unix.F_SEAL_SHRINK | unix.F_SEAL_SEAL
+const captureRequestLimit = 64 << 10
 
 func CaptureWorkerCommand(args []string) (bool, error) {
 	if len(args) == 1 && args[0] == "_capture" {
@@ -42,8 +43,8 @@ func captureWorkerServe() (resultErr error) {
 	if err != nil || seals&captureRequestSeals != captureRequestSeals {
 		return fmt.Errorf("capture request is not sealed: %v", err)
 	}
-	data, err := io.ReadAll(io.LimitReader(requestFile, (64<<10)+1))
-	if err != nil || len(data) > 64<<10 {
+	data, err := io.ReadAll(io.LimitReader(requestFile, captureRequestLimit+1))
+	if err != nil || len(data) > captureRequestLimit {
 		return fmt.Errorf("capture request exceeds bound or cannot be read: %v", err)
 	}
 	var request captureRequest

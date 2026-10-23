@@ -66,6 +66,9 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 		return View{Record: record, Runtime: state}, err
 	}
 	if record.Phase == "paused" {
+		if err := e.admitSandboxMetadata(record, true); err != nil {
+			return View{Record: record}, err
+		}
 		if err := e.admitStorageWrite(); err != nil {
 			return View{Record: record}, err
 		}
@@ -103,7 +106,7 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 			return View{Record: record}, err
 		}
 		if err := e.resumeRuntime(ctx, lock, record, request); err != nil {
-			record.Pause.Resume.Error = err.Error()
+			record.Pause.Resume.Error = sandboxErrorSummary(err.Error())
 			return View{Record: record}, errors.Join(err, e.write(record))
 		}
 	}

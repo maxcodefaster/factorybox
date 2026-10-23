@@ -29,6 +29,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--include-completed-worker-components', action='store_true',
                         help='Also share identical pinned component binaries of fully verified completed worker builds; source, CLI, packages and image identities stay unchanged')
+    parser.add_argument('--include-completed-worker-packages', action='store_true',
+                        help='Also share byte-identical tar packages of independently completed verified worker builds; keep every path directly usable and preserve build results')
     args=parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('immutable input sharing requires all Factorybox runs to finish')
@@ -54,7 +56,7 @@ def main():
                         'original_mtime_ns':info.st_mtime_ns,'shared_mtime_ns':original.stat().st_mtime_ns,
                         'allocated_bytes':info.st_blocks*512})
     for run in sorted((reference.ROOT/"artifacts").iterdir()):
-        if args.include_completed_worker_components and re.fullmatch(r'factorybox-build-worker-[0-9a-f]{32}',run.name):
+        if (args.include_completed_worker_components or args.include_completed_worker_packages) and re.fullmatch(r'factorybox-build-worker-[0-9a-f]{32}',run.name):
             # load verifies the complete frozen source, runnable bundle,
             # recipe, tar package, Docker image and layer identities.
             result_path=run/'result.json'
@@ -63,9 +65,13 @@ def main():
             build,result=build_worker.load(run.name)
             workers.append(run.name)
             results[str(result_path)]=reference.sha(result_path)
-            for role,expected in result['bundle_sha256'].items():
-                if role.startswith('components/'):
-                    consider(build/'image-context/bundle'/role,role,expected)
+            if args.include_completed_worker_components:
+                for role,expected in result['bundle_sha256'].items():
+                    if role.startswith('components/'):
+                        consider(build/'image-context/bundle'/role,role,expected)
+            if args.include_completed_worker_packages:
+                consider(build/'factorybox-worker-linux-amd64.tar',
+                         'worker-package',result['package_sha256'])
             continue
         match = RUN_NAME.fullmatch(run.name)
         if not match:

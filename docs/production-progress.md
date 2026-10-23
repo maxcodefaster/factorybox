@@ -3852,3 +3852,151 @@ retention receipts and new unselected worker. The original PID cause, busy
 mount attribution, remaining admission/manual retirement, final external-agent
 and operations/package acceptance requirements remain open. The goal remains
 active and production qualification remains false.
+
+## Sandbox metadata refusal before transition
+
+The sandbox reader was limited to 1 MiB while its atomic writer had no encoded
+size bound. Repeated rejected pause history could therefore replace a readable
+record with one that the same runtime could not read. Portable red evidence
+`factorybox-record-metadata-red-502576ebc5c3421dab99d03b1cadd8d0`
+executes the real old writer and fails both required assertions: an oversized
+309-entry history is accepted, and a one-byte overflow including the publisher's
+final newline is accepted. That original failed result and source stay intact.
+
+Native red `factorybox-checkpoint-retirement-0f10716ea09742f3a8bbb1f12a8f25d9`
+prepares an actual committed stopped pause, injects readable historical
+rejections and calls the delivered old CLI. Resume fails late with
+`write controller guard socket: message too long`, after starting its transition.
+This identifies a smaller transport boundary as well: the guard packet reader
+accepts 16 KiB and the sealed capture/timer readers accept 64 KiB. The original
+complete failed store is retained. Two earlier fixture attempts, `d04d4ebb`
+and `ee60ee01`, fail on invalid fixture CLI verbs `status` and `inspect` before
+the tested operation. The actual CLI verb is `state`; those failures stay failed.
+
+The candidate uses one shared 1-MiB record limit for reading and atomic
+publication, including the final newline. Before new start/checkpoint/pause or
+resume work, it bounds encoded successful and failed outcome records and the
+full guard/capture request. Resume also reserves its following pause. Maximum
+numeric/timestamp widths and JSON escaping count; existing record errors and
+history are preserved. New durable error summaries are bounded to 4 KiB raw
+text with the full original byte count and SHA-256; the full original error
+still reaches the caller. The existing 16/64-KiB transport limits are unchanged.
+
+All five new portable checks pass. They cover preserving the last readable
+history, the exact final-newline boundary, immutable prospective admission with
+existing escaped errors, the smaller guard packet and error-summary identity.
+All six portable gates, including enabled vet and all 232 reference files, pass
+in `factorybox-checks-907340352049465e88c4ff15c1825147`.
+
+Candidate worker `factorybox-build-worker-b8724db2ca594eb9b86989129604a411`
+and independent reproduction
+`factorybox-build-worker-6ae8b7582e4b4f9da6e1dddd0a72981d` both pass and have
+identical package SHA-256
+`a9de2a5ecd3d2653ee3679aa7079797bf76631c469c00f184e1de73027889186`
+and image ID
+`sha256:28e128750c181c3d0b2c02c18f40734176aed7f81f0efb2676fbe46e9b9f5545`.
+Their CLI SHA-256 is
+`4b3e0334cc68d86b8e82b41197f30503884ea085f50848dc6bb70936d3f7bbdc`.
+They include the existing SHM correction and read-only CRIU PID diagnostics;
+neither build is selected or production qualified.
+
+Native green `factorybox-checkpoint-retirement-eb1864a669af4782af26d4cea0869158`
+passes on those delivered bytes, with exit 0, one required test, no skips,
+unchanged inputs/global settings and exact cleanup. Its actual pause has
+1,048,426 record bytes after 980 explicitly injected, synthetic history entries.
+Resume refuses before transition/backing; the stopped source's record and
+runtime creation identity remain unchanged. An independent fork of the prior
+checkpoint passes the original 32-MiB private RAM and file actor assertions.
+The injected entries are not a claim that 980 real pause cycles occurred.
+
+The preceding green test body in `2b60bd1b` still has a failed overall result:
+its root-owned mode-0600 proof file was unreadable by the host verifier.
+Compatibility receipt
+`factorybox-record-metadata-fixture-compat-5de071a222fc42de8e2828a66fadec9e`
+binds the only test change, output mode 0600 to 0644. Test SHA-256 changes from
+`acd35a6338f79725e9dc5c0bfd302c3c58450c08fe15732fc2a7e8a15cc529fa`
+to `fb67af994ce8a2bf956e54db01ba23cce2f59d376abf8e5e63484a43c4035bc9`.
+Every assertion remains byte-identical and vet stays enabled. The separate fresh
+green run supplies the passing overall result; the old failure is not rewritten.
+
+All thirteen original native core groups pass on this package in
+`factorybox-record-metadata-regressions-bb07f2d95ff04a9aa15d2c5f916324cb`,
+including six checkpoint retirement cases, timer/signal and interruption cases,
+actual capacity pressure, planned/abrupt bounded-worker loss and storage/exit
+admission. Every leaf has exit 0, confirmed cleanup and unchanged inputs/global
+settings. The frozen batch recipe differs only in its worker build selection.
+
+The ordinary native admission suite passes on the same CLI and all four exact
+component bytes in `factorybox-runtime-ef76c4cb097540f99c106ccf057f6b66`:
+seventeen tests, 78 subtests, zero skips and complete cleanup. Every original
+test assertion remains intact. The full existing six portable gates also pass
+after the fixture-mode and maintenance-tool changes in
+`factorybox-checks-e243fc3ff3a748bcafaa82030b587ecb`.
+
+Full Factory/Theia/OpenCode local-model lifecycle
+`factorybox-consumer-worker-loss-347e0a47681843558033dd4f8e83603b`
+passes every original assertion on the candidate package. Its native developer
+test takes 168.73 seconds, including a useful fork after resume, the same external
+Theia connection and independent edits through both real Dev Containers.
+The separate Theia admission `factorybox-theia-admission-0a8998559e504ad79ede9e2032b80fb8`
+passes. Complete worker exit, owned cleanup and unchanged inputs/global settings
+pass. This is one development regression, not worker replacement or a member
+of the final predetermined acceptance series.
+
+The existing strict lifecycle timing extractor checks all three checkpoint
+timings, eight useful-work observations, separate IDE observations and pause
+memory receipt. This new observation records preparation 36.881 s, worker
+startup 0.749 s and prepared useful work 22.036 s, totaling 59.666 s cold.
+Source checkpoint is 10.393 s and useful fork 7.433 s, totaling 17.826 s.
+Pause is 17.513 s, useful resume 12.456 s and resumed-source capture plus useful
+fork 36.192 s. Pause/resume are slower than the earlier single observation;
+these two different package observations do not establish a cause, matched
+regression or latency distribution. No speed improvement is selected from them.
+The new pause releases 169,193,472 source anonymous bytes and 507,768,832 resident
+snapshot bytes to zero, leaving 28,876,800 source cgroup bytes. This is neither
+zero whole-worker memory nor final-package performance qualification.
+
+The [operator procedure](worker-contract.md#sandbox-record-admission-candidate)
+describes the refusal and the tested independent fork from an intact confirmed
+pause. This change bounds one sandbox record and its complete capture messages.
+Aggregate worker-exit metadata admission, epoch retirement, the PID and busy
+mount causes, final agent/operations evidence and final package acceptance
+remain open. The goal stays active and production qualification stays false.
+
+After the earlier historical-image report, retirement receipt
+`factorybox-storage-retirement-74531a3d45454d1fa05bb029759aba9f`
+fully verifies the old `b31be3a5` volume before retiring its 520,922,979-byte
+encoding. Passing fresh-log process-image diagnostic `d8c668af` supplies the
+explicit replacement proof for that copied-work-directory fixture. Every member
+header/hash, selected small diagnostics, original source, result and logs stay
+available. That old diagnostic volume is now intentionally unreconstructable;
+the original PID failure, strict metadata-loss replay and current metadata red
+failure remain complete. This later receipt supersedes the earlier report's
+statement that the `b31be3a5` complete archive remained retained. It changes
+neither the original failure verdict nor the limited scope of the replacement.
+
+Completed-input sharing
+`factorybox-storage-share-inputs-e2fae2f0f1ad44fe8536611308bc2963`
+reclaims 342,036,480 allocated bytes across thirty verified identical inputs,
+including the independently completed candidate/reproduction tar pair. The
+maintenance command now explicitly accepts
+`--include-completed-worker-packages`. It verifies every complete frozen build,
+all original result hashes, package/bundle/source/image identities and matching
+file bytes/modes/ownership before sharing; it rechecks builds/results afterward.
+Every path remains directly usable. The receipt records both original and
+adopted file mtimes. No package bytes, build verdict, archived dump or historical
+experiment change.
+
+Index `factorybox-record-metadata-notes-bd79f66a57624970ba03bbb7b5309a9e`
+binds these source deltas, exact fixture declaration, red/green cases, unchanged
+original tests, independent packages, all native/portable results and the new
+performance observation. It also checks the stored encoded bytes of the
+preserved PID, signal, metadata-loss replay and busy-mount archives against
+their earlier complete-decode receipts. Its first attempt, `76f09ec8`, remains
+failed because the verifier expected a top-level native log for the bounded
+worker-loss suite; that suite has separate `Prepare.stdout`/`Recover.stdout`.
+The second attempt, `90dd94d3`, fixes those paths but expects the worker-loss test
+name for the ordinary lifecycle probe. The actual complete probe runs
+`TestNativeDeveloperLifecycle`; that index also remains failed. The corrected
+index checks the actual logs/test and retains both failed index results.
+These verification changes do not alter any native outcome or assertion.

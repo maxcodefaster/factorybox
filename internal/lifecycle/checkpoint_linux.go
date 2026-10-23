@@ -111,6 +111,9 @@ func (e *Engine) Checkpoint(ctx context.Context, id, snapshot string) (_ Checkpo
 }
 
 func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Record, snapshot, relative string, stopSource bool) (_ Checkpoint, resultErr error) {
+	if err := e.admitSandboxMetadata(record, false); err != nil {
+		return Checkpoint{}, err
+	}
 	if err := e.admitStorageWrite(); err != nil {
 		return Checkpoint{}, err
 	}

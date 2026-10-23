@@ -303,7 +303,11 @@ func (e *Engine) read(id string) (Record, error) {
 		return record, err
 	}
 	defer file.Close()
-	if err := json.NewDecoder(io.LimitReader(file, 1<<20)).Decode(&record); err != nil {
+	info, err := file.Stat()
+	if err != nil || info.Size() > sandboxRecordLimit {
+		return record, fmt.Errorf("sandbox record has an invalid size: %v", err)
+	}
+	if err := json.NewDecoder(io.LimitReader(file, sandboxRecordLimit)).Decode(&record); err != nil {
 		return record, err
 	}
 	if record.Version != 1 || record.ID != id || !tokenID.MatchString(record.Owner) ||
@@ -334,7 +338,7 @@ func (e *Engine) write(record Record) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(record, "", "  ")
+	data, err := sandboxRecordBytes(record)
 	if err != nil {
 		return err
 	}
@@ -423,7 +427,7 @@ func (e *Engine) Start(ctx context.Context, id, bundle string) (View, error) {
 		_, runErr := e.command(ctx, lock, "run", "--detach", "--bundle",
 			filepath.Join(e.config.Root, object), record.RuntimeID)
 		if runErr != nil {
-			record.Start.Error = runErr.Error()
+			record.Start.Error = sandboxErrorSummary(runErr.Error())
 			return View{Record: record}, errors.Join(runErr, e.write(record))
 		}
 		state, err = e.state(ctx, record, lock)
@@ -524,6 +528,18 @@ func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner st
 	if err != nil {
 		return record, err
 	}
+	record = Record{Version: 1, ID: id, Owner: owner, RuntimeID: "fbx-" + owner,
+		RuntimeSHA256: e.config.RuntimeSHA256, BootID: e.boot, Phase: "starting",
+		InputBundle: bundle, InputSHA256: sum(input), ConfigSHA256: sum(config),
+		Rootfs: root.Path, RootfsDevice: uint64(stat.Dev), RootfsInode: stat.Ino, RootfsMountID: rootIdentity.MountID,
+		CgroupParent: parent,
+		Start:        Operation{RequestedAt: now()}, Fork: origin, Base: base}
+	if origin != nil {
+		record.Start.RequestedAt = origin.RequestedAt
+	}
+	if err := e.admitSandboxMetadata(record, false); err != nil {
+		return record, err
+	}
 	if err := e.root.Mkdir(object, 0700); err != nil {
 		return record, fmt.Errorf("sandbox storage already exists or cannot be created: %w", err)
 	}
@@ -534,15 +550,6 @@ func (e *Engine) prepareRecord(id, bundle, object string, input []byte, owner st
 	_, writeErr := file.Write(config)
 	if err := errors.Join(writeErr, file.Sync(), file.Close()); err != nil {
 		return record, err
-	}
-	record = Record{Version: 1, ID: id, Owner: owner, RuntimeID: "fbx-" + owner,
-		RuntimeSHA256: e.config.RuntimeSHA256, BootID: e.boot, Phase: "starting",
-		InputBundle: bundle, InputSHA256: sum(input), ConfigSHA256: sum(config),
-		Rootfs: root.Path, RootfsDevice: uint64(stat.Dev), RootfsInode: stat.Ino, RootfsMountID: rootIdentity.MountID,
-		CgroupParent: parent,
-		Start:        Operation{RequestedAt: now()}, Fork: origin, Base: base}
-	if origin != nil {
-		record.Start.RequestedAt = origin.RequestedAt
 	}
 	if err := e.write(record); err != nil {
 		return record, err
@@ -632,7 +639,7 @@ func (e *Engine) Delete(ctx context.Context, id string) (View, error) {
 	}
 	if state != nil {
 		if _, err := e.command(ctx, lock, "delete", "--force", record.RuntimeID); err != nil {
-			record.Delete.Error = err.Error()
+			record.Delete.Error = sandboxErrorSummary(err.Error())
 			return View{Record: record}, errors.Join(err, e.write(record))
 		}
 	}
