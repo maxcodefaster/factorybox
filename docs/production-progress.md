@@ -9990,3 +9990,96 @@ resumes it and an independent watchdog covers coordinator death. No diagnostic
 build/native allocation has occurred at this entry. No current runtime source,
 selected package, assertion, resource limit, provider backoff or historical
 verdict is changed. Production qualification remains false.
+
+## 2026-10-25: both current gateway controls closed; helper-delay measurement
+
+Both original current-image native gateway controls pass in 4445 and 18ec.
+Independent `gateway-closure/closure.json`, SHA-256
+`683875b02b3d3479e0d804a2c8f6f6ca912670dcfd43f7bceacc7b2947c07cc3`,
+verifies actual namespace HTTP, endpoint and foreign-process refusal, exact
+pidfd stop, all frozen inputs and absence of owned resources. The effect control
+commits one synthetic outside effect, loses its reply and reconciles by reading
+status without a second application. These are local controls. All eight actual
+external-provider flows remain required and subject to the original UTC backoff.
+
+Agent-exit coordinator v1 stopped before signaling or allocating because this
+mise Python exposes neither standard-library pidfd operation. The explicit
+Linux-AMD64 pidfd helper was then verified against only its own child, including
+Stop/Continue and watchdog EOF/timeout resume. Coordinator v2 built unselected
+diagnostic b7c, then stopped before native container/volume allocation because
+the immutable files from a failed historical native run are not eligible for
+the completed-build hardlink helper. V3 copies and rehashes those exact original
+component files and shares only the passed diagnostic binary. All earlier false
+results remain unchanged. The supervisor was resumed in finally.
+
+V3 actually completes both original two-Proc-pair diagnostics and adapters.
+Off 4ece and on 2b8d both pass and clean up. The qualified observer records
+228 and 229 unmounts respectively, no EBUSY, and one on-case EINVAL with
+UMOUNT_NOFOLLOW. `agent-exit-delay/result-v3.json` SHA-256 is
+`cdce92759511e1f4faf32be19b31f49c4396688a352d3fdd00444efde2163abb`.
+This pair does not directly measure whether the 500-ms hold ran in real agents.
+It therefore neither rules out a live-helper cause nor explains the old failure.
+
+Unselected diagnostic 9d1a preserves that event code and adds timestamps around
+the same existing asynchronous p.Wait. It logs after the wait through the existing
+parent logger, with no extra wait, descriptor or synchronous blocking. Original
+tests and vet pass; production sources and the selected package are unchanged.
+Fresh predeclared v4 off/on cases retain every original assertion and bound.
+They require actual flag observations, successful real waits, an off median below
+200 ms and an on median at least 450 ms before the scheduling perturbation can be
+called observed. Even qualified later success will not explain the historical
+EBUSY. The original provider supervisor is controlled only through the tested
+owned-pidfd protocol during its childless wait, with finally and watchdog resume.
+
+
+## 2026-10-25: helper delay and original service-GC settings actually observed
+
+The new off/on pair b3a4/9dfa passes all thirteen main tests and 65 original
+subtests per case. Successful existing asynchronous waits have median 540,165 ns
+without the hold and 501,370,025 ns with it. Thirty-two on-case waits last at least
+450 ms; the service observes the requested flag. Both cases record 228 unmounts,
+no EBUSY, no lost kernel events and exact owned cleanup. This qualifies the
+scheduling perturbation, not a cause of the old failure.
+
+A distinct original-component pair closes the prior service-GC scope gap.
+Native 1a25 and 8f91 both pass all thirteen main tests and 65 original subtests.
+Before the original tests, the same bounded observation in each case verifies
+actual service PID births/parents, exact original fs/mgr executable hashes and
+only their GC environment settings. The control has original GOMEMLIMIT=256MiB
+and default GOGC. The fault has GOGC=off and GOMEMLIMIT=off in both actual services;
+test and CLI settings stay off in both cases. Each records 229 unmounts, no EBUSY
+and one EINVAL/UMOUNT_NOFOLLOW. All exact owned resources are absent. No production
+binary, global setting, original assertion or immediate unmount changed.
+
+Independent `agent-exit-delay/observation-closure.json`, SHA-256
+`70dc859b184dea59aebee5592c022b96136d7e1444d52bfa8c622b1637020954`,
+rechecks both plans and all input hashes, every original raw PASS outcome,
+native deadlines/counts/states, full decoded kernel observations, both actual
+perturbations, unchanged globals and exact owner-resource absence. Both original
+coordinators are terminal and resumed supervisor 167818. Historical attribution
+and production qualification remain false.
+
+The original red 882916 program runs descriptor, detached-file and filesystem
+cases before the failing Proc-directory case. The focused pairs omit that
+preceding context. `agent-exit-delay/plan-full-service-gc.json`, SHA-256
+`ab6cb5e305c83625ada90074a0c8c79ffa36676d8428237c5c3a48e7fbb313ad`,
+therefore predeclares one fresh full-original off/on pair, three repetitions
+of all six admission cases plus unchanged original adapters and first-failure
+stop. It reuses the already qualified driver and actual-service observations.
+No new build is scheduled. Two native420/archival600 bounds total 2,040 seconds;
+the owned childless provider-wait window must have at least 3,600 seconds, with
+the same 3,300-second independent watchdog and finally resume. This protocol
+keeps the original provider deadline and all native resource limits. A green
+full pair will still not identify the historical holder.
+
+The second draft release index, `release-profile/candidate-evidence-index-v2.json`,
+SHA-256 `92eeac6fa89125209997698334ac2331afeb77bdf59b9821db888ebe31791557`, now binds
+all eleven completed groups to the current package/source/component bytes,
+including ordinary20, operations5, storage5, drain/CLI5 and localgateway2, as
+well as the current exact PID causal proof, complete descriptive performance
+and delivered inventory/notices audit. The first private read compared the
+original empty failure list with scalar zero and stopped before writing an
+index. The corrected reader requires that original list to be empty; no native
+case was rerun. Old index and pilot are unchanged. All eight actual-provider
+flows, historical EBUSY attribution and the final qualification decision remain
+open. No p95, long-term or production claim is added.
