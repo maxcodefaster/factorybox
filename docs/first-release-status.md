@@ -4,6 +4,13 @@ Stand: 24. Oktober 2026. Die Freigabe ist offen. Verbindlicher Umfang bleibt
 [GOAL.md](../GOAL.md), einschließlich aller dort genannten Grenzen.
 Der 24-Stunden-Dauerlauf und die 100er-Serie gehören zur späteren Etappe.
 
+Die reguläre Serie hat am 24. Oktober um 21:25 UTC neun vollständige Läufe
+bestanden; der zehnte läuft. Das laufende Ergebnis steht in
+`artifacts/factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3/progress.json`.
+Die Betriebs-, Speicher- und Drain-Prüfungen sind mit festen Eingaben dahinter
+eingereiht. Sie starten erst nach erfolgreichem Abschluss der vorhergehenden
+Prüffolge und erhalten eigene Ergebnisse. Ein eingereihter Test ist kein Pass.
+
 Für die Abnahme verwenden wir den korrigierten Worker
 `6016296965364344a8ef9eede420dbc8`, unabhängig identisch nachgebaut als
 `829faef7ea3143038bebf72493474070`. Paket, Image und jede Image-Schicht stimmen
@@ -110,13 +117,13 @@ unter der unten benannten neuen Erklärung.
 | Anforderung | Belegter Stand des aktuellen Kandidaten | Noch erforderlich |
 | --- | --- | --- |
 | Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
-| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Die Nachweise im Endprofil verbinden und die vollständige Anforderungsabdeckung prüfen. |
+| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Fünf weitere bestehende Speicher-Prüfaufrufe auf dem endgültigen Paket ausführen: StoreFS, Basis-/Geräte-Recovery mit Retained-Kontrollen, öffentliche Basisaufnahme und beide Abschlussgrößen-Grenzfälle. Die Nachweise im Endprofil verbinden. |
 | Vollständige Integration | Alle 15 benannten Fälle sind unabhängig geprüft: fünf Retained-, sechs Docker-Abbruch-, zwei vollständige Anwendungs- und zwei unveränderte Komponentenfälle. Die erwartete Ablehnung beschädigten RAMs und ursprünglichen Upstream-Skips bleiben ausgewiesen. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Anwendung bei vollem Speicher wiederherstellen | Alle vier vollständigen Factory-/Minimal-Fälle bei geplantem und hartem Worker-Verlust bestehen auf 6016, einschließlich Platzmangel und Epochenstilllegung. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Bestanden in `factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`: unverändertes schreibgeschütztes Original auf Loop0, unabhängiger Import und echte Wiederherstellung mit dem ursprünglichen CLI-/CRIU-Rezept. Vollständiger ursprünglicher Anwendungszustand und gespeicherter Agentenabbruch stimmen überein; eine neue Anwendungsänderung besteht ohne Werkzeug-Replay. Originalabbild unverändert, Aufräumen vollständig, insgesamt 93,33 Sekunden. Die tatsächlichen Dienstpfade des frischen Workers mussten dem gespeicherten Rezept entsprechen. | Nachweis ins Endprofil aufnehmen. Dieser forensische Weg qualifiziert weder das alte Paket als Rückfallversion noch einen Rezeptwechsel für alte Sicherungen. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
 | Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. | Echte Fortsetzung, Abbruch und unklare Werkzeugwirkungen nachweisen. Keine Wiederholung vor `2026-10-24T23:59:59.953093Z`. |
-| Update, Drain und Rollback prüfen | Geprüfte Eingaben des Drain-Unterbrechers und Betriebsanleitung liegen vor. | Vollständige Betriebsfälle auf 6016, Kompatibilität oder kontrolliertes Leeren vor einem Wechsel. Kein bekannt fehlerhaftes Paket als qualifizierte Rückfallversion. |
+| Update, Drain und Rollback prüfen | Betriebsanleitung und festgelegte Prüffolgen liegen vor. Die vier vorhandenen Drain-Abbruchfälle und der ursprüngliche separate CLI-Worker-Recovery-Test haben bisher nur ältere Paketnachweise. | Startfehler, Speicheridentität, alle acht Stop-Schutzfälle, gelieferten Compose-Ablauf und tatsächlichen Update-/Rückfallversuch auf 6016 abschließen; außerdem beide Verbraucher mit/ohne erzwungenen Loop-Wechsel beim Drain-Abbruch sowie beide ursprünglichen CLI-Worker-Verlustarten prüfen. Kompatibilität oder kontrolliertes Leeren vor einem Rezeptwechsel; kein bekannt fehlerhaftes Paket als qualifizierte Rückfallversion. |
 | Reguläre Wiederholungsserie | Neue vollständige Erklärung für 6016/829f ist vorab eingefroren und geprüft. Die Serie `factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3` ist gestartet. Frühere Serien behalten null Läufe; Fehlerfälle zählen nicht rückwirkend mit. | Alle 20 festgelegten vollständigen Läufe ausführen und unabhängig prüfen. Kein Fehlschlag wird ersetzt oder verworfen. |
 
 Die [Fortschrittsbelege](production-progress.md) enthalten die einzelnen
@@ -143,3 +150,17 @@ den vollständigen 420-Sekunden-Lifecycle und die unveränderte Startreserve.
 `progress.json` und der abschließende `result.json` führen jeden Versuch unter
 seiner vorher festgelegten Nummer. Ein gestarteter Lauf wird bei unklarem
 Beobachtungsstand nicht neu gestartet.
+
+Die eingereihten Abnahmen sind vor ihrem Beginn festgelegt:
+
+- Betrieb: `factorybox-current-operations-plan-541b0fd1630949d3a8069074116b658a`.
+- Speicher: `factorybox-current-storage-closure-plan-21381014af5446bdbf5c7eee2ad26181`.
+- Weitere bestehende Drain-/CLI-Recovery-Assertions:
+  `factorybox-current-release-handoff-ff320800515d412d836e5ac38d149dd9/remaining-current-coverage`.
+
+Ein gesonderter historischer Aufräumversuch unter demselben Handoff schaltet
+bei zwei ursprünglichen Proc-Testpaaren sowohl automatische Go-GC als auch
+deren weiche Speichergrenze aus. Die harte Worker-Grenze bleibt 3 GiB.
+Die qualifizierte Kernel-Beobachtung und die ursprüngliche unmittelbare
+Unmount-Assertion bleiben erhalten. Der Versuch ist noch nicht ausgeführt;
+auch ein Erfolg würde die historische Fehlerursache nicht erklären.

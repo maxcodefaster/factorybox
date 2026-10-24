@@ -290,6 +290,23 @@ fallback is qualified, leave service withdrawn and preserve the data.
 Exact update/rollback exercises remain open; these instructions alone do not
 close that release requirement.
 
+The current queued exercise in
+`factorybox-current-operations-plan-541b0fd1630949d3a8069074116b658a`
+uses this controlled-empty boundary. It ends and deletes the synthetic old
+workload, proves the old store has no live objects, forks or captures, releases
+only the administrator's exact inactive input mounts, and stops the old worker
+before starting the current recipe in a separate fresh store. The old store
+remains sealed and its complete file identities/content are compared afterward.
+The old EEF package is only a synthetic source and an intentionally refused
+deployment candidate; it is not an approved rollback version.
+
+The rollback part first commits a current-recipe pause, refuses an actual
+different-component deployment against the approved current manifest, then
+returns to the exact approved current image and recovers the saved request.
+It requires preserved RAM/files, exact replay, new useful work and independent
+descendants before clean stop. This exercise is queued, not yet a passing
+operating proof. Its result must be independently checked before qualification.
+
 ## Current operating evidence and remaining acceptance
 
 The revised bounded Compose/workflow passes on the actual delivered image in

@@ -9595,3 +9595,81 @@ The full goal stays active and production qualification remains false.
 Historical EBUSY attribution, actual-provider continuation/cancellation/
 uncertain-effect cases, remaining ordinary trials, actual operations/update/
 rollback and the final complete coverage/profile audit remain required.
+
+## 2026-10-24: current operating and storage assertions queued without overlap
+
+The original ordinary supervisor remains live with its exact PID birth. Nine
+complete trials pass at 21:25 UTC, with no failed trial; ordinal ten is active.
+These are the original predeclared full consumer commands, not reduced probes.
+No production source, selected package, required assertion or deadline changes.
+
+Operating plan
+`factorybox-current-operations-plan-541b0fd1630949d3a8069074116b658a`, SHA-256
+`fd5e224b73ebff921ead5b53f18716ae911f91614a61f349b9843c54a02139c2`,
+is already waiting on the original ordinary supervisor. It requires its actual
+terminal process identity and all twenty passing rows before starting. Its
+five declared cases are the original startup-failure pair, bounded identity
+matrix, all eight stop-guard cases, supplied Compose/workflow, and an actual
+controlled-empty update/refused-candidate/current-image rollback. The old EEF
+package is never accepted as a qualified fallback. Original unexecuted plan
+`001fd74f...` is preserved. The revised private fixture passed syntax/input
+verification; no operating native result is claimed yet.
+
+Storage plan
+`factorybox-current-storage-closure-plan-21381014af5446bdbf5c7eee2ad26181`,
+SHA-256 `7a3470cdd53483f3db11d93cebf97606033b85ba26577857264c1cecef3b99b5`,
+passes input verification and now waits on the exact operating supervisor.
+It requires all five operating results before its own five calls: full StoreFS,
+both base/device recovery tests plus all sixteen retained-inspection controls,
+public base admission, oversized exit ledger and completion-edge exit ledger.
+All use 6016 and the original full assertions. These existing selected-path
+cases previously had only older-package proofs. Its original exec session is
+11913, PID 36181/birth 29243316. Waiting is not passing native acceptance.
+
+The preserved parallel-chat rollout is verified at SHA-256
+`d4b0e4054bf2e4997e7b7e5e06dc2af1ecf4dd4305f8ae753af62e33747678a9`.
+Its exact 09:36:45 and 09:36:59 UTC calls on October 22 are saved in
+`factorybox-current-release-handoff-ff320800515d412d836e5ac38d149dd9/gc-without-soft-limit/archive-observations.json`.
+They show result/output metadata reads and a concurrent portable check. The
+original rootfs is in its owned Docker volume, separate from the host-bound
+output. These recorded calls do not demonstrate a rootfs holder and do not
+attribute the historical EBUSY. Its failed result and full archive stay intact.
+
+The next historical diagnostic predeclares three falsifiable possibilities:
+Go-finalizer-dependent descriptor retention, a delayed Sysbox helper reference,
+or a transient kernel reference after process/socket cleanup. The first probe
+keeps both original held/transient Proc cases and every adapter assertion,
+but exports GOGC=off and GOMEMLIMIT=off only inside the test/CLI wrapper. The
+installed Go documentation confirms that the old 256-MiB soft limit could
+still force GC with GOGC=off. Services retain their original soft limit, the
+worker retains 3 CPU/3 GiB, and both original native deadlines remain. The
+already-qualified kernel busy observer and post-failed-unmount observer add
+no delay or retry before the immediate original assertion.
+
+That diagnostic's `plan-v2.json` SHA-256 is
+`5d766b075d0a847fb7f2860beb8898957616205276b7bbd6a4fbdd637df722de`.
+It waits for the storage supervisor and all five passing cases. The first
+private verify-only invocation caught a wrong plan-schema reference, before
+any native allocation. Original v1 files and exact error remain; separate v2
+files and `queue-correction.json` bind before/after hashes. V2 input, Python
+syntax and shell-wrapper syntax checks pass. It is waiting in exec session
+34963, PID 44334/birth 29266026. A passing two-pair diagnostic would still not
+explain or exonerate the historical EBUSY.
+
+The same handoff's `remaining-current-coverage/plan.json`, SHA-256
+`36613062825fe499033a5a4338c006182432ea2012d8f49da7049593fff6e8e4`,
+then waits for that exact diagnostic supervisor. It closes existing assertions
+missing from 6016: full Minimal/Factory consumer interruption at the actual
+committed exit fence, each with and without forced changed-loop attachment,
+plus both original dedicated delivered-CLI worker-restart modes. The four
+drain passes on 3d7/5c281 and older restart proofs are preserved, not transferred.
+All five new calls are fixed before execution, retain complete original
+assertions and use normal per-run capacity admission. Closed-input sharing
+runs only between native cases. Input verification passes; original exec
+session 54584, PID 50552/birth 29280907, is live and waiting.
+
+The full original goal remains active. This is execution of existing final
+package requirements, not a narrower release or added feature programme.
+Actual operating/storage/drain outcomes, historical attribution, actual free
+provider acceptance after its recorded reset and final independent closure
+remain open. The twenty ordinary trials keep their separate exact inventory.
