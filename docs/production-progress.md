@@ -9053,3 +9053,19 @@ pressure and interrupted-epoch combinations, all fifteen integrations, original
 effects, update/drain/rollback, a new predeclared twenty-run ordinary series
 and the final full audit remain required. Production qualification stays false;
 the complete goal remains active.
+
+The subsequent complete delivered-CLI retirement suite passes on the same
+worker as `factorybox-checkpoint-retirement-67825546a2e747e784a836d8008ab4d2`:
+all eight original top-level tests, unchanged inputs, cleanup true; result
+SHA-256 `eb27fc5275da08d705bc7934184834cc68940e9d77a27894d165f7e2f010d216`.
+The ordinary full suite is used, including actual controller SIGKILL during
+partial deletion, protected recovery selections, original source/fork/resume,
+guard/epoch/timer fences and all original refusal cases. No isolated diagnostic
+or reduced metadata mode substitutes for it.
+
+The full existing capacity fixture also passes on the same delivered image in
+`factorybox-bounded-store-efea9fa67a1f48688f539c240d94c84f`, with unchanged inputs
+and cleanup true. Each closed probe executable has its complete decoded-byte
+encoding receipt. Other targeted timer/metadata/stop-guard proofs and every
+other remaining release requirement still apply; production qualification
+remains false and the full goal active.

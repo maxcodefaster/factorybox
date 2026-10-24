@@ -47,6 +47,11 @@ mit 18 Fällen und je zwei Zyklen ist gesondert gebunden. Gezielte Timer-,
 Stilllegungs-, Metadaten- und Stop-Schutzfälle gehören weiterhin zur übrigen
 Freigabeabnahme.
 
+Zusätzlich bestehen inzwischen die vollständige Stilllegungssuite mit allen
+acht ursprünglichen Haupttests in `67825546a2e747e784a836d8008ab4d2` und der
+gezielte Kapazitätsfall in `efea9fa67a1f48688f539c240d94c84f`. Beide verwenden
+das aktuelle Worker-Image und bestätigen unveränderte Eingaben und Aufräumen.
+
 Die Serien `93d21ac9...` und `a3d09ea4...` hielten nach fünf beziehungsweise
 acht weiteren Erfolgen vor der nächsten Gruppe an der Artefaktreserve an.
 Diese Gruppen hatten noch nicht begonnen. Beide negativen Gesamtstände
@@ -59,7 +64,7 @@ sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet
 | Anforderung | Belegter Stand des aktuellen Kandidaten | Noch erforderlich |
 | --- | --- | --- |
 | Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
-| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen bestehen; CRIU-Kernprüfung ist bytegleich gebunden. Quellen, Eingaben, Archive und Aufräumen sind erneut geprüft. | Gezielte Timer-, Kapazitäts-, Stilllegungs-, Metadaten- und Stop-Schutzfälle abschließen. |
+| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, die vollständige Stilllegungssuite mit acht Haupttests und der gezielte Kapazitätsfall bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Weitere gezielte Timer-, Metadaten- und Stop-Schutzfälle abschließen. |
 | Vollständige Integration | Frühere Docker- und Komponentenbelege bleiben erhalten; unveränderte Komponenten können exakt gebunden werden. | Alle 15 benannten Fälle auf dem aktuellen Stand nachweisen: fünf Retained-, sechs Docker-Abbruch-, zwei volle Verbraucher- und zwei Komponentenfälle. |
 | Anwendung bei vollem Speicher wiederherstellen | Der vollständige harte Factory-Verlust besteht auf 6016. | Geplanten Factory-Fall, beide Minimal-Fälle und beide unterbrochenen nativen Epochenfälle auf demselben Paket abschließen. |
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. | Tatsächlich wiederherstellen und nützliche Arbeit prüfen. |
