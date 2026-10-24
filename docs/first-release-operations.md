@@ -162,6 +162,16 @@ original RAM/files recovery assertions with a clean final exit. The binding is
 `factorybox-import-mounted-closure-ad889dbcedd7473588d7957773325b1e`.
 Full consumer and final-package qualification remain separate.
 
+The complete minimal recovery-pressure consumer also passes on f308 in
+`factorybox-consumer-worker-loss-6bf4c40fa77c4e1d98ad6111797d6268`, with a
+32-GiB store, abrupt worker loss, changed loop attachment, intact useful
+recovery, cancellation at zero available bytes and complete public epoch
+retirement followed by every original consumer assertion. The replacement
+stops with exit 0. Independent binding is
+`factorybox-import-abrupt-consumer-closure-a97964e88e594406a5db9907ceba3614`.
+The remaining full-consumer loss/example combinations still need acceptance
+on the current/final package.
+
 The current image passes the complete existing public retirement fault fixture
 in `factorybox-bounded-loss-29c1db8cc9db4ae089f9667c5122e266`. It includes
 actual preparation ENOSPC, public inspection/cancellation while space remains

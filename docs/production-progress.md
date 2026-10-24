@@ -7269,7 +7269,7 @@ capacity/import checklist entry:
 
 | Subcase | Current evidence/status |
 | --- | --- |
-| Admitted copy ENOSPC and manual cancellation, full minimal and Factory/local-agent consumers | Both complete planned-loss consumers pass on ac0; closure `99e5f000` above |
+| Admitted copy ENOSPC and manual cancellation, full minimal and Factory/local-agent consumers | Both complete planned-loss consumers pass on ac0; minimal abrupt loss also passes on f308, as recorded below |
 | Initial journal ENOSPC and metadata-only cancellation | Both complete basic planned/abrupt native cases pass on f308; closure `d9879765` above |
 | Import interrupted after its immutable mounts exist; cancellation through a fenced retained controller | Both complete basic planned/abrupt cases now pass; see mounted-import acceptance below |
 | Remaining full-consumer loss combinations and final-package capacity/import regression | Remain open |
@@ -7355,3 +7355,45 @@ its unchanged result. Closed-input sharing
 shares the identical planned/abrupt initial and strict mounted encodings,
 returning another 21,176,320 allocated bytes. No source, result, log, selected
 failure dump, active run or goal/handoff input changes.
+
+## Current f308 full minimal consumer passes abrupt loss and recovery pressure
+
+`factorybox-consumer-worker-loss-6bf4c40fa77c4e1d98ad6111797d6268` passes the
+complete existing minimal consumer on the independently reproduced f308 package.
+It uses a real 32-GiB store, abrupt worker SIGKILL, changed loop attachment from
+0 to 1, complete retained-checkpoint inspection, actual admitted-copy ENOSPC,
+public cancellation at zero available bytes, exact replay and the original
+public epoch-retirement protocol. Every subsequent original useful recovery,
+checkpoint/fork, independent descendant and source-deletion assertion passes.
+The replacement exits 0, exact owned cleanup passes and global settings remain
+unchanged. Prepare body is 58.39 seconds and recover body 83.24 seconds. These
+are complete fault-fixture durations, not ordinary latency measurements or
+members of the final regular lifecycle series.
+
+`factorybox-import-abrupt-consumer-closure-a97964e88e594406a5db9907ceba3614`
+fully loads both independent packages, verifies complete frozen source/core
+bindings and every actual native input hash including full decoded helper
+executables, requires the complete original two-phase consumer result, checks
+zero-available-byte cancellation/replay and the ordered unchanged-assertion
+fixture declaration, and confirms actual exact-resource absence. It rechecks
+unchanged full goal/parallel-chat context and preserved original 500/A66 failed
+verdicts plus their complete selected archive encodings. No old failure is
+reclassified. Closed-helper sharing
+`factorybox-storage-share-test-encodings-da0b10ea4d774995b2592a374f8069d9`
+verifies and shares three identical completed helper encodings, reclaiming
+17,485,824 allocated bytes without changing source/results/receipts.
+
+The full recovery-pressure consumer matrix on the current runtime core now is:
+
+| Example | Planned loss | Abrupt loss |
+| --- | --- | --- |
+| Minimal | Pending on f308; complete ac0 proof retained | Complete f308 PASS, `6bf4c40f` |
+| Factory, Theia and local OpenCode | Pending on f308; complete ac0 proof retained | Pending on f308 |
+
+Both initial-publication and mounted-stage basic native cases already pass for
+both source-worker loss modes. This new full-consumer result adds the current
+minimal abrupt-loss combination. The other current/final-package combinations,
+full required regression, historical EBUSY attribution, real external-agent
+acceptance, tested update/rollback, ten predetermined lifecycles per example
+and final release profile remain open. The full goal remains active and
+production qualification false.
