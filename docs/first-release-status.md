@@ -24,8 +24,9 @@ ursprünglichen Elternprozess, beiden PID-Ebenen und Exit-Status wieder her.
 Der echte Linux-Gegenbeweis besteht nun einschließlich eines anschließenden
 normalen Forks; sieben Fehlerweitergabe- und 18 unveränderte CRIU-Kernfälle
 bestehen ebenfalls. Ein unabhängiger CRIU-Neubau ist binäridentisch.
-Das neue Worker-Paket `245c0cf79c3a40b59b5bb45d482b242c` ist gebaut, aber
-noch nicht ausgewählt oder vollständig abgenommen. Der ursprüngliche vollständige
+Das neue Worker-Paket `245c0cf79c3a40b59b5bb45d482b242c` ist unabhängig als
+`c63515ca42d4476ea8bc0a63efc05f4e` identisch nachgebaut, aber noch nicht
+ausgewählt oder vollständig abgenommen. Der ursprüngliche vollständige
 Factory-Fall besteht damit unter `98bb5cea91594ffa85d1d91305eb8295`
 vollständig: echter ENOSPC, erhaltene alte Pause, abgebrochener Teilimport,
 Loop-Wechsel, unabhängige neue Pause, Stilllegung der alten Epoche,
@@ -36,7 +37,7 @@ Produktionsqualifikation bleibt false.
 
 | Anforderung | Belegter Stand auf dem ausgewählten Paket | Noch erforderlich |
 | --- | --- | --- |
-| Identisches Paket erneut bauen | Beide Builds von Worker 1308 stimmen überein. Der neue Worker 245c ist gebaut; seine CRIU-Komponente ist unabhängig identisch nachgebaut. | Neuen Worker unabhängig nachbauen und Abnahmeprofil mit den endgültigen Ergebnissen verbinden. |
+| Identisches Paket erneut bauen | Neuer Worker 245c und unabhängiger Neubau c635 stimmen in Paket, Image und Schichten überein. Auch die neue CRIU-Komponente ist unabhängig identisch nachgebaut. | Abnahmeprofil mit den endgültigen Ergebnissen verbinden. |
 | Laufzeit und Speicher absichern | Auf Worker 1308 bestehen alle 17 Go-/Laufzeit-/Speichergruppen und die Retirement-Suite mit acht Haupttests. Die neue CRIU-Komponente besteht alle 18 Kernfälle. | Betroffene native Gruppen und vollständige Anwendungstests auf dem endgültigen neuen Paket. |
 | Letzten Timer-Recoveryfehler beheben | Beide ursprünglichen Docker-Abbruchfälle bestehen mit nützlicher Anwendung, weiteren Sicherungen und unabhängigen Nachkommen. Beide Verweigerungsfälle ohne Berechtigung bestehen ebenfalls. | Übrige Integration auf demselben Paket abschließen. |
 | Vollständige Integration | Alle sechs Docker-Abbruchfälle bestanden; zwei unveränderte Upstream-Komponentenfälle genau gebunden. | Fünf Retained-Fälle und zwei vollständige Verbraucherfälle, insgesamt alle 15 benannten Integrationsfälle. |

@@ -8757,3 +8757,48 @@ count toward the unstarted twenty-run ordinary series. Independent worker
 reproduction, other affected native/consumer/operating acceptance and every
 other open release requirement remain required; production qualification
 stays false.
+
+Independent no-cache worker build
+`factorybox-build-worker-c63515ca42d4476ea8bc0a63efc05f4e` passes its explicit
+comparison with `245c0cf79c3a40b59b5bb45d482b242c`: package SHA-256, image ID
+and every image layer match. Both compressed transports also have identical
+encoded bytes; their complete raw package remains exactly reconstructable.
+The optional fresh compiler scratch is inventoried and removed only after
+the successful verified build.
+
+Closed input sharing `460b3f6493684be6828eaa1decabc879` verifies five immutable
+inputs and returns 74,559,488 allocated bytes. Closed helper-encoding sharing
+`dcf95fc0ee8549aaab7338dc6a3c82f6` verifies four encoded inputs and returns
+28,475,392 bytes. A subsequent portable-check attempt refuses before creating
+a run because the mandatory eight-GiB reserve is unavailable; no test is
+executed or classified as passing by that refusal. Lossless closed-archive
+repack `55cdea2f0a1f4b85ba10fcdae943c81c` verifies all 855,638,016 raw bytes
+before returning 14,199,828 encoded bytes. Legacy transport retention
+`cf063073ff7d40229d3906c46ba556b3` then losslessly preserves seven closed
+unselected worker packages in new encodings, with complete decompression and
+unchanged original manifests, runnable bundles, source and image identities.
+Every original loader revalidates through its bound reconstruction receipt.
+It returns 357,109,760 allocated bytes without removing any failure image,
+selected worker input, historical experiment or required diagnostic evidence.
+The normal eight-GiB build/native start reserve remains mandatory.
+
+Fresh portable run `factorybox-checks-5b75aad5289e44ce8214754d4f7883b8`
+passes all six groups: Go tests with vet enabled, tagged consumer compile,
+270 Python tests, all 232 sealed reference files, declared fixture extensions
+and diff validation. No upstream assertion or skip inventory is changed.
+Native batch `factorybox-pilot-native-gates-5992db836d404b348efeec4daef05bbd`
+passes lifecycle `b5d0be4ade1447f18ba8af7f768078af`, guard
+`de8c3ada795e413280c268b004a3f418` and capture
+`6909e27d939b4a6294e30c10db43f519`. It then stops before the pause fixture is
+created because the unchanged capacity preflight refuses a new run. The parent
+remains false; no native pause assertion ran or passed in that attempt.
+
+Closed immutable input sharing `d30b1fbaa55f436bb080682cc68c0c02` returns
+292,724,736 allocated bytes with complete original result revalidation.
+`factorybox-native-resume-8e6ccb0b848244769029d6e425e38b13` declares only the
+fourteen remaining native groups, with the three preceding successful rows
+bound separately. It runs unchanged suites serially and invokes existing
+verified closed-input sharing between them. Each actual build/native child
+still uses `reference.new_artifact` and the full eight-GiB start reserve.
+There are no assertion changes, retries of failed native cases or ordinary
+series trials. Its verdict is pending.
