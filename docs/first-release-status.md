@@ -84,6 +84,19 @@ beiden Komponenten-Integrationsnachweise samt ursprünglichen Skips geprüft.
 Die aktuelle CRIU-Kernprüfung bleibt gesondert an ihre korrigierten Bytes
 gebunden. Alte Go-Laufzeitergebnisse werden damit nicht übernommen.
 
+Jetzt sind alle 15 benannten Integrationsfälle nachgewiesen. Die fünf
+Retained-Fälle, sechs Docker-Abbruchfälle und beiden vollständigen
+Anwendungsfälle bestehen auf dem aktuellen Kern beziehungsweise der
+ausgelieferten CLI. Die absichtlich beschädigte RAM-Sicherung wird durch die
+ursprüngliche Integritätsprüfung abgelehnt; ihr negativer Einzeltest bleibt
+unverändert erhalten. Der gemeinsame unabhängige Nachweis liegt in
+`factorybox-current-integration-final-2debe360d2724cff957b10e4a2319a5a/closure.json`.
+Er bindet auch die beiden unveränderten Sysbox-Integrationen mit ihren
+ursprünglichen Skips. Zwei vorherige Abläufe hielten vor dem nächsten Test
+an der Speicherreserve; ihre negativen Gesamtstände bleiben erhalten.
+Bereits bestandene Fälle wurden nicht erneut ausgeführt. Diese Prüfungen
+zählen weiterhin nicht zur regulären 20er-Serie.
+
 Die Serien `93d21ac9...` und `a3d09ea4...` hielten nach fünf beziehungsweise
 acht weiteren Erfolgen vor der nächsten Gruppe an der Artefaktreserve an.
 Diese Gruppen hatten noch nicht begonnen. Beide negativen Gesamtstände
@@ -97,9 +110,9 @@ sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet
 | --- | --- | --- |
 | Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
 | Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Die Nachweise im Endprofil verbinden und die vollständige Anforderungsabdeckung prüfen. |
-| Vollständige Integration | Beide Komponentenfälle sind für die identischen ausgelieferten Sysbox-Bytes erneut geprüft und gebunden. | Die übrigen 13 benannten Fälle auf dem aktuellen Stand nachweisen: fünf Retained-, sechs Docker-Abbruch- und zwei volle Verbraucherfälle. |
+| Vollständige Integration | Alle 15 benannten Fälle sind unabhängig geprüft: fünf Retained-, sechs Docker-Abbruch-, zwei vollständige Anwendungs- und zwei unveränderte Komponentenfälle. Die erwartete Ablehnung beschädigten RAMs und ursprünglichen Upstream-Skips bleiben ausgewiesen. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Anwendung bei vollem Speicher wiederherstellen | Alle vier vollständigen Factory-/Minimal-Fälle bei geplantem und hartem Worker-Verlust bestehen auf 6016, einschließlich Platzmangel und Epochenstilllegung. | Nachweise im endgültigen Abnahmeprofil verbinden. |
-| Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. | Tatsächlich wiederherstellen und nützliche Arbeit prüfen. |
+| Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. Zwei vollständige Archivmessungen bestätigen, dass die unveränderte Image-Datei auch mit sparsamer Speicherung fast 8 GiB belegt. | Platz für Originalabbild und separates Wiederherstellungsziel schaffen, dann tatsächlich wiederherstellen und nützliche Arbeit prüfen. Der vorbereitete Versuch braucht knapp 12 GiB und wurde noch nicht gestartet. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
 | Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. | Echte Fortsetzung, Abbruch und unklare Werkzeugwirkungen nachweisen. Keine Wiederholung vor `2026-10-24T23:59:59.953093Z`. |
 | Update, Drain und Rollback prüfen | Geprüfte Eingaben des Drain-Unterbrechers und Betriebsanleitung liegen vor. | Vollständige Betriebsfälle auf 6016, Kompatibilität oder kontrolliertes Leeren vor einem Wechsel. Kein bekannt fehlerhaftes Paket als qualifizierte Rückfallversion. |

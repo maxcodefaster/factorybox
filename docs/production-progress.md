@@ -9254,3 +9254,109 @@ failures, original results/logs and the parallel-chat context remain preserved.
 The original 8-GiB useful restore, original EBUSY attribution, actual provider,
 current operations, predeclared twenty ordinary trials and final full audit
 remain open. Production qualification is false and the full goal stays active.
+
+## 2026-10-24: all fifteen current integration gates complete
+
+The selected worker remains `6016296965364344a8ef9eede420dbc8`, independently
+identical to `829faef7ea3143038bebf72493474070`. Runtime source and delivered
+package bytes have not changed in this continuation. The independent complete
+integration verifier passes in
+`factorybox-current-integration-final-2debe360d2724cff957b10e4a2319a5a`:
+
+- `result.json`: `86dc8fbb4df215ba9792df941f1c8c60b3038df5d0be660ee4b27f1caae17cfa`.
+- Frozen `intent.json`: `789c7b3067cdecb5a8ebb828d85265f52024c7cd315f76197bcb48cfd30e0643`.
+- Independent `closure.json`: `512ed3f7c570309c37a64ea5f06f7736f11fa38c1f69f0634df7b0f9c729c05a`.
+
+| Original named gate | Current native evidence |
+| --- | --- |
+| retained-corruption | `factorybox-runtime-retained-4cb78b67456543fb92cbda77f4586241` |
+| retained-child | `factorybox-runtime-retained-a24ca4cea22b4405935a13b4196e3af8` |
+| retained-controller | `factorybox-runtime-retained-9577586c913043b7acfd543089b75970` |
+| retained-guard | `factorybox-runtime-retained-ddb209e34fc345efb7c8ac8eef1e4760` |
+| retained-churn | `factorybox-runtime-retained-281dec13b2f44b53bef4dfb4af63fbbd` |
+| docker-root | `factorybox-devx-lifecycle-ae9a2f2f673e4cfea6ee10f98a947060` |
+| docker-daemon | `factorybox-devx-lifecycle-b0aaa8c7884746689a54f2a38b976dd7` |
+| docker-pause | `factorybox-devx-lifecycle-3f30fff317f943ab90ad5319c64206f1` |
+| docker-helper | `factorybox-devx-lifecycle-71a03b6d20d64f1ba710ebb5709fd756` |
+| docker-controller | `factorybox-devx-lifecycle-cae897190b544fb291058f208453c7dc` |
+| docker-guard | `factorybox-devx-lifecycle-35891a33411e44068cfae92e81afd66e` |
+| factory-agent | `factorybox-consumer-worker-loss-6b2d58da63194096a2fc74529dc8b8c9` |
+| minimal-planned-loss | `factorybox-consumer-worker-loss-f301f554675a43578ae230aecb345123` |
+| libcontainer | `factorybox-upstream-3b5823e6c2eb4feb881a6bb3c4cf6ec0` |
+| runc-integration | `factorybox-upstream-b9886c8a936d424ebe53bd16c0b30aff` |
+
+The thirteen current-core cases ran with every original assertion, original
+whole-lifecycle deadline and resource ceiling. The deliberate corruption leaf
+is still `passed:false`: only its exact original complete-RAM assertion may
+fail, with eleven adapter top-level and 61 subtest passes, no other failure,
+skip, panic or OOM and complete cleanup. The original gate accepts that exact
+negative oracle. The other four retained cases each pass all twelve top-level
+and 61 subtests. Their complete capture archives were decoded and verified.
+
+The retained driver has a legacy metadata shadowing error: its `platform`
+field reports `/delegate.sh`. This field is preserved. Actual Docker commands
+select `linux/amd64`, native host/compile provenance is present, and the full
+production core is compared with the delivered worker. These candidate test
+binaries are not described as delivered CLI bytes. All six ordinary Docker
+interruption cases and both full consumers use the exact delivered CLI
+`dbc0df59f84c59a32ddb32962e0466ffd3ab565d46dd3bb9f9c0cf0b0b962aea`
+and selected components. Both full consumers preserve all original phases,
+example/agent sources, cleanup and global-setting observations. The Factory
+case uses the deterministic local model, not external-provider acceptance.
+
+The verifier also rechecks the exact two unchanged Sysbox integrations through
+the prior current-component binding `932bb8d4...`, including original raw
+upstream counts and twelve runc skips. It checks the independent reproduced
+package, complete frozen source/test manifests, helper/encoding identities,
+all retained captures and absence of exact-owned containers/volumes. It does
+not transfer old Go results or infer any remaining release requirement.
+
+Both preceding aggregates remain false:
+`factorybox-current-integration-gates-38ddece173f746c3bc8d95c724a1f9c0`
+stopped at the normal reserve after six accepted cases, and
+`factorybox-current-integration-final-bcc21b94b587465798e1625f75f6523b`
+stopped after eleven. The next case had not started in either refusal.
+The final declaration inherits those eleven exact accepted identities and
+executes only the two never-started full consumers. No native failure is
+discarded and no passing case is rerun.
+
+Closed maintenance `factorybox-storage-compact-plans-90921f6785534578a1e869621f091285`
+losslessly encodes four exact completed source-sharing output plans, with
+whole decoded comparison and reconstruction receipts. The five obsolete
+retained-case payloads from aggregate `84dbbe72...` were retired only after
+their exact current replacement/original oracle passed, using the frozen
+`2c3940bf.../retire_retained.py` recipe. Complete member metadata/hashes,
+diagnostics and irreversible receipts remain; current complete replacement
+captures and selected failures remain intact.
+
+The second capacity refusal exposed duplicate encoded Docker actor helpers.
+`factorybox-integration-input-sharing-cd9c27f4ccea49f8a9b372980ceb777e`
+adds only the two exact roles `devx-actor` and `devx-registry` to the earlier
+closed-input recipe. Its preserved before/after source and exact patch receipt
+describe that change. Full canonical decoding, original input/encoding hashes,
+source/result identities and ownership checks remain intact. Twenty-eight
+byte-identical files share immutable inodes, reclaiming 165,437,440 allocated
+bytes; no archive, result, source or executable byte is changed. Its result
+SHA-256 is `96a1d75b8002474b4480c12693b79ceb06bb5c146f76f79a9b4516ce3a5d938b`.
+
+The original 8-GiB rescue is still not executed. Two read-only complete-stream
+measurements preserve its original tar/image identities:
+`factorybox-enospc-allocation-37f584001b5e48fb8637c952fe9a5c4f`
+measures 8,421,113,856 nonzero bytes under the original 1-MiB reconstruction
+rule; `factorybox-enospc-allocation-b237979298234ec781752d05887bb085`
+measures 8,301,719,552 under a diagnostic 4-KiB rule. Neither expands an image
+or proves restore. The prepared original-helper rescue requires a conservative
+8,454,668,288-byte source allowance plus 4 GiB for a separate writable target,
+nearly 12 GiB in total. This exceeds available reserve and must be resolved
+with verified closed retention before execution, without changing original
+metadata/device guards, selected inputs or the 32-GiB limit. The private
+unexecuted scripts and findings are in `1d4dba81.../original-enospc-rescue/` and
+`original-enospc-recovery-findings.md`.
+
+All jobs in this continuation are terminal. At the post-verification check,
+no labeled native container is live and artifact allocation is 25,634,009,088
+bytes, so the unchanged normal 8-GiB start reserve passes. There are still zero
+ordinary-series trials. Original 8-GiB useful rescue, EBUSY attribution, actual
+provider acceptance, current operations/update/rollback, a newly declared
+twenty-trial ordinary series and the final full requirements/profile audit
+remain open. Production qualification remains false; the full goal is active.
