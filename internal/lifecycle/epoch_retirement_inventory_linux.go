@@ -205,6 +205,7 @@ func (b *epochInventoryBuilder) guard(relative string, record Record) error {
 	known := strings.Fields(`.rollback-reserve capture-abort-intent.json capture-network-rollback.json
 capture-process-complete.json capture-process-restored.json capture-stop-intent.json capture-worker-intent.json
 capture-worker-outcome.json criu-retained-arm.json criu-retained-request.json criu-retained-result.json
+descriptor-admission.json timer-admission.json
 guard-armed.json guard-capture-aborted.json guard-capture-cured.json guard-capture-entered.json
 guard-capture-rejected.json guard-capture-returned.json guard-capture-stopped.json guard-controller-outcome.json
 guard-delegated-recovery.json guard-intent.json guard-orphan-recovery.json guard-outcome.json

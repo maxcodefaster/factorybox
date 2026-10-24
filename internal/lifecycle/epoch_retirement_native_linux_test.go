@@ -56,6 +56,7 @@ func epochRetirementCLI(t *testing.T, operation string, request any, name string
 func TestNativeEpochRetirementPrepare(t *testing.T) {
 	epochRetirementNativeEnabled(t)
 	TestNativeRetainedSelectionPrepare(t)
+	epochAdmissionNativePrepare(t)
 	status := boundedLossStatusNow(t)
 	input := status.Store + "/epoch-retirement-base-input"
 	for _, directory := range []string{input, input + "/retirement-window"} {
@@ -718,6 +719,7 @@ func TestNativeEpochRetirementFinish(t *testing.T) {
 		t.Fatal("successor cannot work after second epoch deletion", err)
 	}
 	boundedLossAction(t, "delete", "successor")
+	epochAdmissionNativeVerify(t, old)
 	boundedLossSave(t, "epoch-retirement-finished.json", map[string]any{"passed": true, "public_epoch_retirement_passed": true, "partial_payloads_removed_before_worker_loss": true,
 		"all_authorized_epoch_payloads_absent": true, "source_metadata_preserved": true, "request_replay_exact": true, "independent_successor_recovered_and_useful": true,
 		"source_tombstone_retained": true, "global_fence_cleared_exactly": true, "wrong_requests_refused": evidence.WrongRequests,
