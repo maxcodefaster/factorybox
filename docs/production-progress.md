@@ -10142,3 +10142,44 @@ still live in its original UTC wait; zero actual-provider entries have started.
 Do not spend this reserve on further optional diagnostic builds before that
 queue finishes. Actual-provider acceptance, EBUSY attribution and final release
 qualification remain open.
+
+## 2026-10-25: cleanup evidence strength audited; operating procedure brought current
+
+The read-only audit `busy-evidence-audit/audit.json` under the current handoff,
+SHA-256 `c080efbaf0ac1d50278900a867db028db29af040be5d31c0f89dfef20128bbc7`,
+independently checks the original raw symptom, root-owned source/fork deletion
+records, service logs, delayed run's frozen decoder, complete kernel trace and
+actual parent wait log. Both original objects are recorded deleted and both
+manager unregister receipts precede the fixture's single source-overlay EBUSY.
+The later active-container shutdown warning is also emitted by passed, cleaned
+control 5397. It does not identify a surviving holder.
+
+The delayed run still proves 32 parent-observed waits of at least 450 ms. It
+does not establish that a helper holds the source overlay during its immediate
+cleanup. The log lacks a common absolute monotonic boundary, process birth and
+root-mount identity. The kernel's local PID field is a namespace thread ID;
+matching it numerically to the parent's process PID is not a stable identity.
+All eight original-test unmounts succeed. Even a conditional duration comparison
+under those unproved joins yields no overlap witness. A parent Wait completing
+late would itself not prove a live process or retained filesystem references.
+The injected sleep also follows the completed handler and its cleanup defers.
+Thus the live-helper-at-cleanup hypothesis remains open. A future diagnostic
+must qualify the actual owned mount/holder lifetime across that boundary before
+using a negative result. No additional build, native repetition or runtime
+change was made for this audit; historical attribution remains false.
+
+The operating procedure now describes the selected 6016 package throughout.
+Obsolete intermediate-package narratives have been removed from that manual;
+their provenance remains in this progress log and Git history. In particular,
+actual update/rollback and the supplied Compose workflow are described as
+passed and tied to their current independent operating closure. The original
+recovery-cancellation, metadata-stage, mount-refusal, fencing, replay and data
+preservation instructions are retained. Current pressure/epoch proofs replace
+old partial-acceptance statements. The remaining provider, historical cleanup
+and final-profile gates stay explicit.
+
+All eleven cited artifacts exist, all 204 inputs pinned by the live provider
+queue remain byte-identical, all 232 reference files and ordered fixture
+extensions verify, and the documentation diff check passes. The GOAL and
+selected implementation remain unchanged. This updates evidence and operating
+instructions; it does not grant production qualification.
