@@ -8704,3 +8704,56 @@ longer fully reconstructable. Both the original PID counterexample 097 and
 current ad6530 complete archives are rehashed and remain unchanged. The
 original 8-GiB, provider and busy-mount selections remain retained. The full
 eight-GiB build/native start reserve is restored and remains mandatory.
+
+## Cross-namespace zombie restore now passes the real kernel regression
+
+Fresh candidate `factorybox-build-criu-retained-a93016e0ec514e5b9ea84f7d142b875f`
+adds ordered `criu-nested-zombie-peer-pidns-candidate.patch` after the capture
+error-propagation fix. It records a validated sibling init's PID namespace,
+preserves the zombie's actual outside parent and restores both PID levels.
+The init hands its actual namespace FD to that parent through a private
+fork-time socket. The parent joins it only for the zombie fork and restores
+its previous children PID namespace. Image validation, sibling ordering and
+the namespace handoff are explicit; the same-parent zombie path remains.
+All 1,030 upstream CRIU test files remain byte-identical.
+
+Native `factorybox-criu-zombie-parent-cc7a2a0025f74915b17d7cf8810cc380` passes
+the original three-process capture/restore/wait regression. Strengthened
+`factorybox-criu-zombie-parent-738e6523b7ed4cfbaf5c91e2903e6482` additionally
+checks the restored inner PID and a subsequent normal fork. All original
+assertions remain. Frozen candidate receipts `native-extra-assertions.json`
+and `regression-schema.json` bind the exact before/after fixture hashes;
+the latter adds only new protobuf declarations and a rejecting peer fallback
+stub to the extracted-function seam. All seven function cases pass under
+`factorybox-criu-pstree-green-0ac4414c70ad4992a6111fbae1610e66`.
+
+Independent clean build
+`factorybox-build-criu-retained-d4de1ad4ee99497db2cb3d0b222a61bf` reproduces
+CRIU SHA-256 `c0d11aebf0fcf26c0471b05f0287de66c4d7b947c95c96b3bc8e5eeaebd2e4b0`
+and source context `57142dc86f91c8c792dd43737e7faa33a4e6bc7f61d6a81e83b3b00920639cf7`.
+`factorybox-criu-core-65aa223ae80046ed8f592904a457386e` passes all 18
+unchanged core cases, each with two dump/restore cycles. Cleanup and unchanged
+global settings are verified. Its closed native archive is losslessly encoded
+only after complete decompression/hash verification; source, results and logs
+remain available.
+
+Worker `factorybox-build-worker-245c0cf79c3a40b59b5bb45d482b242c` packages
+that component and the unchanged Sysbox components. Assembly passes; raw
+package SHA-256 is `e30773f838bbe309007849927ca20a8bfd722969380e94a7579322e1f4460ab9`,
+image ID `sha256:3ffec4de885320712c553316ddcf0e6460cc8cb14c802ac90d7a44716744982c`.
+This is an unselected candidate, not lifecycle or production qualification.
+The complete original abrupt Factory pressure/epoch scenario passes as
+`factorybox-consumer-worker-loss-98bb5cea91594ffa85d1d91305eb8295`, with all
+original assertions, cleanup and unchanged global settings. This includes
+actual post-admission ENOSPC, preserved old pause and incomplete import,
+verified cancellation, retained inspection, an actual loop-slot change,
+independent successor pause, public epoch retirement, useful second resume,
+subsequent checkpoint/fork and independent useful descendants. Preparation
+takes 79.45 seconds, the recovery probe 259.56 seconds including 123.18 seconds
+of epoch retirement, and the recovered application's first useful response
+58.09 seconds. These are individual observations, not a latency distribution.
+The old full failure remains retained. This one required fault case does not
+count toward the unstarted twenty-run ordinary series. Independent worker
+reproduction, other affected native/consumer/operating acceptance and every
+other open release requirement remain required; production qualification
+stays false.

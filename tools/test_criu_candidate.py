@@ -139,7 +139,8 @@ class CandidatePatchTests(unittest.TestCase):
         for filename in ["nested-overlay.patch", "nested-overlay-stable-path.patch",
                          "nested-overlay-shared-root.patch", "exact-wait.patch", "exit-hold.patch",
                          "exit-hold-socket.patch", "pid-collision-diagnostics.patch",
-                         "pid-collision-references.patch", "nested-pid-counter.patch"]:
+                         "pid-collision-references.patch", "nested-pid-counter.patch",
+                         "pstree-error-propagation.patch", "nested-zombie-peer-pidns.patch"]:
             with self.subTest(patch=filename), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 name, archive, result = self.fixture(root, True)

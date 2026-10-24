@@ -1,0 +1,473 @@
+--- a/criu/Makefile.crtools
++++ b/criu/Makefile.crtools
+@@ -14,6 +14,7 @@
+ obj-y			+= cr-check.o
+ obj-y			+= cr-dedup.o
+ obj-y			+= cr-dump.o
++obj-y			+= nested-zombie.o
+ obj-y			+= factorybox-retained.o
+ obj-y			+= cr-errno.o
+ obj-y			+= cr-restore.o
+--- a/criu/cr-restore.c
++++ b/criu/cr-restore.c
+@@ -1166,6 +1166,8 @@
+ struct cr_clone_arg {
+ 	struct pstree_item *item;
+ 	unsigned long clone_flags;
++	int zombie_home_pair[2];
++	int zombie_previous_pidns;
+ 
+ 	CoreEntry *core;
+ };
+@@ -1581,6 +1583,12 @@
+ 
+ 	if (nested_ns_child_init(item, ca.clone_flags))
+ 		return -1;
++	if (nested_zombie_home_prepare(item, ca.clone_flags, ca.zombie_home_pair))
++		return -1;
++	if (nested_zombie_enter(item, &ca.zombie_previous_pidns)) {
++		nested_zombie_home_close(ca.zombie_home_pair);
++		return -1;
++	}
+ 
+ 	pr_info("Forking task with %d pid (flags 0x%lx)\n", pid, ca.clone_flags);
+ 
+@@ -1653,6 +1661,13 @@
+ 				   (ca.clone_flags & ~(CLONE_NEWNET | CLONE_NEWCGROUP | CLONE_NEWTIME)) | SIGCHLD, &ca);
+ 	}
+ 
++	if (nested_zombie_leave(ca.zombie_previous_pidns)) {
++		ca.zombie_previous_pidns = -1;
++		pr_perror("Can't restore parent's PID namespace for children");
++		ret = -1;
++		goto err_unlock;
++	}
++	ca.zombie_previous_pidns = -1;
+ 	if (ret < 0) {
+ 		pr_perror("Can't fork for %d", pid);
+ 		if (errno == EEXIST)
+@@ -1672,8 +1687,13 @@
+ 	}
+ 
+ 	arch_shstk_unlock(item, ca.core, pid);
++	if (nested_zombie_home_receive(item, ca.zombie_home_pair))
++		ret = -1;
+ 
+ err_unlock:
++	if (nested_zombie_leave(ca.zombie_previous_pidns))
++		ret = -1;
++	nested_zombie_home_close(ca.zombie_home_pair);
+ 	if (!(ca.clone_flags & CLONE_NEWPID))
+ 		unlock_last_pid();
+ 
+@@ -1962,6 +1982,10 @@
+ 	int ret;
+ 
+ 	current = ca->item;
++	if (ca->zombie_previous_pidns >= 0) {
++		close(ca->zombie_previous_pidns);
++		ca->zombie_previous_pidns = -1;
++	}
+ 
+ 	if (current != root_item) {
+ 		char buf[12];
+@@ -2038,6 +2062,8 @@
+ 	}
+ 
+ 	if (nested_ns_child_wait(current))
++		goto err;
++	if (nested_zombie_home_send(ca->zombie_home_pair))
+ 		goto err;
+ 
+ 	/* Sysbox namespace-entry helpers can fork before their caller resumes.
+--- a/criu/include/nested-ns.h
++++ b/criu/include/nested-ns.h
+@@ -79,6 +79,14 @@
+ int nested_ns_dump_session(pid_t real, int *pgid, int *sid);
+ pid_t nested_ns_dump_own_pid(pid_t real, pid_t fallback);
+ int nested_ns_dump_zombie_parent(struct pstree_item *item);
++int nested_zombie_dump_peer(struct pstree_item *item);
++int nested_zombie_prepare_pstree(void);
++int nested_zombie_home_prepare(struct pstree_item *item, unsigned long flags, int pair[2]);
++int nested_zombie_home_send(int pair[2]);
++int nested_zombie_home_receive(struct pstree_item *item, int pair[2]);
++void nested_zombie_home_close(int pair[2]);
++int nested_zombie_enter(struct pstree_item *item, int *previous);
++int nested_zombie_leave(int previous);
+ 
+ /* PID visible to the actual restored parent, including validated zombies. */
+ pid_t nested_ns_child_pid(struct pstree_item *item);
+--- a/criu/include/pstree.h
++++ b/criu/include/pstree.h
+@@ -28,6 +28,8 @@
+ 	 */
+ 	pid_t own_ns_pid;
+ 	bool zombie_parent_pidns;
++	unsigned int zombie_peer_pidns_id;
++	struct pstree_item *zombie_pidns_home;
+ 
+ 	int nr_threads;	     /* number of threads */
+ 	struct pid *threads; /* array of threads */
+--- a/criu/include/rst_info.h
++++ b/criu/include/rst_info.h
+@@ -45,6 +45,8 @@
+ 	void *premmapped_addr;
+ 	unsigned long premmapped_len;
+ 	unsigned long clone_flags;
++	int zombie_pidns_fd_id;
++	bool zombie_pidns_fd_ready;
+ 
+ 	void *munmap_restorer;
+ 
+--- a/criu/nested-ns.c
++++ b/criu/nested-ns.c
+@@ -83,6 +83,8 @@
+ {
+ 	if (item->ids)
+ 		return item->ids->pid_ns_id;
++	if (item->pid->state == TASK_DEAD && item->zombie_peer_pidns_id)
++		return item->zombie_peer_pidns_id;
+ 	if (item->pid->state == TASK_DEAD && item->zombie_parent_pidns &&
+ 	    item->parent && item->parent->ids)
+ 		return item->parent->ids->pid_ns_id;
+@@ -101,7 +103,7 @@
+ 	if (!nested_ns_enabled())
+ 		return vpid(item);
+ 	if (!item->ids && item->pid->state == TASK_DEAD &&
+-	    item->own_ns_pid != vpid(item) && !item->zombie_parent_pidns) {
++	    item->own_ns_pid != vpid(item) && !item->zombie_parent_pidns && !item->zombie_peer_pidns_id) {
+ 		pr_err("Nested zombie image lacks its verified parent PID namespace\n");
+ 		return 0;
+ 	}
+@@ -657,6 +659,15 @@
+ 
+ 	if (nested_ns_pid_can_not_be_set(item))
+ 		return 0;
++	if (item->zombie_peer_pidns_id) {
++		if (max < 2 || item->own_ns_pid <= 1 || !item->zombie_pidns_home) {
++			pr_err("Zombie peer PID namespace has no validated parent-side fork\n");
++			return -1;
++		}
++		set_tid[0] = item->own_ns_pid;
++		set_tid[1] = pid;
++		return 2;
++	}
+ 
+ 	if (rsti(item)->clone_flags & CLONE_NEWPID) {
+ 		/*
+@@ -713,6 +724,8 @@
+ 
+ 	if (!nested_ns_enabled())
+ 		return vpid(item) == pid;
++	if (item->zombie_peer_pidns_id)
++		return item->own_ns_pid == pid;
+ 
+ 	if (nested_ns_pid_can_not_be_set(item))
+ 		return true;
+--- /dev/null
++++ b/criu/nested-zombie.c
+@@ -0,0 +1,237 @@
++/* A waitable exec zombie can be in a sibling init's PID namespace while its
++ * actual parent is the outside shim. Keep that parent and both PID levels.
++ */
++#include <errno.h>
++#include <fcntl.h>
++#include <limits.h>
++#include <poll.h>
++#include <sched.h>
++#include <sys/ioctl.h>
++#include <sys/socket.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <linux/nsfs.h>
++
++#include "common/scm.h"
++#include "criu-log.h"
++#include "fdstore.h"
++#include "namespaces.h"
++#include "nested-ns.h"
++#include "pstree.h"
++#include "rst_info.h"
++#include "util.h"
++#include "xmalloc.h"
++
++static bool outside_parent(struct pstree_item *item)
++{
++	struct pstree_item *parent = item->parent;
++
++	return parent && parent->ids && root_item->ids &&
++		parent->ids->pid_ns_id == root_item->ids->pid_ns_id &&
++		parent->ids->user_ns_id == root_item->ids->user_ns_id;
++}
++
++static struct pstree_item *peer_init(struct pstree_item *item, unsigned int id, bool dump)
++{
++	struct pstree_item *peer, *found = NULL;
++
++	if (!outside_parent(item) || !id || id == root_item->ids->pid_ns_id)
++		return NULL;
++	list_for_each_entry(peer, &item->parent->children, sibling) {
++		pid_t own;
++
++		if (peer == item || !peer->ids || peer->ids->pid_ns_id != id ||
++		    peer->ids->files_id == item->parent->ids->files_id)
++			continue;
++		own = dump ? nested_ns_dump_own_pid(peer->pid->real, vpid(peer)) : peer->own_ns_pid;
++		if (own != 1)
++			continue;
++		if (found)
++			return NULL;
++		found = peer;
++	}
++	return found;
++}
++
++int nested_zombie_dump_peer(struct pstree_item *item)
++{
++	struct stat child;
++	struct ns_id *ns;
++	pid_t own;
++	int fd;
++
++	if (!nested_ns_enabled() || item->pid->state != TASK_DEAD || !outside_parent(item))
++		return -1;
++	fd = open_pid_proc(item->pid->real);
++	if (fd < 0 || fstatat(fd, "ns/pid", &child, 0) || child.st_ino > UINT_MAX)
++		return -1;
++	ns = lookup_ns_by_kid(child.st_ino, &pid_ns_desc);
++	own = nested_ns_dump_own_pid(item->pid->real, vpid(item));
++	if (!ns || ns->id > INT_MAX || own <= 1 || own == vpid(item) || !peer_init(item, ns->id, true)) {
++		pr_err("Zombie has no validated sibling PID namespace init\n");
++		return -1;
++	}
++	pr_info("Zombie %d keeps outside parent %d and sibling PID namespace %u\n",
++		vpid(item), vpid(item->parent), ns->id);
++	return ns->id;
++}
++
++int nested_zombie_prepare_pstree(void)
++{
++	struct pstree_item *item, **pending;
++	size_t count = 0, i = 0;
++	int ret = -1;
++
++	if (!nested_ns_enabled())
++		return 0;
++	for_each_pstree_item(item)
++		if (item->zombie_peer_pidns_id)
++			count++;
++	if (!count)
++		return 0;
++	pending = xmalloc(count * sizeof(*pending));
++	if (!pending)
++		return -1;
++	for_each_pstree_item(item)
++		if (item->zombie_peer_pidns_id)
++			pending[i++] = item;
++	for (i = 0; i < count; i++) {
++		struct pstree_item *home;
++
++		item = pending[i];
++		home = peer_init(item, item->zombie_peer_pidns_id, false);
++		if (item->ids || item->zombie_parent_pidns || !home ||
++		    item->own_ns_pid <= 1 || item->own_ns_pid == vpid(item)) {
++			pr_err("Invalid outside-parent zombie namespace topology for %d\n", vpid(item));
++			goto out;
++		}
++		item->zombie_pidns_home = home;
++		/* Image collection reverses sibling order. Create the namespace init
++		 * before its zombie without changing either task's actual parent. */
++		list_del(&item->sibling);
++		list_add(&item->sibling, &home->sibling);
++	}
++	ret = 0;
++out:
++	xfree(pending);
++	return ret;
++}
++
++void nested_zombie_home_close(int pair[2])
++{
++	if (pair[0] >= 0)
++		close(pair[0]);
++	if (pair[1] >= 0)
++		close(pair[1]);
++	pair[0] = pair[1] = -1;
++}
++
++int nested_zombie_home_prepare(struct pstree_item *item, unsigned long flags, int pair[2])
++{
++	struct pstree_item *sibling;
++	bool needed = false;
++
++	pair[0] = pair[1] = -1;
++	if (!nested_ns_enabled() || !item->parent)
++		return 0;
++	list_for_each_entry(sibling, &item->parent->children, sibling)
++		if (sibling->zombie_pidns_home == item)
++			needed = true;
++	if (!needed)
++		return 0;
++	if (!(flags & CLONE_NEWPID) || (flags & CLONE_FILES)) {
++		pr_err("Zombie namespace init requires its independent fork/FD table\n");
++		return -1;
++	}
++	return socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, pair);
++}
++
++int nested_zombie_home_send(int pair[2])
++{
++	int fd, ret;
++
++	if (pair[1] < 0)
++		return 0;
++	close(pair[0]);
++	pair[0] = -1;
++	/* /proc/self resolves the caller even on the inherited ancestor proc. */
++	fd = open("/proc/self/ns/pid", O_RDONLY | O_CLOEXEC);
++	if (fd < 0)
++		return -1;
++	ret = send_fd(pair[1], NULL, 0, fd);
++	close(fd);
++	close(pair[1]);
++	pair[1] = -1;
++	return ret;
++}
++
++int nested_zombie_home_receive(struct pstree_item *item, int pair[2])
++{
++	struct pollfd pollfd;
++	int fd, id, ret;
++
++	if (pair[0] < 0)
++		return 0;
++	close(pair[1]);
++	pair[1] = -1;
++	pollfd = (struct pollfd){ .fd = pair[0], .events = POLLIN };
++	do {
++		ret = poll(&pollfd, 1, 5000);
++	} while (ret < 0 && errno == EINTR);
++	if (ret != 1 || !(pollfd.revents & POLLIN)) {
++		pr_err("Zombie sibling PID namespace handoff did not arrive\n");
++		return -1;
++	}
++	fd = recv_fd(pair[0]);
++	if (fd < 0)
++		return -1;
++	ret = ioctl(fd, NS_GET_NSTYPE);
++	id = ret == CLONE_NEWPID ? fdstore_add(fd) : -1;
++	close(fd);
++	nested_zombie_home_close(pair);
++	if (id < 0)
++		return -1;
++	rsti(item)->zombie_pidns_fd_id = id;
++	rsti(item)->zombie_pidns_fd_ready = true;
++	return 0;
++}
++
++int nested_zombie_enter(struct pstree_item *item, int *previous)
++{
++	struct pstree_item *home = item->zombie_pidns_home;
++	int fd, saved;
++
++	*previous = -1;
++	if (!item->zombie_peer_pidns_id)
++		return 0;
++	if (item->pid->state != TASK_DEAD || item->ids || !home ||
++	    !rsti(home)->zombie_pidns_fd_ready || !outside_parent(item) ||
++	    (rsti(item)->clone_flags & CLONE_NEWPID)) {
++		pr_err("Zombie fork has no ready validated sibling PID namespace\n");
++		return -1;
++	}
++	fd = fdstore_get(rsti(home)->zombie_pidns_fd_id);
++	if (fd < 0)
++		return -1;
++	saved = open("/proc/self/ns/pid_for_children", O_RDONLY | O_CLOEXEC);
++	if (saved < 0 || setns(fd, CLONE_NEWPID)) {
++		if (saved >= 0)
++			close(saved);
++		close(fd);
++		return -1;
++	}
++	close(fd);
++	*previous = saved;
++	return 0;
++}
++
++int nested_zombie_leave(int previous)
++{
++	int ret;
++
++	if (previous < 0)
++		return 0;
++	ret = setns(previous, CLONE_NEWPID);
++	close(previous);
++	return ret;
++}
+--- a/criu/pstree.c
++++ b/criu/pstree.c
+@@ -228,6 +228,8 @@
+ 	item->pid->real = -1;
+ 	item->own_ns_pid = 0;
+ 	item->zombie_parent_pidns = false;
++	item->zombie_peer_pidns_id = 0;
++	item->zombie_pidns_home = NULL;
+ 	item->pid->state = TASK_UNDEF;
+ 	item->pid->stop_signo = -1;
+ 	item->born_sid = -1;
+@@ -332,13 +334,22 @@
+ 		e.own_pid = 0;
+ 		e.has_zombie_parent_pidns = false;
+ 		e.zombie_parent_pidns = false;
++		e.has_zombie_peer_pidns_id = false;
++		e.zombie_peer_pidns_id = 0;
+ 		if (nested_ns_enabled() && item->pid->state == TASK_DEAD) {
+-			if (nested_ns_dump_zombie_parent(item) != 1) {
++			int parent = nested_ns_dump_zombie_parent(item);
++			int peer = parent == 0 ? nested_zombie_dump_peer(item) : 0;
++
++			if (parent < 0 || (parent == 0 && peer <= 0)) {
+ 				pr_err("Nested zombie requires its verified parent PID namespace\n");
+ 				goto err;
+ 			}
+ 			e.has_zombie_parent_pidns = true;
+-			e.zombie_parent_pidns = true;
++			e.zombie_parent_pidns = parent == 1;
++			if (peer > 0) {
++				e.has_zombie_peer_pidns_id = true;
++				e.zombie_peer_pidns_id = peer;
++			}
+ 		}
+ 
+ 		/*
+@@ -619,6 +630,12 @@
+ 		*pid_max = e->pid;
+ 	pi->own_ns_pid = e->has_own_pid ? e->own_pid : e->pid;
+ 	pi->zombie_parent_pidns = e->has_zombie_parent_pidns && e->zombie_parent_pidns;
++	pi->zombie_peer_pidns_id = e->has_zombie_peer_pidns_id ? e->zombie_peer_pidns_id : 0;
++	if (e->has_zombie_peer_pidns_id && (!e->zombie_peer_pidns_id || !e->has_zombie_parent_pidns ||
++					 e->zombie_parent_pidns || pi->own_ns_pid <= 1 || pi->own_ns_pid == e->pid)) {
++		pr_err("Invalid zombie peer PID namespace image\n");
++		goto err;
++	}
+ 	pi->pgid = e->pgid;
+ 	if (e->pgid > *pid_max)
+ 		*pid_max = e->pgid;
+@@ -1143,6 +1160,8 @@
+ 		 */
+ 		nested_ns_prepare_pstree();
+ 	if (!ret)
++		ret = nested_zombie_prepare_pstree();
++	if (!ret)
+ 		/*
+ 		 * We need to alloc shared buffers for RseqEntry'es
+ 		 * arrays (one RseqEntry per pstree item thread).
+--- a/images/pstree.proto
++++ b/images/pstree.proto
+@@ -17,4 +17,6 @@
+ 	optional uint32			own_pid		= 1000;
+ 	/* Validated against the actual zombie and parent PID namespaces on dump. */
+ 	optional bool			zombie_parent_pidns = 1001;
++	/* A validated sibling init owns a zombie's different PID namespace. */
++	optional uint32			zombie_peer_pidns_id = 1002;
+ }

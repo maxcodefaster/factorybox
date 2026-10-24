@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -34,6 +35,31 @@ static unsigned long long namespace_inode(pid_t pid)
 	snprintf(path, sizeof(path), "/proc/%d/ns/pid", (int)pid);
 	if (stat(path, &st)) { perror("stat namespace"); exit(1); }
 	return (unsigned long long)st.st_ino;
+}
+
+static pid_t own_pid(pid_t pid)
+{
+	char path[80], line[512];
+	pid_t last = 0;
+	snprintf(path, sizeof(path), "/proc/%d/status", (int)pid);
+	FILE *file = fopen(path, "r");
+	if (!file)
+		return 0;
+	while (fgets(line, sizeof(line), file)) {
+		if (!strncmp(line, "NSpid:", 6)) {
+			char *at = line + 6, *end;
+			for (;;) {
+				long value = strtol(at, &end, 10);
+				if (end == at)
+					break;
+				last = value;
+				at = end;
+			}
+			break;
+		}
+	}
+	fclose(file);
+	return last;
 }
 
 int main(int argc, char **argv)
@@ -97,8 +123,17 @@ int main(int argc, char **argv)
 	 * child by its original outer PID and receive its original exit status. */
 	if (namespace_inode(zombie) != namespace_inode(init) || namespace_inode(zombie) == namespace_inode(getpid()))
 		return 1;
+	if (own_pid(zombie) != child_own)
+		return 1;
 	int status;
 	if (waitpid(zombie, &status, 0) != zombie || !WIFEXITED(status) || WEXITSTATUS(status) != 47)
+		return 1;
+	pid_t subsequent = fork();
+	if (subsequent < 0)
+		return 1;
+	if (!subsequent)
+		_exit(namespace_inode(getpid()) == namespace_inode(getppid()) ? 53 : 99);
+	if (waitpid(subsequent, &status, 0) != subsequent || !WIFEXITED(status) || WEXITSTATUS(status) != 53)
 		return 1;
 	if (write(control[1], "X", 1) != 1 || waitpid(init, &status, 0) != init || !WIFEXITED(status) || WEXITSTATUS(status))
 		return 1;

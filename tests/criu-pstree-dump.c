@@ -18,8 +18,10 @@ struct pstree_item {
 };
 typedef struct {
 	uint32_t pid, ppid, pgid, sid, own_pid, *threads;
+	uint32_t zombie_peer_pidns_id;
 	int n_threads;
 	bool has_own_pid, has_zombie_parent_pidns, zombie_parent_pidns;
+	bool has_zombie_peer_pidns_id;
 } PstreeEntry;
 struct cr_img { int unused; };
 static struct { bool shell_job; } opts = { true };
@@ -39,6 +41,12 @@ static int nested_ns_dump_zombie_parent(struct pstree_item *item)
 	if (!item || item->pid->state != TASK_DEAD)
 		abort();
 	return namespace_result;
+}
+static __attribute__((unused)) int nested_zombie_dump_peer(struct pstree_item *item)
+{
+	if (!item || item->pid->state != TASK_DEAD)
+		abort();
+	return -1;
 }
 static int nested_ns_dump_own_pid(int real, int fallback)
 {
