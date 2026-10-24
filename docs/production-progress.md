@@ -2881,6 +2881,7 @@ The separate proof index and ordered source reconstruction are
 `factorybox-signal-admission-notes-584c2b7b4ed24c44b8649ef8e0865b16`.
 Production qualification remains false.
 
+
 ## Native admission fixture coverage on ordinary worker bytes
 
 The first renewed native-admission invocation,
@@ -6364,3 +6365,167 @@ unchanged inputs/globals and exact owned cleanup. Both original Proc cases
 pass in 7.84 seconds. The fixed archival path is exercised through the actual
 diagnostic CLI rather than inferred from its unit checks. The earlier failed
 journals stay false and the historical EBUSY cause remains open.
+
+## Further exact-core gates after the restore-worker correction
+
+The intervening user-requested performance/effort explanation changed no
+implementation or qualification state. On continuation, session 89761 is
+confirmed terminal. Batch
+`factorybox-post-restore-native-gates-d6629c9d7de94fe0b6ccc52289104150`
+passed complete interruption and capture-worker-loss suites, respectively
+12 top-level/61 subtests and 12/64, without skips. The following lifecycle
+allocation was refused at 24.08 GiB before creating a native run. The batch
+remains false and its unrun row/log remain unchanged.
+
+The earlier full current-core admission passed 17/78 in
+`factorybox-runtime-a0fe7ec731954f368f7fceb4b56adcf3`. Only after complete
+replacement-source, assertion, input and archive verification,
+`factorybox-passed-admission-successor-retirement-28ca56e68bbd41ec82a4d10a5e50f61c`
+retires the older passing 3fc216eb store. The retained original EBUSY archive
+and every selected actual failure remain complete. Likewise,
+`factorybox-passed-fault-successor-retirement-063e4424acc7442d8dd88bb754690ed3`
+verifies current successors 192803354061419f9c472698338cfbaf and
+20a4a51a4a83456db0e9e5d8634df81b before retiring the older passing 41cc6d77
+and 1737c5a9 stores. These retain every source/result/log/input, original
+member headers/hashes and bounded diagnostics. Their old full stores are
+intentionally unavailable; the replacement stores remain complete. Exact
+source compatibility preserves every original assertion body.
+
+Continuation batch
+`factorybox-post-restore-native-gates-d0155e8355e2404fb56f3f7f9893bdc0`
+binds the completed admission/interruption/worker-loss prefix and passes
+lifecycle 6/3, guard 1/12, base 12/78, base-pause 12/67, delegation 12/61
+and auxiliary 12/61. All maintenance steps pass. The following time-suite
+allocation is refused at the unchanged artifact reserve before any native
+run starts; that batch/result also remains false.
+
+An initial private superseded-pass verifier in
+`factorybox-passed-core-successor-retirement-46c0d9113d3b4f5a86c2624d9b758b80`
+rejects its over-escaped comparison literal before removing any payload.
+Its failed result is preserved. Corrected private verifier
+`factorybox-passed-core-successor-retirement-703abf40c4c64cf191ba9366a05bd417`
+fully verifies and retires only four declared older passing base, base-pause,
+delegation and auxiliary stores. Exact TestMain dispatch/preparation additions
+and the single post-failed-unmount diagnostic call are the only changes to
+prior test files. Every original assertion body, every original named passing
+outcome and all other prior test-file bytes remain. Additional test sources,
+outcomes and changed component identities are explicit in compatibility
+receipts. The new entire suites on current components are the replacement
+evidence. No old-component result is treated as current acceptance.
+
+The next batch
+`factorybox-post-restore-native-gates-35b90e8e3b1e428a9a41b40f54fc246d`
+preserves all nine completed-prefix groups and continues the five remaining
+groups. The original native deadlines, full goal and parallel-chat context
+remain unchanged. Allocation refusals do not relax the 8-GiB start reserve.
+Production qualification remains false.
+
+## Complete selected current-core gate set and bounded Compose preparation
+
+The remaining time, mount-FD, overlay and storage-admission groups pass in
+`factorybox-post-restore-native-gates-35b90e8e3b1e428a9a41b40f54fc246d`.
+The final controller-loss allocation is refused before creating a native run;
+that batch stays false. Only after the new full time/mount-FD/overlay outcomes
+pass, older successful same-family stores are retired in
+`factorybox-passed-mount-successor-retirement-548c9653dbd144b4a517ac305ab5d20a`.
+All old source/results/logs, member inventories and bounded diagnostics remain,
+and every selected failure and new full passing archive remains complete.
+
+The final storage/controller-loss group then passes in
+`factorybox-storage-admission-02710a5b716a4d5e8fcb10244cbbcd50`, bound by
+`factorybox-pilot-native-gates-7a9386abb5f04a47a0b1a70da0649bdb`.
+It preserves both original checkpoint/pause cases, actual capture-worker
+SIGKILL, stopped controller, zero available bytes and independent earlier
+checkpoint assertions.
+
+Independent closure
+`factorybox-current-core-closure-2eb673665ae94f2eafcf9e3fb2da3ae4`
+reverifies all seventeen selected exact-core native groups, complete current
+sources and compiled inputs, all retained archives, zero native skips and
+actual absence of every owned container/volume. A byte-identical copy of the
+existing component verifier separately rereads original Go/TAP/CRIU evidence
+on the identical pinned components. All eighteen selected gate names are
+covered, including CRIU's eighteen cases and two cycles. Existing upstream
+skips remain explicit; no full umbrella or final production acceptance is
+inferred. The original EBUSY failed result and complete archive are reverified
+and remain unexplained. The complete goal and chat handoff remain unchanged.
+
+The first closure attempt,
+`factorybox-current-core-closure-5821a3755dc742eeb8ebc9d6956dc3e6`,
+also verifies all seventeen groups, then rejects an extra trailing blank line
+in the copied component verifier. Its false result is retained. The succeeding
+closure copies that verifier byte-for-byte and changes no native input/result.
+
+The operating example now supplies a bounded Compose override, gives normal
+Stop 45 seconds, and requires exit 0 without OOM before replacement. It records
+its administrator-owned overlay/base mount identities before Start and releases
+only those same inactive mounts after the committed pause. Changed, nested or
+stacked mounts refuse release. The native driver additionally checks a changed
+inode request leaves both mounts intact and requires a clean final Stop of the
+replacement worker. The exact original preparation script remains unchanged;
+only three input paths in a fresh fixture copy move into the bounded store,
+with both hashes declared in
+`tests/compatibility/worker-example-bounded-paths.json`. Go tests/vet, tagged
+probe compilation, Python tests, all 232 sealed reference files, fixture
+verification and diff validation pass in
+`factorybox-checks-aee848a6194a4b24a0c54015932112ec`.
+
+First native bounded example
+`factorybox-worker-example-64b50d70891c4a7691ed95be060cd36a` verifies the
+requested 4-GiB image/capacity, changed-input refusal, start, pause/resume,
+committed second pause, exact input-mount release and clean old-worker exit 0.
+It then fails while cloning filesystem backing into the replacement epoch:
+the actual kernel copy reports ENOSPC. The small actor still uses the full
+1.8-GB delivered rootfs input; four GiB does not cover all retained and recovery
+copies. This is an actual failed observation, not a passing recovery proof.
+The full failed volume is preserved as 6,106,906,624 raw bytes, SHA-256
+`cfc6e30ce92774d0cc0d9ee3101c79dec6dfa534945cfd422ba680c8821c748c`.
+Lossless repack
+`factorybox-storage-repack-0cc40264fe5b49b29c9d9a4afaceb814` verifies all raw
+bytes and reclaims 1,137,177,295 encoded bytes. The failed result and complete
+state remain intact. The next original example run uses the previously
+exercised 32-GiB consumer capacity, changing no runtime or workflow source.
+
+For the required start reserve, only the already resolved first bounded minimal
+Stop store is retired in
+`factorybox-storage-retirement-ddc93206bffd47edb5e952dd9e1fb98e`.
+Its source is d2cccba26a6f41a786881468dfc1bb7c's independent cleanup archive,
+whose original 34,360,786,944-byte stream is completely decoded and verified
+before removal of the 813,234,221-byte encoded replacement. Every member
+header/hash, original source, result, phase observations and compiled input
+remains. The full old store is intentionally unavailable afterward. The
+original native result remains failed with cleanup=false; its independent
+cleanup reconciliation remains passed. Replacement
+`factorybox-consumer-worker-loss-3c22440d8547430896c77a9b72e3f01c`
+has byte-identical prior consumer test sources, the same eight original useful
+phases and 32-GiB size, and actual clean Stop/cleanup. This is historical
+retention supersession, not current-package minimal acceptance. The initial
+private retirement preflight rejects a missing legacy `inputs_unchanged`
+field before any deletion; the succeeding verifier checks the actual frozen
+source and every input directly. Both preflight recipe/outcome and the
+completed private recipe remain. Current native proofs, original selected
+failures and the new complete 4-GiB ENOSPC archive are preserved.
+
+The candidate operating instructions are in `docs/first-release-operations.md`.
+They explicitly leave useful recovery after reclaim, final external-agent
+cases, update/rollback exercises, the predetermined final consumer series and
+full release acceptance open. The revised operating example is not qualified
+by syntax checks or the current-core suite alone.
+
+The same revised operating workflow then passes at 32 GiB in
+`factorybox-worker-example-3f93920dace74945b3cb7d405211a90d`, including
+the exact bounded-store identity/capacity, negative input-identity control,
+complete original CLI sequence, both committed pauses, exact mount release,
+clean old-worker exit, fresh epoch, recovery/replay, checkpoint, independent
+fork after source deletion and clean final worker exit. Native owned cleanup
+and global sentinels pass. Both exits are 0 without OOM.
+`factorybox-bounded-example-proof-b1eee18e7e604e5e8ef023c583f5a8dc`
+independently verifies the actual transcript, precise command sequence,
+recovery PID/owner replay, code/fixture hashes, current delivered image,
+portable/core closures and absent exact store-labeled containers/volumes.
+It also completely decodes the retained 4-GiB failure again and requires the
+same frozen workflow/actor sources at both capacities. This proves the
+optional operating example, not complete consumer/agent acceptance or useful
+recovery after reclaiming space from the failed store. Update/rollback,
+external-agent cases, the final series, historical EBUSY attribution and full
+first-release qualification remain open.

@@ -1,0 +1,123 @@
+# First local release operating procedure
+
+This is the candidate procedure for the scope in [GOAL.md](../GOAL.md).
+Production qualification remains false until the final profile binds all
+required passing evidence. The older pilot profile does not qualify this
+candidate. The current independently reproduced package is
+`factorybox-build-worker-2291d87be1f24212ba7af731968ea94b`, with comparison
+`factorybox-build-worker-68c046296c8e440a8afe8a43114d1f23`.
+
+## Start and verify
+
+Use the existing qualified Linux AMD64 host and boot, with a separate worker
+and complete private store per customer or trust domain. Keep the exact image
+digest, package/component manifests, store ID, volume identity and ownership
+label. The [Compose example](../examples/worker/README.md#bounded-store-candidate)
+provides the bounded-store arguments and the 45-second graceful stop window.
+Preserve the 3 CPU/3 GiB worker and two-sandbox ceilings. A separate Theia has
+its own 1 CPU/768 MiB ceiling.
+
+Before starting, verify that the previous exact worker has stopped and been
+removed. Keep the full volume exclusively attached to this trust domain.
+Read `/run/factorybox/worker.json` through the container file/archive API before
+creating any exec process. Then require the delivered CLI's `worker-status`:
+
+```sh
+/opt/factorybox/factorybox worker-status
+/opt/factorybox/factorybox --worker-run-root /run/factorybox capacity
+```
+
+The readiness file is only a publication hint. The status command verifies the
+live supervisor, services, lease and peers. Require the actual store ID and
+bounded image size, its distinct bounded filesystem, enabled capacity policy
+and separate host capacity observation. Keep the complete JSON responses.
+Prepare workload bundles and their mutable backing inside the bounded store.
+
+## Drain and stop
+
+Stop submitting work through the administrative client. Finish or explicitly
+cancel outstanding consumer requests and preserve uncertain tool results.
+For each live sandbox, choose a complete pause to retain its state or exact
+deletion when its state is intentionally discarded. Keep every successful
+pause's source epoch/root, source ID/owner, snapshot ID and full checkpoint
+SHA-256. Require `phase=paused`, `completed_at`, zero anonymous workload memory
+and zero resident snapshot bytes. An interrupted pause is not a recovery input.
+
+The administrator owns its prepared input mounts. Record their original
+identities before use and release only the same inactive mounts after pause.
+The example's `bundle_mounts.py` checks its exact overlay/base pair and rejects
+changed, nested or stacked mounts. Runtime-owned mounts remain the worker's
+responsibility. Keep the backing directories and every selected checkpoint.
+
+Send SIGTERM through the exact dedicated Compose service with its 45-second
+grace period. Require the original container identity, `Running=false`,
+`ExitCode=0` and `OOMKilled=false` before removing the container. A killed
+process alone does not prove a successful drain. On failure retain the store,
+container metadata and diagnostics; do not prune volumes or force an unmount.
+
+## Same-host recovery
+
+Fence and remove the exact old worker. Start the exact admitted image on the
+same host and boot with the same complete store and store ID. A new worker gets
+a new epoch. Pass the saved committed pause identity to `recover-paused` as
+described in the [worker contract](worker-contract.md#recovering-a-committed-pause-after-worker-replacement).
+Keep the target ID and entire request unchanged for exact replay.
+
+Verify useful application work and its retained RAM/files, then a new
+checkpoint and an independent fork. An earlier worker's live process handles
+and readiness file grant no authority. Missing/corrupt backing, changed boot,
+foreign identities and uncertain incomplete imports require investigation.
+Running unsaved RAM, host restart and cross-node recovery are outside this
+release scope.
+
+## Capacity and manual retirement
+
+Inspect `capacity` before accepting further work and retain every admission
+refusal. At a limit, close new intake and keep existing sources, confirmed
+pauses and selected recovery inputs. Do not delete partial imports to make an
+uncertain recovery appear fresh. The original 8-GiB ENOSPC attempt is retained;
+its integrity inspection alone does not prove useful recovery after reclaim.
+That acceptance remains required.
+
+Use the public identity- and dependency-checked checkpoint/epoch retirement
+commands in the [worker contract](worker-contract.md#manual-epoch-retirement-candidate).
+Drain first. An old committed pause needs a verified independent successor
+before its epoch can be retired. Preserve the exact JSON request, preparation,
+acceptance and completion receipts. Once maintenance is accepted, ordinary
+work remains fenced until exact completion, including across worker replacement.
+Unknown objects, live dependencies and changed ownership require refusal.
+Automatic retention remains deferred.
+
+## Update and rollback
+
+Before changing a package or component recipe, either prove compatibility for
+the exact retained state or finish and drain all old work. Never restore an old
+snapshot under an unproven recipe. Keep the complete old package, store and
+records until the new operating path has passed acceptance.
+
+For a failed first deployment, withdraw intake, stop/fence the failed worker
+and retain its intact store. Return only to an independently verified package
+with proven compatibility for those exact recovery inputs. An older development
+candidate with a known defect is not an accepted fallback. If no compatible
+fallback is qualified, leave service withdrawn and preserve the data.
+Exact update/rollback exercises remain open; these instructions alone do not
+close that release requirement.
+
+## Current operating evidence and remaining acceptance
+
+The revised bounded Compose/workflow passes on the actual delivered image in
+`factorybox-worker-example-3f93920dace74945b3cb7d405211a90d`, using 32 GiB.
+Both clean stops, changed-input-identity refusal, complete worker replacement,
+recovery/replay, a subsequent checkpoint and an independent descendant pass.
+Independent binding is
+`factorybox-bounded-example-proof-b1eee18e7e604e5e8ef023c583f5a8dc`.
+The first 4-GiB attempt fails with ENOSPC while copying recovery backing;
+its complete store, source, logs and failed result remain preserved. The
+same workflow and actor pass with the previously exercised 32-GiB capacity.
+This uses a small administrator-prepared actor and does not replace complete
+minimal, Factory/Theia or external-agent acceptance.
+
+The remaining goal also requires final-package storage/fault cases, actual
+external-agent continuation/cancellation/uncertain-effect handling, tested
+update/rollback, ten predetermined complete lifecycles per consumer and the
+final requirement-by-requirement release profile.

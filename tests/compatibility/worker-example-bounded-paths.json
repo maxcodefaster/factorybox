@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "file": "tests/worker-example-setup.sh",
+  "before_sha256": "2aa9816e4f45c3e2bc83743901dc1c7a1c24dba64b4204f73bebe7aebc30915f",
+  "after_sha256": "c54516ef792e85a04ac3372d8a581fbf0625ccd856793f375d288b902d91a406",
+  "old_path": "/var/lib/sysbox/input",
+  "new_path": "/var/lib/sysbox/fixed-store/data/store/input",
+  "replacements": 3,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Only the three private preparation input paths in a fresh native Compose-example fixture copy move into the delivered bounded filesystem. The original setup and every assertion remain unchanged."
+}

@@ -1,0 +1,10 @@
+# Combine with compose.yaml for the controlled bounded-store deployment.
+services:
+  worker:
+    command:
+      - --store-id
+      - ${FACTORYBOX_STORE_ID:?set the persistent store identity}
+      - --bounded-root
+      - /var/lib/sysbox/fixed-store
+      - --bounded-bytes
+      - ${FACTORYBOX_STORE_BYTES:?set the fixed store size in bytes}

@@ -54,6 +54,13 @@ deadline and uses at most two live sandboxes. Its command responses are an
 integration transcript; the acceptance tests separately prove RAM/filesystem
 independence and first useful application work.
 
+The client records the two administrator-owned input mounts before Start.
+After the complete pause, it requires the same mount identities and releases
+only those mounts with ordinary unmount. Their backing and the complete
+checkpoint remain. Changed, nested or stacked input mounts stop the workflow.
+The worker receives 45 seconds for its own drain; a nonzero exit or OOM stops
+replacement and retains the old container/store for inspection.
+
 ```sh
 mise exec -- python3 examples/worker/workflow.py \
   --project factorybox-demo --bundle /var/lib/sysbox/input/bundle \
@@ -70,7 +77,41 @@ The new worker remains available after a successful run. Stop this dedicated
 Compose service when finished. Remove the exclusively owned volume only when
 its retained snapshots are intentionally no longer needed.
 
-Current validation: the exact Compose/workflow client passes with the C9
+## Bounded-store candidate
+
+For the controlled first-release candidate, combine `compose.yaml` with
+`compose.bounded.yaml`. Keep the same complete external volume and store ID.
+Add the exact fixed image size to the private environment file, for example
+`FACTORYBOX_STORE_BYTES=34359738368` for 32 GiB. This is the tested Factory
+capacity, not a promise that every workload or recovery generation fits.
+The worker reports capacity and refuses writes that cannot be admitted.
+
+```sh
+docker compose --env-file factorybox-worker.env --project-name factorybox-demo \
+  --file examples/worker/compose.yaml --file examples/worker/compose.bounded.yaml \
+  up --detach --pull never worker
+```
+
+Prepare the private bundle inside
+`/var/lib/sysbox/fixed-store/data/store/input/bundle`, on the bounded filesystem.
+Call the workflow with that bundle and `--bounded-bytes 34359738368`. It uses
+both Compose files for every stop/replacement and verifies the actual bounded
+store identity on both workers. The fixed image and its ownership metadata,
+controller epochs and all backing remain one persistent storage unit.
+The [first-release operating procedure](../../docs/first-release-operations.md)
+tracks the required acceptance separately from the historical pilot.
+
+The bounded example passes with the actual independently reproduced
+`2291d87be1f24212ba7af731968ea94b` worker package and a 32-GiB store in
+`factorybox-worker-example-3f93920dace74945b3cb7d405211a90d`.
+It checks unchanged mounts after a refused identity request, both clean
+worker stops, exact recovery replay and an independent descendant. The
+32-MiB actor uses the full delivered rootfs input. The earlier 4-GiB attempt
+fills the store during recovery cloning and remains failed with its complete
+archive retained. Full consumer, external-agent and final-release acceptance
+remain separate.
+
+Historical validation: the previous Compose/workflow client passes with the C9
 delivered worker in
 `factorybox-worker-example-ef2308c7d09b430595d5581a214e9c06`, including full
 worker removal/recreation, recovery/replay, subsequent checkpoint/fork and

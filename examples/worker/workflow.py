@@ -19,16 +19,22 @@ def main():
     parser.add_argument("--output", type=Path, required=True, help="New private directory for responses and recovery request")
     parser.add_argument("--context", default="default")
     parser.add_argument("--sudo", action="store_true")
+    parser.add_argument("--bounded-bytes", type=int,
+                        help="Use compose.bounded.yaml with an exact 4-32 GiB store")
     args = parser.parse_args()
+    if args.bounded_bytes is not None and not 4 << 30 <= args.bounded_bytes <= 32 << 30:
+        parser.error("bounded store must be between 4 and 32 GiB")
     store = os.environ.get("FACTORYBOX_STORE_ID", "")
     volume = os.environ.get("FACTORYBOX_STORE_VOLUME", "")
     image = os.environ.get("FACTORYBOX_WORKER_IMAGE", "")
     bundle = PurePosixPath(args.bundle)
+    input_root = PurePosixPath("/var/lib/sysbox/fixed-store/data/store/input"
+                              if args.bounded_bytes is not None else "/var/lib/sysbox/input")
     if (not re.fullmatch(r"[0-9a-f]{32}", store) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,254}", volume) or
             not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[0-9a-f]{64}", image) or
             not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", args.project) or
-            str(bundle) != args.bundle or not bundle.is_relative_to("/var/lib/sysbox/input") or
-            bundle == PurePosixPath("/var/lib/sysbox/input") or ".." in bundle.parts):
+            str(bundle) != args.bundle or not bundle.is_relative_to(input_root) or
+            bundle == input_root or ".." in bundle.parts):
         parser.error("requires exact image/store inputs, a dedicated project and canonical private bundle")
     args.output.mkdir(mode=0o700)
     # sudo may discard the calling process environment. Explicit, validated
@@ -37,12 +43,16 @@ def main():
     fd=os.open(compose_env,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with os.fdopen(fd,"w") as stream:
         stream.write(f"FACTORYBOX_WORKER_IMAGE={image}\nFACTORYBOX_STORE_ID={store}\nFACTORYBOX_STORE_VOLUME={volume}\n")
+        if args.bounded_bytes is not None:
+            stream.write(f"FACTORYBOX_STORE_BYTES={args.bounded_bytes}\n")
         stream.flush();os.fsync(stream.fileno())
     docker = (["sudo", "-n"] if args.sudo else []) + ["docker", "--context", args.context]
     compose = ["compose", "--env-file",str(compose_env), "--project-name", args.project, "--file", str(Path(__file__).with_name("compose.yaml"))]
+    if args.bounded_bytes is not None:
+        compose += ["--file", str(Path(__file__).with_name("compose.bounded.yaml"))]
     deadline = time.monotonic() + 420
     journal = {"schema": 1, "store_id": store, "image": image, "project": args.project,
-               "passed": False, "steps": []}
+               "bounded_bytes": args.bounded_bytes, "passed": False, "steps": []}
 
     def save():
         target = args.output / "workflow.json"
@@ -108,6 +118,14 @@ def main():
                 value = json.loads(run(["exec", identity, "/opt/factorybox/factorybox", "worker-status"], record=False, timeout=5))
                 if value["schema"] != 1 or value["store_id"] != store:
                     raise ValueError("worker status schema/store differs")
+                if args.bounded_bytes is not None:
+                    bounded = value["lifecycle"].get("bounded_store", {})
+                    if (value["store"] != str(input_root.parent) or
+                            bounded.get("target") != "/var/lib/sysbox/fixed-store/data" or
+                            bounded.get("image", {}).get("bytes") != args.bounded_bytes or
+                            bounded.get("image", {}).get("owner") != store or
+                            not bounded.get("direct_io")):
+                        raise ValueError("worker lacks the requested bounded store")
                 return value
             except (RuntimeError, tarfile.TarError, json.JSONDecodeError):
                 time.sleep(.1)
@@ -121,6 +139,14 @@ def main():
             raise ValueError("unsupported lifecycle response version")
         return value
 
+    def input_mounts(identity, action, expected=None):
+        inspect(identity)
+        helper = Path(__file__).with_name("bundle_mounts.py").read_text()
+        command = ["exec", identity, "python3", "-c", helper, action, args.bundle]
+        if expected is not None:
+            command.append(json.dumps(expected, separators=(",", ":")))
+        return json.loads(run(command))
+
     try:
         saved_volume = json.loads(run(["volume", "inspect", volume], record=False))[0]
         if saved_volume.get("Labels", {}).get("io.factorybox.store-id") != store:
@@ -129,27 +155,38 @@ def main():
         old = worker_identity()
         previous = status(old)
         journal["old_worker"] = {"container_id": old, "status": previous}
+        original_mounts = input_mounts(old, "inspect")
+        journal["prepared_bundle_mounts"] = original_mounts
+        save()
         token = uuid.uuid4().hex
         source, recovered, child = (prefix + token[:12] for prefix in ["source-", "recovered-", "child-"])
         first, second, third = (uuid.uuid4().hex for _ in range(3))
         ctl(old, "start", "--bundle", args.bundle, source)
         ctl(old, "pause", "--snapshot-id", first, source)
         ctl(old, "resume", "--snapshot-id", first, source)
-        paused = ctl(old, "pause", "--snapshot-id", second, source)["record"]
+        paused_view = ctl(old, "pause", "--snapshot-id", second, source)
+        paused = paused_view["record"]
         pause = paused["pause"]
         if (paused["phase"] != "paused" or not pause.get("completed_at") or
                 not re.fullmatch(r"[0-9a-f]{64}", pause.get("checkpoint_sha256", "")) or
                 pause["after"]["anon"] != 0 or pause["snapshot"]["resident_bytes_after"] != 0):
             raise ValueError("pause lacks full durable commit and measured snapshot-RAM release")
+        if paused["input_bundle"] != args.bundle or paused["rootfs"] != args.bundle + "/rootfs":
+            raise ValueError("paused source no longer identifies the prepared input bundle")
         request = ["recover-paused", "--source-root", previous["lifecycle"]["root"], "--source", source,
                    "--snapshot-id", second, "--source-owner", paused["owner"],
                    "--checkpoint-sha256", pause["checkpoint_sha256"], recovered]
         journal["recovery_request"] = request
         save()
+        journal["released_bundle_mounts"] = input_mounts(old, "release", original_mounts)
+        save()
         inspect(old)
-        run(compose + ["stop", "worker"], timeout=20)
-        if inspect(old)["State"]["Running"]:
-            raise ValueError("old worker is still alive")
+        run(compose + ["stop", "worker"], timeout=60)
+        stopped = inspect(old)["State"]
+        journal["old_worker"]["stopped_state"] = stopped
+        save()
+        if stopped["Running"] or stopped["ExitCode"] != 0 or stopped["OOMKilled"]:
+            raise ValueError("old worker did not complete a clean drain; preserve its container and store")
         run(compose + ["rm", "--force", "worker"])
         run(compose + ["up", "--detach", "--no-deps", "--pull", "never", "worker"])
         new = worker_identity()

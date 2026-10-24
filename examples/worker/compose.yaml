@@ -8,7 +8,7 @@ services:
     mem_limit: 3g
     pids_limit: 512
     network_mode: none
-    stop_grace_period: 15s
+    stop_grace_period: 45s
     labels:
       io.factorybox.store-id: ${FACTORYBOX_STORE_ID:?set the persistent store identity}
     environment:
