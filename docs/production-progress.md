@@ -6624,3 +6624,56 @@ The delivered runtime core is unchanged. The historical EBUSY, remaining
 external/storage/operating acceptance and final predetermined consumer series
 remain open. Production qualification remains false and the full goal stays
 active.
+
+## Current delivered package: external provider still refuses inference
+
+Synthetic gateway proof
+`factorybox-provider-gateway-fdbc8d48062d4d67bf0c669f6b4fda61` passes on the
+current worker `2291d87be1f24212ba7af731968ea94b`, including two actual namespace
+HTTP exchanges, foreign identity/mode refusal, exact pidfd stop, clean worker
+exit, unchanged inputs/globals and owned cleanup. This qualifies its optional
+consumer helper on the current image; external inference is a separate test.
+
+The first consumer invocation uses an incorrect Theia image repository name
+and stops during image inspection before creating a native artifact or test
+resources. Its failed preflight is recorded in the busy-notes artifact's
+`external-preflight.json`. The corrected invocation uses the exact image from
+the earlier complete Factory proof. Fresh Theia setup passes in
+`factorybox-theia-admission-4163a5ec86c14f8287a33750b4dc3a04`.
+
+Actual complete Factory/Theia/OpenCode attempt
+`factorybox-consumer-worker-loss-c8b44679edb740469501252e92b24217` then fails
+on the current delivered package with the same 32-GiB bounded store, original
+assertions and separate IDE ceiling. Current catalog and pricing requests
+return 200 and still explicitly identify `glm-5.3-flash-free` as free. The
+shipped OpenCode 2.0.27 makes one actual model request, which returns HTTP 429
+`FreeUsageLimitError` and `Retry-After: 67029`. No inference retry occurs.
+The original developer test fails after 117.21 seconds because the model never
+starts its required 16-MiB held tool. Later capture/fork/pause/resume and agent
+result assertions remain unrun. The source result stays failed and external
+acceptance stays false.
+
+The request starts at 2026-10-24 05:22:50.953 UTC. Its reported wait sets the
+earliest next attempt at approximately 2026-10-25 00:00 UTC; this does not
+promise availability then. Keep that backoff while progressing independent
+storage/operating work. The earlier EEF-package provider failure remains intact.
+
+The complete failed store is preserved as 34,360,786,944 decoded bytes,
+SHA-256 `746ccb98fada1fffe679745b0a6cc1f9e3957ba834df8e458f254945e0c10f74`.
+Exact owned cleanup and unchanged globals pass. Repack
+`factorybox-storage-repack-c76f8823f78548a293b968af9c4726a6` verifies every
+decoded byte before reclaiming 799,443,366 encoded bytes. The full failed store
+remains reconstructable in 663,511,406 encoded bytes. All original source,
+request/response, native result, logs and exact helper reconstruction remain.
+
+Independent binding
+`factorybox-current-provider-observation-5d6d33ac92ca4850be51901432a7a11b`
+rechecks the one real 429 exchange, free-price discovery, original failed
+assertion, exact delivered sources/CLI/components, gateway proof, all frozen
+inputs, complete failed archive and actual absent owned resources. Its passed
+evidence-verification result explicitly leaves native external acceptance
+false. The retained archive raises allocation to 24.66 GiB after compression;
+the unchanged 8-GiB start reserve therefore refuses another native allocation.
+Further verified offline compaction is required before new builds/native runs.
+The complete goal and original chat handoff are unchanged; production
+qualification remains false.
