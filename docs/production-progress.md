@@ -1,6 +1,6 @@
 # Local production work
 
-Status on 2026-10-23: active, **production qualification false**. The accepted
+Status on 2026-10-24: active, **production qualification false**. The accepted
 [goal](../GOAL.md) extends the completed local pilot. Its frozen starting point
 is commit `521e05799853c8546c9db5de31d178c548c49573` and artifact
 `factorybox-production-baseline-0c99cab81e224d1db537b81d12a2e2f9`.
@@ -6130,3 +6130,160 @@ confirms the check above is terminal and successful and that no build, native
 suite or portable check remains live. The next action is to commit the proven
 core fix and independently build the delivered package. The complete goal and
 parallel-chat handoff remain unchanged; production qualification remains false.
+
+## Independent delivered packages after the restore-worker fix
+
+Commit `d0d2834` preserves the native-proven restore completion change. Fresh
+worker build `factorybox-build-worker-2291d87be1f24212ba7af731968ea94b`
+and independent comparison
+`factorybox-build-worker-68c046296c8e440a8afe8a43114d1f23` both pass.
+Each starts a separate empty compiler cache with pinned native Go 1.27.1,
+offline module resolution and the unchanged pinned Sysbox/CRIU components.
+Both reproduce every source, CLI, bundle, deterministic raw package, image
+and layer byte. Their optional compiler scratch is removed only after each
+successful build, with its inventory and reconstruction receipt retained.
+
+The delivered CLI SHA-256 is
+`5fd51d939f859df01d83fa3b057b083e7978b7165620d9b804fb811978bbd81f`.
+The 94,566,400-byte deterministic raw package SHA-256 is
+`4205f26771855483aac72741f847b0fab263c66130781b9611684c41d95d5a15`.
+The fully decoded verified encoded package is 34,292,884 bytes, SHA-256
+`319a117063717dae7351195a788da9482dff8baf313208e3e81e12abfa073707`.
+The common image ID is
+`sha256:7b521eaa4c3e4d6d787930d1d1d66bc11b0876c034a291e904588fb598093cbc`.
+No consumer test dependency enters the CLI.
+
+`package-proof.py` and `packaged-core-closure.json` in
+`factorybox-restore-worker-proof-f234ce0e0670482cabcc66d984637e23`
+independently verify both complete builds and bind their exact Go source and
+component bytes to the three native capture/pause/namespace successes above.
+All three full native archives decode and all frozen source/compiled inputs
+verify again. The original counterexample, portable checks, unchanged goal
+and saved parallel-chat context remain bound. Native in-process regression
+proof and actual delivered CLI/image consumer acceptance retain their distinct
+scopes; neither this closure nor reproducibility alone qualifies production.
+
+The 8-GiB start reserve refuses a subsequent capacity preflight at 24.02 GiB
+before any consumer starts. Offline maintenance
+`factorybox-storage-share-restore-rebuilds-f5a248f6582841a6802cab34eb4f6e29`
+then revalidates both complete independent builds and shares only their two
+identical CLI/encoded-package files, reclaiming 50,544,640 allocated bytes.
+Every original path, byte, source, result, mode, owner and reconstruction
+receipt remains. Original/shared mtimes and complete package verification
+are retained. The required start headroom is restored without retiring a dump.
+
+The actual delivered package then passes the unchanged complete Factory
+lifecycle in
+`factorybox-consumer-worker-loss-867cf04fd2464dd4af15944728a9fe60`.
+The original native test takes 191.40 seconds. The separate native Theia
+connection, real Connector responses/edits, local deterministic OpenCode tool,
+complete RAM/filesystem capture, independent fork/fork-of-fork, source deletion,
+RAM-releasing pause, useful resume and checkpoint/fork of the resumed source
+all pass. The actual 32-GiB bounded store, clean worker exit, exact owned
+container/volume cleanup and unchanged global settings pass. This is one
+ordinary local-model observation, not external-provider or worker-loss proof
+and not a member of the final predetermined series.
+
+`packaged-consumer-closure.json` verifies the exact delivered CLI/image,
+independent package reproduction, complete current consumer source and every
+original compiled/fixture input, while retaining the native red/green binding.
+`factory-performance.json` records the unchanged strict timing extractor and
+all observations. This run measures prepared useful work 24.492 s, cold
+worker-to-useful work 59.436 s, useful fork 16.519 s, capture plus useful fork
+35.356 s, pause 10.535 s, useful resume 7.998 s, and resumed capture plus useful
+fork 38.776 s. These individual observations differ from the preceding
+candidate and are not a matched regression or optimization comparison.
+Anonymous source memory falls from 103,477,248 to zero and resident snapshot
+bytes from 503,484,416 to zero; the source cgroup still holds 17,489,920 bytes.
+No whole-worker zero-memory or latency-distribution claim follows.
+
+The following raw restore-hold suite allocation is refused by the unchanged
+8-GiB start reserve at 24.01 GiB, before an artifact or native test is started.
+Its preflight log remains `restore-hold-native.log` in the restore-worker proof.
+No required assertion is recorded as passed or failed by that refusal.
+
+Maintenance
+`factorybox-storage-share-test-encodings-e9f1c5cfde23480e84e639bfb39a5910`
+then shares 35 identical closed encoded helpers after full canonical decode,
+reclaiming 229,314,560 allocated bytes. Original results, inputs, encoding
+receipts and every path remain. The subsequent complete raw restore-hold
+suite passes in
+`factorybox-checkpoint-retirement-6b0e1e7b70174ae4853b7621904af3c0`.
+All five unchanged cases pass: fork, resumed source, fork disconnect, resumed
+disconnect and foreign acknowledgement. The original counter stays held
+before acknowledgement and after CRIU detach until explicit thaw; the three
+negative controls refuse without exposing the application or inventing a
+completion receipt. The native test takes 16.79 seconds. Exact owned cleanup,
+unchanged inputs and global settings pass. This tests the pinned raw backend
+protocol; it does not by itself test loss of the new completion helper.
+
+The complete timer guard-loss boundary passes on the delivered package in
+`factorybox-checkpoint-retirement-ff77e3f0b8ac43558d2362f693ce6065`.
+Actual guard and capture-worker SIGKILL, controller completion/reaping, exact
+unchanged replay refusal, queued signal preservation and the original frozen,
+untraced source all pass. This is the existing ungranted completed-process
+boundary, not a claim of automatic recovery at every capture phase.
+
+`component-proof.py` and `component-closure.json` reverify and bind the existing
+selected upstream component outcomes to the new delivered package's identical
+Sysbox/CRIU bytes. Frozen Sysbox source, native SHM correction, all original
+Go JSONL outcomes, Bats TAP/inputs and CRIU case/component identities verify.
+The reused evidence contains 727 Go passes with 18 original skips, seven
+lifecycle Bats passes, four systemd Bats passes with two original skips, and
+18 CRIU core cases with two ordinary dump/restore cycles. No old Factorybox
+Go-core native gate is reused for the changed core, and no original skip is
+converted into a pass. This remains the selected supported component scope,
+not the entire upstream umbrella matrix or production qualification.
+
+The predeclared complete additional boundary sequence in
+`remaining-boundaries-intent.json` and `remaining-boundaries.json` passes all
+eleven selected groups on the same delivered core, without a failure or skip:
+timer-state-reader, timer-exit-guard, timer-signal, timer-admission-signal,
+timer-remainder, timer-remainder-protection, timer-orphan, record-metadata,
+worker-metadata, retirement, and storage-timer-abort. Each child retains its
+original runner, full source/input context, native assertions and outcome.
+The sequence stops on any failure or unrun allocation; no failed member is
+replaced. This sequence is separate from the still-required final ten complete
+ordinary lifecycle runs per example.
+
+The worker-metadata member
+`factorybox-checkpoint-retirement-ec850ba804f2498c990ca46b1c5f2b85`
+uses all 200 public base imports and three actual committed pauses. The
+original admission boundary passes in 44.39 s; complete outer execution takes
+71.65 s, including clean source-worker drain, unchanged protected inventory,
+replacement-worker recovery and clean replacement exit. Its completion ledger
+contains all 200 bases and three pauses in 4,192,256 bytes, below the original
+4-MiB reader bound. The exact original assertions and full-size fixture remain.
+
+The complete retirement member
+`factorybox-checkpoint-retirement-b0f90369ff9b4d168a4aba60ae5b45cf`
+passes all six original top-level tests, including actual controller SIGKILL,
+observed reclaimed capacity, independent descendants, protected selections,
+alias/base preservation and original worker exit/recovery fences. The actual
+post-admission ENOSPC member
+`factorybox-storage-admission-9bd58c3a1f6949ebb4cf65fc9aeb25f0`
+passes confirmed source rollback and the original protected-remainder
+EINTR/ABI/deadline assertions. These do not establish useful recovery after
+freeing space in the separate historical 8-GiB consumer failure, automatic
+retention, general completion-helper loss or the remaining full release gates.
+
+Closed-run helper sharing
+`factorybox-storage-share-test-encodings-19864796f2c94acb8de0e29605e9d8c0`
+fully verifies and shares twelve identical encoded test inputs, reclaiming
+125,779,968 allocated bytes. The storage timer-abort binary has its full
+decompression/reconstruction receipt as well. No result, source, assertion,
+failure dump or original path changes.
+
+Final milestone verifier `turn-closure.py` and `acceptance-progress.json` bind
+the two package builds, actual delivered consumer, three native core suites,
+component proof reuse and all thirteen additional boundary suites. It
+reverifies complete source/compiled inputs, original success/no-skip logs,
+unchanged globals, the 200-base/three-pause recovery and actual ENOSPC proof.
+Direct label-filtered Docker queries confirm no container or volume remains
+for any of the thirteen boundary owners. The required next-run storage reserve
+passes. The full goal and saved parallel-chat handoff remain byte-identical.
+Historical EBUSY attribution, remaining current-package native/integration and
+external-provider cases, broader storage/operator recovery, complete tested
+operating procedures, the final ten-per-example series and final release
+profile remain required. The goal stays active and production qualification
+remains false.
