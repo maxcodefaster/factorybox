@@ -10,9 +10,10 @@ Versuch. Der ursprüngliche Ablauf ist beendet. Das vollständige Ergebnis steht
 in `artifacts/factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3/result.json`.
 Die fünf Betriebsfälle sind anschließend vollständig bestanden und unabhängig
 geprüft: Startfehler, Speicheridentität, alle acht Stop-Schutzfälle, der gelieferte
-Compose-Ablauf und tatsächlicher Update/Rückfall. Die weiteren Speicher-/Drain-
-Prüfungen benötigen weiterhin ihre vollständigen Ergebnisse. Ein eingereihter
-Test ist kein Pass.
+Compose-Ablauf und tatsächlicher Update/Rückfall. Auch alle fünf weiteren
+Speicherfälle sind bestanden und unabhängig geprüft. Die zusätzlichen
+Drain-/CLI-Recovery- und Anbieterfälle benötigen weiterhin ihre vollständigen
+Ergebnisse. Ein eingereihter Test ist kein Pass.
 
 Für die Abnahme verwenden wir den korrigierten Worker
 `6016296965364344a8ef9eede420dbc8`, unabhängig identisch nachgebaut als
@@ -120,7 +121,7 @@ unter der unten benannten neuen Erklärung.
 | Anforderung | Belegter Stand des aktuellen Kandidaten | Noch erforderlich |
 | --- | --- | --- |
 | Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
-| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. Die weiteren StoreFS-, Basis-/Geräte-Recovery-/Retained- und öffentlichen Aufnahmeprüfungen sind ebenfalls bestanden. | Beide Abschlussgrößen-Grenzfälle mit der erklärten Altbestand-Fixture abschließen und die weiteren Speicherbelege unabhängig prüfen. Die Nachweise im Endprofil verbinden. |
+| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. Alle fünf zusätzlichen Speicherfälle einschließlich beider Abschlussgrößen-Grenzfälle mit erklärter Altbestand-Fixture sind bestanden und unabhängig geprüft. | Die Nachweise im Endprofil verbinden. |
 | Vollständige Integration | Alle 15 benannten Fälle sind unabhängig geprüft: fünf Retained-, sechs Docker-Abbruch-, zwei vollständige Anwendungs- und zwei unveränderte Komponentenfälle. Die erwartete Ablehnung beschädigten RAMs und ursprünglichen Upstream-Skips bleiben ausgewiesen. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Anwendung bei vollem Speicher wiederherstellen | Alle vier vollständigen Factory-/Minimal-Fälle bei geplantem und hartem Worker-Verlust bestehen auf 6016, einschließlich Platzmangel und Epochenstilllegung. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Bestanden in `factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`: unverändertes schreibgeschütztes Original auf Loop0, unabhängiger Import und echte Wiederherstellung mit dem ursprünglichen CLI-/CRIU-Rezept. Vollständiger ursprünglicher Anwendungszustand und gespeicherter Agentenabbruch stimmen überein; eine neue Anwendungsänderung besteht ohne Werkzeug-Replay. Originalabbild unverändert, Aufräumen vollständig, insgesamt 93,33 Sekunden. Die tatsächlichen Dienstpfade des frischen Workers mussten dem gespeicherten Rezept entsprechen. | Nachweis ins Endprofil aufnehmen. Dieser forensische Weg qualifiziert weder das alte Paket als Rückfallversion noch einen Rezeptwechsel für alte Sicherungen. |
@@ -165,8 +166,11 @@ Ein gesonderter historischer Aufräumversuch unter demselben Handoff schaltet
 bei zwei ursprünglichen Proc-Testpaaren sowohl automatische Go-GC als auch
 deren weiche Speichergrenze aus. Die harte Worker-Grenze bleibt 3 GiB.
 Die qualifizierte Kernel-Beobachtung und die ursprüngliche unmittelbare
-Unmount-Assertion bleiben erhalten. Der Versuch ist noch nicht ausgeführt;
-auch ein Erfolg würde die historische Fehlerursache nicht erklären.
+Unmount-Assertion bleiben erhalten. Der Versuch besteht mit 13 Haupttests und
+65 Untertests. Es gibt keinen beobachteten EBUSY bei 231 erfassten Unmounts
+und keine verlorenen Probe-Ereignisse. Das erklärt den historischen Fehler
+weiterhin nicht; der geprüfte Nachweis liegt in
+`gc-without-soft-limit/native-closure.json`.
 
 Die Anbieterfolge liegt unter demselben Handoff in
 `current-external-acceptance/`. Sie wartet auf den vollständigen Abschluss der
@@ -188,6 +192,18 @@ Worker, Daten, Fences, Unmounts und Aufräumen bleiben erhalten. Die Runtime
 und ihre Aufnahmegrenze sind unverändert. Die neue, vollständig vorab
 festgelegte Fortsetzung liegt in `acceptance-after-legacy-fixture-correction/`.
 Die früheren eingereihten Folgen sind ohne eigene native Ausführung beendet.
+Beide Abschlussgrenzen sind inzwischen bestanden. `storage-closure/closure.json`
+prüft alle fünf tatsächlichen Ergebnisse, Quellen, Fixture-Änderung, rohe
+Ausgaben und Traces sowie die Abwesenheit der eigenen Ressourcen erneut.
+
+Auch der ursprüngliche PID-Gegenbeweis und seine Kontrolle bestehen mit der
+tatsächlich ausgelieferten CRIU-Komponente `c0d11aeb...`. Der unveränderte
+ursprüngliche Prozessabbild-Test und sämtliche Kernel-Assertions zeigen, dass
+PID 2 erfolgreich belegt wird, während der absichtlich verzögerte echte Helfer
+noch unter einer anderen PID existiert. Diese Komponentenprüfung verwendet
+das ursprüngliche Test-Image; die vollständige aktuelle Paketprüfung bleibt
+durch die getrennte 20er-Serie belegt. Der Nachweis liegt unter
+`current-pid-seed-proof/closure.json`.
 
 Die ausgewählte ursprüngliche 8-GiB-Sicherung bleibt vollständig erhalten.
 Nur die inzwischen durch den erfolgreichen Rettungstest ersetzte Arbeitskopie

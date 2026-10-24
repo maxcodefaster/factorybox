@@ -9873,3 +9873,63 @@ entries. It keeps the original commands outside the declared fixture change,
 normal artifact reserve, resource/deadline limits, maintenance and provider UTC
 backoff. Original exec is 56846, PID 151609/birth 29538353. A queue entry is not
 a pass. Production qualification remains false and the full goal stays active.
+
+Both original exit-byte-boundary cases now pass with the declared administrative
+legacy fixture: oversized ac5d and narrow completion a430. Their bounded workers
+refuse before every canonical unmount and both fence publications. Every real
+base's bytes/identity/provenance survive exact worker replacement; the empty
+replacement stops cleanly. Independent `storage-closure/verify.py` rechecks all
+five additional storage cases, including the three original passes without
+rerun, frozen sources/drivers, unchanged original assertions and VERIFY program,
+original native PASS output, all sixteen retained controls, raw inventories,
+traces, refusals and exact absence of owned containers/volumes.
+`storage-closure/closure.json` SHA-256 is
+`2ce49ba2ba94b1f6b1d30419246ddedd056906c906e38c84dea38c5a79ee3b50`.
+The private reader initially used an incorrect device-test name and compared
+the intentionally abbreviated result inventory with the whole raw manifest.
+Its corrected reader retains the actual native assertions and full raw inventory;
+neither failed native result nor any test is changed.
+
+Historical native `factorybox-historical-admission-0a8bc7ede69b4478914799b7ac07e910`
+passes the fixed two Proc pairs and all original adapter assertions, thirteen
+main tests and 65 subtests, with both GOGC and GOMEMLIMIT off. Its qualified
+kernel observer records 231 complete unmount calls, no EBUSY and no probe loss.
+Three UMOUNT_NOFOLLOW calls return EINVAL and remain in the record. The original
+historical failure is still not explained. The private continuation parent stops
+because it demands two absent result fields, `source_context_unchanged` and
+`components_unchanged`; this diagnostic folds both checks plus observer/tracer
+inputs into `inputs_unchanged`. That parent remains false. The independent
+`gc-without-soft-limit/native-closure.json` verifies actual original sources and
+components, all expected PASS outcomes, original and observed binaries, native
+input/trace hashes, decoded raw events, unchanged globals and exact own cleanup.
+Its SHA-256 is `b510a5add688639564e06a1cf51d1646c5340037c52661a6b635d0ce299e5645`.
+No passed native diagnostic is rerun to repair a private queue-reader error.
+
+The final current-CRIU PID audit is also complete. Under `current-pid-seed-proof/`,
+the original process-image test binary, both fault/control commands and the
+complete original kernel assertion block remain unchanged. Only the selected
+CRIU component changes from prior 8c9 to actual delivered c0. Exact source-change
+and analysis patches bind its complete context and ordered patch stack, including
+the two later error/zombie fixes. Native fault case 7c96 and no-fault control b1e8
+both pass with all 330 original files/515,577,040 bytes verified. Actual tracing
+proves the delayed real helper remains unreleased at a PID above 2 while saved
+PID 2 allocates successfully. Original filesystem metadata rejection remains
+asserted; the old diagnostic image is not called a current full-package run.
+The complete 20 current-package lifecycles remain separate evidence.
+`current-pid-seed-proof/closure.json` SHA-256 is
+`691a9d4a79d5ee53c47e8ddf2438ee8d73a25985db3c21c8d809f92d4a7945a2`.
+Coordinator 42627/PID 166676 is terminal and passed. Its predecessor was already
+terminal; no provider supervisor was paused and no watchdog was needed.
+
+The fifteen still unstarted original drain/restart/gateway/provider entries now
+continue under `remaining-after-storage-and-pid/plan-v2.json`, SHA-256
+`44b84f79500799c842fd6b758cc6b3e92bccf35c1d665e721dd80a5cc81e5566`.
+Exec 61324/PID 167818, birth 29566425, waits for the exact PID coordinator's
+terminal passing result and closure before allocating native resources.
+Private queue v1 refused at its no-live-native guard before recording an
+execution; v2 retains that guard after the named dependency wait. All original
+files remain. No native trial or assertion is replaced. The first Minimal
+interrupted-drain case now passes in
+`factorybox-consumer-worker-loss-2a8d0e908eed495d933b8ca9620cd654`.
+Other entries remain pending and the original provider UTC backoff still applies.
+The reference verification passes again for all 232 immutable files.

@@ -20,8 +20,12 @@ the same CRIU component's eighteen cases/two cycles are bound separately.
 The additional eleven targeted timer/restore-hold/metadata groups, complete
 retirement/capacity cases, both interrupted public epoch cases, all four full
 pressure consumers and all fifteen integration cases now pass as indexed in
-the current status. Actual-provider acceptance, remaining coverage audit,
-operations acceptance and the running ordinary series remain open. See the
+the current status. The twenty predeclared ordinary trials and all five
+operating cases are now complete and independently verified. The five further
+storage cases, including both exit-size boundaries with declared administrative
+legacy preparation, are also independently closed. Actual-provider acceptance,
+the remaining interrupted-drain/CLI-recovery coverage, historical busy-mount
+attribution and final profile audit remain open. See the
 [current release status](first-release-status.md) for the current matrix.
 
 The following consumer and eighteen-group native evidence belongs to the
