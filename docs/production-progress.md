@@ -8920,3 +8920,55 @@ executables with complete reconstruction receipts and returns 50,491,392
 allocated bytes. Original results, logs, source, selected inputs and complete
 failure stores remain unchanged. These maintenance operations restore the
 mandatory eight-GiB start reserve without bypassing it.
+
+Worker `factorybox-build-worker-6016296965364344a8ef9eede420dbc8` now packages
+the corrected Go core with the unchanged a930 CRIU and a3d Sysbox components.
+Its raw package SHA-256 is
+`3a33f704823e748395b2937b9f4d65fdfd6224ebc9b6ba165b4be115af7f0f5d`,
+CLI SHA-256
+`dbc0df59f84c59a32ddb32962e0466ffd3ab565d46dd3bb9f9c0cf0b0b962aea`,
+and image ID
+`sha256:7e845d63b3bb2794c4aa1e8acf168b8ddbbf00438b51c2a6a1421751f184cc72`.
+The fresh no-cache independent build
+`factorybox-build-worker-829faef7ea3143038bebf72493474070` passes its explicit
+comparison: raw package, image ID and every image layer match. Its lossless
+compressed transport also matches exactly, 34,368,088 bytes with SHA-256
+`d48b59c9850c67a8c4e248de037dcf703b98426d244d451733cdd71e2ab4f161`.
+Both builds retain frozen source and verified compiler-scratch inventories.
+The final pause and native detach regression frozen core manifests match this
+worker exactly; their original assertions and source snapshots revalidate.
+These native source proofs do not replace delivered-CLI acceptance.
+
+The first independent-build attempt refuses at the unchanged eight-GiB
+preflight before creating an artifact or compiling. Closed verified input
+sharing `44007387d1544692a87e3f93cd81c314` returns 141,754,368 allocated bytes
+from six exact duplicate files, including completed worker components and
+CLI inputs. The actual independent build above starts only afterward and
+uses the completed worker's verified identical component inputs directly.
+No frozen recipe, package bytes, image identity, source or prior result is
+changed by this storage sharing. Full final-package acceptance remains open.
+
+The complete original abrupt Factory pressure/epoch scenario now also passes
+on the corrected package as
+`factorybox-consumer-worker-loss-77412471c65b4ca988471b01cebe5c28`, result
+SHA-256 `01a11402fa168a6ed00026486fde3efe9cb5301d669f47bc7d7f89788452ec08`.
+The delivered CLI/image, original assertions, bounded 32-GiB store, separate
+Theia and local OpenCode fixture are used. Actual post-admission import ENOSPC,
+unchanged old metadata, complete old checkpoint verification under pressure,
+preserved incomplete import, exact cancellation/replay, loop-slot replacement,
+independent successor pause, public epoch retirement, useful second resume,
+subsequent checkpoint/fork and independent useful descendants all pass.
+The intended abrupt preparation exit is 137; recovery and final worker stop
+exit with 0. Cleanup and unchanged global settings pass. No owned container
+remains. The helper encodings retain complete reconstruction receipts.
+
+Preparation probe takes 86.94 seconds and the recovery probe 230.59 seconds,
+including 87.45 seconds of epoch retirement. First useful recovered response
+is 51.29 seconds. These are one run's measurements, not a distribution or a
+demonstrated optimization. This required fault case contributes zero ordinary
+series trials and does not replace actual external-provider acceptance.
+The remaining native/storage/retirement and integration cases, other full
+consumer combinations, all twenty predetermined ordinary trials, original
+8-GiB useful restore, original EBUSY attribution, actual provider continuation,
+operations and final profile/audit remain open. Production qualification and
+the full goal remain unchanged.
