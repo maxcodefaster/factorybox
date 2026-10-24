@@ -9360,3 +9360,112 @@ ordinary-series trials. Original 8-GiB useful rescue, EBUSY attribution, actual
 provider acceptance, current operations/update/rollback, a newly declared
 twenty-trial ordinary series and the final full requirements/profile audit
 remain open. Production qualification remains false; the full goal is active.
+
+## 2026-10-24: original-image recovery attempted, pre-resume refusal retained
+
+The full first-release goal remains active. The current 6016/829f package and
+all fifteen integration results are unchanged. Work in this continuation is
+private diagnostic/setup code and evidence, not a new production runtime.
+
+A focused historical cleanup diagnostic first tests a finalizer-dependency
+hypothesis. `factorybox-historical-gc-diagnostic-af8bc3480ab44a8a94a7f731ec2fd6a7`
+freezes the exact driver diff and two original held/transient Proc pairs,
+adding only `GOGC=off` to the test invocation and inherited public CLI children.
+Original services, assertions, 256-MiB Go soft limit, 3-CPU/3-GiB worker and
+360/420-second deadlines remain. The existing declared observer binary adds
+only post-failed-unmount observation and has its original reproduction/vet
+proof. Native `factorybox-historical-admission-5f760c0ca9084475851e2171cc234fd3`
+passes all thirteen top-level and 65 subtests without a busy report. Its result
+SHA-256 is `8bfd973cb4f383e5b7662366d682f9bda2546cc348e86178f4abf6506f125941`.
+This does not reproduce or explain the historical EBUSY, and the unchanged
+soft memory limit can still force GC. The historical failure stays open.
+
+The original-image preparation check had incorrectly added temporary Docker
+workspace to the repository's 32-GiB artifacts-directory budget. The existing
+required native pressure tests already use separate owned 32-GiB stores, while
+`artifact_storage.require_capacity` accounts `ROOT/artifacts`. The private
+unexecuted extra check was corrected with complete source/diff hashes in
+`1d4dba81.../original-enospc-rescue/capacity-correction.json`. The 32-GiB cap,
+8-GiB new-run reserve and 12-GiB host floor are unchanged. The host had
+850,554,544,128 free bytes; the conservative original source plus 32-GiB native
+workspace and 8-GiB failure-evidence allowance are separately reserved against
+that host floor. No source guard, native assertion or production policy changes.
+
+The actual attempts use the original EEF delivered CLI
+`42381f1aaf7696d14ebd62ed296ed57329c718c026054aa27e93f21d05183566`
+and its exact CRIU `6263dd24...` to investigate the old 61eed image. They do not
+qualify that known-bug old package as a production fallback or prove current
+CRIU compatibility. The original source root, owner, checkpoint hash, same
+boot and loop0 device checks remain exact; the source is never adopted as a
+new bounded-store inode or edited to pass verification.
+
+First attempt `factorybox-enospc-original-rescue-78165d7e4bf547548291b3edb627ebfe`
+fully reconstructs and hashes the selected tar/image, then fails before mount
+because the worker's older Python lacks `hashlib.file_digest`. The failed
+result, including a subsequent cleanup-observer error, remains false with
+SHA-256 `ef6124f901213652378b4ef7deb4ddbadf31c555a0ddc0809182619fee8094f2`.
+Independent exact-label checks establish that no owned container or volume
+survives. The corrected helper uses incremental SHA-256 and proves absence
+of mount/loop/lock ownership on a pre-mount failure. Exact before/after/diff
+hashes are in `python-compatibility.json`; no image/content assertion is removed.
+
+`factorybox-input-image-sharing-4d48ac50458e46afb9a1a1aff8b9ccd9` losslessly
+shares that failure's duplicate immutable image input with the unchanged
+selected original archive. It retains exact tar framing and GNU sparse-map
+metadata. Independent reconstruction, using the canonical original image,
+reproduces the complete 8,422,162,432-byte failed tar and its original SHA-256
+`fbc9d1390c6eefeb07dac449917a92fe2daf21d16582b4cbf0434d7481e9853e`
+before removing the 2,600,020,213-byte duplicate encoding. Every other raw tar
+byte remains in the residual stream. The failure result and original source
+are untouched. Its new `.shared.json` receipt provides the frozen `--verify`
+and raw-tar `--stdout` reconstruction commands; this explicit input-reference
+format uses its own decoder rather than the generic single-zstd resolver.
+The sharing result is `8ecfe3b00162787a9eb4af51a4db498895fcf52f5de83d0731f79c160b700c96`.
+
+Second attempt `factorybox-enospc-original-rescue-92e954b3502b4fbd8ac3aad430459c80`
+successfully opens read-only loop0 with the original filesystem UUID, uses
+private runtime manager/lock aliases and imports the complete saved input into
+a separate writable controller. The actual restore then refuses before
+pre-resume readiness: `guard handshake did not arrive: <nil>`. The target
+record is still `starting` with no completed live identity. Neither the old
+application nor agent is claimed usable. Its original failed result SHA-256 is
+`4406064e5977ed5d4bfe30661ee0c5749f383557acc51983f5e458b0c81916fc`.
+Exact aliases, loop, container and volume cleanup passes, and the full source
+image hash after cleanup remains the original `d0df6e...`. Native work and
+failure retention take 164.054 seconds; no deadline or guard was relaxed.
+
+The complete 12,111,052,800-byte failed tar is retained with raw SHA-256
+`a584154adc24e170e20d2160379d5ca681b1bd366ac5e1c9474af86e4ce8f592`.
+`factorybox-storage-repack-d43fe4ea248f4d8986b243c2f3957929` independently
+decodes/verifies all bytes before replacing the 3,725,114,351-byte encoding by
+1,519,964,377 bytes, retaining standard exact replacement receipts. Its result
+is `70b6fa8e861fab936f64d695dcfa6d07c398335900a83065dd92c74478d122bc`.
+Diagnostic extraction `factorybox-restore-failure-diagnostics-bf094e7aff7f43588e32dd7b326d2bac`
+also verifies the entire source, retaining 31 bounded diagnostic files,
+4,344,722 bytes; result `4e55e017ee108bb737fd2064368a47d17c26befe817dc3b6932cf8402b6d8ac2`.
+
+Source inspection identifies a concrete setup inconsistency. The stored
+request expects `/var/lib/sysbox/fixed-store/data/store/manager`; the fresh
+worker actually starts the manager at `/var/lib/sysbox/store/manager`.
+An inode-identical bind alias does not change the manager's returned pathname.
+The delivered runc's `factorybox_restore.go:476-478` explicitly rejects that
+different returned target-volume path. Services register and unregister the
+target one second apart; retained diagnostics contain no restore log. The
+old Go hold wrapper discards its child-command error while returning the
+handshake timeout, so the sole actual backend error is not directly captured.
+The mismatch must be corrected without weakening path equality, source hashes
+or the original recipe. The proposed next fixture starts the worker with its
+actual store at the saved prefix, mounts the original image read-only at a
+separate inspection path and binds only the old controller back onto its exact
+saved pathname, removing those owned bindings/directories before worker stop.
+This proposal is not a passing restore proof.
+
+All jobs are terminal and no labeled native container remains. Artifact
+allocation is now 27,190,554,624 bytes after lossless retention. This fits the
+32-GiB cap but requires 1,420,750,848 additional bytes of verified closed
+sharing/retention before another normal 8-GiB-reserved build/native run.
+The original 61eed image, original PID/EBUSY/provider selections and this new
+complete unresolved restore failure remain preserved. No ordinary-series
+trial or external provider request occurred. Operations/update/rollback, the
+newly declared twenty-trial series, remaining coverage/profile audit and all
+other explicit first-release requirements remain open; production stays false.

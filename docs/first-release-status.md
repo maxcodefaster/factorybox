@@ -112,7 +112,7 @@ sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet
 | Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Die Nachweise im Endprofil verbinden und die vollständige Anforderungsabdeckung prüfen. |
 | Vollständige Integration | Alle 15 benannten Fälle sind unabhängig geprüft: fünf Retained-, sechs Docker-Abbruch-, zwei vollständige Anwendungs- und zwei unveränderte Komponentenfälle. Die erwartete Ablehnung beschädigten RAMs und ursprünglichen Upstream-Skips bleiben ausgewiesen. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Anwendung bei vollem Speicher wiederherstellen | Alle vier vollständigen Factory-/Minimal-Fälle bei geplantem und hartem Worker-Verlust bestehen auf 6016, einschließlich Platzmangel und Epochenstilllegung. | Nachweise im endgültigen Abnahmeprofil verbinden. |
-| Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. Zwei vollständige Archivmessungen bestätigen, dass die unveränderte Image-Datei auch mit sparsamer Speicherung fast 8 GiB belegt. | Platz für Originalabbild und separates Wiederherstellungsziel schaffen, dann tatsächlich wiederherstellen und nützliche Arbeit prüfen. Der vorbereitete Versuch braucht knapp 12 GiB und wurde noch nicht gestartet. |
+| Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Das Originalabbild ist unverändert schreibgeschützt auf Loop0 eingebunden und in ein separates Ziel importiert worden. Der Restore verweigert vor dem Auftauen die fehlende Wächter-Bereitschaft. Originalabbild, vollständiger Fehlerzustand und sauberes Aufräumen sind belegt. | Die unterschiedliche Verzeichnis-Konfiguration des frischen Sysbox-Dienstes im Versuchsaufbau korrigieren und den konkreten Restore-Fehler klären; danach die ursprüngliche Anwendung tatsächlich weiterbenutzen. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
 | Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. | Echte Fortsetzung, Abbruch und unklare Werkzeugwirkungen nachweisen. Keine Wiederholung vor `2026-10-24T23:59:59.953093Z`. |
 | Update, Drain und Rollback prüfen | Geprüfte Eingaben des Drain-Unterbrechers und Betriebsanleitung liegen vor. | Vollständige Betriebsfälle auf 6016, Kompatibilität oder kontrolliertes Leeren vor einem Wechsel. Kein bekannt fehlerhaftes Paket als qualifizierte Rückfallversion. |
@@ -122,6 +122,13 @@ Die [Fortschrittsbelege](production-progress.md) enthalten die einzelnen
 Artefakte, Fehler und Ersetzungen. Die
 [Betriebsanleitung](first-release-operations.md) bleibt bis zur vollständigen
 Abnahme eine Anleitung für den geprüften Entwicklungsstand.
+
+Die frühere Aussage, dass das Originalabbild zunächst zusätzlichen Platz im
+Artefaktbudget benötige, war ein Fehler im privaten Vorbereitungscheck.
+Temporäre Docker-Stores werden wie in den bestehenden nativen Tests gegen den
+freien Host-Speicher geprüft. Das 32-GiB-Artefaktlimit, die 8-GiB-Startreserve
+und der freie Host-Mindestbestand bleiben unverändert. Neue fehlgeschlagene
+Versuche erzeugen allerdings echte zusätzliche Belege im Artefaktverzeichnis.
 
 Die bisher jüngste, an ein älteres Paket gebundene Serienerklärung liegt unter
 `artifacts/factorybox-first-release-ordinary-series-c5663e4172ef495485621d537afbbef9/plan.json`,
