@@ -3,10 +3,41 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 
 import historical_admission_cleanup as diagnostic
 
 class HistoricalAdmissionInventory(unittest.TestCase):
+    def test_busy_observer_wrapper_preserves_native_arguments_and_failure_exit(self):
+        for native_status in [0, 7]:
+            with self.subTest(native_status=native_status), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                trace = root / 'observer'
+                trace.write_text('#!' + sys.executable + '\n'
+                                 'import pathlib,signal,sys\n'
+                                 'signal.signal(signal.SIGTERM,lambda *_:sys.exit(0))\n'
+                                 'pathlib.Path(sys.argv[sys.argv.index("--ready")+1]).write_text("ready")\n'
+                                 'signal.pause()\n')
+                trace.chmod(0o755)
+                original = root / 'original'
+                original.write_text('#!/bin/bash\nprintf "%s\\n" "$@"\nexit ' + str(native_status) + '\n')
+                original.chmod(0o755)
+                arguments = ['-test.v', '-test.timeout=360s', '-test.count=40', '-test.failfast',
+                             '-test.run', '^TestProcDirectoryAdmissionNative$']
+                command = 'exec /original.test ' + ' '.join(arguments) + '\n'
+                wrapped = diagnostic.busy_trace_wrapper('#!/bin/bash\nset -euo pipefail\n' + command)
+                self.assertEqual(wrapped.count(command.removeprefix('exec ')), 1)
+                script = root / 'invocation.sh'
+                script.write_text(wrapped.replace('/busy-trace ', str(trace) + ' ')
+                                  .replace('/original.test ', str(original) + ' ')
+                                  .replace('/output', str(root)))
+                done = subprocess.run(['bash', str(script)], capture_output=True, text=True, timeout=8)
+                self.assertEqual(done.returncode, native_status, done.stderr)
+                self.assertEqual(done.stdout.splitlines(), arguments)
+                self.assertEqual(int((root / 'native-test-exit.txt').read_text()), native_status)
+                self.assertEqual(int((root / 'busy-trace-exit.txt').read_text()), 0)
+
     def original_log(self):
         main = ['TestDescriptorAdmissionNative','TestDetachedFileAdmissionNative','TestFilesystemAdmissionNative',
                 'TestProcDirectoryAdmissionNative','TestCaptureSocketDescriptorNative','TestSocketQueueAdmissionNative']

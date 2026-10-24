@@ -14,6 +14,7 @@ import uuid
 
 from consumer_worker_loss import sysctls
 import lifecycle_native
+import mount_busy_control
 import native_base
 import reference
 import reference_lifecycle
@@ -25,6 +26,78 @@ PATTERN = '^Test((Filesystem|Descriptor|ProcDirectory|DetachedFile|SocketQueue)A
 COUNT = 3
 PROC_PATTERN = '^TestProcDirectoryAdmissionNative$'
 PROC_COUNT = 20
+
+
+def busy_observer_inputs(root, build_name, control_name):
+    if not re.fullmatch(r'factorybox-mount-busy-control-[0-9a-f]{32}', control_name):
+        raise ValueError('requires one exact completed native busy-decision control')
+    build, inputs = mount_busy_control.tracer_inputs(root, build_name)
+    control = root / 'artifacts' / control_name
+    checked = json.loads((control / 'result.json').read_text())
+    if (not all(checked.get(key) is True for key in
+                ['passed', 'cleanup', 'native_kernel_controls_passed', 'observer_busy_coverage_passed', 'inputs_unchanged']) or
+            checked.get('tracer_build') != build_name or
+            checked.get('tracer_result_sha256') != reference.sha(build / 'result.json') or
+            checked.get('global_sysctls_before') != checked.get('global_sysctls_after')):
+        raise ValueError('busy-decision observer lacks its complete native control proof')
+    expected = dict(inputs)
+    for name in ['control.py', 'control.sh', 'decoder.py', 'runner.py']:
+        path = control / name
+        expected[str(path)] = reference.sha(path)
+    if checked.get('inputs_sha256') != expected:
+        raise ValueError('busy-decision control input inventory changed')
+    native = json.loads((control / 'output/controls.json').read_text())
+    traced = json.loads((control / 'output/trace-result.json').read_text())
+    ready = json.loads((control / 'output/trace-ready.json').read_text())
+    if (native != checked.get('control') or
+            [case['mode'] for case in native['cases']] != mount_busy_control.MODES or
+            reference.sha(control / 'decoder.py') != reference.sha(root / 'tools/mount_busy_events.py') or
+            reference.sha(control / 'runner.py') != reference.sha(root / 'tools/mount_busy_control.py') or
+            traced.get('kernel_btf_sha256') != reference.sha(Path('/sys/kernel/btf/vmlinux'))):
+        raise ValueError('busy-decision controls do not bind the current decoder, verifier and kernel')
+    rows = mount_busy_control.mount_busy_events.decode((control / 'output/busy-events.bin').read_bytes())
+    _, coverage = mount_busy_control.check_observation(native, traced, ready, rows)
+    if coverage != checked.get('coverage') or len(rows) != checked.get('trace_events'):
+        raise ValueError('actual busy-decision control observations differ from their passed verdict')
+    inputs = expected
+    for name in ['result.json', 'output/controls.json', 'output/trace-result.json',
+                 'output/trace-ready.json', 'output/busy-events.bin']:
+        path = control / name
+        inputs[str(path)] = reference.sha(path)
+    if any(Path(path).resolve() != Path(path) or Path(path).is_symlink() or
+           reference.sha(Path(path)) != digest for path, digest in inputs.items()):
+        raise ValueError('busy-decision control input changed or was redirected')
+    return build, inputs
+
+
+def busy_trace_wrapper(wrapper):
+    lines = wrapper.splitlines(True)
+    if not lines[-1].startswith('exec /original.test ') or wrapper.count('exec /original.test ') != 1:
+        raise ValueError('requires the original direct invocation before adding busy observation')
+    startup = '''/busy-trace --object /busy-trace.o --output /output/busy-events.bin --ready /output/busy-trace-ready.json --result /output/busy-trace-result.json > /output/busy-trace.stdout 2> /output/busy-trace.stderr &
+busy_tracer=$!
+trap 'kill -TERM "$busy_tracer" 2>/dev/null || true; wait "$busy_tracer" 2>/dev/null || true; chown --reference=/output -- /output/busy-events.bin 2>/dev/null || true' EXIT
+for attempt in $(seq 1 150); do
+  test ! -s /output/busy-trace-ready.json || break
+  kill -0 "$busy_tracer"
+  sleep 0.02
+done
+test -s /output/busy-trace-ready.json
+set +e
+'''
+    completion = '''status=$?
+printf '%s\\n' "$status" >/output/native-test-exit.txt
+kill -TERM "$busy_tracer"
+wait "$busy_tracer"
+trace_status=$?
+printf '%s\\n' "$trace_status" >/output/busy-trace-exit.txt
+trap - EXIT
+chown --reference=/output -- /output/busy-events.bin
+test "$status" = 0 || exit "$status"
+exit "$trace_status"
+'''
+    return ''.join(lines[:-1]) + startup + lines[-1].removeprefix('exec ') + completion
+
 
 def fs_observer_inputs(root, build_name, control_name):
     if (not re.fullmatch(r'factorybox-fs-ref-tracer-[0-9a-f]{32}', build_name) or
@@ -111,11 +184,17 @@ def main():
     parser.add_argument('--busy-observer-build',help='reproduced original binary with declared post-failure-only native test observation')
     parser.add_argument('--fs-tracer-build',help='exact root/pwd observer, supplementing --tracer-build')
     parser.add_argument('--fs-tracer-control',help='exact successful three-case root/pwd native control')
+    parser.add_argument('--busy-tracer-build',help='exact kernel busy-decision/count observer build')
+    parser.add_argument('--busy-tracer-control',help='exact successful five-case native busy-decision control')
     args=parser.parse_args()
     if not args.focus_proc and args.proc_repetitions != PROC_COUNT:
         parser.error('--proc-repetitions requires --focus-proc')
     if bool(args.fs_tracer_build)!=bool(args.fs_tracer_control) or args.fs_tracer_build and not args.tracer_build:
         parser.error('fs observation requires its native control and the existing file observer')
+    if bool(args.busy_tracer_build) != bool(args.busy_tracer_control):
+        parser.error('busy-decision observation requires its exact native control')
+    if args.busy_tracer_build and args.tracer_build:
+        parser.error('run the bounded busy-decision observer separately from the high-volume file/fs observers')
     root = reference.ROOT
     source = root/'artifacts'/ORIGINAL
     before = reference.sha(source/'result.json')
@@ -158,6 +237,15 @@ def main():
     trace_inputs = {}
     fs_trace = None
     fs_inputs = {}
+    busy_trace = None
+    busy_inputs = {}
+    if args.busy_tracer_build:
+        busy_trace, busy_inputs = busy_observer_inputs(root, args.busy_tracer_build, args.busy_tracer_control)
+        shutil.copyfile(root / 'tools/mount_busy_events.py', artifact / 'mount_busy_events.py')
+        busy_inputs[str(artifact / 'mount_busy_events.py')] = reference.sha(artifact / 'mount_busy_events.py')
+        shutil.copyfile('/sys/kernel/btf/vmlinux', artifact / 'kernel-btf.original')
+        (artifact / 'invocation-before-busy-trace.sh').write_text(wrapper)
+        wrapper = busy_trace_wrapper(wrapper)
     if args.tracer_build:
         if not re.fullmatch(r'factorybox-mount-ref-tracer-[0-9a-f]{32}',args.tracer_build): raise ValueError('requires an exact observer artifact')
         trace=root/'artifacts'/args.tracer_build
@@ -248,6 +336,10 @@ test -s /output/fs-trace-ready.json
         result.update(fs_tracer_build=args.fs_tracer_build,fs_tracer_control=args.fs_tracer_control,
                       fs_tracer_inputs_sha256=fs_inputs)
         result['scope']+=' Passive root/pwd snapshots and allocator release supplement the file observer; neither is a complete mount-reference inventory.'
+    if busy_trace:
+        result.update(busy_tracer_build=args.busy_tracer_build, busy_tracer_control=args.busy_tracer_control,
+                      busy_tracer_inputs_sha256=busy_inputs, kernel_btf_sha256=reference.sha(artifact / 'kernel-btf.original'))
+        result['scope'] += ' Passive actual kernel busy-decision and reference-count returns are qualified by five native controls. No holder or historical cause is inferred from counts alone.'
     attempted = volume = False
     failure = None
     started = time.monotonic()
@@ -281,6 +373,10 @@ test -s /output/fs-trace-ready.json
             index=command.index('--entrypoint')
             command[index:index]=['--mount',f'type=bind,source={fs_trace/"fs-ref-trace"},target=/fs-trace,readonly',
                                   '--mount',f'type=bind,source={fs_trace/"trace.bpf.o"},target=/fs-trace.o,readonly']
+        if busy_trace:
+            index = command.index('--entrypoint')
+            command[index:index] = ['--mount', f'type=bind,source={busy_trace / "busy-mount-trace"},target=/busy-trace,readonly',
+                                    '--mount', f'type=bind,source={busy_trace / "trace.bpf.o"},target=/busy-trace.o,readonly']
         result['command'] = command
         reference_lifecycle.write_json(artifact/'intent.json',result)
         volume = True;reference.docker(['volume','create','--label','com.factorybox.run='+owner,name])
@@ -324,6 +420,29 @@ test -s /output/fs-trace-ready.json
                     fs_result.get('kernel_btf_sha256')!=result['kernel_btf_sha256'] or
                     fs_result.get('events')!=len(rows) or result['fs_trace_summary']['unfinished_unmount_entries']):
                 raise RuntimeError('fs observer incomplete; no reference attribution is qualified')
+        if busy_trace:
+            spec = importlib.util.spec_from_file_location('frozen_mount_busy_events', artifact / 'mount_busy_events.py')
+            decoder = importlib.util.module_from_spec(spec); spec.loader.exec_module(decoder)
+            traced = json.loads((artifact / 'output/busy-trace-result.json').read_text())
+            ready = json.loads((artifact / 'output/busy-trace-ready.json').read_text())
+            rows = decoder.decode((artifact / 'output/busy-events.bin').read_bytes())
+            summary = decoder.summarize(rows)
+            result.update(busy_trace_result=traced, native_exit_code=int((artifact / 'output/native-test-exit.txt').read_text()),
+                          busy_trace_events_sha256=reference.sha(artifact / 'output/busy-events.bin'))
+            reference_lifecycle.write_json(artifact / 'busy-trace-summary.json', summary)
+            result['busy_trace_summary_sha256'] = reference.sha(artifact / 'busy-trace-summary.json')
+            result['busy_trace_unmounts'] = len(summary['unmounts'])
+            result['busy_trace_failures'] = [call for call in summary['unmounts'] if call['result'] != 0]
+            if (traced.get('passed') is not True or traced.get('kernel_probe_missed') != [0] * 6 or
+                    traced.get('kernel_error_counts') != [0] * 3 or traced.get('events') != len(rows) or
+                    traced.get('event_bytes') != 112 or traced.get('decision_hook') != 'propagate_mount_busy' or
+                    traced.get('count_hook') != 'mnt_get_count' or
+                    any(traced.get('active_maps', {}).get(name, 0) != 0 for name in ['unmounts', 'decisions', 'queries']) or
+                    traced.get('kernel_btf_sha256') != result['kernel_btf_sha256'] or
+                    ready.get('kernel_btf_sha256') != result['kernel_btf_sha256'] or
+                    ready.get('pid_namespace_inode') != traced.get('pid_namespace_inode') or
+                    int((artifact / 'output/busy-trace-exit.txt').read_text()) != 0):
+                raise RuntimeError('busy-decision observer incomplete; no reference attribution is qualified')
         if not result['passed']: raise RuntimeError('original admission diagnostic failed; retain first failure')
     except Exception as error:
         result['error'] = str(error);failure = error
@@ -358,6 +477,8 @@ test -s /output/fs-trace-ready.json
                 result['inputs_unchanged'] = result['inputs_unchanged'] and all(reference.sha(Path(n))==h for n,h in trace_inputs.items())
             if fs_trace:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and all(reference.sha(Path(n))==h for n,h in fs_inputs.items())
+            if busy_trace:
+                result['inputs_unchanged'] = result['inputs_unchanged'] and all(reference.sha(Path(n)) == h for n, h in busy_inputs.items())
             result['passed'] = bool(result['passed'] and result['cleanup'] and result['inputs_unchanged'] and result['global_sysctls_before']==result['global_sysctls_after'] and failure is None)
         except Exception as error: result['cleanup_error'] = str(error);result['passed'] = False;failure = failure or error
         result['outer_seconds'] = time.monotonic()-started

@@ -6529,3 +6529,98 @@ optional operating example, not complete consumer/agent acceptance or useful
 recovery after reclaiming space from the failed store. Update/rollback,
 external-agent cases, the final series, historical EBUSY attribution and full
 first-release qualification remain open.
+
+## Native kernel busy-decision controls
+
+The intervening performance/effort explanation changes no implementation or
+qualification state. The full goal and saved parallel-chat context remain in
+place. Investigation continues at the kernel's actual unmount decision rather
+than treating another successful replay as a repair.
+
+The read-only observer in `tools/diagnostics/mountbusy/` records paired
+`path_umount`, `propagate_mount_busy` and nested `mnt_get_count` calls. Only an
+unmount started in the exact owned outer PID namespace or a descendant can
+create an observation. Candidate mount identity, namespace, flags, child-list
+state and the actual returned count are recorded without collecting paths or
+contents or modifying kernel state. A count does not identify a holder or
+authorize cleanup. Missing pairs, map errors, read failures, ring loss,
+unavailable/nonzero kernel miss counters and unfinished maps reject coverage.
+
+Build `factorybox-mount-busy-tracer-50cb8f6dcfd14ea3b4fe082833d076a0` passes
+the pinned CO-RE compilation, unchanged-module Go build and explicit vet. It
+preserves the earlier mount observer's checked BTF-header compatibility path,
+checks all three kernel prototypes and records the kernel BTF digest. The
+preceding completed build `4dc273a063d54f6196edbf4611fbf1e5` samples metadata
+at unmount entry; the selected object additionally resamples metadata at the
+busy-decision entry. Frozen inputs remain unchanged. Its independently
+recompiled, byte-identical Go loader shares the earlier immutable binary with
+recorded identities and hashes.
+
+`tools/mount_busy_control.py` then passes all five actual native controls in
+`factorybox-mount-busy-control-9fff67191c2548ce865144ef85e0b9d2`:
+
+- A descendant-PID-namespace helper's O_PATH file reference gives count 3,
+  actual busy result 1 and ordinary unmount errno EBUSY. After exact release
+  and helper exit, count 2, busy result 0 and ordinary unmount success follow.
+- Cwd and root controls have the same real failure/release/success sequence,
+  with held counts 3 and 4 respectively, both returning to 2.
+- A real child mount makes the parent busy before a count query is needed.
+  Releasing the helper and ordinarily unmounting that child permits the parent
+  unmount; the observed child-list state changes accordingly.
+- A propagated peer has count 2 while the syscall target also has count 2.
+  The distinct held peer is the blocking candidate. Releasing its reference
+  leaves peer count 1, then ordinary unmount of the target succeeds and removes
+  the propagated peer mount as well.
+
+All 66 events decode completely, all three error counters and six probe miss
+counters are zero, and no active observation remains. Exact ownership cleanup,
+frozen input verification and unchanged global sysctls pass. These controls
+qualify observation of each deliberate blocker; they do not attribute the
+uncaptured historical failure or qualify a runtime fix.
+
+The historical runner accepts the new observer only with this complete native
+proof on the same kernel. It rechecks original control inputs, actual raw
+events, five-case coverage and the exact current decoder/verifier before use.
+The observer runs separately from the high-volume file/cwd observers. The
+original test invocation, 360-second test deadline, 420-second native deadline
+and immediate ordinary unmount assertions remain. A shell regression executes
+both native-success and native-failure controls and verifies that observation
+preserves every native argument and exit code.
+
+Historical replay
+`factorybox-historical-admission-5627fe8078874c2e930714524e6cd4d0`
+then passes all forty predetermined paired Proc repetitions, 51 top-level and
+141 subtest outcomes, with no skips. The original test/CLI/component bindings
+and post-failure-only observer declaration remain intact. The actual native
+test exits zero. Complete kernel coverage has 10,574 events and 4,567 unmount
+calls, all error/miss counters zero and no unfinished maps. All 160 ordinary
+unmounts called by the original test executable succeed. Seven separate
+`fusermount3` calls with flag 8 return EINVAL and remain in the raw trace and
+result's failure list; they are not EBUSY or failed test assertions. No observed
+call returns EBUSY. This is another non-reproduction with newly qualified
+coverage, not historical attribution or a runtime repair.
+
+The complete stopped volume is preserved as 6,376,390,656 decoded bytes,
+SHA-256 `4b4e243ec644ac07e35bfb8b8673a3b02fd15d7ea7b4586280fd416bb68bdb03`.
+Native assertions retain their original deadlines; the complete outer native
+and retention observation takes 347.97 seconds. Owned cleanup, frozen inputs
+and global sysctl checks pass. Lossless repack
+`factorybox-storage-repack-06ad32265b844365bc456ba35cb509bc` verifies every
+decoded byte before reclaiming 77,947,960 encoded bytes. The full source store
+remains reconstructable. Closed-input sharing
+`factorybox-closed-busy-input-sharing-f528b1f99adf4fa7a6fd79a83fbb452e`
+then verifies five passed historical replays and shares two identical input
+executables plus one identical BTF input. It releases 41,234,432 allocated
+bytes, retaining every byte, path, mode, owner and result; both original and
+shared mtimes are recorded. No archive or selected failure is retired.
+
+All six portable groups pass in
+`factorybox-checks-f688b3bc66c84e1e993787955d8b727d`, including 252 Python
+tests, Go tests with vet enabled, worker-probe compilation, all 232 reference
+files and ordered fixture verification. Independent raw/control/outcome,
+complete-archive and exact resource checks are bound in
+`factorybox-mount-busy-notes-05bc672f69c142f7baa81e3b30718a5e`.
+The delivered runtime core is unchanged. The historical EBUSY, remaining
+external/storage/operating acceptance and final predetermined consumer series
+remain open. Production qualification remains false and the full goal stays
+active.
