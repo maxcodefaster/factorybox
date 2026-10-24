@@ -46,6 +46,14 @@ the complete store and exact transaction evidence; this candidate has no
 accepted automatic useful-source recovery for that boundary. Its thirteen
 individually passing integration cases do not remove this release blocker.
 
+A source-build correction now passes that complete original controller-loss
+test in `factorybox-devx-lifecycle-0a8a9a435d674494a697a15b3aad6548`. It adds a
+separate guarded timer activation only after the exact authorized process cure,
+then confirms the original application, replay and independent old/new forks.
+This does not change the failed verdict for delivered package 29cb. The new
+guard-loss/protection regressions, independently reproduced replacement package
+and its full acceptance remain required before release.
+
 ## Start and verify
 
 Use the existing qualified Linux AMD64 host and boot, with a separate worker

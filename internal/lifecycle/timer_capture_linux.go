@@ -360,16 +360,22 @@ func captureTimerActivationComplete(config captureGuardConfig, anchors captureGu
 		return false, err
 	}
 	var complete struct {
-		Version  int    `json:"version"`
-		Token    string `json:"token"`
-		Passed   bool   `json:"passed"`
-		Frozen   bool   `json:"source_frozen"`
-		Detached bool   `json:"tracers_detached"`
-		CodeSHA  string `json:"code_sha256"`
+		Version  int             `json:"version"`
+		Token    string          `json:"token"`
+		Passed   bool            `json:"passed"`
+		Frozen   bool            `json:"source_frozen"`
+		Detached bool            `json:"tracers_detached"`
+		CodeSHA  string          `json:"code_sha256"`
+		Recovery json.RawMessage `json:"recovery,omitempty"`
 	}
 	if json.Unmarshal(data, &complete) != nil || complete.Version != 1 || complete.Token != config.Token ||
 		!complete.Passed || !complete.Frozen || !complete.Detached || !digest.MatchString(complete.CodeSHA) {
 		return false, fmt.Errorf("timer activation receipt does not confirm its original frozen transaction")
+	}
+	if len(complete.Recovery) != 0 {
+		if err := verifyTimerRecoveryCompletion(config, anchors, complete.CodeSHA, complete.Recovery); err != nil {
+			return false, err
+		}
 	}
 	return true, nil
 }

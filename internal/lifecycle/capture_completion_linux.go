@@ -64,7 +64,11 @@ func captureCompletionBytes(root *os.File, path string, maximum int64) ([]byte, 
 }
 
 func captureCompletionRead(root *os.File, path string, value any) error {
-	data, err := captureCompletionBytes(root, path, 64<<10)
+	return captureCompletionReadLimit(root, path, value, 64<<10)
+}
+
+func captureCompletionReadLimit(root *os.File, path string, value any, maximum int64) error {
+	data, err := captureCompletionBytes(root, path, maximum)
 	if err != nil {
 		return err
 	}
@@ -164,7 +168,7 @@ func captureGuardAbortOrphan(config captureGuardConfig, anchors captureGuardAnch
 			return err
 		}
 	}
-	if err := captureGuardTimersSafe(config, anchors); err != nil {
+	if err := recoverCuredCaptureTimers(config, anchors); err != nil {
 		return err
 	}
 	if _, err := captureGuardAbortIntent(config, anchors); err != nil {

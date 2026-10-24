@@ -21,18 +21,19 @@ import (
 )
 
 type captureGuardConfig struct {
-	Version    int    `json:"version"`
-	Source     Record `json:"source"`
-	PID        int    `json:"pid"`
-	Start      string `json:"start"`
-	Token      string `json:"token"`
-	Evidence   string `json:"evidence"`
-	Controller int    `json:"controller"`
-	Root       string `json:"root"`
-	RecordSHA  string `json:"record_sha256"`
-	StopSource bool   `json:"stop_source,omitempty"`
-	CriuSHA256 string `json:"criu_sha256,omitempty"`
-	Criu       string `json:"criu,omitempty"`
+	Version         int    `json:"version"`
+	Source          Record `json:"source"`
+	PID             int    `json:"pid"`
+	Start           string `json:"start"`
+	Token           string `json:"token"`
+	Evidence        string `json:"evidence"`
+	Controller      int    `json:"controller"`
+	Root            string `json:"root"`
+	RecordSHA       string `json:"record_sha256"`
+	StopSource      bool   `json:"stop_source,omitempty"`
+	CriuSHA256      string `json:"criu_sha256,omitempty"`
+	Criu            string `json:"criu,omitempty"`
+	TimerRecoveryOf string `json:"timer_recovery_of,omitempty"`
 }
 
 const captureGuardPacketLimit = 16 << 10
@@ -105,6 +106,10 @@ func captureGuardValidateState(config captureGuardConfig, anchor captureGuardAnc
 	}
 	if anchor.group == nil || anchor.pid == nil || anchor.evidence == nil || anchor.root == nil {
 		return fmt.Errorf("guard lacks original kernel anchors")
+	}
+	if config.TimerRecoveryOf != "" && (!tokenID.MatchString(config.TimerRecoveryOf) ||
+		config.TimerRecoveryOf == config.Token || config.StopSource || config.Criu != "" || config.CriuSHA256 != "") {
+		return fmt.Errorf("timer recovery guard is outside its separate activation phase")
 	}
 	if err := canonical(config.Root); err != nil {
 		return err
@@ -585,6 +590,22 @@ func captureGuardServe() (resultErr error) {
 			return fmt.Errorf("cannot disarm guard before source is running: %v", err)
 		}
 		status = "source_running_guard_disarmed"
+	case "disarm-held:" + config.Token:
+		if config.TimerRecoveryOf == "" || unsafe || stopped {
+			return fmt.Errorf("held disarm requires a completed timer recovery phase")
+		}
+		if err := captureGuardValidate(config, anchor); err != nil {
+			return err
+		}
+		complete, err := captureTimerActivationComplete(config, anchor)
+		if err != nil || !complete {
+			return fmt.Errorf("held disarm lacks completed timer activation: %v", err)
+		}
+		events, err := captureGuardEvents(anchor.group)
+		if err != nil || events["populated"] != 1 || events["frozen"] != 1 {
+			return fmt.Errorf("held disarm changed its original source hold: %v", err)
+		}
+		reason, status = "controller_disarmed_held", "source_held_guard_disarmed"
 	case "recover:" + config.Token:
 		reason = "controller_requested_recovery"
 	case "":
@@ -614,6 +635,8 @@ func captureGuardServe() (resultErr error) {
 			status, recoveryErr = captureGuardRecover(config, anchor)
 		}
 		resultErr = errors.Join(resultErr, recoveryErr)
+	} else if status == "" && config.TimerRecoveryOf != "" {
+		status, resultErr = captureGuardHold(config, anchor)
 	} else if status == "" {
 		status, resultErr = captureGuardRecover(config, anchor)
 	}
@@ -638,6 +661,10 @@ func (e *Engine) startCaptureGuardWithExecutable(source Record, pid int, executa
 }
 
 func (e *Engine) startCheckpointGuard(source Record, pid int, executable, captureID string, intent *checkpointIntent) (_ *captureGuard, resultErr error) {
+	return e.startCheckpointGuardMode(source, pid, executable, captureID, intent, "")
+}
+
+func (e *Engine) startCheckpointGuardMode(source Record, pid int, executable, captureID string, intent *checkpointIntent, timerRecoveryOf string) (_ *captureGuard, resultErr error) {
 	var token [16]byte
 	if captureID == "" {
 		if _, err := rand.Read(token[:]); err != nil {
@@ -675,7 +702,7 @@ func (e *Engine) startCheckpointGuard(source Record, pid int, executable, captur
 	}
 	config := captureGuardConfig{Version: 1, Source: source, PID: pid, Start: start,
 		Token: captureID, Evidence: filepath.Join(e.config.Root, generation, "guard"),
-		Controller: os.Getpid(), Root: e.config.Root, RecordSHA: sum(sourceData)}
+		Controller: os.Getpid(), Root: e.config.Root, RecordSHA: sum(sourceData), TimerRecoveryOf: timerRecoveryOf}
 	if intent != nil {
 		config.StopSource = intent.StopSource
 		config.CriuSHA256 = intent.CriuSHA256
@@ -847,14 +874,18 @@ func (guard *captureGuard) captureStopped() error {
 }
 
 func (guard *captureGuard) finish(recoverSource bool) (resultErr error) {
-	defer func() { resultErr = errors.Join(resultErr, guard.anchor.close(), guard.socket.Close()) }()
-	defer func() { resultErr = errors.Join(resultErr, releaseCaptureReserve(guard.anchor.evidence, guard.config)) }()
 	request := "disarm:"
 	if guard.stopped && !recoverSource {
 		request = "disarm-stopped:"
 	} else if recoverSource {
 		request = "recover:"
 	}
+	return guard.finishRequest(request)
+}
+
+func (guard *captureGuard) finishRequest(request string) (resultErr error) {
+	defer func() { resultErr = errors.Join(resultErr, guard.anchor.close(), guard.socket.Close()) }()
+	defer func() { resultErr = errors.Join(resultErr, releaseCaptureReserve(guard.anchor.evidence, guard.config)) }()
 	if _, err := guard.socket.Write([]byte(request + guard.config.Token)); err != nil {
 		resultErr = err
 	}
@@ -878,7 +909,9 @@ func (guard *captureGuard) finish(recoverSource bool) (resultErr error) {
 		status := "original_source_held_for_capture_reconciliation"
 		var err error
 		var delegated *checkpointCaptureError
-		if guard.config.StopSource && captureGuardValidateStopped(guard.config, guard.anchor) == nil {
+		if guard.config.TimerRecoveryOf != "" {
+			status, err = captureGuardHold(guard.config, guard.anchor)
+		} else if guard.config.StopSource && captureGuardValidateStopped(guard.config, guard.anchor) == nil {
 			status = "original_source_stopped_capture_unconfirmed"
 			if guard.stopped {
 				status = "source_stopped_guard_disarmed"

@@ -8249,3 +8249,113 @@ records both original and shared mtimes and returns 360,062,976 allocated bytes.
 No dump, source, active input or historical experiment is targeted. Allocated
 artifact usage becomes 25,571,508,224 bytes, restoring the unchanged native-run
 reserve. The subsequent component integration batch passes that preflight.
+
+## Authorized retained timer recovery passes its original controller-loss case
+
+The staged-timer failure is a missing activation phase after an authorized,
+complete retained process cure. The original controller-loss guard has no live
+controller to perform the existing independently guarded timer activation.
+The runtime now lets only the exact original guard or original controller,
+with matching process birth and retained grant/restoration hashes, create a
+separate internal activation guard for that same frozen source. It uses the
+existing native activation and mutator-exit watch. The new guard closes while
+retaining the source hold; an exact hash-bound certificate links that closed
+phase to the original failed capture before its abort can complete and thaw.
+Missing grants, incomplete preparation, an already attempted original
+activation, changed witnesses and an unfinished recovery guard still refuse.
+
+The new receipt rejection test first fails in
+`factorybox-timer-recovery-receipt-red-51ff5532421b42089ba0bb0955ae56d7`:
+the previous validator ignores an unproved recovery field. The updated
+validator rejects those four invalid receipts. The first broader portable run
+`factorybox-checks-426590bc4d7446d39935cfa58a8c44e6` fails because the new
+positive file fixture runs as an ordinary user while completion records
+correctly require root ownership. Production ownership checks are unchanged.
+The two new root-file tests join the existing explicit native retirement
+fixture and its required coverage increases from six to eight top-level tests.
+No original assertion, vet setting or existing skip requirement changes.
+
+`factorybox-checks-1044202269514d5683e82a00b219cf74` passes all six portable
+groups. `factorybox-timer-recovery-root-files-55b3a0ff662143d783bcf244d87eec43`
+passes all fifteen certificate cases and seven held-guard inventory cases with
+root-owned private files. Its complete source manifest, compiled test identity
+and logs are retained; it does not qualify a live runtime recovery.
+
+The original complete Docker-controller interruption case now passes in
+`factorybox-devx-lifecycle-0a8a9a435d674494a697a15b3aad6548`, using the ordinary
+native build with CLI SHA-256
+`19def5f05345e48741044b4bbe971e3d0a6dddb0ba6713830f4a96e1a4e673bd`.
+After actual dockerd page-dump interruption and original controller SIGKILL,
+the unchanged test preserves thirteen processes and 109 threads, confirms
+the original app state and a fresh Docker exec, proves exact failed-transaction
+replay, advances the original source, and verifies independent complete forks
+of both a fresh post-cure checkpoint and the earlier immutable checkpoint.
+The original Go case passes in 71.30 seconds, with full cleanup, unchanged
+inputs, no OOM and unchanged global sysctls. This source-build diagnostic is
+not acceptance of old delivered package 29cb or a new release package.
+
+Closed input sharing
+`factorybox-storage-share-inputs-f445f48ea834442eb5564fd5518055ac` preserves
+the completed result and every input byte, shares three exact component
+copies and returns 70,877,184 allocated bytes before the guard-loss run.
+The old b1ff controller failure remains failed and fully reconstructable.
+The guard-loss case, ungranted timer protection regressions, independently
+reproduced new worker and remaining complete first-release acceptance still
+require their own evidence. Both declared twenty-run plans remain unexecuted;
+the complete production goal remains active and unqualified.
+
+## Timer recovery also passes original guard loss; larger receipts keep strict validation
+
+`factorybox-devx-lifecycle-c824547661184ea598f4636b5fb953df` passes the full
+original guard-loss Docker test on the same source and CLI 19def5f0 as the
+controller-loss pass above. The original accepted cure grant survives actual
+guard SIGKILL; its original controller finishes the retained cure and guarded
+timer activation. Thirteen processes and 109 threads retain their original
+identities; new Docker exec, application mutation, fresh current-state capture
+and independent old/new forks pass. The original case takes 65.59 seconds,
+with complete cleanup, unchanged inputs, no OOM and unchanged global sysctls.
+This remains source-build evidence pending acceptance on a new delivered worker.
+
+The bounded preparation receipt can exceed the generic 64-KiB completion-record
+limit when it contains several native private timer frames. A fresh root-file
+regression first fails with that exact size rejection in
+`factorybox-timer-recovery-large-record-red-d2baa59bcaad4e4298f1c3b3908bab89`.
+The recovery reader now uses the existing timer-plan bound for this one record;
+it retains root ownership, exclusive links, mode, rooted no-symlink reads,
+strict known JSON fields and trailing-data rejection. Other completion records
+retain their original 64-KiB bound. Root-file fixture
+`factorybox-timer-recovery-root-files-579804a90d1345e8a392b0ed740cb6ac`
+passes seventeen certificate cases, including the large receipt and an unknown
+preparation-field refusal, plus all seven held-guard inventory cases.
+The complete portable run `factorybox-checks-312dcb87d3384d33a10d82faeb79076d`
+passes both Go groups but fails one Python budget test because it scans the
+artifact tree while that root-file fixture creates private root-owned temporary
+directories. Its failed verdict stays. Run those fixtures serially with the
+portable storage checks; do not weaken the scanner or ownership assertions.
+
+Input sharing `factorybox-storage-share-inputs-33597ff784954e5fb66afb85d9aa7bb3`
+preserves four exact closed compiled inputs and returns 87,277,568 allocated
+bytes. Full supersession binding
+`factorybox-resolved-timer-failure-retention-e9a0733e2d7a4e989d6d662cd8e71569`
+pins the six corrected runtime files and added test file against the original
+b1ff failure, identical fixture/test sources, all pinned components and consumer
+images. It explicitly records both changed CLI and compiled test identities;
+the latter imports the changed lifecycle core. The earlier binding preflight
+`factorybox-resolved-timer-failure-retention-966d0141988b46038ea14a3fd179633e`
+fails before any retirement because it incorrectly expects that test binary
+to remain identical. No payload changes in that attempt.
+
+After both complete replacement fault cases pass, retirement child
+`factorybox-storage-retirement-753db62d31284d479ae796cdd0e20ee3` fully decodes
+and hashes the original 4,624,220,160-byte b1ff filesystem before retiring its
+806,110,486-byte encoding. Every member header/hash and 2,405,255 unique
+diagnostic bytes remain, together with the original failed result, full source,
+compiled inputs and logs. That superseded generated filesystem is now
+intentionally non-reconstructable. The parent verifies unchanged goal, original
+parallel-chat handoff, original unresolved 8-GiB image/result, EBUSY archive,
+provider result and b1ff result. No unresolved failure image is retired.
+
+The subsequent serialized complete portable run
+`factorybox-checks-2b430b780223409a96ec7937b9b3921b` passes all six groups,
+including all 270 Python tests, original reference bytes and ordered fixtures.
+The full worker-package acceptance remains separate.

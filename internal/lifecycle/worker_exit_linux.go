@@ -340,8 +340,13 @@ func (e *Engine) exitCompletedTimerGuard(record Record, id, relative string) (bo
 	if err := e.readCheckpointJSON(relative+"/guard/guard-outcome.json", &outcome); err != nil {
 		return false, err
 	}
+	disarmed := outcome.Reason == "controller_disarmed" && outcome.Status == "source_running_guard_disarmed" && config.TimerRecoveryOf == ""
+	if config.TimerRecoveryOf != "" {
+		disarmed = tokenID.MatchString(config.TimerRecoveryOf) && config.TimerRecoveryOf != config.Token &&
+			outcome.Reason == "controller_disarmed_held" && outcome.Status == "source_held_guard_disarmed"
+	}
 	if !reflect.DeepEqual(outcome.Config, config) || !outcome.Passed || outcome.CaptureInFlight ||
-		outcome.Error != "" || outcome.Reason != "controller_disarmed" || outcome.Status != "source_running_guard_disarmed" {
+		outcome.Error != "" || !disarmed {
 		return false, fmt.Errorf("internal timer guard has no confirmed disarm")
 	}
 	directory, err := e.root.Open(relative + "/guard")

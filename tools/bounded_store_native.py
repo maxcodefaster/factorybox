@@ -232,7 +232,7 @@ def main():
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
         prefix = 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = 1 if prototype or reader_only or exit_guard or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss else 6 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        count = 1 if prototype or reader_only or exit_guard or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -241,6 +241,9 @@ def main():
                 raise ValueError('native retirement omitted the completed internal guard and all refusal cases')
             if '--- PASS: TestNativeCheckpointRetirementWorkerExitRecoveryFence ' not in log:
                 raise ValueError('native retirement omitted the paused epoch recovery fence and refusal cases')
+            for test in ['TimerRecoveryCertificate', 'WorkerExitTimerRecoveryGuard']:
+                if '--- PASS: TestNativeCheckpointRetirement' + test + ' ' not in log:
+                    raise ValueError('native retirement omitted the retained timer recovery certificate or held guard refusal cases')
             required = {
                 'retirement': ['unresumed_pause_protected', 'selection_protected', 'explicit_release_replayed', 'released_selection_not_reactivated',
                                'foreign_mount_preserved', 'source_resume_preserved', 'independent_fork_preserved', 'new_fork_refused',
