@@ -8972,3 +8972,84 @@ consumer combinations, all twenty predetermined ordinary trials, original
 8-GiB useful restore, original EBUSY attribution, actual provider continuation,
 operations and final profile/audit remain open. Production qualification and
 the full goal remain unchanged.
+
+## All seventeen main native Go/storage groups pass on the corrected worker
+
+Worker `6016296965364344a8ef9eede420dbc8` remains unchanged and independently
+reproduced as `829faef7ea3143038bebf72493474070`. Runtime source, original
+native tests/assertions, tools, component recipes, vet and resource/deadline
+limits are unchanged in this continuation. Private declaration `9e641d5f...`
+refuses before a native child because its provenance reader wrongly expects a
+boolean in the existing structured CRIU report. The false result remains.
+Its independent copy `93d21ac9...` declares exact before/after hashes and checks
+the actual report's passed flag, eighteen named cases and two cycles. No
+original test or assertion changes.
+
+`factorybox-current-native-gates-93d21ac92fb94d258111d61fa6415d37` passes
+lifecycle, guard, capture, base and base-pause, then refuses before delegation's
+parent/fixture is created at the unchanged eight-GiB preflight.
+`factorybox-current-native-resume-a3d09ea49622434c9e7ef90851fcd733` verifies
+those five rows and runs only the eleven unrun groups. Delegation, auxiliary,
+namespaces, time, mountfd, overlay, interruption and admission pass; worker-loss
+then refuses before its parent/fixture is created at the same capacity check.
+Both incomplete parent results remain false. No failed native assertion is
+retried or discarded.
+
+`factorybox-current-native-final-b19c38f289cd492084650d66423f79a0` verifies
+all thirteen successful rows and runs only worker-loss, storage-admission and
+storage-controller-loss. All three pass; result SHA-256 is
+`f1600f0dc20a181a90c53cc1a0603453dd4b69895d10375df2436af068f01f7f`.
+Together with exact-core full pause `283512b7...`, these complete the seventeen
+main Go/storage groups. Every original main native test passes without skips.
+The storage probes preserve their structured actual ENOSPC/controller-loss
+assertions, including checkpoint and pause. No ordinary-series trial starts.
+
+Closure `factorybox-current-main-native-closure-9c499b4ac32a4ac0824da84515a910ce`
+passes after independently rereading every frozen native source, original
+compiled input, pinned component, named Go outcome and complete current capture
+archive. It rereads both structured storage proof sets and confirms actual
+absence of every corresponding owned container and volume. Both complete
+independent worker loaders pass again. CRIU `c0d11aeb...` is separately bound
+to the same eighteen-case/two-cycle native component proof `65aa223a...`, with
+all 1,030 original upstream test files unchanged. Native Go binaries use the
+declared test-platform build; actual delivered CLI acceptance remains separate,
+including full Factory `77412471...`. This is the main matrix, not every
+remaining targeted native case, integration or complete production acceptance.
+
+All selected original 8-GiB, EBUSY, provider, CRIU `ad6530...` and pause `aaf8...`
+failures remain complete and unchanged. Closed retention `696b6ee5...` verifies
+preliminary passed pause `47238930...` against final full pause `283512b7...`:
+all test files and 79 named outcomes match. After complete original decoding,
+member-header/file-hash indexing and bounded diagnostic preservation, only its
+superseded 69,584,155-byte encoding retires, returning 67,506,176 allocated bytes.
+The old full payload becomes intentionally unavailable; sources, results,
+logs, inputs and receipts remain.
+
+The frozen `a3d09ea4...` and `b19c38f2...` retention recipes similarly retire only
+their nine declared older passing native dumps after each exact current group
+passes. Every prior test file is byte-identical, named outcomes match, current
+core/components are verified and changed CRIU has its matching native proof.
+Each complete original raw hash/member index and bounded diagnostics remain;
+the superseded full payloads are intentionally no longer reconstructable.
+`factorybox-passed-core-retirement-d4b49d8bcbba49309e9013f6fc561ddd` applies
+the same checks to old capture `6909e27d...` and base-pause `2be177c4...`, returning
+14,655,488 and 32,149,504 allocated bytes. Every current passing dump remains.
+
+Helper sharing `6b2139ac...` returns 17,485,824 allocated bytes. Source sharing
+`49d32603...` preserves 1,813 identical files and returns 19,025,920; its complete
+20,861,264-byte plan is losslessly encoded with full decode verification.
+Further closed source plans use the same retention between selected groups.
+`factorybox-storage-share-current-workers-f90229ca98a748b98795b2e7b48b60f3`
+verifies both full independent worker loaders before/after sharing only their
+identical CLI and encoded package files. Paths, bytes, modes, owners, source,
+recipes, image IDs/layers and original results remain unchanged; original and
+adopted mtimes are recorded. It returns 50,769,920 allocated bytes. No build or
+native start bypasses the required reserve.
+
+The original EBUSY remains unexplained despite the current full admission pass.
+Targeted capacity/retirement/timer/metadata/stop-guard cases, other full consumer
+pressure and interrupted-epoch combinations, all fifteen integrations, original
+8-GiB useful restore, actual free-provider continuation/cancellation/uncertain
+effects, update/drain/rollback, a new predeclared twenty-run ordinary series
+and the final full audit remain required. Production qualification stays false;
+the complete goal remains active.

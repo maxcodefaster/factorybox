@@ -4,10 +4,22 @@ This is the candidate procedure for the scope in [GOAL.md](../GOAL.md).
 Production qualification remains false until the final profile binds all
 required passing evidence. The older pilot profile does not qualify this
 candidate. The current independently reproduced package is
-`factorybox-build-worker-130870231710425a8ee16a71c34a611e`, with comparison
-`factorybox-build-worker-361170cd105a4c9a84f44bc5029430f3`.
+`factorybox-build-worker-6016296965364344a8ef9eede420dbc8`, with comparison
+`factorybox-build-worker-829faef7ea3143038bebf72493474070`.
 Older evidence below identifies the package on which it ran and does not replace
 the remaining current-package qualification.
+
+The current package passes the complete original abrupt Factory pressure/epoch
+case in `factorybox-consumer-worker-loss-77412471c65b4ca988471b01cebe5c28`,
+including actual import ENOSPC, exact cancellation/replay, a changed loop slot,
+an independent successor pause, public epoch retirement, useful second resume
+and subsequent independent descendants. All seventeen main Go/storage groups
+now pass with exact core/component binding in
+`factorybox-current-main-native-closure-9c499b4ac32a4ac0824da84515a910ce`;
+the same CRIU component's eighteen cases/two cycles are bound separately.
+Targeted timer/retirement/metadata/stop-guard cases and other consumer cases,
+actual-provider acceptance and operations acceptance remain open. See the
+[current release status](first-release-status.md) for the current matrix.
 
 The following consumer and eighteen-group native evidence belongs to the
 earlier 29cb package. It remains useful regression history; the new runtime
@@ -22,7 +34,7 @@ The matching abrupt case also passes in
 `factorybox-consumer-worker-loss-e01715a8779545e99f7d1fa33db141bd`, with exact
 source-worker SIGKILL after committed pause and graceful replacement exit.
 Remaining final-package gates still require their own passing evidence.
-The current interrupted native epoch fixtures also pass in
+The earlier 29cb interrupted native epoch fixtures also pass in
 `factorybox-bounded-loss-87e54f0908184d2cb49d1d5d45f74221` (planned) and
 `factorybox-bounded-loss-d0df005e97f34218a7380f3c2a8bfa14` (abrupt).
 The original 8-GiB recovery and remaining release gates retain their own
@@ -42,7 +54,7 @@ delivered core and pinned components, including a fresh eighteen-case CRIU
 core run. This leaves the remaining upstream/integration, actual-provider,
 operations, historical-error and final-series requirements open.
 
-The current 1308 package passes both complete original Docker controller-loss
+The earlier 1308 package passes both complete original Docker controller-loss
 and guard-loss cases in
 `factorybox-pilot-integration-gates-ca6d87e560104aaf9a34d4a16f66390a`.
 Their CLI and component hashes match the delivered package exactly. A separate
@@ -235,13 +247,13 @@ another worker loss, changed loop attachment and exact completion with a useful
 successor. The actual reclaimed capacity is 83,058,688 bytes. This 1-GiB runtime
 fixture is separate from full consumer and update/rollback acceptance.
 
-The complete current minimal consumer also passes in
+An earlier complete minimal consumer also passes in
 `factorybox-consumer-worker-loss-e29c1e60b15a415181cbfab4e4b50436`, with an
 actual 32-GiB store, hard worker loss, changed loop attachment, full retained
 checkpoint inspection, ordinary public epoch retirement, exact replay and
 useful independent work after old payload removal. It observes 2,048,659,456
 bytes returned to available store capacity and a clean replacement-worker stop.
-The current Factory counterpart also passes in
+Its earlier Factory counterpart also passes in
 `factorybox-consumer-worker-loss-296fe89873b049b7910acf8cd6c442e3`, with
 planned replacement, separate Theia, local OpenCode fixture, full retained
 inspection, public retirement and every subsequent original independent

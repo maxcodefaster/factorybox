@@ -4,68 +4,78 @@ Stand: 24. Oktober 2026. Die Freigabe ist offen. Verbindlicher Umfang bleibt
 [GOAL.md](../GOAL.md), einschließlich aller dort genannten Grenzen.
 Der 24-Stunden-Dauerlauf und die 100er-Serie gehören zur späteren Etappe.
 
-Ausgewählt ist Worker `130870231710425a8ee16a71c34a611e`, unabhängig identisch
-nachgebaut als `361170cd105a4c9a84f44bc5029430f3`. Sein Paket hat SHA-256
-`0af860a4edf1c12a7bc135d6c5917b33d3f172ac64e3ad555e8039ffb9b454b7`.
-Ein erfolgreicher Test eines älteren Laufzeitkerns ersetzt dessen Abnahme nicht.
+Für die Abnahme verwenden wir den korrigierten Worker
+`6016296965364344a8ef9eede420dbc8`, unabhängig identisch nachgebaut als
+`829faef7ea3143038bebf72493474070`. Paket, Image und jede Image-Schicht stimmen
+überein. Paket-SHA-256:
+`3a33f704823e748395b2937b9f4d65fdfd6224ebc9b6ba165b4be115af7f0f5d`.
+Er enthält die unabhängig reproduzierte CRIU-Komponente `a93016e0...` und
+die unveränderten Sysbox-Komponenten `a3d550a7...`. Die vollständige Abnahme
+dieses Pakets ist noch offen. Ältere Paketergebnisse ersetzen sie nicht.
 
-Der zuletzt untersuchte konkrete Freigabeblocker war ein fehlgeschlagenes erneutes Resume
-im vollständigen Factory-Fall mit hartem Worker-Abbruch und Speicherdruck.
-Die erste Wiederherstellung funktioniert. Die weitere Pause speichert eine
-unvollständige Prozessliste: CRIU weist einen beendeten Prozess mit anderem
-PID-Namensraum als sein Elternprozess ab, meldet die Sicherung aber trotzdem
-als erfolgreich. Beim späteren Resume stürzt CRIU wegen eines dadurch fehlenden
-Prozesses ab; die ausbleibende interne Restore-Bestätigung ist die Folge.
-Der vollständige Fehlerzustand `ad6530e1a56440fd9dcef4545b53f08b` ist gesichert.
-Ein echter kleiner Linux-Test reproduziert dieselbe falsche Erfolgsmeldung in
-0,115 Sekunden. Der neue CRIU-Kandidat `a93016e0ec514e5b9ea84f7d142b875f`
-korrigiert die Fehlerweitergabe und stellt den beendeten Prozess mit seinem
-ursprünglichen Elternprozess, beiden PID-Ebenen und Exit-Status wieder her.
-Der echte Linux-Gegenbeweis besteht nun einschließlich eines anschließenden
-normalen Forks; sieben Fehlerweitergabe- und 18 unveränderte CRIU-Kernfälle
-bestehen ebenfalls. Ein unabhängiger CRIU-Neubau ist binäridentisch.
-Das neue Worker-Paket `245c0cf79c3a40b59b5bb45d482b242c` ist unabhängig als
-`c63515ca42d4476ea8bc0a63efc05f4e` identisch nachgebaut, aber noch nicht
-ausgewählt oder vollständig abgenommen. Der ursprüngliche vollständige
-Factory-Fall besteht damit unter `98bb5cea91594ffa85d1d91305eb8295`
-vollständig: echter ENOSPC, erhaltene alte Pause, abgebrochener Teilimport,
-Loop-Wechsel, unabhängige neue Pause, Stilllegung der alten Epoche,
-nützliches zweites Resume und anschließender Checkpoint/Fork. Aufräumen und
-unveränderte globale Einstellungen sind bestätigt. Die übrige Abnahme des
-neuen Pakets bleibt offen. Die 20er-Serie hat nicht begonnen; die
-Produktionsqualifikation bleibt false.
+Die beiden zuletzt gefundenen Fehler sind korrigiert und gezielt geprüft:
 
-Die weitere native Pause-Abnahme `aaf8fa3ca6de48cf846104bc2985467f` scheitert
-beim ersten wiederholten Fork im Untertest zur cgroup-Stilllegung. Nach
-erfolgreichem Restore verweigert die Timer-Abschlussprüfung den erwarteten
-eingefrorenen Zustand. Die übrigen Pause-/Resume-Untertests bestehen;
-der vollständige Fehlerzustand bleibt erhalten. Eine kleine echte Linux-Probe
-reproduziert einen passenden Übergang: Nach PTRACE_DETACH ist `cgroup.freeze`
-weiter 1, aber `cgroup.events` meldet in fünf von 256 Fällen vorübergehend
-`frozen 0`, ohne dass der Anwendungszähler fortschreitet. Die Korrektur und
-deren gezielte sowie vollständige Abnahme fehlen noch. Dieser Fehler ist
-kein bestandener Test und wird nicht als bloßer Chat-Abbruch behandelt.
+- CRIU meldete eine unvollständige Prozesssicherung fälschlich als Erfolg.
+  Fehlerweitergabe und Wiederherstellung des betroffenen beendeten Prozesses
+  mit seinem ursprünglichen Elternprozess, beiden PID-Ebenen und Exit-Status
+  sind korrigiert. Der echte Linux-Gegenbeweis, sieben Fehlerweitergabe-Fälle
+  und alle 18 unveränderten CRIU-Kernfälle mit je zwei Zyklen bestehen.
+- Die Go-Abschlussprüfung verweigerte eine erfolgreiche Wiederherstellung
+  bei einem kurzen Linux-Freezer-Übergang nach dem Lösen des Tracers.
+  Derselbe echte Regressionstest scheitert vor der Korrektur und besteht
+  danach mit 256 Zyklen und drei Verweigerungskontrollen. Der vollständige
+  Pause-Test besteht mit 12 Haupttests, 67 Untertests und allen 16 ursprünglichen
+  Restore-/Löschzyklen. Die Korrektur schreibt den Freezer nicht um.
 
-| Anforderung | Belegter Stand auf dem ausgewählten Paket | Noch erforderlich |
+Der ursprüngliche vollständige Factory-Fehlerfall besteht jetzt auch mit dem
+neuen Paket in `factorybox-consumer-worker-loss-77412471c65b4ca988471b01cebe5c28`:
+harter Worker-Verlust, tatsächlicher Platzmangel, erhaltene alte Pause,
+erhaltener Teilimport, exakter Abbruch und Replay, Loop-Wechsel, unabhängige
+neue Pause, Stilllegung der alten Epoche, nützliches zweites Resume und
+anschließender Checkpoint/Fork mit unabhängigen Nachkommen. Aufräumen und
+unveränderte globale Einstellungen sind bestätigt. Die erste nutzbare
+wiederhergestellte Antwort benötigt in diesem Einzellauf 51,29 Sekunden.
+Das ist keine Latenzverteilung oder Garantie. Die ursprünglichen vollständigen
+Fehlerbelege `ad6530e1...` und `aaf8fa3...` bleiben erhalten.
+
+Alle 17 Hauptgruppen für Go-Laufzeit und Speicher bestehen auf dem neuen Kern.
+Der gemeinsame Nachweis
+`factorybox-current-main-native-closure-9c499b4ac32a4ac0824da84515a910ce`
+prüft eingefrorene Quellen, Testeingaben, benannte Ergebnisse, vollständige
+Capture-Archive und das Aufräumen erneut. Die bytegleiche CRIU-Kernprüfung
+mit 18 Fällen und je zwei Zyklen ist gesondert gebunden. Gezielte Timer-,
+Stilllegungs-, Metadaten- und Stop-Schutzfälle gehören weiterhin zur übrigen
+Freigabeabnahme.
+
+Die Serien `93d21ac9...` und `a3d09ea4...` hielten nach fünf beziehungsweise
+acht weiteren Erfolgen vor der nächsten Gruppe an der Artefaktreserve an.
+Diese Gruppen hatten noch nicht begonnen. Beide negativen Gesamtstände
+bleiben erhalten. Die letzte Erklärung
+`factorybox-current-native-final-b19c38f289cd492084650d66423f79a0`
+übernimmt die 13 geprüften Erfolge, führt nur die drei offenen Gruppen aus
+und besteht vollständig. Zusammen mit dem vorherigen vollständigen Pause-Test
+sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet.
+
+| Anforderung | Belegter Stand des aktuellen Kandidaten | Noch erforderlich |
 | --- | --- | --- |
-| Identisches Paket erneut bauen | Neuer Worker 245c und unabhängiger Neubau c635 stimmen in Paket, Image und Schichten überein. Auch die neue CRIU-Komponente ist unabhängig identisch nachgebaut. | Abnahmeprofil mit den endgültigen Ergebnissen verbinden. |
-| Laufzeit und Speicher absichern | Auf Worker 1308 bestehen alle 17 Go-/Laufzeit-/Speichergruppen und die Retirement-Suite mit acht Haupttests. Auf dem neuen Stand bestehen Lifecycle, Guard und Capture sowie 18 CRIU-Kernfälle; die Pause-Gruppe scheitert an der beschriebenen Abschlussprüfung. | Abschlussfehler erklären und korrigieren, dann betroffene native Gruppen und vollständige Anwendungstests auf dem endgültigen Paket. |
-| Letzten Timer-Recoveryfehler beheben | Beide ursprünglichen Docker-Abbruchfälle bestehen mit nützlicher Anwendung, weiteren Sicherungen und unabhängigen Nachkommen. Beide Verweigerungsfälle ohne Berechtigung bestehen ebenfalls. | Übrige Integration auf demselben Paket abschließen. |
-| Vollständige Integration | Alle sechs Docker-Abbruchfälle bestanden; zwei unveränderte Upstream-Komponentenfälle genau gebunden. | Fünf Retained-Fälle und zwei vollständige Verbraucherfälle, insgesamt alle 15 benannten Integrationsfälle. |
-| Anwendung bei vollem Speicher wiederherstellen | Factory mit geplantem Worker-Ersatz besteht auf Worker 1308. Der harte Verlust einschließlich erneutem Resume besteht nach erklärtem und korrigiertem Capture-Fehler auf Worker 245c; der ursprüngliche vollständige Fehlerzustand bleibt erhalten. | Geplanten Factory-Fall auf dem neuen Paket, beide Minimal- und beide unterbrochenen Epochenfälle abschließen. |
-| Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. | Tatsächliche Wiederherstellung mit anschließender nützlicher Arbeit. Eine reine Inhaltsprüfung genügt nicht. |
+| Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
+| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen bestehen; CRIU-Kernprüfung ist bytegleich gebunden. Quellen, Eingaben, Archive und Aufräumen sind erneut geprüft. | Gezielte Timer-, Kapazitäts-, Stilllegungs-, Metadaten- und Stop-Schutzfälle abschließen. |
+| Vollständige Integration | Frühere Docker- und Komponentenbelege bleiben erhalten; unveränderte Komponenten können exakt gebunden werden. | Alle 15 benannten Fälle auf dem aktuellen Stand nachweisen: fünf Retained-, sechs Docker-Abbruch-, zwei volle Verbraucher- und zwei Komponentenfälle. |
+| Anwendung bei vollem Speicher wiederherstellen | Der vollständige harte Factory-Verlust besteht auf 6016. | Geplanten Factory-Fall, beide Minimal-Fälle und beide unterbrochenen nativen Epochenfälle auf demselben Paket abschließen. |
+| Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. | Tatsächlich wiederherstellen und nützliche Arbeit prüfen. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
-| Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt als Fehler erhalten. | Tatsächliche Fortsetzung, Abbruch und Umgang mit unklaren Werkzeugwirkungen nachweisen. Keine Wiederholung vor dem protokollierten Kontingent-Ende `2026-10-24T23:59:59.953093Z`. |
-| Update, Drain und Rückkehr prüfen | Die Eingaben des gezielten Drain-Unterbrechers sind geprüft. | Vollständige native Betriebsfälle auf dem ausgewählten Paket, dokumentierte Kompatibilität oder kontrolliertes Leeren vor einem Wechsel. |
-| Reguläre Wiederholungsserie | Genau zehn vollständige Läufe je Beispiel vorab deklariert; Eingaben geprüft, kein Lauf begonnen. | Alle 20 durchführen, jeden Fehler erhalten, Messwerte und Grenzen berichten. |
+| Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. | Echte Fortsetzung, Abbruch und unklare Werkzeugwirkungen nachweisen. Keine Wiederholung vor `2026-10-24T23:59:59.953093Z`. |
+| Update, Drain und Rollback prüfen | Geprüfte Eingaben des Drain-Unterbrechers und Betriebsanleitung liegen vor. | Vollständige Betriebsfälle auf 6016, Kompatibilität oder kontrolliertes Leeren vor einem Wechsel. Kein bekannt fehlerhaftes Paket als qualifizierte Rückfallversion. |
+| Reguläre Wiederholungsserie | Alle früheren Serien haben null Läufe. Der bestandene Fehlerfall zählt nicht zur Serie. | Neue Erklärung für das endgültige Paket vor dem ersten Lauf festlegen, dann zehn vollständige Läufe je Beispiel ohne verworfene Fehler durchführen. |
 
 Die [Fortschrittsbelege](production-progress.md) enthalten die einzelnen
 Artefakte, Fehler und Ersetzungen. Die
 [Betriebsanleitung](first-release-operations.md) bleibt bis zur vollständigen
 Abnahme eine Anleitung für den geprüften Entwicklungsstand.
 
-Die jüngste Serienerklärung liegt unter
+Die bisher jüngste, an ein älteres Paket gebundene Serienerklärung liegt unter
 `artifacts/factorybox-first-release-ordinary-series-c5663e4172ef495485621d537afbbef9/plan.json`,
 SHA-256 `ec9cbaa19c68ce0e22b6587fa827de5fe49bf3131fd5de2422c5cd72c559608d`.
-Alle Vorgängererklärungen bleiben unverändert. Die neue Erklärung erhält alle
-20 Befehle und ursprünglichen Prüfungen sowie die volle Speicherreserve.
+Sie und alle Vorgänger bleiben unverändert mit null ausgeführten Läufen.
+Für 6016 ist eine neue Erklärung erforderlich. Sie muss alle 20 Befehle,
+ursprünglichen Prüfungen und die volle Speicherreserve erhalten.
