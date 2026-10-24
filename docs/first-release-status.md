@@ -70,6 +70,20 @@ wechseln den Worker und das Loop-Gerät und schließen die exakte Operation mit
 nützlicher unabhängiger Nachfolge-Sicherung ab. Die ursprünglichen
 Platzmangel-, Besitz-, Fremdeintrags- und Abbruchprüfungen bleiben erhalten.
 
+Die vollständigen Anwendungstests bei tatsächlichem Platzmangel bestehen nun
+für alle vier Kombinationen: Factory und Minimal jeweils nach geplantem und
+hartem Worker-Verlust. Die drei neuen Fälle liegen in
+`factorybox-current-pressure-consumers-5f8ed07f5393427abba34b1d93973935`.
+Dessen unabhängige `closure.json` bindet auch den früheren harten Factory-Fall,
+die vollständig geprüften Eingaben, die ursprünglichen Assertions und das
+Aufräumen. Diese Fehlerfälle zählen nicht zur noch ungestarteten 20er-Serie.
+
+Die unveränderten Sysbox-Komponenten sind außerdem erneut an das aktuelle
+Paket gebunden. Dabei sind die vollständigen ursprünglichen Unit-/Bats- und
+beiden Komponenten-Integrationsnachweise samt ursprünglichen Skips geprüft.
+Die aktuelle CRIU-Kernprüfung bleibt gesondert an ihre korrigierten Bytes
+gebunden. Alte Go-Laufzeitergebnisse werden damit nicht übernommen.
+
 Die Serien `93d21ac9...` und `a3d09ea4...` hielten nach fünf beziehungsweise
 acht weiteren Erfolgen vor der nächsten Gruppe an der Artefaktreserve an.
 Diese Gruppen hatten noch nicht begonnen. Beide negativen Gesamtstände
@@ -83,8 +97,8 @@ sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet
 | --- | --- | --- |
 | Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
 | Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Die Nachweise im Endprofil verbinden und die vollständige Anforderungsabdeckung prüfen. |
-| Vollständige Integration | Frühere Docker- und Komponentenbelege bleiben erhalten; unveränderte Komponenten können exakt gebunden werden. | Alle 15 benannten Fälle auf dem aktuellen Stand nachweisen: fünf Retained-, sechs Docker-Abbruch-, zwei volle Verbraucher- und zwei Komponentenfälle. |
-| Anwendung bei vollem Speicher wiederherstellen | Der vollständige harte Factory-Verlust besteht auf 6016. | Geplanten Factory-Fall und beide Minimal-Fälle auf demselben Paket abschließen. |
+| Vollständige Integration | Beide Komponentenfälle sind für die identischen ausgelieferten Sysbox-Bytes erneut geprüft und gebunden. | Die übrigen 13 benannten Fälle auf dem aktuellen Stand nachweisen: fünf Retained-, sechs Docker-Abbruch- und zwei volle Verbraucherfälle. |
+| Anwendung bei vollem Speicher wiederherstellen | Alle vier vollständigen Factory-/Minimal-Fälle bei geplantem und hartem Worker-Verlust bestehen auf 6016, einschließlich Platzmangel und Epochenstilllegung. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. | Tatsächlich wiederherstellen und nützliche Arbeit prüfen. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
 | Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. | Echte Fortsetzung, Abbruch und unklare Werkzeugwirkungen nachweisen. Keine Wiederholung vor `2026-10-24T23:59:59.953093Z`. |

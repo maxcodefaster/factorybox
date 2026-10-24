@@ -9177,3 +9177,80 @@ Original results and all failures remain unchanged. These two cases are not
 ordinary-series trials or a full production release. All remaining consumer,
 integration, historical failure, provider, operations, series and final-profile
 requirements stay active.
+
+## Complete current four-case consumer pressure matrix and component binding
+
+All four original complete 32-GiB pressure/epoch consumer combinations now pass
+on unchanged worker `6016296965364344a8ef9eede420dbc8`. Declaration and results
+for the three remaining cases are under
+`factorybox-current-pressure-consumers-5f8ed07f5393427abba34b1d93973935`.
+Its result SHA-256 is
+`c7e6d27f25a60cf8752dd88a9e32957ca625296051abfc2fc5b6b137cac9779e`.
+
+| Example / original loss | Complete native artifact | Result SHA-256 |
+| --- | --- | --- |
+| Factory / planned | factorybox-consumer-worker-loss-4a7e8b6e7e1649e59bee1da68cd3f169 | a7746d4207d62948275f2b5c33c8cf5afdd379d427af743a20ab4f333b6429c8 |
+| Factory / abrupt | factorybox-consumer-worker-loss-77412471c65b4ca988471b01cebe5c28 | 01a11402fa168a6ed00026486fde3efe9cb5301d669f47bc7d7f89788452ec08 |
+| Minimal / planned | factorybox-consumer-worker-loss-af286d3e254041cb84f7490010a5e4d6 | dffd5fc1af07675f3918054485c848d2953c0ef0b376b146191c36ae7a226064 |
+| Minimal / abrupt | factorybox-consumer-worker-loss-6842a9dd97bd4907bc7e402a247bd6ca | 2e55f9894655a0e919fc1fdcc8389d970f591817224f1a31529621fcdad10e26 |
+
+Each preserves the original complete RAM/filesystem/useful-work, independent
+descendant, exact replay, old-epoch retirement and changed-loop assertions.
+Actual post-admission import ENOSPC preserves the old complete checkpoint and
+partial import through useful independent recovery; explicit cancellation,
+pressure release and retirement remain ownership/inspection checked. Every
+case confirms exact cleanup and unchanged global settings. The Factory cases
+also retain their separate Theia and actual shipped agent/local model fixture.
+They do not prove actual external-provider acceptance or count as any ordinary
+series trial.
+
+Independent `closure-v2.py` revalidates all four original complete source/test,
+example and agent trees, every frozen input, complete helper decoding, delivered
+CLI/CRIU/image identity, structured pressure/retirement results, exact native
+outcomes and absence of all owned consumer/loop-holder resources. Its
+`closure.json` SHA-256 is
+`52a7c9b0bd87e03227a064a6350bea3de1002138b96931f9158f486a56a9e429`.
+The initial private offline `closure.py` incorrectly required a Go PASS line
+after an intentionally interrupted prepare stage. Its failed checker and
+observation remain preserved. The declared v2 patch verifies instead the
+original exact committed-pause marker, probe/worker SIGKILL exit 137, no OOM and
+no live PID, while all normal stages still require their original PASS/exit 0.
+No native test, assertion, source or run is changed or repeated. Exact checker
+before/after/patch hashes are in `closure-verifier-correction.json`.
+
+Individual native phase durations, including full fault checks, are 82.201 /
+284.720 seconds for Factory planned, 47.787 / 128.797 for Minimal planned and
+42.026 / 72.619 for Minimal abrupt. Each keeps the original whole-lifecycle
+420-second deadline. The new Factory planned first useful recovery observation
+is 60.559 seconds. These are individual observations with different fault
+paths, not a latency distribution, optimization comparison or SLA.
+
+The exact-byte component verifiers in
+`factorybox-current-targeted-native-gates-1d4dba81823b45019d0d37e747face60`
+now also complete against 6016 and its independent identical 829f package.
+`component-closure.json`, SHA-256
+`1f310872194becf90e3f6315fe54add0c530794bfbde146c5e44bbd097f8fb18`,
+revalidates original source/raw outcomes for 727 Sysbox Go passes and eighteen
+original skips, seven lifecycle Bats passes and four systemd Bats passes with
+the two original unsupported skips, plus the corrected current CRIU's eighteen
+cases/two cycles and 1030 unchanged upstream test files. The private verifier
+copy has exact ordered before/after/patch receipts: the obsolete same-CRIU
+comparison is replaced by the complete current `65aa223a...` proof. Every
+original upstream test assertion and raw outcome remains unchanged.
+
+`integration-closure.json`, SHA-256
+`932bb8d41a4b96e0ab38a64a8bdf1a592f3a6a5b5f42442d4a300c855738a54b`,
+binds the two unchanged component integrations: libcontainer 28 top-level/
+30 subtest passes and runc integration 47 top-level passes with the original
+twelve skips. This closes only those two of fifteen named integration gates;
+the remaining five retained, six Docker interruption and two full-consumer
+cases must still use current Factorybox Go/delivered bytes. No old Go proof is
+transferred through unchanged component identity.
+
+After all runs and serialized closed-input maintenance, no labeled native
+worker is live. Artifact allocation is 25,715,732,480 bytes and the unchanged
+8-GiB next-run reserve fits within the 32-GiB limit. Frozen inputs, selected
+failures, original results/logs and the parallel-chat context remain preserved.
+The original 8-GiB useful restore, original EBUSY attribution, actual provider,
+current operations, predeclared twenty ordinary trials and final full audit
+remain open. Production qualification is false and the full goal stays active.
