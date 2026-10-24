@@ -11,9 +11,11 @@ in `artifacts/factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e79
 Die fünf Betriebsfälle sind anschließend vollständig bestanden und unabhängig
 geprüft: Startfehler, Speicheridentität, alle acht Stop-Schutzfälle, der gelieferte
 Compose-Ablauf und tatsächlicher Update/Rückfall. Auch alle fünf weiteren
-Speicherfälle sind bestanden und unabhängig geprüft. Die zusätzlichen
-Drain-/CLI-Recovery- und Anbieterfälle benötigen weiterhin ihre vollständigen
-Ergebnisse. Ein eingereihter Test ist kein Pass.
+Speicherfälle sind bestanden und unabhängig geprüft. Jetzt sind auch alle vier
+zusätzlichen Drain-Fälle und beide ursprünglichen CLI-Worker-Verlustarten
+bestanden und unabhängig geprüft. Die Gateway-/Anbieterfälle, die historische
+Busy-Mount-Zuordnung und das endgültige Freigabeprofil bleiben offen.
+Ein eingereihter Test ist kein Pass.
 
 Für die Abnahme verwenden wir den korrigierten Worker
 `6016296965364344a8ef9eede420dbc8`, unabhängig identisch nachgebaut als
@@ -127,7 +129,7 @@ unter der unten benannten neuen Erklärung.
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Bestanden in `factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`: unverändertes schreibgeschütztes Original auf Loop0, unabhängiger Import und echte Wiederherstellung mit dem ursprünglichen CLI-/CRIU-Rezept. Vollständiger ursprünglicher Anwendungszustand und gespeicherter Agentenabbruch stimmen überein; eine neue Anwendungsänderung besteht ohne Werkzeug-Replay. Originalabbild unverändert, Aufräumen vollständig, insgesamt 93,33 Sekunden. Die tatsächlichen Dienstpfade des frischen Workers mussten dem gespeicherten Rezept entsprechen. | Nachweis ins Endprofil aufnehmen. Dieser forensische Weg qualifiziert weder das alte Paket als Rückfallversion noch einen Rezeptwechsel für alte Sicherungen. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
 | Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. Die acht bestehenden echten Anbieterfälle sind für 6016 festgelegt und hinter den vorherigen Abnahmen eingereiht. | Die beiden nativen Gateway-Kontrollen und alle acht vollständigen Anbieterfälle unabhängig abnehmen: normaler Ablauf, einmal verlorener abgeschlossener Modellaufruf, beide Worker-Verlustarten sowie Abbruch und unklare Werkzeugwirkung jeweils bei geplantem/hartem Verlust. Keine Inferenz vor `2026-10-24T23:59:59.953093Z`. |
-| Update, Drain und Rollback prüfen | Alle fünf Betriebsfälle sind auf 6016 bestanden und unabhängig geprüft, einschließlich aller acht Stop-Schutzfälle, Compose und tatsächlichem Update/Rückfall. Der Versuch leert vor dem Rezeptwechsel kontrolliert, verweigert ein falsches Rezept und stellt die gesicherte aktuelle Anwendung mit dem richtigen Paket wieder her. | Beide Verbraucher mit/ohne erzwungenen Loop-Wechsel beim Drain-Abbruch sowie beide ursprünglichen CLI-Worker-Verlustarten prüfen. Die alten Pakete sind keine qualifizierten Rückfallversionen. |
+| Update, Drain und Rollback prüfen | Alle fünf Betriebsfälle sind auf 6016 bestanden und unabhängig geprüft, einschließlich aller acht Stop-Schutzfälle, Compose und tatsächlichem Update/Rückfall. Auch beide Verbraucher mit/ohne erzwungenen Loop-Wechsel beim Drain-Abbruch sowie beide ursprünglichen CLI-Worker-Verlustarten sind bestanden und unabhängig geprüft. Der Rezeptwechsel leert kontrolliert; falsches Rezept wird verweigert und die aktuelle Pause mit dem richtigen Paket wiederhergestellt. | Nachweise ins Endprofil aufnehmen. Die alten Pakete sind keine qualifizierten Rückfallversionen. |
 | Reguläre Wiederholungsserie | Alle 20 vorab festgelegten vollständigen Läufe auf 6016/829f sind bestanden und unabhängig geprüft, je zehn Minimal/Factory. Befehle, Reihenfolge, Originaltests, Eingaben, Ressourcen, Speicherfreigabe und vollständiges eigenes Aufräumen stimmen. Frühere Serien behalten null Läufe; Fehlerfälle zählen nicht rückwirkend mit. | Vollständigen Nachweis im endgültigen Abnahmeprofil verbinden. |
 
 Die [Fortschrittsbelege](production-progress.md) enthalten die einzelnen

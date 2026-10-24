@@ -9933,3 +9933,60 @@ interrupted-drain case now passes in
 `factorybox-consumer-worker-loss-2a8d0e908eed495d933b8ca9620cd654`.
 Other entries remain pending and the original provider UTC backoff still applies.
 The reference verification passes again for all 232 immutable files.
+
+## 2026-10-25: all original current drain and CLI restart coverage closed
+
+The original entries on current 6016 pass without substitution: Minimal drain
+2a8d, Factory drain 47e6, Minimal changed-loop drain 22e8, Factory changed-loop
+drain 7306 and original public CLI worker restart fa38. The last includes both
+planned and abrupt original modes. Each complete consumer retains the original
+32-GiB store, 3-CPU/3-GiB worker, original prepare/recover assertions and 420-second
+lifecycle; Factory retains separate Theia and local OpenCode. The pidfd watcher
+kills the exact worker only after its committed exit fence, observes its death
+with completion absent and the fence unchanged, then original recovery succeeds.
+Changed-loop cases hold the former slot in a separately owned empty bounded
+worker and verify useful recovery on a different slot.
+
+Independent `drain-restart-closure/verify.py` checks all five exact originally
+declared commands, frozen tool/source/fixture/component/CLI inputs, raw original
+PASS output with no skip/failure, watcher outcomes, both worker states, loop
+identity and exact absence of both primary and helper owners' resources.
+`drain-restart-closure/closure.json` SHA-256 is
+`db510ec50cd61b280043028edb03dd4eb7bf839f5620551017ee8e6bf047901a`.
+Gateway and actual-provider entries remain in original session 61324; they
+have not been counted as passed by this closure.
+
+The separate `release-profile/package-audit.json`, SHA-256
+`480ff5275ce4f251cf757c88200cca0908d4c3f94806f3cde24270a744d03abf`,
+revalidates both actual package inputs/raw decoding, identical image/layers,
+all 201 current Go source files, toolchain, source locks, the base inventory of
+258 installed packages, all nine pinned delivered upstream notices and the
+full ordered CRIU/SHM patch provenance. CRIU patch hashes are in delivered
+`build.json`; their raw files remain in the frozen CRIU build evidence. They
+are not incorrectly described as raw patch files inside the runtime bundle.
+The private audit initially made that path assumption and stopped before its
+output; correcting the provenance location changes no package or assertion.
+This audit does not claim public distribution approval, minimization, a full
+base-OS license enumeration or production qualification.
+
+The next historical EBUSY experiment is separately predeclared in
+`agent-exit-delay/plan.json`, SHA-256
+`fa58bd988275608379df5bcacde2c268316412442d1479c329a8ee30d22ae016`.
+Source inspection shows Sysbox-fs sends an agent's real response before the
+agent returns/exits and waits asynchronously in the parent. This is a hypothesis,
+not an observed historical holder. An unselected bounded diagnostic build keeps
+all original source inputs/tests/vet and adds only propagation of a private flag
+plus a 500-ms hold after actual successful response write. It opens no extra
+file, mount or namespace. The off control and on case use the identical binary,
+original Proc/adaptor assertions and qualified kernel observer; an actual native
+failure stays false even if informative. A different failure or no directly
+observed matching holder cannot establish attribution.
+
+Original exec 27490/PID 198703, birth 29656692, coordinates the build and native
+pair. It waits for supervisor 167818 to be terminal or childless in its provider
+UTC wait after all seven non-provider entries pass with at least seventy minutes
+spare. Stable pidfd Stop/resume applies only to that owned supervisor; finally
+resumes it and an independent watchdog covers coordinator death. No diagnostic
+build/native allocation has occurred at this entry. No current runtime source,
+selected package, assertion, resource limit, provider backoff or historical
+verdict is changed. Production qualification remains false.
