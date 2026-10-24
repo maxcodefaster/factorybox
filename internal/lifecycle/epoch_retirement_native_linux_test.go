@@ -519,6 +519,25 @@ func epochRetirementPreparationENOSPC(t *testing.T, current, old *Engine, recove
 	}
 	refusals++
 	foreign := epochRetirementDirectory + "/foreign-test-input"
+	// The deliberately failed reserve allocation can consume every available
+	// block. Return one block from this fixture's exact still-open pressure
+	// file so the nonempty foreign-input control can exist. Cancellation must
+	// still satisfy the original physical pressure bound below.
+	pressureInfo, err := pressure.Stat()
+	if err != nil || pressureInfo.Size() < capacity.Bsize {
+		t.Fatal("foreign-input control has no exact owned pressure block", err)
+	}
+	if err := pressure.Truncate(pressureInfo.Size() - capacity.Bsize); err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(pressure.Sync(), unix.Syncfs(int(pressure.Fd()))); err != nil {
+		t.Fatal(err)
+	}
+	var controlCapacity unix.Statfs_t
+	if err := unix.Fstatfs(int(pressure.Fd()), &controlCapacity); err != nil || controlCapacity.Bavail == 0 ||
+		int64(controlCapacity.Bavail)*controlCapacity.Bsize > remaining {
+		t.Fatal("foreign-input control lost its bounded pressure or available block", controlCapacity, err)
+	}
 	file, err := old.root.OpenFile(foreign, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		t.Fatal(err)
@@ -581,7 +600,8 @@ func epochRetirementPreparationENOSPC(t *testing.T, current, old *Engine, recove
 		"partial_stage": stage, "test_owned_partial_stage_cleanup": false, "public_preparation_inspected": true,
 		"public_preparation_cancelled": true, "public_cancellation_preserved_original_backing": true,
 		"public_cancellation_under_pressure": true, "public_cancellation_refusals": refusals,
-		"available_blocks_at_cancellation": atCancellation.Bavail})
+		"negative_control_pressure_bytes_released": capacity.Bsize,
+		"available_blocks_at_cancellation":         atCancellation.Bavail})
 }
 
 func TestNativeEpochRetirementFinish(t *testing.T) {
