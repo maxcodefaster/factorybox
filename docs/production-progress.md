@@ -7879,3 +7879,68 @@ upstream/integration coverage, tested update/drain/rollback, the predetermined
 ten ordinary lifecycles per example and final profile remain open. No earlier
 failed verdict is changed or excluded. The 24-hour and 100-run series remain
 deferred. The full goal stays active and production qualification stays false.
+
+## Final ordinary series is predetermined before its first run
+
+`factorybox-first-release-ordinary-series-eef1841e8cf24ef89d45faee17ae0baf/plan.json`
+fixes twenty additional ordinary bounded lifecycle trials: ten Minimal and ten
+Factory, alternating examples with explicit ordinals/repetition numbers and
+complete commands. Its SHA-256 is
+`206f0827136b36248cd03a8ed957a1dda99ff0e8aa9c369a25117c4b53a5b2fd`.
+It binds independently reproduced 29cb/e23f, the exact CLI/package/image,
+frozen build results, source context, consumer fixture, Python tools, complete
+goal and preserved handoff. Factory includes the retained Theia and local
+OpenCode flow; every run retains the original 420-second deadline and worker/
+sandbox ceilings and owns fresh resources. No earlier run is counted into
+this series. Every started or failed child must be recorded under its fixed
+ordinal; failed trials cannot be discarded or replaced. Uncertain children
+must be inspected rather than restarted. A changed production package needs
+a new explicit plan while preserving this one unchanged.
+
+At declaration, executed count is zero. The four complete pressure consumers
+and two native interrupted-retirement cases are separate evidence. The series
+is not a substitute for the remaining native, upstream, actual-provider or
+operations requirements. The 100-run and 24-hour series stay deferred.
+
+## All eighteen current native gate groups pass
+
+`factorybox-pilot-native-gates-b4189cf518b44b2f870f7988f0417916` passes all
+eighteen declared groups on the exact delivered 29cb core: lifecycle, guard,
+capture, pause, base, base-pause, delegation, auxiliary, namespaces, time,
+mountfd, overlay, interruption, admission, worker-loss, CRIU core, storage
+admission and storage-controller loss. Every child result is re-read and its
+SHA-256 compared with the parent's recorded hash; all have complete passing
+verdicts and confirmed cleanup. The fifteen Go regression children confirm
+unchanged compiled inputs, source contexts and components. Delivered CLI/
+image consumer proofs remain the separate four full consumers and two
+interrupted epoch cases above; these in-process regression binaries do not
+replace them. No native workload remains after the suite.
+
+Fresh CRIU core evidence is
+`factorybox-criu-core-39cb12d94714449eb8d78b5f15e07a74`: the same pinned
+`8c9a9b0dd14e128b66ef52753ed29c8ffc147944799384e194ac9a2432ba7ade`
+passes all eighteen declared cases with original upstream test sources
+unchanged. The two current storage proofs are
+`factorybox-storage-admission-4c272fc354c14874acd8b652322c39dd` and
+`factorybox-storage-admission-665f9dd20136421bbad46221c0940cfe`;
+both bind the delivered image/CLI, unchanged inputs and clean exact resources.
+
+Current admission `factorybox-runtime-f2d23c18028e4e3b920ad6acc65b346b`
+passes all seventeen top-level tests and 78 subtests. Its original held and
+transient foreign-proc-directory cases both pass ordinary cleanup. This
+neither explains nor relabels the historical EBUSY counterexample. A proposed
+read-only reference observer finds this case already terminal before setup;
+`factorybox-native-reference-observation-1bfaf533e955481587072b1e40c959dc`
+records that no observation or mutation started and supplies no diagnostic
+qualification.
+
+Artifact usage after the complete native suite is 25,208,713,216 allocated
+bytes, within the unchanged start-reserve policy. Exact closed-input sharing
+is being run before further integration work. The four full consumer cases,
+two current interrupted native epoch cases, eighteen native groups and six
+portable groups now have current passing evidence. Original 8-GiB useful
+recovery, historical EBUSY attribution, actual external-provider/cancellation/
+effect cases, remaining upstream/integration groups, tested update/drain/
+rollback, the predeclared twenty ordinary trials and final auditable profile
+remain open. None is implied by this native result. Production qualification
+stays false and the full goal remains active.
