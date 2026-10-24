@@ -18,8 +18,19 @@ The matching abrupt case also passes in
 `factorybox-consumer-worker-loss-e01715a8779545e99f7d1fa33db141bd`, with exact
 source-worker SIGKILL after committed pause and graceful replacement exit.
 Remaining final-package gates still require their own passing evidence.
-This does not qualify the original 8-GiB recovery or
-complete native interrupted epoch retirement on this later core.
+The current interrupted native epoch fixtures also pass in
+`factorybox-bounded-loss-87e54f0908184d2cb49d1d5d45f74221` (planned) and
+`factorybox-bounded-loss-d0df005e97f34218a7380f3c2a8bfa14` (abrupt).
+The original 8-GiB recovery and remaining release gates retain their own
+acceptance requirements.
+
+The same current package also passes the complete Minimal planned/abrupt
+consumers with the same bounded-store, actual pressure, retained-checkpoint,
+changed-attachment and public-retirement checks:
+`factorybox-consumer-worker-loss-16d115cb54b14e99b2eb63e7ea1ec08e` and
+`factorybox-consumer-worker-loss-fc811d31718e47738b8642173a442830`.
+These four consumer passes do not complete the remaining native, upstream,
+external-agent, operations and predetermined-series qualification.
 
 ## Start and verify
 

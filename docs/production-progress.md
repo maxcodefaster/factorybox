@@ -7771,3 +7771,111 @@ passing evidence. The smaller examples and remaining required native,
 integration, external-provider, operations and final-series gates retain their
 own acceptance requirements. Current interrupted native epoch retirement is
 running next. The goal stays active and production qualification stays false.
+
+## Replaced deadline dumps retired after complete current consumer proofs
+
+`factorybox-resolved-deadline-retention-560d0d6b4b23426693d24ed480d88797`
+verifies both complete current Factory consumer verdicts, every retained frozen
+input and source context, unchanged resource profile and all strict pressure/
+epoch output checks. It matches the two old planned deadline failures against
+the full passing planned replacement `b3c94cb3`: identical consumer/project
+inputs, example, loss, probe, storage size/driver, local OpenCode flow,
+retained-checkpoint inspection, ordered fixture patches and exact Sysbox/CRIU
+component bytes. It also requires the current interrupted native epoch proof
+`factorybox-bounded-loss-87e54f0908184d2cb49d1d5d45f74221` to pass.
+
+The existing bounded `retire_superseded_failure.py` runs from a frozen copy.
+Each entire original 32-GiB tar is decoded, byte-counted, hashed and indexed
+before its encoding is unlinked. Child
+`factorybox-storage-retirement-97c57f13499c4ac6bbe7c3c49b1fc75d`
+retires the superseded 182 complete image and returns 1,487,242,898 encoded
+bytes; child `factorybox-storage-retirement-370ecb9999d841f2b23dab20fd1333cb`
+retires the superseded 9fea complete image and returns 1,377,488,880 bytes.
+Their former complete generated filesystems are intentionally no longer
+reconstructable. Original failed verdicts, source, compiled inputs, saved
+outer logs, full original hashes/member indexes and retirement receipts remain.
+Neither historical FAIL is relabelled as PASS.
+
+The full original unresolved 8-GiB failure encoding/result, full goal and
+parallel-chat handoff are hash-checked before and after both operations. No
+other selected failure is targeted. Post-maintenance allocated artifact usage
+is 22,737,453,056 bytes, and the unchanged 8-GiB start reserve is available.
+The preceding driver attempt `67ca9923` fails its read-only preflight before
+creating a plan or starting a child: it expects a separate Docker `--cpus`
+argument, whereas the frozen command uses `--cpus=3`. Its runner and failed
+attempt receipt stay unchanged; the fresh continuation recognizes the exact
+existing resource arguments without changing a ceiling or assertion.
+
+## Current interrupted epoch protocol passes both initial loss modes
+
+`factorybox-bounded-loss-87e54f0908184d2cb49d1d5d45f74221` passes planned
+initial loss on 29cb in 108.52 outer seconds; corresponding abrupt case
+`factorybox-bounded-loss-d0df005e97f34218a7380f3c2a8bfa14` passes in 105.40
+seconds. Both have complete original lifecycle assertions, exact cleanup,
+unchanged frozen inputs and unchanged global sysctls. The same delivered CLI,
+image and component bytes are used throughout; original resource/deadline
+limits and all original assertions remain enabled.
+
+Both cases verify actual preparation ENOSPC with intact old backing/readers,
+public inspection and cancellation under pressure, no premature acceptance,
+all unknown/dependency/foreign-mount refusals, exact public unlink interruption
+and controller SIGKILL, another worker loss, a changed loop attachment and
+successful public completion. An independent recovered successor remains
+useful; a second obsolete fork/resume epoch is retired. Global fencing clears
+only on exact completion, active selections and caller inputs remain intact,
+and exact request replay succeeds. Both descriptor/timer admission receipts
+retain their exact bytes. The additive native fixture explicitly distinguishes
+its own receipt observations from actual admission waits.
+
+The large complete Factory planned and abrupt consumers are already green on
+these same bytes. This current native evidence replaces the earlier limitation
+that complete interrupted retirement was proven only on 6dd. Other required
+native/component/integration groups retain their individual requirements;
+`full_epoch_retirement_qualified` and production qualification remain false
+until the complete release profile is accepted. Minimal consumers are next.
+
+## All four complete current-core pressure consumers pass
+
+Minimal planned loss
+`factorybox-consumer-worker-loss-16d115cb54b14e99b2eb63e7ea1ec08e` passes on
+29cb, with exact cleanup and unchanged global sysctls. The original prepare
+body passes in 27.96 seconds (33.87-second outer probe), and the complete
+recover probe takes 66.81 seconds. Final Stop begins with 293.26 seconds
+remaining and takes 1.13 seconds, exiting 0 without OOM. Public epoch
+retirement takes 33.85 seconds and exact replay 0.85 seconds.
+
+Minimal abrupt loss
+`factorybox-consumer-worker-loss-fc811d31718e47738b8642173a442830` also passes.
+The committed source pause precedes the intended exact SIGKILL/exit 137;
+the complete original recovery body passes in 111.37 seconds (111.67-second
+outer probe). Public epoch retirement takes 77.07 seconds, exact replay
+0.85 seconds. Final Stop begins with 245.20 seconds remaining, takes 1.26
+seconds and exits 0 without OOM. Exact cleanup and unchanged global sysctls
+pass. These uncontrolled timing differences establish no percentile or
+stable native speedup.
+
+Both retain every original assertion and strict pressure/epoch verification:
+actual ENOSPC, full-store cancellation and exact replay, unchanged old
+checkpoint/metadata, independent useful successor, old payloads absent with
+retained provenance and caller inputs, original recovery/replay, new checkpoint
+and independent fork, independent mutations and useful descendants after
+source deletion. Resource ceilings, selected components, 32-GiB store and the
+complete shared 420-second deadline are unchanged.
+
+Current complete consumer matrix, all using delivered CLI
+`05170b6d8074d7851adf4ef87b0cc499679a78322427756b3d49cf596f57f6ff`
+from independently reproduced worker 29cb/e23f:
+
+| Example | Planned loss | Abrupt loss |
+| --- | --- | --- |
+| Minimal | PASS `16d115cb` | PASS `fc811d31` |
+| Factory, retained Theia and local OpenCode | PASS `b3c94cb3` | PASS `e01715a8` |
+
+The two complete native interrupted-retirement cases also pass on these
+same bytes. The remaining eighteen native gate groups are now serialized
+against the current delivered core. Original 8-GiB useful recovery, historical
+EBUSY attribution, current actual external-provider/cancellation/effect cases,
+upstream/integration coverage, tested update/drain/rollback, the predetermined
+ten ordinary lifecycles per example and final profile remain open. No earlier
+failed verdict is changed or excluded. The 24-hour and 100-run series remain
+deferred. The full goal stays active and production qualification stays false.
