@@ -6737,3 +6737,172 @@ All six portable groups pass in
 tests, Go tests with vet, tagged consumer-probe compilation, all 232 sealed
 reference files, ordered fixture verification and diff validation. Runtime
 core and the delivered package are unchanged.
+
+## Useful work after actual bounded-store ENOSPC
+
+The existing 512-MiB native capacity test now retains every original line and
+adds actual useful recovery after its exact pressure inode is released. The
+delivered public CLI restores the original pre-full checkpoint and advances
+its private RAM without changing the source. It then creates a fresh checkpoint,
+requires exact byte-for-byte replay, restores an independent descendant,
+advances that descendant, pauses with measured RAM release, resumes its new
+state and verifies useful state after deleting the original source. At most
+two sandboxes are live. Runtime code and the selected worker bytes are unchanged.
+The runner requires every new outcome in addition to its existing actual
+ENOSPC, bounded capacity, source preservation and ownership assertions.
+
+`factorybox-bounded-store-301ead43c5d64a5585c904620e8d9cc5` passes the complete
+test in 15.36 seconds, 21.50 seconds including the outer driver. Actual available
+store space reaches zero, new capture is refused, and the containing host keeps
+more than the separate 12-GiB floor. The preserved unlinked guest alias has
+383,557,632 bytes and 749,144 allocated 512-byte blocks before its exact owned
+truncate. The fresh checkpoint has ID `44444444444444444444444444444444` and
+an actual release receipt. The later pause has zero anonymous workload memory
+and zero resident snapshot bytes. Native cleanup, unchanged frozen inputs and
+unchanged global sentinels pass. The completed test executable is fully verified
+and losslessly encoded; no historical executable is reconstructed.
+
+Independent binding
+`factorybox-post-enospc-proof-e1d5c39df1fb41609276e3c831f61fd6` verifies the
+exact delivered image and all 89 non-test files of this native core context,
+every original test line, the full encoded native executable, raw native PASS
+without skips, strict proof fields and absent exact owned resources. This
+closes useful post-reclaim work for this bounded runtime fixture. It does not
+claim recovery of the earlier complete 8-GiB Factory failure, recovery under
+worker replacement pressure, full consumer/operating acceptance or production
+qualification.
+
+For subsequent acceptance, lossless repack
+`factorybox-storage-repack-1b5f2bc4d8e042319596593437eff3af` verifies all
+1,074,790,400 original bytes of closed failure `971eee0d40cc438e8e239f97cb7ab3c2`
+and its replacement before retiring only the old encoding. Raw SHA-256 remains
+`d38ed95db0466856a7af899758a0cf9116830433374becfd701e615a4b296c81`.
+The complete failure remains reconstructable in 46,349,226 encoded bytes,
+reclaiming 63,832,801 encoded bytes. Original results and encoding receipts
+remain unchanged. The original selected failures and complete goal remain.
+
+## Current public retirement after pressure and interrupted deletion
+
+The complete existing public epoch-retirement suite passes on the current
+delivered image in
+`factorybox-bounded-loss-29c1db8cc9db4ae089f9667c5122e266`, with abrupt initial
+worker loss. All original Prepare, full-original-recovery, Recover and Finish
+assertions pass without skips in 129.20 outer seconds. This is the existing
+1-GiB runtime fixture with 32 MiB of private anonymous actor memory; it does
+not substitute for either complete consumer.
+
+The suite reaches real ENOSPC during retirement preparation, preserves the
+original recovery backing and verifies the retained checkpoint. Inspection
+and cancellation use the public CLI while only four 4096-byte blocks remain
+available. All five cancellation refusal controls pass; the test does not
+delete partial metadata itself. Ten retirement admission refusals preserve
+active selections and reject changed ownership, unknown entries and foreign
+covering mounts. After acceptance, an actual partial public unlink is
+interrupted, followed by complete worker loss. A separate empty owned worker
+holds the former loop slot, so maintenance resumes on a different actual loop
+device with the same exact persistent image. All authorized payloads are
+removed, original metadata/provenance and caller input remain, exact replay
+returns the completed result, the maintenance fence clears and the independent
+successor recovers usefully. Actual available capacity rises by 83,058,688 bytes.
+
+`verify-retirement.py` and `retirement.json` in
+`factorybox-post-enospc-proof-e1d5c39df1fb41609276e3c831f61fd6` independently
+bind the native raw outcomes, strict pressure/cancellation/interruption reports,
+current delivered CLI/components, full encoded test, unchanged native core and
+absent exact resources for both owners. Its first verification uses a nonexistent
+top-level CLI manifest field and stops with KeyError; the corrected verifier
+reads the exact existing `bundle_sha256.factorybox`. That correction is recorded
+without changing a native verdict. Original global sentinels and source inputs
+remain unchanged. The suite explicitly retains `full_epoch_retirement_qualified=false`
+because complete consumer and remaining release acceptance are separate.
+
+The closed test is losslessly encoded and its byte-identical encoding is shared
+with the preceding bounded-store test in
+`factorybox-storage-share-test-encodings-48be97ea78ed40358d68992e4a7b7841`.
+Full decompression verifies before sharing; every path/result/receipt remains,
+and 10,485,760 allocated bytes are reclaimed.
+
+The first current minimal-consumer invocation supplies the Factory-specific
+project-image archive and correctly refuses before new_artifact or resources.
+The rejected preflight is recorded in `consumer-preflight.json` in the same
+proof directory. The next invocation selects the exact minimal-specific pinned
+archive. No required native assertion is treated as passed by either preflight.
+
+Current minimal consumer
+`factorybox-consumer-worker-loss-e29c1e60b15a415181cbfab4e4b50436` then passes
+the complete existing 32-GiB bounded worker-loss fixture, public epoch
+retirement, retained-checkpoint inspection and forced loop-slot change. Its
+original preparation commits a complete pause, deliberately parks and is
+terminated with its exact worker by SIGKILL; both actual exits are 137 without
+OOM. The replacement independently verifies all 175 retained files containing
+95,517,600 bytes and all nine filesystem trees before the complete original
+recovery test. Public retirement transfers the old pause to a new committed
+independent pause, removes every authorized old base/RAM/filesystem payload,
+preserves provenance and caller input, replays exactly and resumes useful RAM
+and files. Observed store capacity increases by 2,048,659,456 bytes. Retirement
+observation including replay/inventory checks takes 88.10 seconds. The complete
+Recover test takes 125.85 seconds, and the replacement stops cleanly with exit 0.
+Owned cleanup and unchanged global settings pass.
+
+`consumer-minimal.json` in the post-ENOSPC proof independently verifies the
+actual native result, all 33 frozen raw/fully decoded inputs, current core/CLI,
+example, declared exact before/after fixture hashes and the sole ordered
+RemoveAll-to-public-retirement substitution. All other original assertions
+remain byte-identical. The first verifier expects a Go PASS from the deliberately
+SIGKILLed preparation and refuses; its correction verifies the committed-pause
+marker plus actual probe/worker exit 137, retaining PASS requirements for
+completed phases. Both verification corrections are recorded and no native
+result is rewritten. This is not an external-provider observation or a final
+predetermined series member. The complete Factory counterpart remains a
+separate current-package acceptance.
+
+Further verified offline repack
+`factorybox-storage-repack-3ed79d6ebc904b1ab3cc43a364cd1c40` preserves all
+1,074,790,400 decoded bytes of the other closed failure `8255be709c264d94bc763d428a008623`,
+SHA-256 `a338554674b8c730ecf816a4eadec7e74aea2ead4a60f9a619df6e0f896b4643`,
+in 46,372,474 encoded bytes. It reclaims 54,555,899 encoded bytes after complete
+original and replacement verification. The complete failure remains available.
+Closed consumer helper sharing
+`factorybox-storage-share-test-encodings-293eceb057c548d48f475431491cf200`
+then reclaims 17,485,824 allocated bytes from three identical helper encodings,
+retaining every native source, result, original receipt and path.
+
+All six portable groups pass with the new post-ENOSPC assertions in
+`factorybox-checks-56488c9b3ad34956a9d197f6d18d3c08`, including 254 Python
+tests, Go tests with vet, tagged consumer compilation, all 232 reference files,
+ordered fixture verification and diff validation. No runtime source or selected
+package byte changes. These results leave the full goal active.
+
+The complete current Factory counterpart passes in
+`factorybox-consumer-worker-loss-296fe89873b049b7910acf8cd6c442e3`, with the
+same 32-GiB bounded-store profile, planned worker loss, changed loop attachment,
+separate native Theia and actual shipped OpenCode using its deterministic local
+model fixture. The original Prepare test passes in 73.33 seconds and Recover
+in 251.56 seconds. Both actual workers stop with exit 0 without OOM; native
+ownership cleanup and unchanged global sentinels pass. Full retained inspection
+verifies all 346 files containing 523,463,500 bytes and nine filesystem trees
+before recovery. Public retirement transfers the complete old pause to a new
+committed independent successor, retires its authorized base/RAM/filesystem
+payloads, preserves caller input/provenance and replays exactly. Actual available
+store capacity rises by 2,889,646,080 bytes. Retirement including replay and
+inventory checks takes 133.06 seconds. The original subsequent checkpoint/fork,
+independent mutations, IDE edits and useful descendant after source deletion
+all pass. This is one observation, with no matched performance comparison.
+
+`consumer-factory.json` in the same post-ENOSPC proof verifies all 35 exact
+native inputs, full source/example/agent manifests, current CLI/components,
+declared unchanged assertions, actual phase exits, separate Theia admission,
+complete retained inspection, public retirement report and absent exact owner
+resources. `factorybox-theia-admission-21412dd9bfea4c8b923349ebaf093df3`
+passes before the consumer starts. Neither current consumer observation is
+a final predetermined series member or an external-provider acceptance.
+
+The current bounded runtime post-reclaim case, interrupted public retirement,
+full minimal abrupt replacement/retirement and full Factory planned
+replacement/retirement are now independently bound. The original 8-GiB Factory
+ENOSPC failure remains preserved and not claimed usefully recovered. Capacity
+pressure during recovery import, the other current consumer loss combinations,
+external-agent cases, actual update/rollback, historical EBUSY attribution,
+remaining required suite coverage, the final series and final release profile
+remain open. The full goal and saved parallel-chat context stay unchanged;
+production qualification remains false.

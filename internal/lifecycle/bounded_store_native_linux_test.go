@@ -3,6 +3,7 @@
 package lifecycle
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -252,12 +253,80 @@ func TestNativeBoundedWorkerStore(t *testing.T) {
 	if _, err := engine.Checkpoint(ctx, "source", first); err != nil {
 		t.Fatal("old complete checkpoint lost after pressure", err)
 	}
+	// Admission returning is not useful recovery. Restore the retained pre-full
+	// generation through the delivered CLI and actually use its private RAM.
+	prior := boundedLossView(t, "fork", "--source", "source", "--snapshot-id", first, "prior-recovered")
+	t.Cleanup(func() {
+		if _, err := engine.Delete(context.Background(), "prior-recovered"); err != nil {
+			t.Error("delete retained checkpoint recovery", err)
+		}
+	})
+	if actual, err := readCaptureActor(prior.Runtime.PID, "get"); err != nil || !reflect.DeepEqual(actual, before) {
+		t.Fatal("pre-full checkpoint no longer restores useful private RAM", actual, err)
+	}
+	if advanced, err := readCaptureActor(prior.Runtime.PID, "advance"); err != nil || advanced.Counter != before.Counter+1 {
+		t.Fatal("retained recovery did not perform new useful work", advanced, err)
+	}
+	if actual, err := readCaptureActor(view.Runtime.PID, "get"); err != nil || !reflect.DeepEqual(actual, before) {
+		t.Fatal("retained recovery changed the original source", actual, err)
+	}
+	boundedLossView(t, "delete", "prior-recovered")
+
+	// Also require new durable work after reclaim. This cannot pass by merely
+	// replaying the older successful checkpoint or inspecting retained files.
+	freshID := strings.Repeat("4", 32)
+	freshRaw := boundedLossAction(t, "checkpoint", "--snapshot-id", freshID, "source")
+	var fresh Checkpoint
+	if err := json.Unmarshal(freshRaw, &fresh); err != nil || fresh.ID != freshID ||
+		fresh.SourcePID != view.Runtime.PID || fresh.ReleasedAt == "" || len(fresh.Files) == 0 {
+		t.Fatal("fresh post-reclaim checkpoint did not complete and release source", fresh, err)
+	}
+	if replay := boundedLossAction(t, "checkpoint", "--snapshot-id", freshID, "source"); !bytes.Equal(replay, freshRaw) {
+		t.Fatal("fresh post-reclaim checkpoint replay changed its exact result")
+	}
+	recovered := boundedLossView(t, "fork", "--source", "source", "--snapshot-id", freshID, "post-reclaim")
+	t.Cleanup(func() {
+		if _, err := engine.Delete(context.Background(), "post-reclaim"); err != nil {
+			t.Error("delete new post-reclaim descendant", err)
+		}
+	})
+	if actual, err := readCaptureActor(recovered.Runtime.PID, "get"); err != nil || !reflect.DeepEqual(actual, before) {
+		t.Fatal("fresh post-reclaim fork lost private RAM", actual, err)
+	}
+	advanced, err := readCaptureActor(recovered.Runtime.PID, "advance")
+	if err != nil || advanced.Counter != before.Counter+1 {
+		t.Fatal("fresh post-reclaim descendant did not perform useful work", advanced, err)
+	}
+	if actual, err := readCaptureActor(view.Runtime.PID, "get"); err != nil || !reflect.DeepEqual(actual, before) {
+		t.Fatal("fresh post-reclaim descendant changed source RAM", actual, err)
+	}
+	postPauseID := strings.Repeat("5", 32)
+	postPause := boundedLossView(t, "pause", "--snapshot-id", postPauseID, "post-reclaim")
+	if postPause.Record.Pause == nil || postPause.Record.Pause.CompletedAt == "" ||
+		postPause.Record.Pause.After.Anon != 0 || postPause.Record.Pause.Snapshot.ResidentBytesAfter != 0 {
+		t.Fatal("post-reclaim pause did not commit and release RAM", postPause.Record.Pause)
+	}
+	recovered = boundedLossView(t, "resume", "--snapshot-id", postPauseID, "post-reclaim")
+	if actual, err := readCaptureActor(recovered.Runtime.PID, "get"); err != nil || !reflect.DeepEqual(actual, advanced) {
+		t.Fatal("post-reclaim resume lost newly advanced RAM", actual, err)
+	}
+	boundedLossView(t, "delete", "source")
+	if actual, err := readCaptureActor(recovered.Runtime.PID, "get"); err != nil || !reflect.DeepEqual(actual, advanced) {
+		t.Fatal("post-reclaim descendant depends on deleted original source", actual, err)
+	}
 	proof := map[string]any{"schema": 1, "passed": true, "production_qualified": false, "capacity": report, "full_capacity": full,
 		"direct_io": status.Lifecycle.BoundedStore.DirectIO, "external_writable_bind_refused": true, "checkpoint_fork": true,
 		"branch_ram_independent": true, "pause": paused.Record.Pause, "resume_ram_preserved": true,
 		"guest_actual_enospc": pressureErr.Error(), "capture_refused_at_limit": true, "prior_checkpoint_preserved": true}
 	proof["retained_unlinked_guest_alias"] = held
 	proof["owned_truncate_released_blocks"] = true
+	proof["prior_checkpoint_restored_and_useful_after_reclaim"] = true
+	proof["fresh_public_checkpoint_after_reclaim"] = fresh
+	proof["fresh_public_checkpoint_exact_replay"] = true
+	proof["post_reclaim_descendant_ram_independent"] = true
+	proof["post_reclaim_pause"] = postPause.Record.Pause
+	proof["post_reclaim_resume_preserves_new_work"] = true
+	proof["post_reclaim_descendant_useful_after_source_delete"] = true
 	data, err = json.MarshalIndent(proof, "", "  ")
 	if err != nil {
 		t.Fatal(err)

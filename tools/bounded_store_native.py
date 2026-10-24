@@ -110,7 +110,9 @@ def main():
               'rootfs_sha256': busybox['sha256'], 'global_sysctls_before': consumer_worker_loss.sysctls(),
               'scope': 'Exact delivered bounded worker, 512-MiB fixed filesystem, full RAM/filesystem checkpoint/fork, '
                        'pause/resume, actual guest ENOSPC, distinct host/internal admission, external writable bind '
-                       'refusal and preserved prior checkpoint. Not worker replacement, broad consumer or production qualification.'}
+                       'refusal, preserved prior checkpoint, actual retained restore/useful work after reclaim, fresh public '
+                       'checkpoint/fork with exact replay, independent RAM, RAM-releasing pause/resume and useful descendant '
+                       'after source deletion. Not worker replacement, broad consumer or production qualification.'}
     if retirement:
         result['scope'] = 'Delivered CLI recovery selections, released selection replay, committed-pause protection, live independent fork/resume after checkpoint retirement, foreign mount/successor refusal, actual SIGKILL during partial deletion, retry with unknown entry refusal, verified immutable base alias cleanup and a required read-only-request/NULL-remainder relative wait through source/fork with preserved syscall registers and original deadline. Not epoch retirement or production qualification.'
     if args.suite == 'retirement-base-diagnostic':
@@ -285,11 +287,18 @@ def main():
             proof_path = output / 'bounded-store.json'
             proof = json.loads(proof_path.read_text())
             required = ['passed', 'direct_io', 'external_writable_bind_refused', 'checkpoint_fork', 'branch_ram_independent',
-                        'resume_ram_preserved', 'capture_refused_at_limit', 'prior_checkpoint_preserved', 'owned_truncate_released_blocks']
+                        'resume_ram_preserved', 'capture_refused_at_limit', 'prior_checkpoint_preserved', 'owned_truncate_released_blocks',
+                        'prior_checkpoint_restored_and_useful_after_reclaim', 'fresh_public_checkpoint_exact_replay',
+                        'post_reclaim_descendant_ram_independent', 'post_reclaim_resume_preserves_new_work',
+                        'post_reclaim_descendant_useful_after_source_delete']
             if (any(proof.get(key) is not True for key in required) or
                     proof['full_capacity']['filesystem_available_bytes'] != 0 or
                     'no space left' not in proof['guest_actual_enospc'].lower() or
-                    proof['pause']['snapshot']['resident_bytes_after'] != 0):
+                    proof['pause']['snapshot']['resident_bytes_after'] != 0 or
+                    proof['post_reclaim_pause']['snapshot']['resident_bytes_after'] != 0 or
+                    proof['post_reclaim_pause']['after']['anon'] != 0 or
+                    proof['fresh_public_checkpoint_after_reclaim']['id'] != '4' * 32 or
+                    not proof['fresh_public_checkpoint_after_reclaim'].get('released_at')):
                 raise ValueError('bounded worker proof lacks required assertions')
             result['proof_sha256'] = reference.sha(proof_path)
         elif reader_only:

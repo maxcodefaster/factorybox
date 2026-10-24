@@ -79,6 +79,14 @@ uncertain recovery appear fresh. The original 8-GiB ENOSPC attempt is retained;
 its integrity inspection alone does not prove useful recovery after reclaim.
 That acceptance remains required.
 
+The smaller delivered 512-MiB runtime fixture now passes actual useful restore
+of its retained checkpoint after exact owned pressure reclaim, followed by a
+fresh public checkpoint/fork, pause/resume and an independent descendant after
+source deletion. Evidence is
+`factorybox-bounded-store-301ead43c5d64a5585c904620e8d9cc5`. This does not
+qualify recovery of the earlier complete Factory store or recovery interrupted
+by capacity pressure during worker replacement.
+
 Use the public identity- and dependency-checked checkpoint/epoch retirement
 commands in the [worker contract](worker-contract.md#manual-epoch-retirement-candidate).
 Drain first. An old committed pause needs a verified independent successor
@@ -87,6 +95,29 @@ acceptance and completion receipts. Once maintenance is accepted, ordinary
 work remains fenced until exact completion, including across worker replacement.
 Unknown objects, live dependencies and changed ownership require refusal.
 Automatic retention remains deferred.
+
+The current image passes the complete existing public retirement fault fixture
+in `factorybox-bounded-loss-29c1db8cc9db4ae089f9667c5122e266`. It includes
+actual preparation ENOSPC, public inspection/cancellation while space remains
+scarce, refusal of foreign/live dependencies, interrupted public deletion,
+another worker loss, changed loop attachment and exact completion with a useful
+successor. The actual reclaimed capacity is 83,058,688 bytes. This 1-GiB runtime
+fixture is separate from full consumer and update/rollback acceptance.
+
+The complete current minimal consumer also passes in
+`factorybox-consumer-worker-loss-e29c1e60b15a415181cbfab4e4b50436`, with an
+actual 32-GiB store, hard worker loss, changed loop attachment, full retained
+checkpoint inspection, ordinary public epoch retirement, exact replay and
+useful independent work after old payload removal. It observes 2,048,659,456
+bytes returned to available store capacity and a clean replacement-worker stop.
+The current Factory counterpart also passes in
+`factorybox-consumer-worker-loss-296fe89873b049b7910acf8cd6c442e3`, with
+planned replacement, separate Theia, local OpenCode fixture, full retained
+inspection, public retirement and every subsequent original independent
+lifecycle assertion. It observes 2,889,646,080 bytes returned to available store
+capacity and both workers stop cleanly. These two observations do not qualify
+the other loss combinations, recovery import under capacity pressure, external
+inference, update/rollback or the final release series.
 
 ## Update and rollback
 
