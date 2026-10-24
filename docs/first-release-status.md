@@ -35,10 +35,21 @@ unveränderte globale Einstellungen sind bestätigt. Die übrige Abnahme des
 neuen Pakets bleibt offen. Die 20er-Serie hat nicht begonnen; die
 Produktionsqualifikation bleibt false.
 
+Die weitere native Pause-Abnahme `aaf8fa3ca6de48cf846104bc2985467f` scheitert
+beim ersten wiederholten Fork im Untertest zur cgroup-Stilllegung. Nach
+erfolgreichem Restore verweigert die Timer-Abschlussprüfung den erwarteten
+eingefrorenen Zustand. Die übrigen Pause-/Resume-Untertests bestehen;
+der vollständige Fehlerzustand bleibt erhalten. Eine kleine echte Linux-Probe
+reproduziert einen passenden Übergang: Nach PTRACE_DETACH ist `cgroup.freeze`
+weiter 1, aber `cgroup.events` meldet in fünf von 256 Fällen vorübergehend
+`frozen 0`, ohne dass der Anwendungszähler fortschreitet. Die Korrektur und
+deren gezielte sowie vollständige Abnahme fehlen noch. Dieser Fehler ist
+kein bestandener Test und wird nicht als bloßer Chat-Abbruch behandelt.
+
 | Anforderung | Belegter Stand auf dem ausgewählten Paket | Noch erforderlich |
 | --- | --- | --- |
 | Identisches Paket erneut bauen | Neuer Worker 245c und unabhängiger Neubau c635 stimmen in Paket, Image und Schichten überein. Auch die neue CRIU-Komponente ist unabhängig identisch nachgebaut. | Abnahmeprofil mit den endgültigen Ergebnissen verbinden. |
-| Laufzeit und Speicher absichern | Auf Worker 1308 bestehen alle 17 Go-/Laufzeit-/Speichergruppen und die Retirement-Suite mit acht Haupttests. Die neue CRIU-Komponente besteht alle 18 Kernfälle. | Betroffene native Gruppen und vollständige Anwendungstests auf dem endgültigen neuen Paket. |
+| Laufzeit und Speicher absichern | Auf Worker 1308 bestehen alle 17 Go-/Laufzeit-/Speichergruppen und die Retirement-Suite mit acht Haupttests. Auf dem neuen Stand bestehen Lifecycle, Guard und Capture sowie 18 CRIU-Kernfälle; die Pause-Gruppe scheitert an der beschriebenen Abschlussprüfung. | Abschlussfehler erklären und korrigieren, dann betroffene native Gruppen und vollständige Anwendungstests auf dem endgültigen Paket. |
 | Letzten Timer-Recoveryfehler beheben | Beide ursprünglichen Docker-Abbruchfälle bestehen mit nützlicher Anwendung, weiteren Sicherungen und unabhängigen Nachkommen. Beide Verweigerungsfälle ohne Berechtigung bestehen ebenfalls. | Übrige Integration auf demselben Paket abschließen. |
 | Vollständige Integration | Alle sechs Docker-Abbruchfälle bestanden; zwei unveränderte Upstream-Komponentenfälle genau gebunden. | Fünf Retained-Fälle und zwei vollständige Verbraucherfälle, insgesamt alle 15 benannten Integrationsfälle. |
 | Anwendung bei vollem Speicher wiederherstellen | Factory mit geplantem Worker-Ersatz besteht auf Worker 1308. Der harte Verlust einschließlich erneutem Resume besteht nach erklärtem und korrigiertem Capture-Fehler auf Worker 245c; der ursprüngliche vollständige Fehlerzustand bleibt erhalten. | Geplanten Factory-Fall auf dem neuen Paket, beide Minimal- und beide unterbrochenen Epochenfälle abschließen. |

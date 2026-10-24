@@ -8801,4 +8801,48 @@ bound separately. It runs unchanged suites serially and invokes existing
 verified closed-input sharing between them. Each actual build/native child
 still uses `reference.new_artifact` and the full eight-GiB start reserve.
 There are no assertion changes, retries of failed native cases or ordinary
-series trials. Its verdict is pending.
+series trials. It stops on a real pause regression rather than continuing
+past a failed required suite. The parent remains false and no later group runs.
+
+## Native pause completion rejects a post-detach freezer transition
+
+`factorybox-runtime-aaf8fa3ca6de48cf846104bc2985467f` reaches the original
+`TestPauseNative/retire-restored-cgroups` test, then rejects its first repeated
+fork with `capture completion requires the original frozen source: <nil>`
+from the guarded timer activation. Eleven top-level and 66 subtests pass;
+one top-level and its retirement subtest fail, with no skips or OOM. Other
+pause/resume subtests, including the second pause/resume and independent
+resumed fork, pass. Source, binary and component checks remain unchanged;
+exact cleanup succeeds. The complete 460,324,864-byte failed store is retained
+with raw SHA-256 `e52e12f7cc0a68f5898063f4d912f820dbcb1d2f9e8b1cdb9758c17481ca52a7`,
+encoded SHA-256 `1191f887c1765706b95a9957bce7fad6177244f30984d285ea7e0a24425ab091`.
+
+Read-only inspection
+`factorybox-pause-activation-inspection-9bd8984f49384fb58cbe94a495866eb7`
+verifies every original decoded byte and retains 24 diagnostic records.
+The failing target's timer activation intent exists with no timer targets;
+its completion receipt is absent, and the independent guard confirms that
+the failed mutator exited and the source was held. The activation thus passed
+its entry validation and reached the post-attach activation sequence. The
+current code confirms the frozen cgroup while tasks are ptrace-stopped, then
+detaches and immediately requires `frozen 1` again without acknowledging the
+kernel's post-detach freezer transition. The original error does not record
+the event values, so the following probe establishes the matching mechanism
+without retroactively inventing an original observation.
+
+Owned native probe
+`factorybox-freezer-detach-probe-b8a36469038a4279a15a849a216f2fb1` uses only
+its exact child, private cgroup, pidfd cleanup and a shared volatile application
+counter. In 256 real seize/interrupt/thaw/freeze/detach cycles, five immediate
+event reads return `frozen 0` while the requested `cgroup.freeze` stays 1.
+Every transition settles back to 1 without rewriting the freezer; the longest
+observed wait is 31.499 microseconds and the application counter never advances.
+Inputs and cleanup pass. This diagnostic confirms a possible false-rejection
+mechanism at the exact sequence; it is not a corrected Go completion regression
+or production qualification. No runtime change or new worker is made yet.
+The next required step is a real regression at that completion seam, bounded
+read-only acknowledgement after detach, immediate rejection of a changed
+freeze request or source identity, and the original complete pause test.
+If Go runtime bytes change, rebuild/reproduce and redo affected final-package
+acceptance. All failed outcomes and both original full recovery stores remain
+retained; the twenty ordinary trials remain unstarted and the full goal active.
