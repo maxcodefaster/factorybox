@@ -5513,3 +5513,101 @@ shares 42 identical new encodings/inputs, reclaiming 175,243,264 allocated bytes
 and restoring the required headroom. The observed replay's closure fully
 decodes all 68 executable encodings, 15 streams and the retained failed dump;
 selected builds, original failures, source, results and logs remain intact.
+
+## Exact PID collision from delayed real-agent reaping
+
+Predeclared two-case experiment
+`factorybox-pid-reap-causality-09d1f6ed305f414c9ed8246345c92f3a`
+uses the same diagnostic Sysbox-fs executable in both cases. With the fault
+disabled, original-image restore passes in
+`factorybox-pid-image-reap-22c39886e65e4f6fafd139bcb04011c2`.
+With only the actual asynchronous agent-reaping paths delayed by 500 ms,
+`factorybox-pid-image-reap-10b856f2dc50489bac28f2966cd4469c` fails with the
+exact original `Can't fork for 4463: File exists`. Its native result remains
+false and its complete failed volume remains retained.
+
+The unchanged original process-image test executable is `e704934e...` and
+CRIU remains `6263dd24...`. All 330 original image files, totaling 515,577,040
+bytes, are verified. The original filesystem metadata rejection remains an
+assertion; this diagnostic cannot qualify the original full lifecycle.
+
+The failed restore's fresh proc/pidfd evidence identifies PID 2 as an unreaped
+`runc:[2:INIT]` zombie, with process-group and session ID 2. The independent
+controlled kernel trace observes the real helper's random PID-2 allocation,
+its successful setsid, and the absence of final PID release before CRIU's
+requested PID-2 allocation returns EEXIST in that same PID namespace.
+All three read/loss counters and all five missed-probe counters are zero.
+CRIU's namespace-based reference scan itself reports matched=0/errors=2 for
+the zombie; that scan cannot substitute for the direct proc/pidfd and lifetime
+observations. `closure.json` checks the complete causal pair independently.
+
+`selected-source-applicability.json` also verifies that the selected Sysbox
+source retains exactly the same asynchronous completion/reaping functions.
+It checks the actual pristine runc archive that Sysbox-fs reextracts before
+compiling, rather than treating a different patched context copy as that
+import. The earlier uninstrumented historical occupant was not observed;
+the evidence establishes the same exact collision class with the original
+images under controlled scheduling.
+
+Lossless repack `factorybox-storage-repack-c11691e412b44d0599682984ed898b2f`
+fully verifies all 2,824,863,744 bytes of this new failed volume and reclaims
+392,648,941 encoded bytes. Both this current counterexample and the complete
+original PID failure remain reconstructable. Separately,
+`factorybox-storage-retirement-422693c0c9f74aa4869d59ab7c5cc49c`
+retires only the superseded observer-BTF preflight volume after its passing
+replacement `bb54440...`, preserving complete decompression verification,
+all 59,103 member records/hashes and 2,489,074 unique diagnostic bytes. That
+obsolete setup volume is explicitly no longer fully reconstructable; its
+failed verdict, sources, logs and retirement pointer remain unchanged.
+
+Ordered candidate `criu-nested-pid-counter-candidate.patch` now addresses a
+specific gap: root PID-counter seeding did not seed fresh inner namespaces.
+It opens each new inner namespace's own proc mount after the userns mapping
+handshake and before credentials/mount preparation can trigger helpers.
+It retains the inherited root proc service FD and the original root seeding
+path. Build `factorybox-build-criu-retained-5e4fcc79d85b44a59d5fcfd8523fd78d`
+produces CRIU `8c9a9b0d...`; all 1,030 upstream test files remain unchanged
+and the 31 ownership cases pass. This build result alone is not a runtime
+fix proof or selection. The exact original-image fault/control checks are
+predeclared in `factorybox-pid-inner-seed-proof-471fa08b08ad4b9b9b1b41a965eb8128`.
+Complete native/package acceptance and every other first-release requirement
+remain required; production qualification remains false and the goal active.
+
+The predeclared seeded pair subsequently passes both complete native image
+checks: delayed-reap case `factorybox-pid-image-seeded-d5264f39b96e416a9f1cdb9ca9082abc`
+and ordinary control `factorybox-pid-image-seeded-b97e1c76c2dd4fecb1ea947f30ae75f8`.
+The same real helpers now receive random PIDs 5494 and 5499 in the primary
+inner namespace. Both PID objects remain unreleased while CRIU successfully
+allocates the original saved PID 2. The fault remains enabled in that case;
+the control has no fault marker. All observer error/loss/miss counters are zero,
+all original image assertions pass, and both owned containers/volumes close.
+
+The first supplementary analyzer fails because it incorrectly expects the
+allocation generation in a session-change event. Those session records are
+explicitly zero-initialized by the frozen observer and have no generation.
+Its exact failed execution and unchanged source remain recorded in
+`factorybox-pid-inner-seed-evaluation-78b7c3dfa896436b87f1a12fa5314f98`.
+The declared new-copy analyzer requires zero there, and binds the successful
+session operation to the same namespace, PID-object pointer, local PID and
+expected helper name strictly inside the allocation's unreleased interval.
+Allocation/free generation matching remains required. Exact before/after/patch
+hashes document this interpretation correction; no native input, assertion,
+outcome or frozen pair plan changes. Its independent `closure.json` passes
+and also verifies that precisely the three declared CRIU files differ.
+
+The new CRIU then passes all 18 declared unchanged upstream core cases, each
+with two ordinary dump/restore cycles, in
+`factorybox-criu-core-2785f6847873472b90af3db3d80f7333`.
+All six portable check groups pass in
+`factorybox-checks-d8335db4608e4b76894123cb1f2e4f09`, including 241 Python tests,
+Go tests/vet, all 232 sealed reference files and ordered fixture verification.
+
+Worker candidate `factorybox-build-worker-a66c5db009d5458b9f5d85b7c233516e`
+assembles this CRIU with the current SHM-corrected Sysbox components and the
+unchanged packaged CLI `42381f1a...`. Its deterministic raw package hash is
+`d89ecaa02f23b59bdda4ad40bbe64f7ba134b36bb223d3adf78105166b160e0b`;
+the image is `sha256:95752232a5fab113bf9d5d40ac2dc1515738d78e09738478d640364d4fbf68e9`.
+The encoded package has complete decompression verification and the original
+source/byte reconstruction receipt. This is an unselected candidate: its
+complete consumer/regression proofs, independent reproduction and every
+remaining first-release requirement still need acceptance.

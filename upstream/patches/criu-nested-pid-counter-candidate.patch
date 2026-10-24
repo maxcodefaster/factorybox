@@ -1,0 +1,67 @@
+--- a/criu/cr-restore.c
++++ b/criu/cr-restore.c
+@@ -2040,6 +2040,21 @@
+ 	if (nested_ns_child_wait(current))
+ 		goto err;
+ 
++	/* Sysbox namespace-entry helpers can fork before their caller resumes.
++	 * Seed every fresh inner PID namespace before preparing credentials or
++	 * mounts can trigger such helpers. The inherited proc service belongs to
++	 * the root PID namespace and must remain available for PID translation. */
++	if (nested_ns_enabled() && current != root_item && (ca->clone_flags & CLONE_NEWPID)) {
++		int proc_fd = kdat.has_fsopen ? mount_detached_fs("proc") : __legacy_mount_proc();
++
++		if (proc_fd < 0)
++			goto err;
++		ret = nested_ns_seed_pid_counter(proc_fd);
++		close(proc_fd);
++		if (ret)
++			goto err;
++	}
++
+ 	if (needs_prep_creds(current) && (prepare_userns_creds()))
+ 		goto err;
+ 
+@@ -2075,7 +2090,7 @@
+ 			goto err;
+ 		/* The inherited /proc still refers to the caller's PID namespace.
+ 		 * Seed through the fresh proc service FD before namespace helpers. */
+-		if (nested_ns_seed_pid_counter())
++		if (nested_ns_seed_pid_counter(-1))
+ 			goto err;
+ 
+ 		if (!files_collected() && collect_image(&tty_cinfo))
+--- a/criu/nested-ns.c
++++ b/criu/nested-ns.c
+@@ -457,7 +457,7 @@
+  * every requested pid before any task is forked: the random ones are
+  * taken from above them all.
+  */
+-int nested_ns_seed_pid_counter(void)
++int nested_ns_seed_pid_counter(int proc_fd)
+ {
+ 	char buf[32];
+ 	unsigned long max = 0;
+@@ -488,7 +488,10 @@
+ 
+ 	len = snprintf(buf, sizeof(buf), "%lu", max + 1000);
+ 
+-	fd = open_proc_rw(PROC_GEN, "sys/kernel/ns_last_pid");
++	/* A supplied proc mount belongs to a newly created inner PID namespace.
++	 * Keep the root proc service FD for the rest of restore's PID lookups. */
++	fd = proc_fd >= 0 ? openat(proc_fd, "sys/kernel/ns_last_pid", O_RDWR | O_CLOEXEC) :
++			    open_proc_rw(PROC_GEN, "sys/kernel/ns_last_pid");
+ 	if (fd < 0) {
+ 		pr_perror("Can't open the pid namespace counter");
+ 		return -1;
+--- a/criu/include/nested-ns.h
++++ b/criu/include/nested-ns.h
+@@ -155,7 +155,7 @@
+  * containers (which their nested user namespace parents can not set)
+  * can not collide with them. To be called before any task is forked.
+  */
+-int nested_ns_seed_pid_counter(void);
++int nested_ns_seed_pid_counter(int proc_fd);
+ 
+ int nested_ns_child_wait(struct pstree_item *item);
+ void nested_ns_child_abort(struct pstree_item *item);
