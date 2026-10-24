@@ -7623,3 +7623,32 @@ remaining full consumers, original 8-GiB useful recovery, historical EBUSY
 attribution, actual external agent/cancellation/effect cases, tested update and
 rollback, predetermined ten ordinary lifecycles per example and final profile
 remain open. The 24-hour run remains deferred. The complete goal stays active.
+
+## Completed worker transports retain every byte in verified encodings
+
+The normal 8-GiB artifact start reserve was unavailable at 27,089,297,408
+allocated bytes. `tools/closed_worker_packages.py` retains only completed legacy
+raw worker transport archives in fresh, separately named lossless encodings.
+It verifies the complete decoded byte count and original package SHA-256 before
+unlinking an exact raw transport. Original result manifests, frozen source,
+component bundles, image identities, selected failures and the full goal remain
+unchanged. Durable per-group verification and per-build pointers allow the
+unchanged original manifests to remain usable through `build_worker.load`,
+which verifies the whole decoded package again. Interruption after unlink does
+not depend on the outer maintenance result being written. Reconstruction
+commands and original manifest hashes are retained with each group.
+
+The canary `factorybox-storage-worker-packages-fe7c5727e5484b4b905dfda91055c95c`
+passes and returns 51,494,912 allocated bytes. The subsequent completed batch
+`factorybox-storage-worker-packages-b2d7b5123d584dfa95d77839a7f4bb30`
+passes for 44 completed builds in 32 distinct raw-package groups, returning
+1,644,167,168 allocated bytes. The post-batch usage is 25,393,651,712 bytes;
+the ordinary unchanged 8-GiB start-reserve check succeeds again. No package
+content is minimized or discarded. No failure image or archived executable is
+expanded. Maintenance itself performs no build or native workload.
+
+The six focused transport tests cover exact reconstruction and unchanged
+manifests, corruption, redirected paths, failed verification, interruption
+after unlink and shared raw hardlinks. All 268 portable Python tool tests pass
+in `factorybox-transport-pythonchecks-908d58dd81c44bb493e7cac07d6b4b4f`.
+This establishes storage maintenance behavior, not production qualification.

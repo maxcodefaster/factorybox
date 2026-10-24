@@ -60,6 +60,9 @@ def load(name):
         if encoded != result['package_encoding']:
             raise ValueError('encoded worker package differs from build provenance')
         package_sha256 = result['package_sha256']
+    elif not package.exists() and package.with_name(package.name + '.retention.json').is_file():
+        import closed_worker_packages
+        package_sha256 = closed_worker_packages.retained_sha(package, result['package_sha256'])
     else:
         package_sha256 = reference.sha(package)
     if (recipe["source_lock_sha256"] != reference.sha(artifact / "source-lock.json") or
