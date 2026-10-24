@@ -7078,3 +7078,76 @@ the 32-GiB limit, 8-GiB start reserve or host free-space floor. Original EBUSY,
 retain their selected complete archives.
 
 The full first-release goal remains active and production qualification false.
+
+## Complete recovery-pressure consumers pass on the cancellation candidate
+
+Commit `5378b21` is packaged by
+`factorybox-build-worker-ac0f93d4f9ab4c0aaa20814541442715`. Independent no-cache
+build `factorybox-build-worker-7317c3d6b8dd4245a79233f1c51604bb` reproduces its
+complete source manifest, executable bundle, package, image and layers exactly.
+Package SHA-256 is
+`a20ea9b69799cdc505c3ba853f3f9dcd131fc4f4fb5dd7de322f319230987965`;
+image is `sha256:94cbc71f5ade110a4c787df621be388b07f6df14c815a98d948ea089154f5d98`.
+The runtime source remains byte-identical to this independently reproduced
+candidate after the documentation update.
+
+Both complete original consumers now pass with the ordered pressure extension:
+
+| Example | Complete native evidence | Prepare body | Recover body |
+| --- | --- | ---: | ---: |
+| Minimal, planned loss | `factorybox-consumer-worker-loss-f2de40cecf524f3ea2738e0960bf689c` | 63.10 s | 84.14 s |
+| Factory, planned loss, Theia and local OpenCode | `factorybox-consumer-worker-loss-e73fa3bf320849879bbf9f629b02e50f` | 56.50 s | 268.93 s |
+
+These are complete fault-fixture durations, including deliberate capacity
+pressure, integrity checks and retirement. They are not ordinary useful-start
+or restore latency measurements, a distribution, final-series members or a
+production-performance claim. The original 420-second lifecycle deadline and
+all resource ceilings remain unchanged.
+
+Each run admits a real recovery copy and observes kernel ENOSPC, preserves the
+entire original committed checkpoint, releases only its exact pressure inode,
+refuses the incomplete target without modifying its copy, and completes an
+independent useful recovery/replay with original RAM/files comparisons.
+The failed copy remains intact through that useful work. The test then fills
+the store again to exactly zero available bytes, obtains the complete public
+inspection and explicitly cancels that copy through the delivered CLI.
+Exact cancellation replay returns identical completion bytes. The original
+target reservation is unchanged and only its terminal receipt remains beside
+it. Original backup metadata remains unchanged.
+
+The full original public epoch-retirement protocol and every subsequent
+consumer assertion now complete, including useful continuation, fresh
+checkpoint/fork, independent descendant state, source deletion and actual
+agent tool-result processing in Factory. Native results, complete original
+consumer success, terminal-reservation preservation, exact owned cleanup and
+unchanged global settings are all true. Neither preserved historical red result
+is reclassified.
+
+`factorybox-import-cancellation-closure-99e5f00053194df0997f0c3cfca22839`
+independently loads both frozen packages and rechecks every native input hash,
+encoded executable, complete source manifest, core/package binding, ordered
+fixture patch, actual zero-capacity observation, cancellation identity/replay,
+original assertion preservation and absence of the exact run-owned resources.
+The goal and parallel-chat handoff retain their original hashes. Complete
+selected 500/A66 failure encodings are still present and their encoded hashes
+verify. The first audit invocation expected an `inputs_unchanged` summary field
+which this consumer schema does not emit; it stops before a result is written.
+The completed audit instead verifies every actual `inputs_sha256` entry and
+full frozen source manifest directly.
+
+Two Factory driver invocations were refused before starting any native run:
+one selected the minimal example's project-image recipe, and one provided a
+bare Theia image ID instead of its canonical digest reference. The successful
+Factory run uses the exact already qualified Factory project images and Theia
+reference from the preceding complete Factory proof. Both preflight refusals
+remain explicitly recorded in the closure artifact.
+
+The admitted-copy ENOSPC/manual-cancellation path is now demonstrated for these
+two complete planned-loss consumers. Remaining import acceptance includes the
+initial reservation-publication boundary, interruption after mounts exist and
+fenced retained-controller cancellation, and the other loss/example combinations
+on the final bytes. Historical EBUSY attribution, actual external-provider
+agent cases, operating update/rollback, the full required final regression and
+upstream audit, predetermined ten-lifecycle series per example and final
+release profile remain open. The complete goal stays active; production
+qualification remains false.

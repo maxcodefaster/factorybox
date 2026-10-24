@@ -96,8 +96,9 @@ work remains fenced until exact completion, including across worker replacement.
 Unknown objects, live dependencies and changed ownership require refusal.
 Automatic retention remains deferred.
 
-The next candidate exposes explicit cancellation of an unpublished recovery
-copy. It preserves `import.json` and permanently reserves that failed target
+Candidate `factorybox-build-worker-ac0f93d4f9ab4c0aaa20814541442715` exposes
+explicit cancellation of an unpublished recovery copy. It preserves
+`import.json` and permanently reserves that failed target
 ID. Save the complete inspection outside the bounded store, then submit that
 exact file:
 
@@ -116,8 +117,13 @@ It never releases mounts or removes the original backup. After an interrupted
 deletion, inspect the surviving copy again. After confirmed completion, exact
 replay returns the original cancellation receipt. A fresh recovery needs a
 different target ID. Unknown entries and a failed initial `import.json`
-publication still require separate investigation. Root-owned focused tests
-pass; full native cancellation under ENOSPC remains pending for this candidate.
+publication still require separate investigation. Root-owned focused tests and
+complete planned-loss ENOSPC consumers now pass for both the minimal example
+and Factory with Theia/local OpenCode. Their exact candidate has an independently
+identical package/image build. Evidence is bound by
+`factorybox-import-cancellation-closure-99e5f00053194df0997f0c3cfca22839`.
+Later mounted-stage interruption, initial reservation-publication failure and
+the remaining loss combinations still require acceptance.
 
 The current image passes the complete existing public retirement fault fixture
 in `factorybox-bounded-loss-29c1db8cc9db4ae089f9667c5122e266`. It includes
