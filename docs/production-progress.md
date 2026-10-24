@@ -8132,3 +8132,120 @@ No historical experiment or original 8-GiB/provider/EBUSY counterexample is
 targeted. Native preflight then admits the bounded capability control and
 subsequent integration batch under the original reserve and host-free-space
 policy.
+
+## Four complete Docker fault cases pass; controller loss with a staged timer remains open
+
+The current batch
+`factorybox-pilot-integration-gates-7723f3aa759646f8a5a89538845920cc`
+accepts four complete cases on the unchanged delivered 29cb CLI/components:
+Docker root/tracer loss `factorybox-devx-lifecycle-bb1f6c525ae04c058990e6ea441ff3ed`,
+Docker-daemon/tracer loss `factorybox-devx-lifecycle-7c7a9abcf765430b83d0951b8a452ae6`,
+pause/tracer loss `factorybox-devx-lifecycle-a7933d78639c43458756eeb70289795e`,
+and retained-helper loss `factorybox-devx-lifecycle-2da802efc9f54f9a94a547cc9d0cf061`.
+Each passing child has exact cleanup, unchanged compiled inputs and no OOM;
+each child result SHA-256 matches the parent's pinned hash. The next controller
+case is refused by the unchanged eight-GiB artifact reserve before creating a
+child. This is not a native test pass or a native workload failure.
+Closed input sharing `factorybox-storage-share-inputs-7eafa1a267e94300aec2f09080a19cb8`
+then passes, returning 348,979,200 allocated bytes across sixteen identical
+inputs. The batch's overall failed verdict stays unchanged.
+
+The actual controller case subsequently runs in
+`factorybox-pilot-integration-gates-e31486d23a7e4bf1a8635a0290998246`,
+child `factorybox-devx-lifecycle-b1ff1d25608d47e0911c38940b6c22b3`.
+After exact original tracer/worker rollback and controller SIGKILL, the public
+pause replay refuses as unfinished/uncertain; source deletion correctly refuses
+the unresolved pause. The original Go case fails in 51.25 seconds, with cleanup,
+unchanged inputs and no OOM. The later guard/libcontainer/runc cases in that
+batch are unrun. Eleven of the fifteen named integration cases have individual
+current passes; controller loss fails and three cases still lack fresh verdicts.
+
+Ranked diagnosis considers an early replay, incomplete timer restoration and
+changed retained identities. Offline inspection
+`factorybox-docker-controller-diagnosis-bbe0a503d29543d3afb253834172cd3c`
+fully decompresses and hashes the exact original 4,624,220,160-byte failure tar
+and retains only bounded guard JSON/logs. It confirms 110 original threads,
+one selected relative timer and complete guarded timer preparation. The
+original retained helper's authorized process cure passes, preserves the
+source hold and publishes its process-restoration receipt. The original guard
+then explicitly refuses with `timer mutation remains unconfirmed; original
+source must remain held`, and publishes
+`original_source_held_for_capture_reconciliation`, with `capture_in_flight=true`.
+Its `passed=true` describes the successful protective hold, not useful recovery
+or acceptance of this integration case. A delay cannot complete the deliberately
+refused timer transaction. Runtime code has not been changed for this new case.
+
+The preceding inspection `factorybox-docker-controller-diagnosis-62d50ea3a4a24e398dba97651d803fcc`
+fails on its own summary formatter treating an integer thread count as a list.
+It remains failed and unchanged; the fresh corrected inspector verifies the
+whole archive and accepts either integer or collection counts. Neither
+inspector starts a build or native workload, expands an image or changes source
+data. The full current controller-failure filesystem remains reconstructable
+after verified lossless repack
+`factorybox-storage-repack-f942a99f2d044a6baec0c2992294baaf`, which returns
+778,572,507 encoded bytes. Original result/source/logs/compiled inputs remain.
+
+This is an open staged-timer/controller-loss runtime requirement. Any correction
+must preserve the existing native timer-orphan/guard-loss refusal assertions,
+original retained authority, exact old-source identities and the complete
+Docker test's useful-source/fork/replay assertions. A new runtime package needs
+its independent reproduction and current-package acceptance. Neither the
+twenty-trial 441c plan nor its predecessor has started; do not spend the final
+series on the known failing candidate or count earlier integration runs into it.
+Original 8-GiB useful recovery, historical EBUSY attribution, actual provider/
+cancellation/effect cases, update/drain/rollback and final profile remain open.
+The complete goal remains active and production qualification remains false.
+
+## Current component integration closes two more named cases
+
+`factorybox-pilot-integration-gates-dc8516e4743041ad921d1fe161fb04d5`
+passes its two selected current-component suites. Libcontainer child
+`factorybox-upstream-3b5823e6c2eb4feb881a6bb3c4cf6ec0` passes 28 top-level
+tests and thirty subtests with no skips. Runc integration child
+`factorybox-upstream-b9886c8a936d424ebe53bd16c0b30aff` passes 47 tests and
+retains exactly the twelve original unsupported-environment skips. Both have
+complete cleanup and exact original coverage/skip-set verification; the child
+result hashes match the parent. These are component-only results, not acceptance
+of the failed Factorybox timer/controller-loss behavior.
+
+Thirteen of the fifteen named integration cases now have individual passing
+evidence. Docker-controller loss remains failed; Docker-guard loss is still
+unrun on this final driver setup. The known staged-timer runtime case and all
+remaining production requirements above still block qualification.
+
+## Replaced fixture dump retired; current unresolved failures remain complete
+
+`factorybox-resolved-docker-fixture-retention-c45ca84eb4514029ac05573415f47230`
+binds the old masked-symbol failure ce7f to its complete passing bb1f Docker-root
+replacement. Full Go source, every compiled input, CLI/component bytes, frozen
+consumer/project images and fault parameters match. The sole input difference
+is the exact declared shell capability patch, before hash `6ec7c7e1...` and
+after hash `459c32d0...`, with full hashes retained in the binding receipt.
+The old error occurs before the first checkpoint; the full unchanged original
+Docker interruption assertions pass in the replacement.
+
+Its retirement child `factorybox-storage-retirement-dee475481910461a9ac5b8635c6ede5b`
+fully decodes and indexes the old 3,862,953,984-byte tar before retiring its
+441,871,366-byte replacement encoding. It retains all member hashes and
+120,926 diagnostic bytes. This old generated filesystem is now intentionally
+unavailable; failed result, frozen source, logs and compiled input encodings
+remain unchanged. The distinct current b1ff controller failure is not retired.
+Lossless closed-capture repacks fc0f83eb, 2e68f7d4 and fe66d57d preserve all
+original bytes of current admission, worker-loss and retained-controller
+native captures, returning 20,906,729, 6,227,149 and 36,837,456 encoded bytes.
+
+All four maintenance children pass. The parent maintenance result stays failed
+because its final eight-GiB start-reserve check still refuses; do not rerun its
+completed retirement or repacks. Its separate
+`post-maintenance-protection.json` verifies unchanged hashes of the goal,
+parallel-chat handoff, full original 8-GiB image/result, full current controller
+failure/result, original EBUSY encoding and provider failure result.
+
+`factorybox-storage-share-encoded-inputs-0bfa220223c24391b0e490012d82bf73`
+then verifies complete raw ELF decompression, original native input bindings
+and exact encoded hashes before sharing 39 identical closed compiled-input
+encodings. It preserves every path/byte and original result/encoding receipt,
+records both original and shared mtimes and returns 360,062,976 allocated bytes.
+No dump, source, active input or historical experiment is targeted. Allocated
+artifact usage becomes 25,571,508,224 bytes, restoring the unchanged native-run
+reserve. The subsequent component integration batch passes that preflight.

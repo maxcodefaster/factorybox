@@ -38,6 +38,14 @@ delivered core and pinned components, including a fresh eighteen-case CRIU
 core run. This leaves the remaining upstream/integration, actual-provider,
 operations, historical-error and final-series requirements open.
 
+The current Docker controller-loss qualification case remains failed. If the
+controller dies after a staged relative timer and process rollback, the original
+guard confirms its process cure but retains the source frozen because timer
+activation is unconfirmed. The public pause replay and deletion refuse. Keep
+the complete store and exact transaction evidence; this candidate has no
+accepted automatic useful-source recovery for that boundary. Its thirteen
+individually passing integration cases do not remove this release blocker.
+
 ## Start and verify
 
 Use the existing qualified Linux AMD64 host and boot, with a separate worker
