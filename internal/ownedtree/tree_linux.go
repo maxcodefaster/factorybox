@@ -70,7 +70,7 @@ func object(fd int) (Object, unix.Stat_t, error) {
 	return Object{uint64(stat.Dev), stat.Ino, extended.Mnt_id, stat.Mode, stat.Uid, stat.Gid}, stat, nil
 }
 
-func inspect(ctx context.Context, anchor int, name string, payload bool) (entry Entry, resultErr error) {
+func inspect(ctx context.Context, anchor int, name string, payload bool, buffer []byte) (entry Entry, resultErr error) {
 	entry.Path = name
 	if err := ctx.Err(); err != nil {
 		return entry, err
@@ -103,7 +103,7 @@ func inspect(ctx context.Context, anchor int, name string, payload bool) (entry 
 		file := os.NewFile(uintptr(content), name)
 		actual, _, identityErr := object(content)
 		hash := sha256.New()
-		_, readErr := io.Copy(hash, contextReader{ctx, file})
+		_, readErr := io.CopyBuffer(hash, contextReader{ctx, file}, buffer)
 		if err := errors.Join(identityErr, readErr, file.Close()); err != nil {
 			return entry, err
 		}
@@ -157,11 +157,11 @@ func list(anchor int, name string) ([]os.DirEntry, error) {
 	return entries, nil
 }
 
-func walk(ctx context.Context, anchor int, name string, mount uint64, visit func(Entry) error, depth int) error {
+func walk(ctx context.Context, anchor int, name string, mount uint64, visit func(Entry) error, depth int, buffer []byte) error {
 	if depth > 256 {
 		return fmt.Errorf("owned tree exceeds depth bound")
 	}
-	entry, err := inspect(ctx, anchor, name, true)
+	entry, err := inspect(ctx, anchor, name, true, buffer)
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func walk(ctx context.Context, anchor int, name string, mount uint64, visit func
 		return err
 	}
 	for _, child := range entries {
-		if err := walk(ctx, anchor, name+"/"+child.Name(), mount, visit, depth+1); err != nil {
+		if err := walk(ctx, anchor, name+"/"+child.Name(), mount, visit, depth+1, buffer); err != nil {
 			return err
 		}
 	}
@@ -202,6 +202,9 @@ func Capture(ctx context.Context, root *os.Root, paths []string) (plan Plan, res
 	plan.Paths = append([]string(nil), paths...)
 	sort.Strings(plan.Paths)
 	anchors := map[string]bool{}
+	// Each scan is sequential. Reuse its read buffer across regular files;
+	// the independent complete validation still hashes every file again.
+	buffer := make([]byte, 32<<10)
 	for i, name := range plan.Paths {
 		if !local(name) || i > 0 && (name == plan.Paths[i-1] || strings.HasPrefix(name, plan.Paths[i-1]+"/")) {
 			return plan, fmt.Errorf("owned payload paths are invalid or overlap")
@@ -215,7 +218,7 @@ func Capture(ctx context.Context, root *os.Root, paths []string) (plan Plan, res
 			}
 			plan.Entries = append(plan.Entries, entry)
 			return nil
-		}, 0); err != nil {
+		}, 0, buffer); err != nil {
 			return plan, err
 		}
 	}
@@ -225,7 +228,7 @@ func Capture(ctx context.Context, root *os.Root, paths []string) (plan Plan, res
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		entry, err := inspect(ctx, int(anchor.Fd()), name, false)
+		entry, err := inspect(ctx, int(anchor.Fd()), name, false, nil)
 		if err != nil {
 			return plan, err
 		}
@@ -274,7 +277,7 @@ func validate(ctx context.Context, anchor int, plan Plan, missing bool) error {
 		expected[entry.Path] = entry
 	}
 	for _, entry := range plan.Anchors {
-		actual, err := inspect(ctx, anchor, entry.Path, false)
+		actual, err := inspect(ctx, anchor, entry.Path, false, nil)
 		if err != nil || actual.Object != entry.Object {
 			return errors.Join(fmt.Errorf("owned payload parent changed: %s", entry.Path), err)
 		}
@@ -282,6 +285,7 @@ func validate(ctx context.Context, anchor int, plan Plan, missing bool) error {
 	seen := map[string]bool{}
 	links := map[[2]uint64]uint64{}
 	observed := map[[2]uint64]uint64{}
+	buffer := make([]byte, 32<<10)
 	for _, name := range plan.Paths {
 		if !local(name) {
 			return fmt.Errorf("invalid owned inventory root path")
@@ -301,7 +305,7 @@ func validate(ctx context.Context, anchor int, plan Plan, missing bool) error {
 				observed[key] = actual.Links
 			}
 			return nil
-		}, 0)
+		}, 0, buffer)
 		if err != nil && !(missing && errors.Is(err, os.ErrNotExist)) {
 			return err
 		}
@@ -369,6 +373,7 @@ func RemoveRemaining(ctx context.Context, root *os.Root, plan Plan) error {
 			parents[entry.Path] = entry.Object
 		}
 	}
+	buffer := make([]byte, 32<<10)
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -387,7 +392,7 @@ func RemoveRemaining(ctx context.Context, root *os.Root, plan Plan) error {
 			return errors.Join(fmt.Errorf("owned removal parent changed: %s", parentName), identityErr)
 		}
 		name := path.Base(entry.Path)
-		actual, err := inspect(ctx, parent, name, true)
+		actual, err := inspect(ctx, parent, name, true, buffer)
 		if errors.Is(err, unix.ENOENT) {
 			unix.Close(parent)
 			continue
@@ -410,7 +415,7 @@ func RemoveRemaining(ctx context.Context, root *os.Root, plan Plan) error {
 		return err
 	}
 	for _, name := range plan.Paths {
-		_, err := inspect(ctx, int(anchor.Fd()), name, false)
+		_, err := inspect(ctx, int(anchor.Fd()), name, false, nil)
 		if !errors.Is(err, unix.ENOENT) {
 			return fmt.Errorf("owned removal completion is unconfirmed: %s: %v", name, err)
 		}
