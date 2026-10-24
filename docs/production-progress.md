@@ -7936,7 +7936,10 @@ qualification.
 
 Artifact usage after the complete native suite is 25,208,713,216 allocated
 bytes, within the unchanged start-reserve policy. Exact closed-input sharing
-is being run before further integration work. The four full consumer cases,
+`factorybox-storage-share-inputs-d538a6c84eaa4800918987996ef05c5c` then passes,
+sharing 87 byte-identical completed inputs and returning 1,529,237,504 allocated
+bytes. Every original path, byte, result and source is preserved; no active
+input or failure image is targeted. The four full consumer cases,
 two current interrupted native epoch cases, eighteen native groups and six
 portable groups now have current passing evidence. Original 8-GiB useful
 recovery, historical EBUSY attribution, actual external-provider/cancellation/

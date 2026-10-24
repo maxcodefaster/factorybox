@@ -32,6 +32,12 @@ changed-attachment and public-retirement checks:
 These four consumer passes do not complete the remaining native, upstream,
 external-agent, operations and predetermined-series qualification.
 
+All eighteen declared native gate groups now pass in
+`factorybox-pilot-native-gates-b4189cf518b44b2f870f7988f0417916` against this
+delivered core and pinned components, including a fresh eighteen-case CRIU
+core run. This leaves the remaining upstream/integration, actual-provider,
+operations, historical-error and final-series requirements open.
+
 ## Start and verify
 
 Use the existing qualified Linux AMD64 host and boot, with a separate worker
