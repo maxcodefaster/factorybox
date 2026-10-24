@@ -43,14 +43,24 @@ Der gemeinsame Nachweis
 `factorybox-current-main-native-closure-9c499b4ac32a4ac0824da84515a910ce`
 prüft eingefrorene Quellen, Testeingaben, benannte Ergebnisse, vollständige
 Capture-Archive und das Aufräumen erneut. Die bytegleiche CRIU-Kernprüfung
-mit 18 Fällen und je zwei Zyklen ist gesondert gebunden. Gezielte Timer-,
-Stilllegungs-, Metadaten- und Stop-Schutzfälle gehören weiterhin zur übrigen
-Freigabeabnahme.
+mit 18 Fällen und je zwei Zyklen ist gesondert gebunden.
 
 Zusätzlich bestehen inzwischen die vollständige Stilllegungssuite mit allen
 acht ursprünglichen Haupttests in `67825546a2e747e784a836d8008ab4d2` und der
 gezielte Kapazitätsfall in `efea9fa67a1f48688f539c240d94c84f`. Beide verwenden
 das aktuelle Worker-Image und bestätigen unveränderte Eingaben und Aufräumen.
+
+Auch die elf noch offenen gezielten Timer-, Restore-Hold- und Metadatenfälle
+bestehen jetzt in
+`factorybox-current-targeted-native-gates-1d4dba81823b45019d0d37e747face60`.
+Der vollständige Metadatenfall verwendet drei echte bestätigte Pausen und
+200 öffentliche Basisimporte, anschließend sauberes Stoppen beider Worker
+und nützliche Wiederherstellung in einer neuen Epoche. Der Timer-Abbruchfall
+erzeugt tatsächlichen Platzmangel und prüft die ursprüngliche Anwendung danach.
+Die unabhängige `closure.json` prüft alle elf Ergebnisse sowie die bereits
+bestandenen Stilllegungs- und Kapazitätsfälle erneut. Damit sind in diesen
+13 Gruppen 20 ursprüngliche Haupttests belegt, ohne reduzierte Metadatenfälle,
+Prototypen oder Wiederholungen fehlgeschlagener Läufe.
 
 Die Serien `93d21ac9...` und `a3d09ea4...` hielten nach fünf beziehungsweise
 acht weiteren Erfolgen vor der nächsten Gruppe an der Artefaktreserve an.
@@ -64,7 +74,7 @@ sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet
 | Anforderung | Belegter Stand des aktuellen Kandidaten | Noch erforderlich |
 | --- | --- | --- |
 | Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
-| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, die vollständige Stilllegungssuite mit acht Haupttests und der gezielte Kapazitätsfall bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Weitere gezielte Timer-, Metadaten- und Stop-Schutzfälle abschließen. |
+| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite mit acht Haupttests und der Kapazitätsfall bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Die beiden unterbrochenen nativen Epochenfälle auf dem aktuellen Paket abschließen und im Endprofil verbinden. |
 | Vollständige Integration | Frühere Docker- und Komponentenbelege bleiben erhalten; unveränderte Komponenten können exakt gebunden werden. | Alle 15 benannten Fälle auf dem aktuellen Stand nachweisen: fünf Retained-, sechs Docker-Abbruch-, zwei volle Verbraucher- und zwei Komponentenfälle. |
 | Anwendung bei vollem Speicher wiederherstellen | Der vollständige harte Factory-Verlust besteht auf 6016. | Geplanten Factory-Fall, beide Minimal-Fälle und beide unterbrochenen nativen Epochenfälle auf demselben Paket abschließen. |
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. | Tatsächlich wiederherstellen und nützliche Arbeit prüfen. |

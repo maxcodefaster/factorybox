@@ -9069,3 +9069,74 @@ and cleanup true. Each closed probe executable has its complete decoded-byte
 encoding receipt. Other targeted timer/metadata/stop-guard proofs and every
 other remaining release requirement still apply; production qualification
 remains false and the full goal active.
+
+## Current targeted timer, restore-hold and full metadata acceptance
+
+On 2026-10-24, all eleven remaining selected-path targeted native suites pass
+on unchanged worker `6016296965364344a8ef9eede420dbc8` in
+`factorybox-current-targeted-native-gates-1d4dba81823b45019d0d37e747face60`.
+The declaration preserves the preceding complete timer-remainder success and
+lists the ten subsequent original commands before execution. There are no
+retries, reduced worker-metadata inputs, prototypes or ordinary-series trials.
+Parent result SHA-256:
+`859f63c1fbd2274629fbe519c7f8c717ebd7d94b68c517dc9654885ffe75e760`.
+
+| Original suite | Passing native artifact suffix |
+| --- | --- |
+| timer-remainder | 9e7680814e4b412a9a060cc325af41c6 |
+| timer-exit-guard | 250be87050e447aabb63e2695bd1b3d0 |
+| timer-signal | c7d661f8c62c405db20b08e28b71187f |
+| timer-admission-signal | b61b3eef1db942798e0f10e15de56fd8 |
+| timer-remainder-protection | b6babba61cd54570840b4d28142a192b |
+| restore-hold | bc2eff6a304745f68e533bf5749120d1 |
+| timer-orphan | 9d10d3352a204ba899ef89f10207779a |
+| timer-guard-loss | a3c1613ca830484f97832982ef3b74db |
+| record-metadata | dd81fabc4e4a48d1ab0a78baf168eb91 |
+| worker-metadata | 99711a1dea8a43928f18262e260e1394 |
+| timer-abort | d49e7ca88beb4e4887f5268137a78886 |
+
+The first ten artifacts use prefix `factorybox-checkpoint-retirement-`; the
+last uses `factorybox-storage-admission-`. Every original source/test tree,
+delivered image, named top-level outcome, structured proof, global sysctl
+observation and actual absence of owned containers/volumes is revalidated by
+the independent frozen `closure.py`. Its `closure.json`, SHA-256
+`83a68f4f575d2a2c22b23339347d5ac7213c565e29b5af124a139191fe918798`,
+also revalidates the prior full eight-test retirement and capacity proofs.
+That is thirteen groups and twenty original top-level tests. All use the
+same complete native probe, SHA-256
+`6271370d105428126fd4404570b96b290203a740fc7da1fdbc3923b223465668`.
+Complete decoding of the shared transport and both independent worker loaders
+are verified. These are test-platform binaries bound to the exact core and
+delivered image; they are not mislabeled as the delivered CLI bytes.
+
+The full worker-metadata test uses three real committed pauses and 200 actual
+public canonical base imports. It refuses the next import before intent at
+the original aggregate metadata boundary. The source and replacement workers
+both stop with exit code zero. A fresh epoch recovers and uses the unchanged
+original source with the full bounded-loss RAM/files/independent-descendant
+assertions, while every old backing tree and exit ledger stays unchanged.
+No four-pause/one-base diagnostic mode is selected. The complete case takes
+69.391 seconds in this observation, not a latency distribution.
+
+The timer-abort case reaches actual post-admission ENOSPC, confirms original
+source recovery before signaling, then preserves the original protected
+remainder, interruption-time and raw EINTR/ABI assertions. The separate signal,
+remainder protection, restore hold, controller-loss and guard-loss suites also
+retain all their original positive and refusal controls.
+
+Closed-input sharing is serialized between native runs. The three exact raw
+current-core storage probes, including the prior admission/controller-loss
+proofs, are losslessly encoded only after unchanged-source/result checks;
+`storage-probe-compaction.json` retains their receipts. Subsequent immutable
+encoding sharing `factorybox-storage-share-test-encodings-069c4ab5053d4059b8b787607719fd66`
+preserves complete decode identity and returns 32,108,544 allocated bytes.
+Every original failure, result, log and selected archive remains retained.
+The native/build reserve, host floor and resource/deadline limits are unchanged.
+
+The original 8-GiB image is not restored by these tests. Its original boot ID
+still matches this host. The private `original-enospc-recovery-findings.md`
+records additional concrete recipe/device/read-only-lock constraints from
+the current API and old prepared metadata; no image is expanded or adopted.
+The original EBUSY attribution, remaining consumer/epoch/integration/provider/
+operations cases, twenty ordinary trials and final full audit remain required.
+Production qualification is false and the full goal remains active.
