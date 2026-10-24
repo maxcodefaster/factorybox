@@ -7346,3 +7346,12 @@ Historical EBUSY attribution, actual external-provider agent cases, tested
 update/rollback, all final required suites, ten predetermined complete
 lifecycles per example and the release profile remain open. The full goal
 stays active and production qualification false.
+
+After the mounted-stage audit, all five completed native probe executables
+remain losslessly reconstructable through their per-file encoding receipts.
+Complete stream decompression rechecks every native `test_binary_sha256` against
+its unchanged result. Closed-input sharing
+`factorybox-storage-share-test-encodings-76123618823249c2a121a83c9630d3f4`
+shares the identical planned/abrupt initial and strict mounted encodings,
+returning another 21,176,320 allocated bytes. No source, result, log, selected
+failure dump, active run or goal/handoff input changes.
