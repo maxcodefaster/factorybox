@@ -25,6 +25,37 @@ COUNT = 3
 PROC_PATTERN = '^TestProcDirectoryAdmissionNative$'
 PROC_COUNT = 20
 
+def fs_observer_inputs(root, build_name, control_name):
+    if (not re.fullmatch(r'factorybox-fs-ref-tracer-[0-9a-f]{32}', build_name) or
+            not re.fullmatch(r'factorybox-fs-reference-control-[0-9a-f]{32}', control_name)):
+        raise ValueError('requires exact fs observer and native control artifacts')
+    build, control = root/'artifacts'/build_name, root/'artifacts'/control_name
+    if any(path.resolve()!=path or path.is_symlink() for path in
+           [build,control,build/'result.json',control/'result.json']):
+        raise ValueError('fs observer inputs cannot be redirected')
+    built=json.loads((build/'result.json').read_text())
+    checked=json.loads((control/'result.json').read_text())
+    if (not all(built.get(key) is True for key in ['passed','vet_passed','inputs_unchanged']) or
+            set(built.get('binary_sha256',{}))!={'fs-ref-trace','trace.bpf.o'} or
+            not all(checked.get(key) is True for key in
+                    ['passed','cleanup','native_kernel_controls_passed','observer_fs_coverage_passed','inputs_unchanged']) or
+            checked.get('tracer_build')!=build_name or checked.get('tracer_result_sha256')!=reference.sha(build/'result.json') or
+            [row.get('mode') for row in checked.get('coverage',[])]!=['cwd','root','copy']):
+        raise ValueError('fs observer lacks its complete native cwd/root/copied-context proof')
+    inputs={str(build/name):digest for name,digest in built['binary_sha256'].items()}
+    inputs.update({str(build/'result.json'):reference.sha(build/'result.json'),
+                   str(control/'result.json'):reference.sha(control/'result.json')})
+    expected={str(control/name) for name in ['control.py','control.sh','decoder.py','run.py']}
+    expected.update(str(build/name) for name in ['fs-ref-trace','trace.bpf.o'])
+    if set(checked['inputs_sha256'])!=expected:
+        raise ValueError('fs control input inventory differs from its exact fixture')
+    for path,digest in checked['inputs_sha256'].items():
+        if Path(path).resolve()!=Path(path) or reference.sha(Path(path))!=digest:
+            raise ValueError('fs control input changed')
+    if any(reference.sha(Path(path))!=digest for path,digest in inputs.items()):
+        raise ValueError('fs observer binaries changed')
+    return build,inputs
+
 def observer_binary(root, name, original_source, original):
     if not re.fullmatch(r'factorybox-historical-busy-observer-[0-9a-f]{32}',name):
         raise ValueError('requires an exact historical observer build')
@@ -73,7 +104,11 @@ def main():
     parser.add_argument('--tracer-build',help='exact successful owned-PID-namespace observer build')
     parser.add_argument('--focus-proc',action='store_true',help='repeat both original proc cases twenty times; this is not a full main admission suite')
     parser.add_argument('--busy-observer-build',help='reproduced original binary with declared post-failure-only native test observation')
+    parser.add_argument('--fs-tracer-build',help='exact root/pwd observer, supplementing --tracer-build')
+    parser.add_argument('--fs-tracer-control',help='exact successful three-case root/pwd native control')
     args=parser.parse_args()
+    if bool(args.fs_tracer_build)!=bool(args.fs_tracer_control) or args.fs_tracer_build and not args.tracer_build:
+        parser.error('fs observation requires its native control and the existing file observer')
     root = reference.ROOT
     source = root/'artifacts'/ORIGINAL
     before = reference.sha(source/'result.json')
@@ -113,6 +148,8 @@ def main():
                f'exec /original.test -test.v -test.timeout=360s -test.count={count} -test.failfast -test.run '+"'"+pattern+"'\n")
     trace = None
     trace_inputs = {}
+    fs_trace = None
+    fs_inputs = {}
     if args.tracer_build:
         if not re.fullmatch(r'factorybox-mount-ref-tracer-[0-9a-f]{32}',args.tracer_build): raise ValueError('requires an exact observer artifact')
         trace=root/'artifacts'/args.tracer_build
@@ -153,6 +190,29 @@ exit "$trace_status"
         lines=wrapper.splitlines(True)
         wrapper=''.join(lines[:-1])+startup+lines[-1].removeprefix('exec ')+completion
         (artifact/'invocation-before-trace.sh').write_text(before_wrapper)
+    if args.fs_tracer_build:
+        fs_trace,fs_inputs=fs_observer_inputs(root,args.fs_tracer_build,args.fs_tracer_control)
+        shutil.copyfile(root/'tools/fs_ref_events.py',artifact/'fs_ref_events.py')
+        fs_inputs[str(artifact/'fs_ref_events.py')]=reference.sha(artifact/'fs_ref_events.py')
+        fs_startup='''/fs-trace --object /fs-trace.o --output /output/fs-refs.bin --ready /output/fs-trace-ready.json --result /output/fs-trace-result.json > /output/fs-trace.stdout 2> /output/fs-trace.stderr &
+fs_tracer=$!
+trap 'kill -TERM "$fs_tracer" "$tracer" 2>/dev/null || true; wait "$fs_tracer" 2>/dev/null || true; wait "$tracer" 2>/dev/null || true; chown --reference=/output -- /output/fs-refs.bin /output/mount-refs.bin 2>/dev/null || true' EXIT
+for attempt in $(seq 1 150); do
+  test ! -s /output/fs-trace-ready.json || break
+  kill -0 "$fs_tracer"
+  sleep 0.02
+done
+test -s /output/fs-trace-ready.json
+'''
+        if wrapper.count('set +e\n')!=1 or wrapper.count('sleep 0.1\nkill -TERM "$tracer"')!=1:
+            raise ValueError('original diagnostic invocation boundary changed')
+        (artifact/'invocation-before-fs-trace.sh').write_text(wrapper)
+        wrapper=wrapper.replace('set +e\n',fs_startup+'set +e\n')
+        wrapper=wrapper.replace('sleep 0.1\nkill -TERM "$tracer"',
+            'sleep 0.1\nkill -TERM "$fs_tracer"\nwait "$fs_tracer"\nfs_trace_status=$?\nprintf \'%s\\n\' "$fs_trace_status" >/output/fs-trace-exit.txt\nkill -TERM "$tracer"')
+        wrapper=wrapper.replace('chown --reference=/output -- /output/mount-refs.bin',
+                                'chown --reference=/output -- /output/mount-refs.bin /output/fs-refs.bin')
+        wrapper=wrapper.replace('exit "$trace_status"\n','test "$trace_status" = 0 || exit "$trace_status"\nexit "$fs_trace_status"\n')
     (artifact/'invocation.sh').write_text(wrapper);(artifact/'invocation.sh').chmod(0o555)
     shutil.copyfile(source/'capture-archive.sh',artifact/'capture-archive.sh')
     result = {'schema':1,'passed':False,'cleanup':False,'owner':owner,'original':ORIGINAL,
@@ -173,6 +233,10 @@ exit "$trace_status"
     if trace:
         result.update(tracer_build=args.tracer_build,tracer_inputs_sha256=trace_inputs,
                       tracer_build_result_sha256=reference.sha(trace/'result.json'),kernel_btf_sha256=reference.sha(artifact/'kernel-btf.original'))
+    if fs_trace:
+        result.update(fs_tracer_build=args.fs_tracer_build,fs_tracer_control=args.fs_tracer_control,
+                      fs_tracer_inputs_sha256=fs_inputs)
+        result['scope']+=' Passive root/pwd snapshots and allocator release supplement the file observer; neither is a complete mount-reference inventory.'
     attempted = volume = False
     failure = None
     started = time.monotonic()
@@ -202,6 +266,10 @@ exit "$trace_status"
             index=command.index('--entrypoint')
             command[index:index]=['--mount',f'type=bind,source={trace/"mount-ref-trace"},target=/trace,readonly',
                                   '--mount',f'type=bind,source={trace/"trace.bpf.o"},target=/trace.o,readonly']
+        if fs_trace:
+            index=command.index('--entrypoint')
+            command[index:index]=['--mount',f'type=bind,source={fs_trace/"fs-ref-trace"},target=/fs-trace,readonly',
+                                  '--mount',f'type=bind,source={fs_trace/"trace.bpf.o"},target=/fs-trace.o,readonly']
         result['command'] = command
         reference_lifecycle.write_json(artifact/'intent.json',result)
         volume = True;reference.docker(['volume','create','--label','com.factorybox.run='+owner,name])
@@ -232,6 +300,19 @@ exit "$trace_status"
             if (trace_result.get('passed') is not True or trace_result.get('kernel_probe_missed') != [0]*5 or
                     trace_result.get('kernel_error_counts') != [0]*3 or trace_result.get('kernel_btf_sha256')!=result['kernel_btf_sha256']):
                 raise RuntimeError('observer incomplete; no ownership inference is qualified')
+        if fs_trace:
+            spec=importlib.util.spec_from_file_location('frozen_fs_ref_events',artifact/'fs_ref_events.py')
+            decoder=importlib.util.module_from_spec(spec);spec.loader.exec_module(decoder)
+            fs_result=json.loads((artifact/'output/fs-trace-result.json').read_text())
+            result['fs_trace_result']=fs_result
+            rows=decoder.decode((artifact/'output/fs-refs.bin').read_bytes())
+            result['fs_trace_summary']=decoder.summarize(rows)
+            result['fs_trace_events_sha256']=reference.sha(artifact/'output/fs-refs.bin')
+            if (fs_result.get('passed') is not True or fs_result.get('kernel_probe_missed')!=[0]*8 or
+                    fs_result.get('kernel_error_counts')!=[0]*4 or fs_result.get('raw_tracepoint')!='kmem_cache_free' or
+                    fs_result.get('kernel_btf_sha256')!=result['kernel_btf_sha256'] or
+                    fs_result.get('events')!=len(rows) or result['fs_trace_summary']['unfinished_unmount_entries']):
+                raise RuntimeError('fs observer incomplete; no reference attribution is qualified')
         if not result['passed']: raise RuntimeError('original admission diagnostic failed; retain first failure')
     except Exception as error:
         result['error'] = str(error);failure = error
@@ -251,6 +332,8 @@ exit "$trace_status"
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(test_source)==test_sha and upstream_unit.context_manifest(test_source.parent/'context')==observer_context and reference.sha(test_source.parent/'result.json')==result['busy_observer_result_sha256']
             if trace:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and all(reference.sha(Path(n))==h for n,h in trace_inputs.items())
+            if fs_trace:
+                result['inputs_unchanged'] = result['inputs_unchanged'] and all(reference.sha(Path(n))==h for n,h in fs_inputs.items())
             result['passed'] = bool(result['passed'] and result['cleanup'] and result['inputs_unchanged'] and result['global_sysctls_before']==result['global_sysctls_after'] and failure is None)
         except Exception as error: result['cleanup_error'] = str(error);result['passed'] = False;failure = failure or error
         result['outer_seconds'] = time.monotonic()-started

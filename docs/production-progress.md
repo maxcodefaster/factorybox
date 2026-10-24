@@ -5804,3 +5804,94 @@ All six portable check groups pass after these changes in
 the worker-probe compile, 242 Python tests, all 232 sealed imported files,
 ordered fixture verification and diff validation. The earlier successful
 check run before the maintenance-accounting change remains separate.
+
+## Root/cwd diagnostic controls and combined historical replay
+
+The optional diagnostic in `tools/diagnostics/fsrefs` records coherent last
+root/cwd snapshots for observed fs_struct generations in the owned PID
+namespace tree. It does not change a runtime, delay an unmount, retry cleanup
+or provide ownership authority. Eight kprobes cover copy/setter and unmount
+boundaries; the kmem_cache_free allocator tracepoint ends tracked generations
+without reading freed memory. The loader checks live kernel BTF, register and
+namespace layouts, the nested sequence counter and allocator argument layout.
+The decoder keeps pointer generations separate and preserves an independent
+root reference when cwd changes. Two portable regressions exercise those rules.
+
+The initial build `factorybox-fs-ref-tracer-ea55cbeb919d42a2b952ce4653613419`
+fails actual kernel loading because its assumed sequence-counter layout differs.
+Its control `factorybox-fs-reference-control-6f05e073fe214786ac4f3003c526ee19`
+remains failed. Corrected build
+`factorybox-fs-ref-tracer-775b596b5b604afc8bde6cad127c8121` loads and observes
+held cwd/root, but free_fs_struct function probes miss real process-exit
+release on this kernel. Its control
+`factorybox-fs-reference-control-d53f774cc20f411f9db9d710e524018d` passes the
+actual kernel operations and then fails host decoding on root-owned output.
+A privileged read-only decode establishes the missing release events and stale
+snapshots. Neither earlier verdict is rewritten; the exact missed kernel path
+is not established by this observation.
+
+Build `factorybox-fs-ref-tracer-44dffef8db3c488691c8e478330ed541` passes vet
+and native control
+`factorybox-fs-reference-control-d32071f3a3054426a5f8a0352a7dac85` with the
+allocator release tracepoint. Its three descendant-process cases hold only cwd,
+hold chroot root/cwd, or inherit cwd through fork after the creator changes
+away. None holds an open descriptor on the target mount. Ordinary unmount
+returns EBUSY while held and succeeds after exact helper exit. Each observed
+held generation ends before successful cleanup. Four error counters and eight
+kprobe miss counters are zero. The raw tracepoint shares the bounded event ring
+but has no kretprobe instance-miss counter. Output ownership is set only after
+the observer shuts down, enabling ordinary host decoding.
+
+The independent evaluator initially rejects exact fixture-copy equality.
+Its preserved failed source is superseded by an explicitly declared new-copy
+evaluator, not an assertion relaxation. The three control.py copies have
+SHA-256 5394fa6488a85cfb82825231204976040ec1b37afd7ac5ba4e5c981462befaf4,
+f3c77bc0038f4e3a75a65e703a7ff9a23dafc1d892f86e19e9b2584c9825d89e,
+and 8101efc56514b305f7ed515f318194b06d6ff8f3ee904d99dae23f6a62f51013.
+Each later copy is exactly the preceding bytes plus one EOF newline. The final
+shell adds only post-shutdown output ownership and one EOF newline, changing
+a82bcf51fd4f8f676268f99193aa8bd3f7ab2e830cb270234a0df5459eb0eedb
+to 65309c69f12c7aa71a7662296101ad53f80834988b2b0f44260cc1648396b9b8.
+All executable control bodies and native assertions remain intact; the exact
+declaration, hashes, patch and initial analyzer failure are retained in
+`factorybox-fs-reference-evaluation-576399cf7a9649b88a7b8e60147607c9`.
+
+Combined historical replay
+`factorybox-historical-admission-cee2f6b7d93e499bac5451d9ede871d4`
+passes the predetermined twenty original held/transient Proc pairs plus the
+eleven original adapter tests: 31 top-level tests and 101 subtests, no skips.
+The historical production sources, CLI, components and immediate ordinary
+unmount assertions remain unchanged. The existing diagnostic test binary adds
+observation only after an unmount failure. Both observers are ready before
+testing. There are 871,199 file events and 41,494 root/cwd events, zero error
+and missed-probe counters, exact owned cleanup and unchanged inputs/global
+settings. This is not the full admission suite or final release series.
+
+Independent evaluation in the same 576399cf artifact verifies frozen sources,
+builds, controls, trace identity and counters. All 80 original-test unmounts
+return zero and have no last-observed context snapshot matching the target at
+entry or return. Last setter/copy snapshots can be stale after namespace copy,
+pivot_root and other kernel updates; pre-coverage and in-progress references
+and namespace-only holds are outside the inventory. Allocator release is an
+upper lifetime bound. Empty or overlapping observations cannot independently
+attribute or exonerate the historical runtime. The original EBUSY is still
+unreproduced, unexplained and a release blocker. No production component changes.
+
+Both raw traces have complete byte/hash-verified compression receipts. Immutable
+closed-input sharing in
+`factorybox-storage-share-historical-inputs-0b32003f6d5447c8a862adcd44a8cad4`
+reclaims 23,818,240 allocated bytes without changing input paths or contents.
+The complete new 3,164,602,368-byte store is verified before and after lossless
+re-encoding in `factorybox-storage-repack-b6263704fa364c94a9a1cc5097ab446d`,
+reclaiming 62,817,909 bytes and retaining exact reconstruction receipts. All
+selected unresolved failures and the previous passing store remain retained.
+Allocated artifacts are 25,732,059,136 bytes at the next-turn preflight, within
+the 32-GiB budget and with the required 8-GiB start headroom. The intervening
+user-requested status/performance explanation changed no implementation or
+qualification state; this continuation resumes concrete acceptance work.
+
+All six portable check groups pass in
+`factorybox-checks-a682653445b143b4afd5075ec6bdf2a7`, including Go tests with
+vet, worker-probe compilation, 244 Python tests, all 232 sealed reference files,
+ordered fixture verification and diff validation. GOAL.md and the saved
+parallel-chat handoff retain their previously recorded SHA-256 identities.
