@@ -26,6 +26,34 @@ def save(path, value):
         os.fsync(stream.fileno())
 
 
+def diagnostic_components(run, outcome):
+    pid = re.fullmatch(r'factorybox-pid-inner-(?:time(?:-helper|-syscall)?|net(?:-control)?)-([0-9a-f]{32})', run.name)
+    startup = re.fullmatch(r'factorybox-startup-manager-([0-9a-f]{32})', run.name)
+    if not pid and not startup:
+        return None
+    state = outcome.get('state' if pid else 'container_state', {})
+    if (outcome.get('cleanup') is not True or outcome.get('inputs_unchanged') is not True or
+            state.get('Running') is not False or state.get('Pid') != 0):
+        return None
+    owner = (pid or startup)[1]
+    if outcome.get('owner', owner) != owner:
+        raise ValueError('closed diagnostic owner differs from its directory')
+    if pid:
+        trees = [run / name for name in ['context', 'source'] if (run / name).is_dir()]
+        if (len(trees) != 1 or trees[0].resolve() != trees[0] or
+                upstream_unit.context_manifest(trees[0]) != outcome.get('source_context')):
+            raise ValueError('closed PID diagnostic source changed')
+        components = outcome.get('component_inputs', {})
+        if set(components) != {'criu', 'sysbox-runc', 'sysbox-fs', 'sysbox-mgr'}:
+            raise ValueError('closed PID diagnostic component inventory differs')
+        expected = {name: row['sha256'] for name, row in components.items()}
+    else:
+        expected = outcome.get('inputs_sha256', {})
+        if set(expected) != {'sysbox-fs', 'sysbox-mgr'}:
+            raise ValueError('closed startup diagnostic component inventory differs')
+    return {'components/' + name: digest for name, digest in expected.items()}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--include-closed-consumer-helpers', action='store_true',
@@ -34,6 +62,8 @@ def main():
                         help='also share encoded lifecycle tests of passing stopped native runs, bound to their exact inputs_sha256')
     parser.add_argument('--include-closed-failed-runtime-tests', action='store_true',
                         help='also share identical encoded tests of stopped failed runtime suites with confirmed cleanup and unchanged complete sources/components; preserve failed results and dumps')
+    parser.add_argument('--include-closed-diagnostic-components', action='store_true',
+                        help='also share exact encoded component inputs of closed PID namespace/startup diagnostics; retain failed outcomes, source, logs and full dumps')
     args = parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('encoded input sharing requires every native worker to close')
@@ -43,7 +73,9 @@ def main():
         native = re.fullmatch(r'factorybox-(?:checkpoint-retirement|bounded-store|bounded-store-loss|bounded-loss|storage-admission)-[0-9a-f]{32}', run.name)
         consumer = args.include_closed_consumer_helpers and re.fullmatch(r'factorybox-consumer-worker-loss-[0-9a-f]{32}', run.name)
         runtime = (args.include_closed_runtime_tests or args.include_closed_failed_runtime_tests) and re.fullmatch(r'factorybox-runtime-([0-9a-f]{32})', run.name)
-        if not native and not consumer and not runtime:
+        diagnostic = args.include_closed_diagnostic_components and re.fullmatch(
+            r'factorybox-(?:pid-inner-(?:time(?:-helper|-syscall)?|net(?:-control)?)|startup-manager)-[0-9a-f]{32}', run.name)
+        if not native and not consumer and not runtime and not diagnostic:
             continue
         result = run / 'result.json'
         if run.is_symlink() or result.is_symlink() or not result.is_file():
@@ -63,7 +95,11 @@ def main():
                 raise ValueError('closed runtime test owner differs from its directory')
             if closed_failure and upstream_unit.context_manifest(run/'context') != outcome['source_context']:
                 raise ValueError('closed failed runtime test source changed')
-        if runtime:
+        if diagnostic:
+            candidates = diagnostic_components(run, outcome)
+            if candidates is None:
+                continue
+        elif runtime:
             candidates = {'lifecycle.test': outcome.get('inputs_sha256', {}).get('lifecycle.test')}
         elif native:
             candidates = {'probe.test': outcome.get('test_binary_sha256', outcome.get('probe_sha256'))}
@@ -78,8 +114,9 @@ def main():
                 continue
             encoding = json.loads(receipt.read_text())
             original, stored = encoding['original'], encoding['encoded']
+            basename = Path(name).name
             if (encoding.get('whole_decompressed_payload_verified') is not True or
-                    original['file'] != name or stored['file'] != name + '.zst' or
+                    original['file'] != basename or stored['file'] != basename + '.zst' or
                     original['sha256'] != expected):
                 raise ValueError('closed helper differs from its native result: ' + run.name + '/' + name)
             info = encoded.stat()
@@ -106,7 +143,8 @@ def main():
                                   'capacity_before': before, 'canonical_complete_decodes_verified': True,
                                   'include_closed_consumer_helpers': args.include_closed_consumer_helpers,
                                   'include_closed_runtime_tests': args.include_closed_runtime_tests,
-                                  'include_closed_failed_runtime_tests': args.include_closed_failed_runtime_tests})
+                                  'include_closed_failed_runtime_tests': args.include_closed_failed_runtime_tests,
+                                  'include_closed_diagnostic_components': args.include_closed_diagnostic_components})
     result = {'schema': 1, 'passed': False, 'completed': [], 'production_qualified': False}
     reclaimed = 0
     try:

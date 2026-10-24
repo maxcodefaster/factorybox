@@ -6677,3 +6677,63 @@ the unchanged 8-GiB start reserve therefore refuses another native allocation.
 Further verified offline compaction is required before new builds/native runs.
 The complete goal and original chat handoff are unchanged; production
 qualification remains false.
+
+## Restore the native start reserve without changing evidence verdicts
+
+The intervening user-requested performance and effort explanation changes no
+implementation or acceptance state. The complete goal, original handoff and
+deferred work remain unchanged.
+
+Closed encoded-input sharing
+`factorybox-storage-share-test-encodings-615cca26738f4cfb8eed92bab91ae551`
+shares four byte-identical closed consumer helpers and reclaims 28,377,088
+allocated bytes. The sharing tool now also admits exact closed PID namespace
+and startup-manager component inputs with an explicit flag. It requires
+confirmed cleanup, stopped state, unchanged inputs, the exact diagnostic owner,
+and PID diagnostic source/component manifests. Original native failures and
+encoding receipts remain unchanged. Every canonical compressed input is fully
+decoded before its byte-identical encoding is shared. Three focused tests pass,
+including preservation of failed native results and rejection of changed source
+or a foreign owner. Actual maintenance
+`factorybox-storage-share-test-encodings-2244250ed51446b79bf756c3cd45fba5`
+shares 22 component encodings and reclaims 224,817,152 allocated bytes.
+
+Private startup preflight
+`factorybox-startup-retention-preflight-07b8d9c2932f46469e7562fd1b83471e`
+then verifies the original early startup failure `f7c02247159d4e13bf768da0ad1d39c5`
+against complete successor `b6ddf5164eef4068bbc6ee90e3419a01`. Original test
+executable, source, components, example, host, rootfs, project images and
+normalized invocation agree. The independently packaged successor changes
+only CLI and runner inputs and passes the original full test. The current
+SHM red/green controls and current full Factory pass are also verified.
+This supports historical retention supersession; the missing historical child
+heap/stack remains unobserved and no retrospective GC-state attribution follows.
+
+Retirement `factorybox-storage-retirement-1ec654dcb2684b05bd279780c06e5e49`
+completely decodes and verifies the original 1,914,699,776-byte archive before
+retiring its 432,389,364-byte encoding. All 47,733 member headers/hashes,
+bounded startup diagnostics, original source, inputs and failed result remain.
+The complete old filesystem is intentionally unavailable afterward. The
+selected unresolved failures and all current proofs remain intact.
+
+Two private closed-input preflights `83130f65e3dc4a51a6226076b2d95b97` and
+`8e62d1ad8caa466791cc96821ae17980` refuse before mutation because the consumer
+gateway mode differs from the native gateway output. The corrected scope in
+`factorybox-closed-input-sharing-27c0a3150cd249069e7a2ec6d04f59d8` shares
+only three identical completed CRIU outputs and one identical native gateway
+output, with exact original modes and owners. Frozen source and native/build
+results verify, exact original owner resources are absent, all paths and bytes
+remain usable, and original/shared mtimes are recorded. Actual allocation falls
+by 32,665,600 bytes to 25,764,986,880 bytes. The unchanged 8-GiB start reserve
+passes. No frozen package, archive, active input, global setting or historical
+experiment is modified by this sharing.
+
+This maintenance restores the ability to run the remaining acceptance. It does
+not close useful ENOSPC recovery, manual retirement, operating acceptance,
+historical EBUSY attribution, external-agent acceptance or the final series.
+
+All six portable groups pass in
+`factorybox-checks-09a91f2626684f44b1d3a90ad89ac986`, including 254 Python
+tests, Go tests with vet, tagged consumer-probe compilation, all 232 sealed
+reference files, ordered fixture verification and diff validation. Runtime
+core and the delivered package are unchanged.
