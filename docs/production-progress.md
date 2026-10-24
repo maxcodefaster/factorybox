@@ -10083,3 +10083,62 @@ index. The corrected reader requires that original list to be empty; no native
 case was rerun. Old index and pilot are unchanged. All eight actual-provider
 flows, historical EBUSY attribution and the final qualification decision remain
 open. No p95, long-term or production claim is added.
+
+
+## 2026-10-25: full original service-GC pair closed; native reserve restored
+
+Full original default-service control 5397 passes all 29 main tests and 112
+subtests, three repetitions of every original admission case plus adapters.
+It records 1,027 unmounts and no EBUSY. Its parent then refuses the still
+unstarted fault case at the required eight-GiB reserve, with 24.25 GiB used.
+That false parent remains unchanged. Exact closed-input sharing verifies and
+shares seventeen immutable diagnostic inputs, reclaiming 317,100,032 allocated
+bytes. The ordinary worker and encoded-helper sharing commands complete and
+reclaim zero additional payload bytes.
+
+Continuation exec 99359 is terminal and passed. It verifies and reuses the
+actual completed control without rerunning it, then executes only the previously
+unstarted full original service-GC-off case 57c9. This also passes all 29/112
+original tests with 1,023 unmounts and no EBUSY. Both real service environments,
+PID births, parents and executable hashes are checked. The native results keep
+seven and three original EINVAL/UMOUNT_NOFOLLOW observations respectively.
+Independent `agent-exit-delay/full-service-gc-closure.json`, SHA-256
+`b64c604355e2da5bda104532695b8ca025a0da2dafdcb9cef087e68970a53d52`,
+checks all exact inputs, commands, raw PASS outcomes, complete decoded kernel
+records, zero probe loss, native exit/OOM states and exact resource absence.
+Both coordinators resume the original provider supervisor. Successful full
+context and actual service-GC perturbation narrow the investigation; they do
+not explain the old 882916 EBUSY or qualify a production repair.
+
+`release-profile/startup-proof-binding.json`, SHA-256
+`f07714a91cf5190459736512e31472b55ddb2345541ab48aa964196b7a5e8d1d`,
+binds the retained original first failed 60-second startup and sixteen corrected
+starts under identical GOGC=1/1MiB pressure and identical probes to actual
+current delivered fs/mgr bytes. Original failed verdict, cleanup, globals and
+unobserved historical child GC state remain explicit. No native startup test
+was repeated for this binding.
+
+After the full pair, the required reserve was again insufficient at 24.32 GiB.
+Fifteen closed archives were losslessly repacked with the existing tested
+`repack_evidence.py`: three individually and twelve under the recorded
+`restore-native-headroom` plan. Both complete old/new decompressions match the
+original raw byte count and SHA-256 before each old encoded representation is
+removed. Original native results, encoding receipts and source/log bytes stay
+unchanged; one-hop reconstruction pointers retain every complete decoded dump.
+The twelve-repack parent stays false because capacity still ended at 24.05 GiB;
+its twelve individual repacks all passed. No failed native or maintenance result
+is rewritten.
+
+Finally `diagnostic-test-sharing-v2/result.json`, SHA-256
+`bffae023954b5210ddbc3812af7f59e2dbcb5a151f02d504f25f45725acf90f1`,
+merges eight paths covering complete known inode groups of the same exact closed
+diagnostic executable. Every byte, mode, owner and path is preserved, both
+mtimes are recorded, unknown aliases are refused and physical reclamation is
+counted once per old inode. It reclaims 69,652,480 additional allocated bytes.
+The original standard capacity guard now passes with 25,748,537,344 allocated
+bytes, the full 8,589,934,592-byte native reserve and 12-GiB host floor unchanged.
+All original failures and selected inputs remain. The provider supervisor is
+still live in its original UTC wait; zero actual-provider entries have started.
+Do not spend this reserve on further optional diagnostic builds before that
+queue finishes. Actual-provider acceptance, EBUSY attribution and final release
+qualification remain open.
