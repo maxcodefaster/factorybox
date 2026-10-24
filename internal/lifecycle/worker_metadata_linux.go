@@ -353,7 +353,17 @@ func (e *Engine) workerMetadataBound(ctx context.Context, delta workerMetadataDe
 		}
 		var original forkIntent
 		if err := e.readCheckpointJSON("forks/"+entry.Name()+"/intent.json", &original); err != nil {
-			return err
+			if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			prepared, err := e.readUnpublishedRecoveryImport("forks/"+entry.Name(), entry.Name())
+			if err != nil {
+				return err
+			}
+			if err := e.workerForkMetadata(ctx, b, prepared.proposal(), false, nil); err != nil {
+				return err
+			}
+			continue
 		}
 		intent, err := e.readForkIntent("forks/"+entry.Name(), original.Origin.SourceID, original.Origin.CheckpointID, entry.Name())
 		if err != nil {

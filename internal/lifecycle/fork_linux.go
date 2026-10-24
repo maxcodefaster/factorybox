@@ -198,6 +198,9 @@ func (e *Engine) readForkIntent(operation, sourceID, snapshotID, targetID string
 			!intent.Checkpoint.SourceStopped {
 			return intent, fmt.Errorf("recovery intent differs from its file-only source: %v", err)
 		}
+		if _, err := e.verifyCompletedRecoveryImport(operation, intent); err != nil {
+			return intent, err
+		}
 	}
 	for name, blob := range map[string][]byte{
 		"source-state.json": intent.State, "sysbox-state.json": intent.FsState, "criu.conf": intent.CriuConfig,

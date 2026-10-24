@@ -5,7 +5,9 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"reflect"
 
 	"factorybox/internal/sysboxcapture"
@@ -24,7 +26,16 @@ func (e *Engine) exitForkBases(ctx context.Context) ([]sysboxcapture.FilesystemT
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
+		if !entry.IsDir() || !sandboxID.MatchString(entry.Name()) {
+			return nil, nil, fmt.Errorf("worker exit refuses unrecognized fork inventory")
+		}
 		record, err := e.read(entry.Name())
+		if errors.Is(err, os.ErrNotExist) {
+			if err := e.inspectUnpublishedRecoveryExit(ctx, "forks/"+entry.Name(), entry.Name()); err != nil {
+				return nil, nil, fmt.Errorf("worker exit refuses an unconfirmed recovery import: %w", err)
+			}
+			continue
+		}
 		if err != nil || record.Fork == nil {
 			return nil, nil, fmt.Errorf("worker exit refuses an unconfirmed fork object: %v", err)
 		}

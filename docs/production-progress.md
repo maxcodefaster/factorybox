@@ -6906,3 +6906,87 @@ external-agent cases, actual update/rollback, historical EBUSY attribution,
 remaining required suite coverage, the final series and final release profile
 remain open. The full goal and saved parallel-chat context stay unchanged;
 production qualification remains false.
+
+## Recovery import ENOSPC counterexample and unqualified candidate correction
+
+The complete consumer pressure observation
+`factorybox-consumer-worker-loss-500c7acc634d430c8056ee7b2c644492` fails on
+the previously selected delivered package. Its additive ordered fixture first
+passes the actual write admission, then reaches real ENOSPC while importing
+the retained lower filesystem. Inspection still fully verifies the original
+checkpoint's 172 files, 100,997,614 bytes and nine filesystem trees. Original
+pause/checkpoint metadata remains byte-identical. Only the exact owned pressure
+inode is released; capacity returns and the incomplete target correctly refuses
+retry without changing its complete partial-copy inventory.
+
+The original consumer then attempts an independent recovery target and fails
+with `new worker metadata refused: no such file or directory`. The native
+Recover body fails after 4.72 seconds; its subsequent assertions are unrun.
+The incomplete import has no published fork intent, but metadata admission and
+worker-exit discovery previously treated every fork directory as a completed
+or published fork. Native cleanup and unchanged global settings pass; the
+overall native result remains false. The initial pressure subreport's success
+and retained-at-cleanup fields describe only that subprobe, not the failed
+complete consumer. The current helper and strict verifier now require the
+complete original consumer to pass before publishing an overall success.
+
+The full failed store remains reconstructable through verified lossless repack
+`factorybox-storage-repack-589f5cfad4df4453ad2ad5eb1d562689`: all
+34,360,786,944 raw bytes have SHA-256
+`8eb2ea7a667ee98486c0b9d7b3cd7f9ae563fcec9b619cb7649c8fe0059a4c20`.
+Its 815,360,121-byte replacement has SHA-256
+`64d22255606270f2ebc75ae008381eb3afce6e80509131200c4d0a7b585f4cde`.
+The original native verdict, source and selected inputs remain unchanged.
+
+A candidate runtime correction now persists a separate `import.json` before
+payload copying. It binds the controller root, target/owner, same boot, pinned
+recipe and exact original committed pause/checkpoint. It reserves the eventual
+fork's complete exit-metadata allowance without publishing restore authority.
+An identified interrupted import therefore remains charged while an independent
+request can be admitted. The original unknown-directory refusal stays intact.
+Normal fork publication still follows full copied-input verification and sync;
+the published fork reuses its import owner and verifies its reservation.
+Completed import metadata is explicitly retained in epoch retirement inventories.
+
+Worker exit can inspect and retain an identified pure partial copy which has no
+kernel objects to release. This is a read-only complete owned-tree check, with
+no removal or unmount. Foreign/descendant mounts, external hardlinks, changed
+proofs, unknown control entries or an unexpected target object refuse. Later
+interruption after a base/alias mount has been created still requires a proven
+reconciliation path; this change does not claim that broader case solved.
+Failure while the initial reservation itself is being published also remains
+fail-closed and needs its own interruption/cancellation acceptance.
+
+Two minimized tests run against the real metadata-admission and worker-exit
+seams fail before this correction with the corresponding missing-intent errors.
+Afterward, all four selected root-owned tests pass, including thirteen changed
+proof/object/inventory variants and the unchanged unknown-inventory control.
+The original full native ENOSPC scenario has not yet been rerun on a newly
+built package. These unit results cannot close that native release gate.
+
+Evidence is in
+`factorybox-recovery-pressure-diagnosis-8308c8da87e149d5964bebdc4734060b`.
+Its `candidate-portable/result.json` records all six portable groups passing:
+Go tests with vet, tagged consumer compilation, 258 Python tests, all 232
+reference files, ordered fixture verification and diff validation. Root-owned
+regression command/output and its red-before-fix transcript are retained
+separately. Native and production qualification remain false.
+
+The closed-helper compression experiment in the same private diagnosis is
+withdrawn: its small savings did not justify another encoding format. Both
+original encodings are restored byte-for-byte, original native results and
+encoding receipts verify, experimental payloads have exact retirement receipts,
+and the public encoding/repack tools are back to their prior committed bytes.
+No unresolved failure archive is retired. The 8-GiB build/native start reserve
+currently refuses admission at 26,492,346,368 allocated artifact bytes against
+the 25,769,803,776-byte start ceiling. No new packaged build or native acceptance
+is started through that refusal. Source checks above use the existing active
+diagnosis; they do not create a worker workload or claim native qualification.
+
+The complete goal and parallel-chat handoff still have their original hashes.
+The new runtime candidate needs native red/green acceptance, remaining import
+interruption/manual recovery work, independently identical builds and renewed
+required regression coverage. Historical EBUSY attribution, external-agent
+acceptance, operating update/rollback, final series and final release profile
+remain open. Performance observations of the preceding delivered package do
+not qualify this newly changed runtime source.

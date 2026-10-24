@@ -4,8 +4,6 @@ package lifecycle
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -164,10 +162,12 @@ func (e *Engine) importPaused(ctx context.Context, lock *os.File, request Recove
 	if err := e.admitWorkerMetadata(ctx, workerMetadataDelta{Fork: &proposal}); err != nil {
 		return intent, err
 	}
-	for _, path := range []string{operation, operation + "/recovery"} {
-		if err := e.root.Mkdir(path, 0700); err != nil {
-			return intent, err
-		}
+	prepared, err := e.beginRecoveryImport(operation, request, targetID, source, saved)
+	if err != nil {
+		return intent, err
+	}
+	if err := e.root.Mkdir(operation+"/recovery", 0700); err != nil {
+		return intent, err
 	}
 	generation := operation + "/recovery/input"
 	filesystem, err := sysboxcapture.RecoverFilesystemSnapshotWithBaseVerifier(ctx,
@@ -241,15 +241,11 @@ func (e *Engine) importPaused(ctx context.Context, lock *os.File, request Recove
 	if err != nil {
 		return intent, err
 	}
-	var nonce [16]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		return intent, err
-	}
 	identity, err = json.Marshal(saved)
 	if err != nil {
 		return intent, err
 	}
-	return forkIntent{Version: 1, TargetID: targetID, Owner: hex.EncodeToString(nonce[:]),
+	return forkIntent{Version: 1, TargetID: targetID, Owner: prepared.Owner,
 		BootID: e.boot, RuntimeSHA256: e.config.RuntimeSHA256, CriuSHA256: e.config.CriuSHA256,
 		ManagerRoot: e.config.ManagerRoot, Source: source, Checkpoint: saved, OCI: oci,
 		State: blobs["source-state.json"], FsState: blobs["sysbox-state.json"], CriuConfig: blobs["criu.conf"],

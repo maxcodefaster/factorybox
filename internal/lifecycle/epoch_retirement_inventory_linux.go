@@ -568,6 +568,13 @@ func (b *epochInventoryBuilder) fork(record Record) error {
 		b.file(materialized + "/" + name)
 	}
 	if intent.Recovery != nil {
+		prepared, err := b.engine.verifyCompletedRecoveryImport(operation, intent)
+		if err != nil {
+			return err
+		}
+		if prepared {
+			b.file(operation + "/import.json")
+		}
 		generation := forkInputGeneration(intent)
 		if err := b.engine.verifyCheckpointMetadata(b.ctx, intent.Source, intent.Checkpoint.ID, generation, intent.Checkpoint); err != nil {
 			return err

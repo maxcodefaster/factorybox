@@ -15,6 +15,7 @@ import build_worker
 import consumer_test_inputs
 import consumer_bounded_store
 import consumer_epoch_retirement
+import consumer_recovery_pressure
 import consumer_loop_holder
 import consumer_drain_interrupt
 import consumer_stop_trace
@@ -195,9 +196,13 @@ def main():
     parser.add_argument("--consumer-request-profile",action="store_true",help="Optional copied Factory example telemetry around its first dependency fetches")
     parser.add_argument("--probe",choices=list(PROBE_PHASES),default="worker-loss")
     parser.add_argument("--epoch-retirement",action="store_true",help="Replace direct old-source removal with public epoch retirement and a committed independent successor")
+    parser.add_argument("--recovery-storage-pressure",action="store_true",help="Actual post-admission recovery ENOSPC, preserved old pause and incomplete import, exact pressure release, then every original full consumer/epoch assertion")
     parser.add_argument("--baseline-runtime-build",help="Exact original selected packaged CLI, for a matched lifecycle control only")
     parser.add_argument("--baseline-criu-build",help="Exact original selected CRIU paired with the baseline package")
     options = parser.parse_args()
+    if options.recovery_storage_pressure and (not options.epoch_retirement or not options.inspect_retained_checkpoint or
+            options.bounded_bytes != 32 << 30 or options.external_provider_proof or options.stop_trace_inputs):
+        parser.error("recovery storage pressure requires the complete 32-GiB epoch-retirement fixture and retained inspection")
     if options.epoch_retirement and (options.bounded_bytes is None or options.probe != "worker-loss" or
             options.drain_interrupt_inputs or options.external_provider_proof or options.baseline_runtime_build):
         parser.error("epoch retirement requires the complete bounded worker-loss fixture without unrelated substitutions")
@@ -278,6 +283,7 @@ def main():
               "consumer_request_profile":options.consumer_request_profile,
               "bounded_store_bytes":options.bounded_bytes,
               "inspect_retained_checkpoint":options.inspect_retained_checkpoint,
+              "recovery_storage_pressure":options.recovery_storage_pressure,
               "probe":options.probe,
               "baseline_input":baseline_receipt,"lifecycle_criu_sha256":effective_criu,
               "consumer_inputs":options.consumer_inputs,"project_images":options.project_images,
@@ -413,6 +419,9 @@ traceDependency({event: 'module-loaded'});
     if options.epoch_retirement:
         result["epoch_fixture"] = consumer_epoch_retirement.apply_fixture(artifact, source)
         shutil.copyfile(Path(consumer_epoch_retirement.__file__), artifact/"consumer_epoch_retirement.py")
+    if options.recovery_storage_pressure:
+        result["recovery_pressure_fixture"] = consumer_recovery_pressure.apply_fixture(artifact, source)
+        shutil.copyfile(Path(consumer_recovery_pressure.__file__), artifact/"consumer_recovery_pressure.py")
     if options.external_provider_proof and options.effect_gateway_proof:
         result["external_effect_fixture"] = external_effect.apply_fixture(artifact, source)
     if options.probe == "agent-cancel":
@@ -627,6 +636,8 @@ traceDependency({event: 'module-loaded'});
                         if options.epoch_retirement and phase == "recover":
                             old_root = result["phases"][0]["startup"]["status"]["lifecycle"]["root"]
                             record["epoch_retirement"] = consumer_epoch_retirement.verify_output(output, old_root)
+                            if options.recovery_storage_pressure:
+                                record["recovery_storage_pressure"] = consumer_recovery_pressure.verify_output(output, old_root)
                         if options.probe=="lifecycle":
                             required_phases={"prepared-start-first-use","fork-first-use","source-advance","branch-advance","source-independent","fork-of-fork-first-use","resume-first-use","fork-of-resumed-first-use"}
                             observed=json.loads((output/"devx-observations.json").read_text())
