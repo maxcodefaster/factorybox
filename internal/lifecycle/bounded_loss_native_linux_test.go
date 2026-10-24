@@ -245,6 +245,9 @@ func TestNativeBoundedLossRecover(t *testing.T) {
 	if _, err := os.Lstat(status.Lifecycle.Root + "/forks/wrong-hash"); !os.IsNotExist(err) {
 		t.Fatal("wrong recovery published backing", err)
 	}
+	if os.Getenv("FACTORYBOX_NATIVE_IMPORT_INITIAL_PRESSURE") == "1" {
+		checkRecoveryImportInitialPressure(t, status, saved, recoveryArgs)
+	}
 	recovered := boundedLossView(t, recoveryArgs("recovered", request.CheckpointSHA256)...)
 	boundedLossActor(t, recovered, saved.State)
 	replayed := boundedLossView(t, recoveryArgs("recovered", request.CheckpointSHA256)...)

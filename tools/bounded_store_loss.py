@@ -18,6 +18,37 @@ import upstream_bats
 import upstream_unit
 
 
+def verify_initial_import_pressure(output, paused, recovered):
+    proof = json.loads((output / 'recovery-import-initial.json').read_text())
+    required = ['passed', 'full_original_recovery_assertions_passed', 'admitted_before_publication',
+                'actual_initial_publication_enospc', 'initial_metadata_only', 'explicit_cancel_without_new_inode',
+                'missing_entry_replay_refused', 'recreated_generation_refused', 'partial_publication_cancelled',
+                'original_backing_unchanged', 'only_exact_owned_pressure_released', 'full_original_recovery_follows']
+    if (any(proof.get(key) is not True for key in required) or
+            proof.get('request') != paused['request'] or
+            proof.get('source_root') != recovered['status']['lifecycle']['root'] or
+            proof.get('durable_reservation_created') is not False or
+            type(proof.get('inodes_before_import')) is not int or proof['inodes_before_import'] != 1 or
+            type(proof.get('inodes_at_cancellation')) is not int or proof['inodes_at_cancellation'] != 0 or
+            type(proof.get('partial_inodes_at_cancellation')) is not int or proof['partial_inodes_at_cancellation'] != 0 or
+            type(proof.get('initial_inode_count')) is not int or proof['initial_inode_count'] <= 2 or
+            type(proof.get('pressure_files_released')) is not int or proof['pressure_files_released'] <= 0 or
+            type(proof.get('inodes_after_reclaim')) is not int or proof['inodes_after_reclaim'] < proof['initial_inode_count'] or
+            'no space left on device' not in proof.get('error', '').lower() or
+            proof.get('first_inspection', {}).get('reservation_absent') is not True or
+            proof.get('first_cancellation', {}).get('reservation_absent') is not True or
+            proof['first_inspection'].get('source_root') != proof['source_root'] or
+            proof['first_inspection'].get('target_id') != 'initial-import' or
+            proof['first_inspection'].get('owner') != '' or
+            proof['first_inspection'].get('preparation_sha256') != '' or
+            proof['first_inspection'].get('inventory', {}).get('paths') != ['forks/initial-import'] or
+            len(proof['first_inspection']['inventory'].get('entries', [])) != 1 or
+            proof['first_cancellation'].get('target_id') != 'initial-import' or
+            not proof['first_cancellation'].get('completed_at')):
+        raise ValueError('initial import lacks actual journal ENOSPC, exact metadata cancellation or complete original recovery')
+    return proof
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
@@ -28,7 +59,11 @@ def main():
                         help='retain every original assertion, then test durable retirement protection across another worker loss')
     parser.add_argument('--epoch-retirement', action='store_true',
                         help='full public epoch admission, exact partial deletion, worker loss and completion with useful successor')
+    parser.add_argument('--initial-import-pressure', action='store_true',
+                        help='actual initial journal ENOSPC at zero free inodes, public explicit cancellation, then every original recovery assertion')
     args = parser.parse_args()
+    if args.initial_import_pressure and (args.retained_selection or args.retirement_fence or args.epoch_retirement):
+        raise ValueError('initial import pressure is a complete basic recovery fixture without unrelated retirement extensions')
     if args.epoch_retirement and args.retirement_fence:
         raise ValueError('choose full epoch retirement or the internal fence fixture')
     args.retained_selection = args.retained_selection or args.retirement_fence or args.epoch_retirement
@@ -66,6 +101,7 @@ def main():
               'loss': args.loss, 'retained_selection': args.retained_selection,
               'retirement_fence': args.retirement_fence,
               'epoch_retirement': args.epoch_retirement,
+              'initial_import_pressure': args.initial_import_pressure,
               'runner_sha256': reference.sha(artifact / 'runner.py'),
               'setup_sha256': reference.sha(artifact / 'setup.sh'), 'rootfs_sha256': busybox['sha256'],
               'global_sysctls_before': consumer_worker_loss.sysctls(), 'workers': [],
@@ -105,6 +141,8 @@ def main():
                 command += ['--env', 'FACTORYBOX_NATIVE_EPOCH_RETIREMENT_FENCE=1']
             if args.epoch_retirement:
                 command += ['--env', 'FACTORYBOX_NATIVE_EPOCH_RETIREMENT=1']
+            if args.initial_import_pressure:
+                command += ['--env', 'FACTORYBOX_NATIVE_IMPORT_INITIAL_PRESSURE=1']
             for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                            (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
                 command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -161,6 +199,14 @@ def main():
                 proof['status']['lifecycle']['bounded_store']['image'] != paused['status']['lifecycle']['bounded_store']['image']):
             raise ValueError('bounded replacement proof lacks required assertions')
         result['recovered_sha256'] = reference.sha(recovered_file)
+        if args.initial_import_pressure:
+            verify_initial_import_pressure(output, paused, proof)
+            result['initial_import_pressure_sha256'] = reference.sha(output / 'recovery-import-initial.json')
+            reference.docker(['stop', '--time', '45', replacement['id']],
+                             timeout=max(.1, min(60, deadline-time.monotonic())))
+            replacement['stopped'] = consumer_worker_loss.exact_worker(replacement['name'], owner, replacement['id'])['State']
+            if replacement['stopped']['Running'] or replacement['stopped']['OOMKilled'] or replacement['stopped']['ExitCode'] != 0:
+                raise ValueError('initial-stage cancellation did not permit a complete clean replacement-worker exit')
         if args.retained_selection:
             selection_file = output / 'retained-selection-released.json'
             selection = json.loads(selection_file.read_text())

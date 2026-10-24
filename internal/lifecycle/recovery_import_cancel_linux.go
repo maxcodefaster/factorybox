@@ -30,6 +30,7 @@ type RecoveryImportInspection struct {
 	DirectoryChange   string                      `json:"directory_change"`
 	InspectedAt       string                      `json:"inspected_at"`
 	Cancelled         *RecoveryImportCancellation `json:"cancelled,omitempty"`
+	ReservationAbsent bool                        `json:"reservation_absent,omitempty"`
 }
 
 type RecoveryImportCancellation struct {
@@ -40,6 +41,7 @@ type RecoveryImportCancellation struct {
 	PreparationSHA256 string `json:"preparation_sha256"`
 	InspectionSHA256  string `json:"inspection_sha256"`
 	CompletedAt       string `json:"completed_at"`
+	ReservationAbsent bool   `json:"reservation_absent,omitempty"`
 }
 
 func recoveryImportPreparationSHA(p recoveryImportPreparation) string {
@@ -93,6 +95,11 @@ func (e *Engine) inspectRecoveryImportLocked(ctx context.Context, source *Engine
 		return report, fmt.Errorf("import inspection requires a live bounded store: %v", ctx.Err())
 	}
 	operation := "forks/" + targetID
+	if _, err := source.root.Lstat(operation + "/import.json"); errors.Is(err, os.ErrNotExist) {
+		return e.inspectRecoveryImportInitialLocked(ctx, source, targetID)
+	} else if err != nil {
+		return report, err
+	}
 	p, err := source.readUnpublishedRecoveryImport(operation, targetID)
 	if err != nil {
 		return report, err
@@ -177,6 +184,9 @@ func (e *Engine) cancelRecoveryImportLocked(ctx context.Context, source *Engine,
 		inspected.BootID != e.boot || inspected.InspectedAt == "" || inspected.Cancelled != nil ||
 		!digest.MatchString(inspected.InventorySHA256) || sum(data) != inspected.InventorySHA256 {
 		return report, fmt.Errorf("import cancellation requires its exact original inspection")
+	}
+	if inspected.ReservationAbsent {
+		return e.cancelRecoveryImportInitialLocked(ctx, source, inspected)
 	}
 	operation := "forks/" + inspected.TargetID
 	p, err := source.readUnpublishedRecoveryImport(operation, inspected.TargetID)

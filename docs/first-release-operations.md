@@ -125,6 +125,19 @@ identical package/image build. Evidence is bound by
 Later mounted-stage interruption, initial reservation-publication failure and
 the remaining loss combinations still require acceptance.
 
+The next source candidate also distinguishes an initial metadata stage whose
+`import.json` was never published. Its inspection reports
+`reservation_absent: true`, with no invented owner or preparation hash. It
+accepts only an empty private operation directory or one exact private
+publication temporary, with no payload, intent or target object. Explicit
+cancellation removes that complete metadata stage without allocating another
+inode in the store. Save its request and completion outside the store. This
+unaccepted stage has no durable missing-entry replay: after interruption obtain
+a fresh inspection of any remainder; an absent stage or new same-name
+generation cannot inherit the previous request. A committed import reservation
+keeps the terminal-receipt and reserved-ID behavior described above. Focused
+root-owned tests pass; native initial-publication acceptance remains pending.
+
 The current image passes the complete existing public retirement fault fixture
 in `factorybox-bounded-loss-29c1db8cc9db4ae089f9667c5122e266`. It includes
 actual preparation ENOSPC, public inspection/cancellation while space remains

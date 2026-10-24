@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -222,5 +223,203 @@ func TestRecoveryImportCancellationHandlesOnlyOneExactInterruptedPublication(t *
 				t.Fatal("exact interrupted publication was not explicitly cancelled", err)
 			}
 		})
+	}
+}
+
+// A killed initial publication has no committed reservation and cannot own any
+// recovery payload yet. Its exact private metadata stage still needs an
+// explicit manual path, without treating an unknown directory as a valid fork.
+func TestRecoveryImportInitialPublicationCancellation(t *testing.T) {
+	for _, temporary := range []bool{false, true} {
+		t.Run(fmt.Sprint(temporary), func(t *testing.T) {
+			e, operation, _ := recoveryImportMetadataFixture(t)
+			for _, path := range []string{operation + "/recovery/partial-copy", operation + "/recovery", operation + "/import.json"} {
+				if err := e.root.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if temporary {
+				if err := e.root.WriteFile(operation+"/.checkpoint-"+strings.Repeat("a", 32), []byte(`{"uncommitted":`), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := e.admitWorkerMetadata(context.Background(), workerMetadataDelta{}); err == nil {
+				t.Fatal("initial uncommitted stage silently gained fork admission authority")
+			}
+			inspected, err := e.inspectRecoveryImportLocked(context.Background(), e, "interrupted")
+			if err != nil {
+				t.Fatal("initial unpublished metadata cannot be inspected for explicit cancellation", err)
+			}
+			if !inspected.ReservationAbsent || inspected.Owner != "" || inspected.PreparationSHA256 != "" || inspected.Cancelled != nil {
+				t.Fatal("uncommitted metadata invented an original reservation", inspected)
+			}
+			completed, err := e.cancelRecoveryImportLocked(context.Background(), e, inspected)
+			if err != nil || completed.CompletedAt == "" || !completed.ReservationAbsent {
+				t.Fatal("exact initial publication could not be explicitly cancelled", completed, err)
+			}
+			if _, err := e.root.Lstat(operation); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("cancelled uncommitted metadata remains", err)
+			}
+			if err := e.admitWorkerMetadata(context.Background(), workerMetadataDelta{}); err != nil {
+				t.Fatal("explicit initial-stage cancellation did not restore independent admission", err)
+			}
+			if _, err := e.cancelRecoveryImportLocked(context.Background(), e, inspected); err == nil {
+				t.Fatal("absent unaccepted stage gained durable missing-entry replay authority")
+			}
+		})
+	}
+}
+
+func recoveryImportInitialMetadataFixture(t *testing.T) (*Engine, string) {
+	t.Helper()
+	e, operation, _ := recoveryImportMetadataFixture(t)
+	for _, path := range []string{operation + "/recovery/partial-copy", operation + "/recovery", operation + "/import.json"} {
+		if err := e.root.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return e, operation
+}
+
+func TestRecoveryImportInitialInspectionRefusesPayloadAndUnknownMetadata(t *testing.T) {
+	for _, kind := range []string{"payload", "intent", "object", "unknown", "bad-temporary", "repeated-temporary", "symlink", "hardlink", "owner", "mode", "oversize", "corrupt-journal"} {
+		t.Run(kind, func(t *testing.T) {
+			e, operation := recoveryImportInitialMetadataFixture(t)
+			name := operation + "/.checkpoint-" + strings.Repeat("a", 32)
+			if err := e.root.WriteFile(name, []byte(`{"partial":`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			paths := []string{operation}
+			var err error
+			switch kind {
+			case "payload":
+				err = e.root.Mkdir(operation+"/recovery", 0700)
+			case "intent":
+				err = e.root.WriteFile(operation+"/intent.json", []byte("retain"), 0600)
+			case "object":
+				err = e.root.Mkdir("objects/interrupted", 0700)
+				paths = append(paths, "objects/interrupted")
+			case "unknown":
+				err = e.root.WriteFile(operation+"/foreign", []byte("retain"), 0600)
+			case "bad-temporary":
+				err = e.root.Rename(name, operation+"/.checkpoint-not-a-token")
+			case "repeated-temporary":
+				err = e.root.WriteFile(operation+"/.checkpoint-"+strings.Repeat("b", 32), []byte("retain"), 0600)
+			case "symlink":
+				err = e.root.Remove(name)
+				if err == nil {
+					err = e.root.Symlink("../retained-input", name)
+				}
+			case "hardlink":
+				err = os.Link(filepath.Join(e.config.Root, name), filepath.Join(e.config.Root, "outside-publication"))
+				paths = append(paths, "outside-publication")
+			case "owner":
+				err = os.Chown(filepath.Join(e.config.Root, name), 1, 0)
+			case "mode":
+				err = os.Chmod(filepath.Join(e.config.Root, name), 0644)
+			case "oversize":
+				var file *os.File
+				file, err = e.root.OpenFile(name, os.O_WRONLY, 0600)
+				if err == nil {
+					err = errors.Join(file.Truncate(checkpointManifestLimit+1), file.Close())
+				}
+			case "corrupt-journal":
+				err = e.root.WriteFile(operation+"/import.json", []byte(`{"incomplete":`), 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := ownedtree.Capture(context.Background(), e.root, paths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.inspectRecoveryImportLocked(context.Background(), e, "interrupted"); err == nil {
+				t.Fatal("payload, published ownership or foreign metadata gained initial-stage cancellation authority")
+			}
+			after, err := ownedtree.Capture(context.Background(), e.root, paths)
+			if err != nil || !equalOwnedPlans(before, after) {
+				t.Fatal("refused initial inspection changed original input", err)
+			}
+		})
+	}
+}
+
+func TestRecoveryImportInitialCancellationRejectsChangedInspectionAndNeedsFreshRemainder(t *testing.T) {
+	for _, kind := range []string{"content", "unknown", "object", "root", "owner", "preparation", "generation", "boot", "inventory-hash", "mode-flag", "partial-removal"} {
+		t.Run(kind, func(t *testing.T) {
+			e, operation := recoveryImportInitialMetadataFixture(t)
+			name := operation + "/.checkpoint-" + strings.Repeat("a", 32)
+			if err := e.root.WriteFile(name, []byte("initial partial metadata"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			inspected, err := e.inspectRecoveryImportLocked(context.Background(), e, "interrupted")
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch kind {
+			case "content":
+				err = e.root.WriteFile(name, []byte("replacement"), 0600)
+			case "unknown":
+				err = e.root.WriteFile(operation+"/foreign", []byte("retain"), 0600)
+			case "object":
+				err = e.root.Mkdir("objects/interrupted", 0700)
+			case "root":
+				inspected.SourceRoot += "-different"
+			case "owner":
+				inspected.Owner = strings.Repeat("f", 32)
+			case "preparation":
+				inspected.PreparationSHA256 = strings.Repeat("f", 64)
+			case "generation":
+				inspected.DirectoryBirth = "different"
+			case "boot":
+				inspected.BootID = "different"
+			case "inventory-hash":
+				inspected.InventorySHA256 = strings.Repeat("f", 64)
+			case "mode-flag":
+				inspected.ReservationAbsent = false
+			case "partial-removal":
+				err = e.root.Remove(name)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := ownedtree.Capture(context.Background(), e.root, []string{operation})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.cancelRecoveryImportLocked(context.Background(), e, inspected); err == nil {
+				t.Fatal("stale or changed initial inspection authorized metadata removal")
+			}
+			after, err := ownedtree.Capture(context.Background(), e.root, []string{operation})
+			if err != nil || !equalOwnedPlans(before, after) {
+				t.Fatal("refused initial cancellation changed remaining metadata", err)
+			}
+			if kind == "partial-removal" {
+				fresh, err := e.inspectRecoveryImportLocked(context.Background(), e, "interrupted")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := e.cancelRecoveryImportLocked(context.Background(), e, fresh); err != nil {
+					t.Fatal("fresh inspection could not cancel its exact remaining empty stage", err)
+				}
+			}
+		})
+	}
+}
+
+func TestRecoveryImportInitialCancellationCannotWithdrawCommittedReservation(t *testing.T) {
+	e, operation, _ := recoveryImportMetadataFixture(t)
+	inspected, err := e.inspectRecoveryImportLocked(context.Background(), e, "interrupted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := inspected.Inventory
+	inspected.ReservationAbsent, inspected.Owner, inspected.PreparationSHA256 = true, "", ""
+	if _, err := e.cancelRecoveryImportLocked(context.Background(), e, inspected); err == nil {
+		t.Fatal("committed reservation was abandoned through a forged initial-stage inspection")
+	}
+	after, err := ownedtree.Capture(context.Background(), e.root, []string{operation})
+	if err != nil || !equalOwnedPlans(before, after) {
+		t.Fatal("forged initial-stage cancellation changed a committed reservation", err)
 	}
 }

@@ -7151,3 +7151,73 @@ agent cases, operating update/rollback, the full required final regression and
 upstream audit, predetermined ten-lifecycle series per example and final
 release profile remain open. The complete goal stays active; production
 qualification remains false.
+
+## Initial import publication boundary: red/green source regression
+
+The previous goal turn makes concrete progress: independently reproduced worker
+`ac0f93d4` passes both complete planned-loss pressure consumers. The full goal
+is unchanged. The next open import boundary is between making `forks/target`
+and atomically publishing `import.json`, before any copy or runtime object.
+
+The root-owned minimized regression in
+`factorybox-import-initial-red-2555f8bc1ad8403c868265f8ba14baef` fails on both
+possible initial stages: an empty operation directory and one private truncated
+publication temporary. Both fail inspection with `no such file or directory`.
+Unknown-stage admission still correctly refuses, but the explicit manual
+cancellation path previously also required the missing reservation.
+
+The next candidate recognizes this state only during an explicit complete
+inspection. The report adds optional `reservation_absent: true`, with no
+fabricated owner or original pause provenance. Any payload, published intent,
+target object, existing/corrupt journal, foreign entry, repeated temporary,
+unsafe owner/mode, symlink or outside hardlink refuses. The current store lease,
+controller locks, same boot, full exact inventory and directory birth/change
+checks still apply. Initial cancellation removes only that complete unaccepted
+metadata stage and syncs its parent; it allocates no extra store inode or
+cancellation journal. Save its completion externally. Interruption needs fresh
+inspection; absent metadata and a new same-name generation gain no missing-entry
+replay. Committed reservations retain their existing receipt/reserved-ID
+semantics. The optional false fields are omitted from JSON, preserving prior
+normal-inspection identity bytes.
+
+All focused root-owned import tests pass in
+`factorybox-import-initial-checks-92e6940b8b194a7fb3a11ccee97d7dd2`, including
+initial-stage ownership/content/refusal controls, stale-generation and partial
+deletion handling, and refusal to withdraw a committed reservation through a
+forged initial-stage report. The earlier import/unknown-inventory assertions
+also pass. All six portable groups pass in
+`factorybox-checks-e68cd6dc1c354354b2e5a5d8c0128bc4`, before the native test's
+final pressure-counter accounting correction. Runtime and unit-test inputs are
+unchanged by that correction; the final native fixture must still be compiled
+and exercised before accepting its output.
+
+The new optional basic bounded-recovery fixture exhausts only inodes in its own
+1-GiB filesystem, with at most 100,000 fixture-created pressure files and exact
+recorded per-inode ownership. It leaves one inode for the import directory, so
+the real delivered CLI can pass block admission and then fail initial journal
+publication with kernel ENOSPC. Public inspection/cancellation must work with
+zero free inodes, refuse stale/absent-stage replay and handle a private truncated
+publication. Exact owned pressure release must preserve every original saved
+input, then every original 32-MiB private RAM/files recovery, descendant and
+resume assertion must pass, followed by a clean replacement-worker stop. This
+is a native acceptance design, not yet a native pass or full consumer proof.
+
+The full production goal stays active; no initial-publication or new-candidate
+production qualification is claimed by these source tests.
+
+Final portable result `factorybox-checks-8ebb3a9b3c834814ba20c88509ab6a15`
+passes all six groups after the final native-fixture counter corrections,
+including vet, tagged consumer compilation, immutable reference verification
+and ordered fixture verification. The preceding result
+`factorybox-checks-16929ff870124d518176561c2267af3e` passes its first five groups
+and fails only `git diff --check` on an extra documentation EOF blank line,
+which is removed before the final check. Its failure remains recorded.
+
+Lossless closed-input sharing restores build headroom without retiring selected
+failures. `factorybox-storage-share-test-encodings-08c89dc2544d439caea705f86c13736d`
+verifies and shares 13 completed test encodings, reclaiming 80,932,864 allocated
+bytes. `factorybox-storage-share-comparison-bf9a0aeb5cd54a848d27bd2086a5f83e`
+fully verifies both completed ac0/7317 worker packages before and after sharing
+their byte-identical CLI and package encodings, reclaiming 50,663,424 allocated
+bytes. Original paths, contents, build results and selected failure encodings
+remain intact. The artifact limit, new-run reserve and host floor are unchanged.
