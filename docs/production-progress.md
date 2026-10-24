@@ -7271,7 +7271,7 @@ capacity/import checklist entry:
 | --- | --- |
 | Admitted copy ENOSPC and manual cancellation, full minimal and Factory/local-agent consumers | Both complete planned-loss consumers pass on ac0; closure `99e5f000` above |
 | Initial journal ENOSPC and metadata-only cancellation | Both complete basic planned/abrupt native cases pass on f308; closure `d9879765` above |
-| Import interrupted after its immutable mounts exist; cancellation through a fenced retained controller | Native acceptance remains open |
+| Import interrupted after its immutable mounts exist; cancellation through a fenced retained controller | Both complete basic planned/abrupt cases now pass; see mounted-import acceptance below |
 | Remaining full-consumer loss combinations and final-package capacity/import regression | Remain open |
 
 These results close the basic initial-publication case. They do not close the
@@ -7279,3 +7279,70 @@ whole capacity/import gate, historical EBUSY attribution, external-provider
 agent cases, tested operating update/rollback, required full final regression,
 predetermined ten-lifecycle consumer series or final release profile. The full
 goal remains active and production qualification false.
+
+## Mounted import interruption and fenced retained cancellation pass
+
+Commit `c62d9b8` adds native acceptance without changing the delivered f308
+runtime core. The original basic Prepare/Recover bodies and every original
+nonempty source/assertion line remain intact and in order. An optional setup
+imports a real immutable base and adds 5,000 private upper files to provide an
+observable real copy window. No production hook, fake mount or relaxed
+upstream assertion is used.
+
+The first complete planned fixture,
+`factorybox-bounded-loss-1f7961462d154062af3992ec49963079`, passes useful
+recovery, retained cancellation, final exit and cleanup. Its negative probe
+asserts refusal but does not retain the exact error reason. The subsequent
+fixture strengthens this to require and retain the precise
+`owned tree crosses foreign mount: forks/mounted-import/recovery/input/base/rootfs`
+failure. Both source-worker loss modes then pass this stricter complete fixture:
+
+| Original source-worker loss | Complete strict evidence | Interrupt stage | Recover stage | Whole driver |
+| --- | --- | ---: | ---: | ---: |
+| Planned | `factorybox-bounded-loss-f029f0e93e3a44dbb039c193bb301565` | 3.22 s | 22.63 s | 36.50 s |
+| Abrupt | `factorybox-bounded-loss-fc31a38dac4d4a1c9345cbbad89f7692` | 2.92 s | 23.03 s | 38.90 s |
+
+The actual delivered import CLI first creates its verified read-only base
+mount. The observer stops only its exact pidfd-pinned production `cp` child,
+with executable/parent/arguments checked, then kills that exact controller and
+copy. Journal ownership remains; intent and target object are absent. Public
+inspection refuses at the observed mount boundary without changing it, and the
+complete original backup inventory remains unchanged.
+
+The driver then verifies and hard-fences that exact import worker, confirms
+exit 137 and removes it before starting a third distinct epoch on the same
+intact image. Public retained-controller inspection and explicit cancellation
+succeed there. Only the failed copy is removed, its permanent reservation is
+unchanged, and exact cancellation replay returns identical bytes. The original
+backup inventory survives worker loss and cancellation. Every original
+32-MiB RAM/files recovery, exact replay, independent descendant, pause/resume,
+fork of resumed descendant and useful continuation after source deletion then
+passes. Final workers exit 0 and exact owned resources are absent. Original
+420-second and resource ceilings remain unchanged. These durations are fault
+fixture observations, not production latency or a distribution.
+
+`factorybox-import-mounted-closure-ad889dbcedd7473588d7957773325b1e` loads both
+independently identical packages and verifies the native/runtime core binding,
+complete frozen/current native source contexts, all original source assertions
+in order, exact executable/input/output hashes, actual mount-specific refusal,
+inspection/cancellation identities, all three terminal worker epochs, actual
+exact-resource absence, full original success, unchanged global settings,
+all 232 reference files and unchanged goal/chat handoff. The final six portable
+groups pass in `factorybox-checks-620819278f414003ba444176fe6f85c5`.
+
+Build headroom is maintained without deleting selected failures.
+`factorybox-storage-share-comparison-99208ebb84a44599ba8861721d3dbb56` completely
+verifies both f308/69a8 packages before and after sharing their identical CLI
+and encoded package inputs, reclaiming 50,688,000 allocated bytes. Both earlier
+initial-publication probe executables are then losslessly encoded with complete
+byte-for-byte decompression checks; their per-file encoding receipts preserve
+the exact native executable hash and reconstruction command. Native results,
+logs, frozen sources and original closure report remain unchanged.
+
+The basic early-publication and mounted-stage recovery cases are now both
+demonstrated. Remaining capacity/import acceptance includes the full consumer
+loss combinations on the final runtime/package and required broader regression.
+Historical EBUSY attribution, actual external-provider agent cases, tested
+update/rollback, all final required suites, ten predetermined complete
+lifecycles per example and the release profile remain open. The full goal
+stays active and production qualification false.

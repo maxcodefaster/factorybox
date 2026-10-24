@@ -116,14 +116,13 @@ operation's private copy and at most one exact interrupted publication file.
 It never releases mounts or removes the original backup. After an interrupted
 deletion, inspect the surviving copy again. After confirmed completion, exact
 replay returns the original cancellation receipt. A fresh recovery needs a
-different target ID. Unknown entries and a failed initial `import.json`
-publication still require separate investigation. Root-owned focused tests and
+different target ID. Unknown entries require separate investigation. A failed
+initial `import.json` publication uses the separate protocol below. Root-owned focused tests and
 complete planned-loss ENOSPC consumers now pass for both the minimal example
 and Factory with Theia/local OpenCode. Their exact candidate has an independently
 identical package/image build. Evidence is bound by
 `factorybox-import-cancellation-closure-99e5f00053194df0997f0c3cfca22839`.
-Later mounted-stage interruption and the remaining full-consumer loss
-combinations still require acceptance.
+The remaining full-consumer loss combinations still require acceptance.
 
 Candidate `factorybox-build-worker-f3086761c73449e3aef5f636a7ebd68b` also distinguishes an initial metadata stage whose
 `import.json` was never published. Its inspection reports
@@ -144,6 +143,24 @@ the complete package and image. The binding is
 `factorybox-import-initial-closure-d9879765b7994d4eac13330ccaea21b8`.
 This closes the basic initial-publication fixture, not mounted-stage or full
 consumer acceptance.
+
+A mounted partial import refuses inspection at its actual mount boundary.
+Do not remove its files or infer mount-release authority from the error.
+Withdraw new work, verify the exact owning worker, fence and remove that worker,
+and attach the same intact owned store to a replacement on the same host/boot.
+Then inspect using the failed controller's exact `--source-root`, save the full
+new inspection externally and submit it to `cancel-recovery-import`. This
+cancels retained file backing after the old mount namespace has disappeared;
+the cancellation itself never unmounts anything. The original reservation
+remains and exact completion replay stays available.
+
+This sequence now passes both complete basic planned/abrupt source-worker
+fixtures on the f308 runtime core. Each additionally kills the actual import
+controller after its immutable mount exists, proves mount-specific refusal,
+hard-fences the import worker, cancels through a third epoch and completes all
+original RAM/files recovery assertions with a clean final exit. The binding is
+`factorybox-import-mounted-closure-ad889dbcedd7473588d7957773325b1e`.
+Full consumer and final-package qualification remain separate.
 
 The current image passes the complete existing public retirement fault fixture
 in `factorybox-bounded-loss-29c1db8cc9db4ae089f9667c5122e266`. It includes
