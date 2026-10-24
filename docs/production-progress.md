@@ -5661,3 +5661,146 @@ closed outputs. All paths, bytes, owners, modes, sources and build results remai
 the receipts retain original/shared mtimes. It reclaims 57,790,464 allocated
 bytes and restores the required 8-GiB native-start headroom within the 32-GiB
 artifact budget. No failure dump is removed by this maintenance.
+
+## Descendant mount-reference coverage and historical Proc replay
+
+The existing mount observer covered successful path opens only in the active
+outer PID namespace. Control
+`factorybox-mount-descendant-control-5e7f788aa487470cacc9aa196b24402e`
+demonstrates the blind spot: a real O_PATH directory held by PID 1 in a child
+PID namespace makes ordinary unmount return EBUSY, but the observer misses the
+held interval. Releasing that exact helper makes ordinary unmount succeed.
+Its kernel-control verdict passes and its observer-coverage verdict remains
+false. This is not a reproduction or attribution of the historical failure.
+
+New diagnostic build
+`factorybox-mount-ref-tracer-97707c9501da4164a0328a551d71804e`
+walks the typed current task's PID namespace ancestry and matches the exact
+owned outer namespace, returning the PID visible there. Its loader verifies
+the live kernel's upid layout. The five file/unmount probes, event format and
+file-generation rules are unchanged; Go vet passes. The byte-identical control
+sources pass with this observer in
+`factorybox-mount-descendant-control-b8df8af032a442609f75bfebfc50fdb1`.
+The observed child's held interval spans the real EBUSY and ends before
+successful cleanup. All read/loss/map and missed-probe counters are zero.
+
+The predetermined twenty paired held/transient original Proc cases pass in
+`factorybox-historical-admission-f7b2dfe70cd844b3871ffd8b5d0921f5`.
+The exact historical production sources, CLI and components remain unchanged.
+The existing diagnostic test binary adds observation only after failed ordinary
+unmount, preserving every original assertion and the immediate cleanup boundary.
+All 31 top-level and 101 subtest outcomes pass without skips; owned cleanup and
+unchanged global settings pass. This is not the full six-main-test admission
+suite or the final release repetition series. All 870,871 events have zero
+observer errors and missed probes. Descendant runc init unmounts, absent from
+the old outer-only observation, are now visible.
+
+Independent evaluation
+`factorybox-mount-descendant-evaluation-8df3c072b1b74955a3982229b17b55ee`
+rechecks both controls, frozen sources/binaries, counters and the full trace
+digest. Every one of the 80 original-test unmounts succeeds with no observed
+successful path-open interval spanning its entry. The last observed release
+caller is original.test in all 80 cases; entry follows that release by 5.727
+to 195,732.379 microseconds. These are descriptive event gaps, not a latency
+distribution or attribution. Cwd/root, namespace references, other file
+acquisition paths and pre-coverage references remain unobserved. Mount pointer
+and legacy-ID reuse do not establish persistent mount identity. The original
+EBUSY remains unexplained, retained and a release blocker.
+
+The Sysbox-mgr shutdown warning is not evidence of a surviving container:
+unregister sets a retained container-table entry to stopped, while shutdown
+prints every table key without checking that state. The same warning appears
+on these successful runs. No runtime change is justified by it.
+
+The latest complete passing store and all 62,702,712 trace bytes remain
+losslessly reconstructable after complete decompression verification. Maintenance
+`factorybox-passed-proc-retirement-025f19c3065d45349de5e0e1a199b363`
+retires only the two older closed passing twenty-pair stores, 3efc5930 and
+937991ba, after verifying the full original unresolved failure and the newer
+passing store. Every old member header/hash and selected diagnostics remain;
+their large old stores are explicitly no longer fully reconstructable. Native
+results, sources, executables, traces and logs remain unchanged. The retained
+preflight errors concern Python regex escaping and the older no-tracer result's
+exit_code field; declared new-copy continuations preserve those failures and
+all retirement checks. Instrumentation can affect timing; retirement does not
+explain EBUSY or qualify production. The goal remains active.
+
+## Current-package admission, capture interruption and worker loss
+
+The exact core shipped in independently reproduced worker A66 now passes the
+complete admission suite in
+`factorybox-runtime-3fc216eb1aca4a5faefa0b7f6a5ee255`: 17 top-level tests and
+78 subtests without skips. Its five native admission test source files are
+byte-identical to the original historical failure's files. This successful
+current-package run neither reproduces nor explains that historical EBUSY.
+
+The first serialized batch,
+`factorybox-pilot-native-gates-730fe939759044e691b854e6feb8025e`, remains failed:
+admission passed, but the next suite's native-run allocation was refused by
+the required 8-GiB headroom check. That second test never started. No failed
+assertion is relabeled or removed. After closed-store maintenance, the separate
+remaining batch
+`factorybox-pilot-native-gates-42af4cbe859a4e2b9bbd4381d2eda01d` passes both:
+
+- Actual CRIU interruption:
+  `factorybox-runtime-41cc6d773c884386bec27d83d6bfb2dd`, 12 top-level tests and
+  61 subtests, no skips.
+- Actual capture-worker loss:
+  `factorybox-runtime-1737c5a91bd441d8bf1dd3063fcdb792`, 12 top-level tests and
+  64 subtests, no skips.
+
+Every suite preserves source identity/useful work, independently useful prior
+backing and incomplete-operation evidence under its exact declared fault.
+Owned cleanup, unchanged sources/inputs/components and all original assertions
+pass. These are in-process regression binaries from the delivered core with
+the shipped Sysbox/CRIU, not complete external-provider consumer proof. The
+default native gate list now also includes the existing interruption suite;
+its required assertions are unchanged.
+
+Independent verifier
+`factorybox-candidate-regression-notes-6a5f099066f942129d3161e21b281c7e`
+binds those three results, their full archive decompression and frozen inputs
+to A66's exact component/package identities. It also rechecks the existing
+successful Sysbox component evidence against the identical shipped binaries
+and component source manifest. The raw Go JSONL records confirm 727 passes
+and the 18 original skips, including 28 top-level libcontainer unit passes and
+47 integration passes. Bats TAP still contains seven lifecycle passes and four
+systemd passes with its original two skips. The new CRIU's eighteen core cases
+with two cycles remain separately bound. These unchanged component proofs do
+not need new runs solely because the Go worker package is assembled again.
+They do not qualify skipped paths or any missing whole-worker regression.
+
+To restore start headroom, maintenance
+`factorybox-passed-admission-successor-retirement-5750a5e226774e63b29719c4fcc7add0`
+retires only the earlier passing 3e67ba7b store after full verification of the
+original unresolved failure and current passing store. The original 95 named
+assertions and all five test sources are retained unchanged in the current
+proof. The old diagnostic had three repetitions; the current package has one.
+No repetition equivalence is claimed. Its complete old store is explicitly
+unavailable after retirement, while results, test inputs, trace, all member
+headers/hashes and 4,293,257 unique diagnostic bytes remain. The actual original
+failure and latest selected successful stores remain reconstructable.
+
+Immutable input sharing keeps every file path and byte. New explicit
+`--include-closed-runtime-tests` support also shares identical encoded lifecycle
+tests only for passing, stopped native runs bound to inputs_sha256 and complete
+canonical decompression. A concurrent maintenance run exposed an accounting
+defect: the old encoded-test receipt reported the change in all artifact blocks
+as if that operation alone reclaimed them. The frozen f1774eb6 result's
+223,756,288 bytes are a combined concurrent allocation observation, not isolated
+encoded-test reclamation; both successful byte-sharing receipts stay unchanged.
+The corrected tool counts only the last-link blocks it replaces and reports
+the global snapshot change separately. A real filesystem regression reproduces
+the old 2,084,864-versus-4,096-byte misattribution under unrelated cleanup and
+passes after the fix. The independent verifier retains the exact old-runner
+red and corrected-runner green logs. This changes maintenance reporting only.
+
+The historical EBUSY, remaining current-package native/consumer/storage checks,
+manual operating-path acceptance and predetermined final series remain open.
+Production qualification remains false and the complete goal stays active.
+
+All six portable check groups pass after these changes in
+`factorybox-checks-3c28f8d0df8a45aca70e8f5465398e02`: Go tests with vet enabled,
+the worker-probe compile, 242 Python tests, all 232 sealed imported files,
+ordered fixture verification and diff validation. The earlier successful
+check run before the maintenance-accounting change remains separate.

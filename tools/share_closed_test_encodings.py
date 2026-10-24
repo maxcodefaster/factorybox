@@ -29,6 +29,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--include-closed-consumer-helpers', action='store_true',
                         help='also share encoded consumer helpers bound to their exact native inputs_sha256')
+    parser.add_argument('--include-closed-runtime-tests', action='store_true',
+                        help='also share encoded lifecycle tests of passing stopped native runs, bound to their exact inputs_sha256')
     args = parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('encoded input sharing requires every native worker to close')
@@ -37,7 +39,8 @@ def main():
     for run in sorted((reference.ROOT / 'artifacts').iterdir()):
         native = re.fullmatch(r'factorybox-(?:checkpoint-retirement|bounded-store|bounded-store-loss|bounded-loss|storage-admission)-[0-9a-f]{32}', run.name)
         consumer = args.include_closed_consumer_helpers and re.fullmatch(r'factorybox-consumer-worker-loss-[0-9a-f]{32}', run.name)
-        if not native and not consumer:
+        runtime = args.include_closed_runtime_tests and re.fullmatch(r'factorybox-runtime-([0-9a-f]{32})', run.name)
+        if not native and not consumer and not runtime:
             continue
         result = run / 'result.json'
         if run.is_symlink() or result.is_symlink() or not result.is_file():
@@ -45,9 +48,20 @@ def main():
         outcome = json.loads(result.read_text())
         if outcome.get('cleanup') is not True:
             continue
-        candidates = {'probe.test': outcome.get('test_binary_sha256', outcome.get('probe_sha256'))} if native else {
-            name: outcome.get('inputs_sha256', {}).get(name) for name in
-            ['consumer-worker.test', 'devx-actor', 'devx-registry', 'minimal-actor', 'ide-filesystem']}
+        if runtime:
+            if (outcome.get('passed') is not True or
+                    outcome.get('container_state', {}).get('Running') is not False or
+                    outcome.get('container_state', {}).get('Pid') != 0):
+                continue
+            if outcome.get('owner') != runtime[1]:
+                raise ValueError('closed runtime test owner differs from its directory')
+        if runtime:
+            candidates = {'lifecycle.test': outcome.get('inputs_sha256', {}).get('lifecycle.test')}
+        elif native:
+            candidates = {'probe.test': outcome.get('test_binary_sha256', outcome.get('probe_sha256'))}
+        else:
+            candidates = {name: outcome.get('inputs_sha256', {}).get(name) for name in
+                ['consumer-worker.test', 'devx-actor', 'devx-registry', 'minimal-actor', 'ide-filesystem']}
         for name, expected in candidates.items():
             receipt, encoded = run / (name + '.encoding.json'), run / (name + '.zst')
             if not isinstance(expected, str) or not re.fullmatch(r'[0-9a-f]{64}', expected):
@@ -82,8 +96,10 @@ def main():
         reference.artifact_storage.verify_compacted(Path(group[0]['path']).with_suffix(''), group[0]['original'])
     save(artifact / 'intent.json', {'schema': 1, 'groups': rows, 'results_and_receipts': hashes,
                                   'capacity_before': before, 'canonical_complete_decodes_verified': True,
-                                  'include_closed_consumer_helpers': args.include_closed_consumer_helpers})
+                                  'include_closed_consumer_helpers': args.include_closed_consumer_helpers,
+                                  'include_closed_runtime_tests': args.include_closed_runtime_tests})
     result = {'schema': 1, 'passed': False, 'completed': [], 'production_qualified': False}
+    reclaimed = 0
     try:
         for group in rows:
             canonical = Path(group[0]['path'])
@@ -98,6 +114,9 @@ def main():
                         (info.st_mode, info.st_uid, info.st_gid) != (row['mode'], row['uid'], row['gid']) or
                         sha(target) != row['encoded']['sha256']):
                     raise ValueError('closed probe changed before sharing')
+                # Count only this operation's last-link replacements. Another
+                # maintenance job may change the global allocation snapshot.
+                released_blocks = info.st_blocks * 512 if info.st_nlink == 1 else 0
                 temporary = target.with_name(target.name + '.sharing-' + uuid.uuid4().hex)
                 try:
                     os.link(canonical, temporary, follow_symlinks=False)
@@ -111,14 +130,17 @@ def main():
                     os.close(descriptor)
                 if not target.samefile(canonical) or sha(target) != row['encoded']['sha256']:
                     raise ValueError('shared encoded probe verification failed')
+                reclaimed += released_blocks
                 result['completed'].append({'path': str(target), 'original_mtime_ns': row['mtime_ns'],
-                                            'shared_mtime_ns': canonical.stat().st_mtime_ns})
+                                            'shared_mtime_ns': canonical.stat().st_mtime_ns,
+                                            'reclaimed_allocated_bytes': released_blocks})
         if any(sha(Path(path)) != expected for path, expected in hashes.items()):
             raise ValueError('closed native result or receipt changed')
         after = reference.artifact_storage.require_capacity(reference.ROOT, run_reserve=0)
         result.update(passed=True, capacity_after=after,
-                      reclaimed_allocated_bytes=before['allocated_bytes'] - after['allocated_bytes'],
-                      scope='Only byte-identical encoded helpers of closed native runs. Optional consumer helpers require exact inputs_sha256 bindings. Full canonical decompression and all native executable/encoding identities verified. Every path remains usable; results, logs, sources and encoding receipts unchanged. No failure dump, frozen build, active input or historical experiment changed.')
+                      reclaimed_allocated_bytes=reclaimed,
+                      observed_artifact_allocation_delta_bytes=before['allocated_bytes'] - after['allocated_bytes'],
+                      scope='Only byte-identical encoded helpers of closed native runs. Optional consumer helpers and passing stopped runtime tests require exact inputs_sha256 bindings. Full canonical decompression and all native executable/encoding identities verified. Every path remains usable; results, logs, sources and encoding receipts unchanged. No failure dump, frozen build, active input or historical experiment changed.')
     except Exception as error:
         result['error'] = str(error)
         raise

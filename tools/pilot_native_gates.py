@@ -14,7 +14,7 @@ import upstream_unit
 
 SUITES = ("lifecycle", "guard", "capture", "pause", "base", "base-pause",
           "delegation", "auxiliary", "namespaces", "time", "mountfd", "overlay",
-          "admission", "worker-loss", "criu-core", "storage-admission", "storage-controller-loss")
+          "interruption", "admission", "worker-loss", "criu-core", "storage-admission", "storage-controller-loss")
 
 
 def main():

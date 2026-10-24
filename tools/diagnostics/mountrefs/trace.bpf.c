@@ -9,6 +9,11 @@ struct vfsmount { struct dentry *mnt_root; struct super_block *mnt_sb; int mnt_f
 struct path { struct vfsmount *mnt; struct dentry *dentry; } __attribute__((preserve_access_index));
 struct file { struct path f_path; } __attribute__((preserve_access_index));
 struct mount { struct vfsmount mnt; int mnt_id; } __attribute__((preserve_access_index));
+struct ns_common { unsigned int inum; } __attribute__((preserve_access_index));
+struct pid_namespace { struct ns_common ns; } __attribute__((preserve_access_index));
+struct upid { int nr; struct pid_namespace *ns; } __attribute__((preserve_access_index));
+struct pid { unsigned int level; struct upid numbers[1]; } __attribute__((preserve_access_index));
+struct task_struct { struct pid *thread_pid; } __attribute__((preserve_access_index));
 
 struct event {
     __u64 ns, file, mount, pid_tgid, generation;
@@ -35,10 +40,30 @@ static __always_inline void error(__u32 key) {
 static __always_inline __u32 owned_pid(void) {
     __u32 key = 0;
     __u32 *active = bpf_map_lookup_elem(&enabled,&key);
-    if (!active || !*active) return 0;
-    struct bpf_pidns_info ids = {};
-    if (bpf_get_ns_current_pid_tgid(pidns_dev,pidns_ino,&ids,sizeof(ids))) return 0;
-    return ids.pid;
+    if (!active || !*active || !pidns_dev || !pidns_ino) return 0;
+    struct task_struct *task = (void *)bpf_get_current_task();
+    struct pid *pid = 0;
+    unsigned int level = 0;
+    if (bpf_probe_read_kernel(&pid,sizeof(pid),__builtin_preserve_access_index(&task->thread_pid)) || !pid ||
+        bpf_probe_read_kernel(&level,sizeof(level),__builtin_preserve_access_index(&pid->level)) || level >= 32) {
+        error(2); return 0;
+    }
+    void *numbers = __builtin_preserve_access_index(&pid->numbers[0]);
+    // The namespace helper matches only the active PID namespace. Find the
+    // exact owned ancestor instead, including its descendant processes.
+    // The loader validates the upid size and offsets against kernel BTF.
+    #pragma unroll
+    for (int index = 0; index < 32; index++) {
+        if (index > level) break;
+        struct upid at = {};
+        unsigned int inode = 0;
+        if (bpf_probe_read_kernel(&at,sizeof(at),numbers + index * sizeof(struct upid)) ||
+            bpf_probe_read_kernel(&inode,sizeof(inode),__builtin_preserve_access_index(&at.ns->ns.inum))) {
+            error(2); return 0;
+        }
+        if (inode == pidns_ino) return at.nr;
+    }
+    return 0;
 }
 
 static __always_inline __u32 mount_id(struct vfsmount *vfs) {

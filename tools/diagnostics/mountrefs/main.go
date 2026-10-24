@@ -1,6 +1,6 @@
 //go:build linux
 
-// A bounded read-only file lifetime observer for one owned native PID namespace.
+// A bounded read-only file lifetime observer for an owned PID namespace tree.
 package main
 
 import (
@@ -107,6 +107,13 @@ func run() (resultErr error) {
 			return fmt.Errorf("unexpected kernel trace prototype for %s", name)
 		}
 	}
+	var upid *btf.Struct
+	if err := kernel.TypeByName("upid", &upid); err != nil {
+		return err
+	}
+	if upid.Size != 16 || len(upid.Members) != 2 || upid.Members[0].Name != "nr" || upid.Members[0].Offset != 0 || upid.Members[1].Name != "ns" || upid.Members[1].Offset != 64 {
+		return fmt.Errorf("kernel upid layout differs")
+	}
 	var regs *btf.Struct
 	if err := kernel.TypeByName("pt_regs", &regs); err != nil {
 		return err
@@ -209,7 +216,7 @@ func run() (resultErr error) {
 	initial := map[string]any{"schema": 1, "pid": os.Getpid(), "pid_namespace_device": ns.Dev, "pid_namespace_inode": ns.Ino,
 		"kernel_btf_sha256": kernelSHA,
 		"open_hook":         "path_openat",
-		"event_bytes":       72, "scope": "Only successful path opens, including O_PATH, and unmounts in this exact owned outer PID namespace. Final releases only for those tracked files, including a kernel worker. No file contents or paths; cwd, root and namespace references are outside this observer."}
+		"event_bytes":       72, "scope": "Only successful path opens, including O_PATH, and unmounts in this exact owned outer PID namespace and its descendants. Final releases only for those tracked files, including a kernel worker. No file contents or paths; cwd, root and namespace references are outside this observer."}
 	data, _ := json.Marshal(initial)
 	if err := os.WriteFile(*ready, append(data, '\n'), 0644); err != nil {
 		return err

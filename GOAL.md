@@ -30,13 +30,23 @@ historische Nachweise. Produktionsqualifikation ist zu Beginn dieses Goals false
   der Branch eine relative Timer-Aufnahme mit anstehendem gefangenem Signal,
   `factorybox-consumer-worker-loss-87d3d62a3d544fa8b2a0bba588c90b38`.
   Der vollständige ursprüngliche Fehlerzustand bleibt unverändert erhalten.
-  Die gezielte Signalprüfung und der vollständige Factory-Lifecycle bestehen
-  inzwischen auf Kandidat `2d4ef2ecd68848979f86a6b8cf2c0f97`. Die ursprünglichen
-  Fehler bleiben erhalten. Alle 13 nativen Kern-Prüfgruppen und der unabhängige
-  identische Paketnachbau bestehen ebenfalls. Die endgültige Paketabnahme
+  Der aktuelle Kandidat `a66c5db009d5458b9f5d85b7c233516e` besteht den
+  vollständigen Factory-Lifecycle mit lokaler Modell-Fixture und einen
+  unabhängigen identischen Paketnachbau. Auf seinen Komponenten bestehen
+  18 CRIU-Core-Fälle und die bytegleich gebundenen Sysbox-Upstream-/Bats-Fälle.
+  Aufnahmeprüfung, CRIU-Abbruch und Capture-Worker-Verlust bestehen erneut
+  auf dem aktuellen Kern. Die übrigen erforderlichen nativen Prüfgruppen,
+  Verbraucher-/Anbieterfälle und endgültige Wiederholungsserie bleiben offen.
+  Die ursprünglichen Fehler bleiben erhalten. Die endgültige Paketabnahme
   einschließlich der übrigen offenen Anforderungen bleibt erforderlich.
-- [ ] Seltenen Restore-PID-Konflikt erklären und beheben. Den betroffenen
-  vollständigen Lifecycle erst nach belegter Korrektur freigeben.
+- [x] Seltenen Restore-PID-Konflikt erklären und beheben. Die ursprünglichen
+  Prozessabbilder reproduzieren denselben Konflikt mit verzögertem Reap eines
+  echten Sysbox-Helfers. Das Vorbelegen frischer innerer PID-Namespaces behebt
+  diesen Gegenbeweis; der vollständige Factory-Lifecycle, 18 CRIU-Core-Fälle
+  und unabhängige identische Komponenten-/Paketbuilds bestehen auf Kandidat
+  `a66c5db009d5458b9f5d85b7c233516e`. Der damals historische PID-Besitzer
+  wurde nicht direkt beobachtet. Die übrige endgültige Paketabnahme bleibt
+  erforderlich; Belege stehen in `docs/production-progress.md`.
 - [ ] Offenen Busy-Mount-Aufräumfehler dem Test oder der Laufzeit zuordnen;
   einen Laufzeitfehler beheben und Besitz sowie vollständiges Aufräumen prüfen.
 - [ ] Aufnahme neuer Arbeit und Aufbewahrung so begrenzen, dass volle Stores
