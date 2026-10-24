@@ -5611,3 +5611,53 @@ The encoded package has complete decompression verification and the original
 source/byte reconstruction receipt. This is an unselected candidate: its
 complete consumer/regression proofs, independent reproduction and every
 remaining first-release requirement still need acceptance.
+
+The first complete bounded Factory/Theia/local-model lifecycle on these bytes
+passes every original assertion in
+`factorybox-consumer-worker-loss-5451d610d05c4cc68f5b12f25f171c7c`.
+The native developer test takes 152.14 seconds, including useful resume,
+resumed-source checkpoint/fork, independent descendants and real Connector
+edits through the same separate Theia. The delivered 32-GiB store, ordinary
+worker exit 0, exact owned cleanup and unchanged global settings all pass.
+This uses the deterministic local model fixture, not an external provider.
+
+The existing strict timing extractor records prepared useful work 22.531 s,
+cold worker-to-useful work 59.903 s, first useful fork 6.585 s, source capture
+plus useful fork 13.819 s, pause 13.238 s, useful resume 11.709 s and resumed
+capture plus useful fork 33.732 s. Source anonymous memory falls from
+221,696,000 to zero and resident snapshot bytes from 515,006,464 to zero;
+4,923,392 source cgroup bytes remain. This is one development observation,
+not a matched speed comparison, whole-worker zero-memory claim or member of
+the final predetermined series.
+
+Independent component build
+`factorybox-build-criu-repro-08e68692c4f64db9b8316187778ee915`
+starts from the original pinned tar archive, newly copies and verifies each
+declared overlay/patch input, and reapplies every ordered patch without fuzz.
+Its entire assembled source tree equals the candidate before compilation.
+The same pinned isolated native toolchain, with no copied object/cache/binary,
+produces exactly `8c9a9b0d...`; all 1,030 upstream source tests remain unchanged
+and its 31 ownership cases pass.
+
+Independent worker build
+`factorybox-build-worker-a8be76d32fdf43078109e68af7c73008`
+then independently compiles the same Go inputs and reproduces every bundle,
+raw-package, image and layer byte from A66. Frozen identical components are
+shared read-only, with the CRIU clean-source rebuild proved separately.
+The independent `packaged-closure.json` in
+`factorybox-pid-inner-seed-evaluation-78b7c3dfa896436b87f1a12fa5314f98`
+binds both reproductions, the exact red/green evidence, original assertions,
+delivered CLI/component identities, bounded store and complete native outcome.
+The remaining native/package regressions, external provider, worker loss on
+these new bytes, busy-mount attribution, broader storage/operations and final
+series remain open. The full goal and saved parallel-chat context are unchanged;
+production qualification remains false.
+
+Post-build maintenance
+`factorybox-storage-share-pid-fix-rebuilds-89273b937870487c81ce8d7412b9c626`
+fully revalidates both independent worker builds, their complete package
+decompression and the separate clean CRIU build before sharing three identical
+closed outputs. All paths, bytes, owners, modes, sources and build results remain;
+the receipts retain original/shared mtimes. It reclaims 57,790,464 allocated
+bytes and restores the required 8-GiB native-start headroom within the 32-GiB
+artifact budget. No failure dump is removed by this maintenance.
