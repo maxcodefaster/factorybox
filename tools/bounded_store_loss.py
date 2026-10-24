@@ -49,6 +49,30 @@ def verify_initial_import_pressure(output, paused, recovered):
     return proof
 
 
+def verify_mounted_import_recovery(output, paused, recovered):
+    proof = json.loads((output / 'recovery-import-mounted-recovered.json').read_text())
+    interrupted = json.loads((output / 'recovery-import-mounted-interrupted.json').read_text())
+    if (any(proof.get(key) is not True for key in ['passed', 'full_original_recovery_assertions_passed',
+            'fenced_retained_controller_cancelled', 'permanent_reservation_unchanged', 'original_backing_unchanged',
+            'exact_cancellation_replay', 'full_original_recovery_follows']) or
+            proof.get('interruption') != interrupted or interrupted.get('request') != paused['request'] or
+            any(interrupted.get(key) is not True for key in ['passed', 'exact_copy_child_stopped',
+                'exact_controller_sigkill', 'mounted_inspection_refused', 'intent_and_target_absent']) or
+            'owned tree crosses foreign mount' not in interrupted.get('mounted_inspection_error', '') or
+            interrupted.get('target_id') != 'mounted-import' or
+            type(interrupted.get('controller_pid')) is not int or interrupted['controller_pid'] <= 1 or
+            not interrupted.get('controller_birth') or
+            not interrupted.get('mount', {}).get('mount_id') or
+            interrupted['mount']['mount_id'] == interrupted.get('attachment', {}).get('mount', {}).get('mount_id') or
+            proof.get('current_root') != recovered['status']['lifecycle']['root'] or
+            interrupted.get('source_root') == proof['current_root'] or
+            proof.get('retained_inspection', {}).get('source_root') != interrupted.get('source_root') or
+            proof['retained_inspection'].get('target_id') != interrupted['target_id'] or
+            proof['retained_inspection'].get('reservation_absent', False) is not False):
+        raise ValueError('mounted import lacks exact public interruption, fenced retained cancellation or full original recovery')
+    return proof
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
@@ -61,9 +85,13 @@ def main():
                         help='full public epoch admission, exact partial deletion, worker loss and completion with useful successor')
     parser.add_argument('--initial-import-pressure', action='store_true',
                         help='actual initial journal ENOSPC at zero free inodes, public explicit cancellation, then every original recovery assertion')
+    parser.add_argument('--mounted-import-interruption', action='store_true',
+                        help='interrupt actual import after immutable mounts exist, fence its worker, cancel through a third worker, then every original recovery assertion')
     args = parser.parse_args()
     if args.initial_import_pressure and (args.retained_selection or args.retirement_fence or args.epoch_retirement):
         raise ValueError('initial import pressure is a complete basic recovery fixture without unrelated retirement extensions')
+    if args.mounted_import_interruption and (args.initial_import_pressure or args.retained_selection or args.retirement_fence or args.epoch_retirement):
+        raise ValueError('mounted import interruption is a separate complete basic recovery fixture')
     if args.epoch_retirement and args.retirement_fence:
         raise ValueError('choose full epoch retirement or the internal fence fixture')
     args.retained_selection = args.retained_selection or args.retirement_fence or args.epoch_retirement
@@ -82,6 +110,8 @@ def main():
         shutil.copyfile(reference.ROOT / file, source / file)
     shutil.copyfile(__file__, artifact / 'runner.py')
     setup = 'retained-selection-setup.sh' if args.retained_selection else 'bounded-loss-setup.sh'
+    if args.mounted_import_interruption:
+        setup = 'recovery-import-mounted-setup.sh'
     if args.retirement_fence or args.epoch_retirement:
         setup = 'epoch-retirement-setup.sh' if args.epoch_retirement else 'epoch-retirement-fence-setup.sh'
         shutil.copyfile(consumer_loop_holder.__file__, artifact / 'consumer_loop_holder.py')
@@ -102,6 +132,7 @@ def main():
               'retirement_fence': args.retirement_fence,
               'epoch_retirement': args.epoch_retirement,
               'initial_import_pressure': args.initial_import_pressure,
+              'mounted_import_interruption': args.mounted_import_interruption,
               'runner_sha256': reference.sha(artifact / 'runner.py'),
               'setup_sha256': reference.sha(artifact / 'setup.sh'), 'rootfs_sha256': busybox['sha256'],
               'global_sysctls_before': consumer_worker_loss.sysctls(), 'workers': [],
@@ -143,6 +174,8 @@ def main():
                 command += ['--env', 'FACTORYBOX_NATIVE_EPOCH_RETIREMENT=1']
             if args.initial_import_pressure:
                 command += ['--env', 'FACTORYBOX_NATIVE_IMPORT_INITIAL_PRESSURE=1']
+            if args.mounted_import_interruption:
+                command += ['--env', 'FACTORYBOX_NATIVE_IMPORT_MOUNT_INTERRUPTION=1']
             for path, target, readonly in [(binary, '/probe.test', True), (rootfs, '/busybox-rootfs.tar.gz', True),
                                            (artifact / 'setup.sh', '/setup.sh', True), (output, '/output', False)]:
                 command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
@@ -165,6 +198,8 @@ def main():
                 test = 'TestNativeEpochRetirementFence'
             if args.epoch_retirement:
                 test = 'TestNativeEpochRetirement'
+            if stage == 'Interrupt':
+                test = 'TestNativeRecoveryImportMounted'
             if (done.returncode or state['OOMKilled'] or not state['Running'] or
                     sum(line.startswith('--- PASS: ' + test + stage + ' ') for line in log.splitlines()) != 1 or
                     '--- SKIP:' in log):
@@ -190,6 +225,25 @@ def main():
         if reference.docker(['ps', '-aq', '--no-trunc', '--filter', 'id=' + old['id']]):
             raise ValueError('old worker still exists; replacement refused')
         replacement = create_worker('replacement')
+        if args.mounted_import_interruption:
+            run_stage(replacement, 'Interrupt')
+            interrupted_file = output / 'recovery-import-mounted-interrupted.json'
+            interrupted = json.loads(interrupted_file.read_text())
+            if interrupted.get('passed') is not True or interrupted.get('source_root') != replacement['startup']['status']['lifecycle']['root']:
+                raise ValueError('mounted interruption belongs to a different worker')
+            result['mounted_import_interrupted_sha256'] = reference.sha(interrupted_file)
+            consumer_worker_loss.exact_worker(replacement['name'], owner, replacement['id'])
+            reference.docker(['kill', '--signal', 'KILL', replacement['id']])
+            replacement['stopped'] = consumer_worker_loss.exact_worker(replacement['name'], owner, replacement['id'])['State']
+            if replacement['stopped']['Running'] or replacement['stopped']['OOMKilled'] or replacement['stopped']['ExitCode'] != 137:
+                raise ValueError('mounted import worker was not fenced by exact SIGKILL')
+            logs = subprocess.run([*reference.DOCKER, 'logs', replacement['id']], capture_output=True, text=True, timeout=5)
+            (artifact / 'interrupted-worker.log').write_text(logs.stdout+logs.stderr)
+            reference.owned_delete('container', replacement['name'], owner)
+            replacement['removed'] = True
+            if reference.docker(['ps', '-aq', '--no-trunc', '--filter', 'id=' + replacement['id']]):
+                raise ValueError('interrupted import worker still exists; retained cancellation refused')
+            replacement = create_worker('import-replacement')
         run_stage(replacement, 'Recover')
         recovered_file = output / 'bounded-loss-recovered.json'
         proof = json.loads(recovered_file.read_text())
@@ -199,14 +253,18 @@ def main():
                 proof['status']['lifecycle']['bounded_store']['image'] != paused['status']['lifecycle']['bounded_store']['image']):
             raise ValueError('bounded replacement proof lacks required assertions')
         result['recovered_sha256'] = reference.sha(recovered_file)
-        if args.initial_import_pressure:
-            verify_initial_import_pressure(output, paused, proof)
-            result['initial_import_pressure_sha256'] = reference.sha(output / 'recovery-import-initial.json')
+        if args.initial_import_pressure or args.mounted_import_interruption:
+            if args.initial_import_pressure:
+                verify_initial_import_pressure(output, paused, proof)
+                result['initial_import_pressure_sha256'] = reference.sha(output / 'recovery-import-initial.json')
+            if args.mounted_import_interruption:
+                verify_mounted_import_recovery(output, paused, proof)
+                result['mounted_import_recovered_sha256'] = reference.sha(output / 'recovery-import-mounted-recovered.json')
             reference.docker(['stop', '--time', '45', replacement['id']],
                              timeout=max(.1, min(60, deadline-time.monotonic())))
             replacement['stopped'] = consumer_worker_loss.exact_worker(replacement['name'], owner, replacement['id'])['State']
             if replacement['stopped']['Running'] or replacement['stopped']['OOMKilled'] or replacement['stopped']['ExitCode'] != 0:
-                raise ValueError('initial-stage cancellation did not permit a complete clean replacement-worker exit')
+                raise ValueError('import cancellation did not permit a complete clean replacement-worker exit')
         if args.retained_selection:
             selection_file = output / 'retained-selection-released.json'
             selection = json.loads(selection_file.read_text())

@@ -153,6 +153,7 @@ func TestNativeBoundedLossPrepare(t *testing.T) {
 	if err := os.WriteFile(bundle+"/lower/bin/capture-actor", binary, 0755); err != nil {
 		t.Fatal(err)
 	}
+	baseID := prepareRecoveryImportMountedFixture(t, bundle)
 	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0, "index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +179,9 @@ func TestNativeBoundedLossPrepare(t *testing.T) {
 	process["env"] = []string{"HOME=/root", "PATH=/bin:/sbin:/usr/bin:/usr/sbin"}
 	spec["root"].(map[string]any)["readonly"] = false
 	spec["linux"].(map[string]any)["resources"] = map[string]any{"pids": map[string]any{"limit": 128}, "devices": []map[string]any{{"allow": true, "access": "rwm"}}}
+	if baseID != "" {
+		spec["annotations"] = map[string]string{baseAnnotation: baseID}
+	}
 	data, err = json.Marshal(spec)
 	if err != nil {
 		t.Fatal(err)
@@ -247,6 +251,9 @@ func TestNativeBoundedLossRecover(t *testing.T) {
 	}
 	if os.Getenv("FACTORYBOX_NATIVE_IMPORT_INITIAL_PRESSURE") == "1" {
 		checkRecoveryImportInitialPressure(t, status, saved, recoveryArgs)
+	}
+	if os.Getenv("FACTORYBOX_NATIVE_IMPORT_MOUNT_INTERRUPTION") == "1" {
+		cancelRetainedRecoveryImportMountedFixture(t, status, saved)
 	}
 	recovered := boundedLossView(t, recoveryArgs("recovered", request.CheckpointSHA256)...)
 	boundedLossActor(t, recovered, saved.State)
