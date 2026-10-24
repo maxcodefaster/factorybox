@@ -813,7 +813,7 @@ func (e *Engine) inventoryEpochPayloads(ctx context.Context) (epochPayloadInvent
 	if len(b.payloads) == 0 {
 		return result, fmt.Errorf("epoch inventory has no complete payload roots")
 	}
-	plan, err := ownedtree.Capture(ctx, e.root, b.payloads)
+	plan, err := epochPayloadPlan(ctx, e.root, full, b.payloads)
 	if err != nil {
 		return result, err
 	}

@@ -7652,3 +7652,38 @@ manifests, corruption, redirected paths, failed verification, interruption
 after unlink and shared raw hardlinks. All 268 portable Python tool tests pass
 in `factorybox-transport-pythonchecks-908d58dd81c44bb493e7cac07d6b4b4f`.
 This establishes storage maintenance behavior, not production qualification.
+
+## Select epoch payloads from the complete witness and validate them afresh
+
+`inventoryEpochPayloads` previously captured every epoch object twice for its
+complete witness, then captured the selected payloads twice again. The new
+local `epochPayloadPlan` selects independent entry values from the just-captured
+complete witness, preserving the exact sorted-root/depth-first inventory and
+directory anchors. It then calls the existing full `ValidateComplete` on every
+selected payload. This removes one repeated initial payload scan; it preserves
+the independent full scan, every content hash, complete membership checks,
+parent/mount identities and external-hardlink checks. The later durable
+preparation, fencing, witness checks and per-object removal checks are unchanged.
+The complete witness supplies observed bytes and does not grant new deletion
+authority. Selected entry arrays do not alias the witness during later loop
+attachment rebinding.
+
+`factorybox-epoch-selection-checks-0c46792602c642209af960f75bb44f5f` passes
+exact proof equivalence against independent capture, caller/witness isolation,
+same-length content mutation, unknown/missing entries, replacement directories,
+symlinks, new external hardlinks and pre-existing hardlinks into retained
+metadata. It also rejects overlapping/unobserved roots, cancellation and changed
+root/parent/payload mount identities. The same fixture includes a directory
+ordering case where selected roots sort differently from their ancestors.
+
+The three-by-three complete 1,000-file witness-plus-payload benchmark records
+5,229,688 / 5,237,920 / 5,235,192 allocated bytes for recapture and
+4,292,674 / 4,295,413 / 4,292,674 for selection plus complete validation, about
+18 percent less temporary allocation. Allocations fall from about 56,845 to
+42,711 per operation. Observed recapture times are 61.26 / 55.67 / 64.09 ms;
+selection times are 56.77 / 53.26 / 47.24 ms. These small host observations
+with two Go scheduler threads and a 256-MiB Go memory limit establish neither
+native deadline compliance nor a percentile. The full six portable groups,
+including reference and ordered fixture-extension verification, pass in
+`factorybox-checks-004e0612ef1046bb86e23887c645d39a`. Packaged native proof
+and the complete unchanged Factory consumer deadline remain required.
