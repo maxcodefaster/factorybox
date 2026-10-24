@@ -208,9 +208,15 @@ func verifyTimerRecoveryCompletion(config captureGuardConfig, anchors captureGua
 // source still frozen. Missing grants and interrupted mutations keep the old
 // fail-closed behavior; the original operation is never captured again.
 func recoverCuredCaptureTimers(config captureGuardConfig, anchors captureGuardAnchors) (resultErr error) {
-	if err := captureGuardTimersSafe(config, anchors); err == nil {
+	unsafeErr := captureGuardTimersSafe(config, anchors)
+	if unsafeErr == nil {
 		return nil
 	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = errors.Join(unsafeErr, resultErr)
+		}
+	}()
 	if _, err := captureReadFile(anchors.evidence, "timer-activation-complete.json", timerPlanLimit); !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("original timer completion cannot be replaced: %v", err)
 	}

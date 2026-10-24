@@ -43,6 +43,27 @@ func TestTimerRecoveryCompletionRequiresItsClosedGuard(t *testing.T) {
 	}
 }
 
+func TestTimerRecoveryUnconfirmedRefusalPreservesReason(t *testing.T) {
+	directory, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directory.Close()
+	config := captureGuardConfig{Token: strings.Repeat("a", 32)}
+	if err := captureGuardWrite(directory, "timer-prepare-intent.json", map[string]any{"token": config.Token}); err != nil {
+		t.Fatal(err)
+	}
+	err = recoverCuredCaptureTimers(config, captureGuardAnchors{evidence: directory})
+	if err == nil || !strings.Contains(err.Error(), "timer mutation remains unconfirmed") {
+		t.Fatalf("ungranted recovery lost the original staged-timer refusal: %v", err)
+	}
+	for _, name := range []string{"timer-activation-intent.json", "timer-activation-complete.json", "capture-abort-intent.json"} {
+		if _, err := os.Stat(filepath.Join(directory.Name(), name)); !os.IsNotExist(err) {
+			t.Fatalf("ungranted recovery changed its original held transaction: %s, %v", name, err)
+		}
+	}
+}
+
 func timerRecoveryReceiptFixture(t *testing.T) (captureGuardConfig, captureGuardConfig, captureGuardAnchors, *os.File, timerRecoveryProof) {
 	t.Helper()
 	rootPath := t.TempDir()

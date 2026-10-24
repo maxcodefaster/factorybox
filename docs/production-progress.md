@@ -8359,3 +8359,16 @@ The subsequent serialized complete portable run
 `factorybox-checks-2b430b780223409a96ec7937b9b3921b` passes all six groups,
 including all 270 Python tests, original reference bytes and ordered fixtures.
 The full worker-package acceptance remains separate.
+
+The unchanged original native orphan test also requires its staged-timer
+refusal reason to remain visible when recovery has no retained grant. New
+portable caller-seam regression
+`factorybox-timer-refusal-red-5e5df57c5efd4e5c867c9d95f2c96889` first confirms
+that the new helper replaces that reason with its authority lookup error.
+Failed recovery now joins its initial timer-safety refusal with the additional
+cause, preserving both the existing refusal contract and useful diagnostics.
+The regression also requires that no activation or abort metadata is created.
+`factorybox-checks-62a177b2d996472a9f1fc298ca93a76b` passes all six portable
+groups on that correction. Source-build worker c49ba874 completes successfully
+before this refusal-context correction and is therefore superseded for final
+qualification; it is not a reproduced or accepted release package.
