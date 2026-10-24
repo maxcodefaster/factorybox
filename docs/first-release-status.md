@@ -76,7 +76,7 @@ hartem Worker-Verlust. Die drei neuen Fälle liegen in
 `factorybox-current-pressure-consumers-5f8ed07f5393427abba34b1d93973935`.
 Dessen unabhängige `closure.json` bindet auch den früheren harten Factory-Fall,
 die vollständig geprüften Eingaben, die ursprünglichen Assertions und das
-Aufräumen. Diese Fehlerfälle zählen nicht zur noch ungestarteten 20er-Serie.
+Aufräumen. Diese Fehlerfälle zählen nicht zur gesonderten regulären 20er-Serie.
 
 Die unveränderten Sysbox-Komponenten sind außerdem erneut an das aktuelle
 Paket gebunden. Dabei sind die vollständigen ursprünglichen Unit-/Bats- und
@@ -104,7 +104,8 @@ bleiben erhalten. Die letzte Erklärung
 `factorybox-current-native-final-b19c38f289cd492084650d66423f79a0`
 übernimmt die 13 geprüften Erfolge, führt nur die drei offenen Gruppen aus
 und besteht vollständig. Zusammen mit dem vorherigen vollständigen Pause-Test
-sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet.
+sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie läuft inzwischen
+unter der unten benannten neuen Erklärung.
 
 | Anforderung | Belegter Stand des aktuellen Kandidaten | Noch erforderlich |
 | --- | --- | --- |
@@ -112,11 +113,11 @@ sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet
 | Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Die Nachweise im Endprofil verbinden und die vollständige Anforderungsabdeckung prüfen. |
 | Vollständige Integration | Alle 15 benannten Fälle sind unabhängig geprüft: fünf Retained-, sechs Docker-Abbruch-, zwei vollständige Anwendungs- und zwei unveränderte Komponentenfälle. Die erwartete Ablehnung beschädigten RAMs und ursprünglichen Upstream-Skips bleiben ausgewiesen. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Anwendung bei vollem Speicher wiederherstellen | Alle vier vollständigen Factory-/Minimal-Fälle bei geplantem und hartem Worker-Verlust bestehen auf 6016, einschließlich Platzmangel und Epochenstilllegung. | Nachweise im endgültigen Abnahmeprofil verbinden. |
-| Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Das Originalabbild ist unverändert schreibgeschützt auf Loop0 eingebunden und in ein separates Ziel importiert worden. Der Restore verweigert vor dem Auftauen die fehlende Wächter-Bereitschaft. Originalabbild, vollständiger Fehlerzustand und sauberes Aufräumen sind belegt. | Die unterschiedliche Verzeichnis-Konfiguration des frischen Sysbox-Dienstes im Versuchsaufbau korrigieren und den konkreten Restore-Fehler klären; danach die ursprüngliche Anwendung tatsächlich weiterbenutzen. |
+| Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Bestanden in `factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`: unverändertes schreibgeschütztes Original auf Loop0, unabhängiger Import und echte Wiederherstellung mit dem ursprünglichen CLI-/CRIU-Rezept. Vollständiger ursprünglicher Anwendungszustand und gespeicherter Agentenabbruch stimmen überein; eine neue Anwendungsänderung besteht ohne Werkzeug-Replay. Originalabbild unverändert, Aufräumen vollständig, insgesamt 93,33 Sekunden. Die tatsächlichen Dienstpfade des frischen Workers mussten dem gespeicherten Rezept entsprechen. | Nachweis ins Endprofil aufnehmen. Dieser forensische Weg qualifiziert weder das alte Paket als Rückfallversion noch einen Rezeptwechsel für alte Sicherungen. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
 | Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. | Echte Fortsetzung, Abbruch und unklare Werkzeugwirkungen nachweisen. Keine Wiederholung vor `2026-10-24T23:59:59.953093Z`. |
 | Update, Drain und Rollback prüfen | Geprüfte Eingaben des Drain-Unterbrechers und Betriebsanleitung liegen vor. | Vollständige Betriebsfälle auf 6016, Kompatibilität oder kontrolliertes Leeren vor einem Wechsel. Kein bekannt fehlerhaftes Paket als qualifizierte Rückfallversion. |
-| Reguläre Wiederholungsserie | Alle früheren Serien haben null Läufe. Der bestandene Fehlerfall zählt nicht zur Serie. | Neue Erklärung für das endgültige Paket vor dem ersten Lauf festlegen, dann zehn vollständige Läufe je Beispiel ohne verworfene Fehler durchführen. |
+| Reguläre Wiederholungsserie | Neue vollständige Erklärung für 6016/829f ist vorab eingefroren und geprüft. Die Serie `factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3` ist gestartet. Frühere Serien behalten null Läufe; Fehlerfälle zählen nicht rückwirkend mit. | Alle 20 festgelegten vollständigen Läufe ausführen und unabhängig prüfen. Kein Fehlschlag wird ersetzt oder verworfen. |
 
 Die [Fortschrittsbelege](production-progress.md) enthalten die einzelnen
 Artefakte, Fehler und Ersetzungen. Die
@@ -130,9 +131,15 @@ freien Host-Speicher geprüft. Das 32-GiB-Artefaktlimit, die 8-GiB-Startreserve
 und der freie Host-Mindestbestand bleiben unverändert. Neue fehlgeschlagene
 Versuche erzeugen allerdings echte zusätzliche Belege im Artefaktverzeichnis.
 
-Die bisher jüngste, an ein älteres Paket gebundene Serienerklärung liegt unter
+Die vorherige, an ein älteres Paket gebundene Serienerklärung liegt unter
 `artifacts/factorybox-first-release-ordinary-series-c5663e4172ef495485621d537afbbef9/plan.json`,
 SHA-256 `ec9cbaa19c68ce0e22b6587fa827de5fe49bf3131fd5de2422c5cd72c559608d`.
 Sie und alle Vorgänger bleiben unverändert mit null ausgeführten Läufen.
-Für 6016 ist eine neue Erklärung erforderlich. Sie muss alle 20 Befehle,
-ursprünglichen Prüfungen und die volle Speicherreserve erhalten.
+Die neue Erklärung für 6016/829f liegt unter
+`artifacts/factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3/plan.json`,
+SHA-256 `8f7d6f1f0724845f696009120008fc5535aee38c9f31a1aab768eaac571f7edd`.
+Sie erhält alle 20 ursprünglichen Befehle, Prüfungen, zehn Läufe je Beispiel,
+den vollständigen 420-Sekunden-Lifecycle und die unveränderte Startreserve.
+`progress.json` und der abschließende `result.json` führen jeden Versuch unter
+seiner vorher festgelegten Nummer. Ein gestarteter Lauf wird bei unklarem
+Beobachtungsstand nicht neu gestartet.

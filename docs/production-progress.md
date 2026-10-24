@@ -9469,3 +9469,129 @@ complete unresolved restore failure remain preserved. No ordinary-series
 trial or external provider request occurred. Operations/update/rollback, the
 newly declared twenty-trial series, remaining coverage/profile audit and all
 other explicit first-release requirements remain open; production stays false.
+
+## 2026-10-24: original 8-GiB application restored and final ordinary series started
+
+The previous goal turn was a read-only status explanation and made no
+qualification progress. This continuation preserves the full release scope,
+the original GOAL digest and saved parallel-chat context. No runtime, imported
+reference, upstream assertion or selected package source changes in this turn.
+All 232 reference files verify again. The existing 6016/829f package remains
+the production candidate; the following old-state rescue uses its original
+recipe solely for forensic recovery.
+
+Closed maintenance restores the unchanged eight-GiB native start reserve:
+
+- `factorybox-passed-current-successor-retirement-4a03b721a5a74365b08bd4f7c0c553db`
+  retires eight exact old successful native stores after their full current
+  successors pass the same named assertions. Its result SHA-256 is
+  `7eea08c5f1600a5a33b767edd97b1caf287f7916b7f8d668584b114ca2228a4e`.
+  A second five-store batch is
+  `factorybox-passed-current-successor-retirement-541cbd7ac8e4402f801f4866099624e9`.
+  All executed original tests retain their exact bytes. Changes in three
+  nonselected bounded-store/epoch test files have exact before/after hashes,
+  function checks and retained diffs. Every complete old tar is decoded and
+  hashed before retaining all member metadata/hashes and bounded diagnostics.
+  These superseded successful stores intentionally lose full reconstruction;
+  their sources/results/logs/inputs and complete current successors remain.
+- `factorybox-storage-share-inputs-e5a5a28d9ef144c8a95b047d96914e55` and
+  `factorybox-storage-share-inputs-411e59e53b2b47d4ad1e1d22e59f1ff0` share
+  fifteen and five identical completed executable inputs, reclaiming
+  305,160,192 and 101,720,064 allocated bytes. Closed failed retained diagnostics
+  require complete source-tree verification, unchanged pinned input hashes,
+  matching modes/ownership and exact owner container/volume absence. The
+  before/shared mtimes are recorded. No failed result or failure dump changes.
+- `factorybox-input-image-sharing-a8806ceb636c4f22aea68b4096d715a2` losslessly
+  shares the duplicate original image in the complete failed 92e954 restore
+  archive. Result SHA-256 is
+  `e72b7a62bbb0a726b9dc3910265cf5a53231381123bf384ffd5c6c4f843a4097`.
+  Exact tar framing and all imported target files remain in an 865,221,610-byte
+  residual; the sparse image payload references the unchanged canonical
+  original 730576 archive. Independent reconstruction verifies all
+  12,111,052,800 raw bytes and SHA-256
+  `a584154adc24e170e20d2160379d5ca681b1bd366ac5e1c9474af86e4ce8f592`
+  before removing the redundant 1,519,964,377-byte encoding. This is complete
+  reconstruction, not failure retirement. Both original and formerly repacked
+  paths have explicit `.shared.json` receipts. Use the frozen sharing
+  `runner.py --verify` or `--stdout`, not the ordinary zstd/repack resolver.
+
+The corrected private rescue recipe starts the actual fresh EEF services with
+`--store /var/lib/sysbox/fixed-store/data/store`. Its actual manager root now
+equals the saved request prefix. The unchanged original image mounts read-only
+on its exact original loop0/device at a separate inspection path. Only the
+original source controller is bound onto its saved absolute path; its private
+writable lock is overlaid separately. The active writable manager is never
+covered by the old image. Original checkpoint/record/image bytes, boot,
+device identity and delivered recipe checks remain unchanged. The exact
+before/after fixture hashes and diffs are retained beside the recipe.
+
+The first corrected-prefix startup,
+`factorybox-enospc-original-rescue-0fdd1ad7b3844889aeaa634da453a111`, refuses
+because the nested store's parent does not exist. It remains passed=false,
+cleanup=true, taking 4.743 seconds, with its complete small failure archive.
+No original image was reconstructed or mounted and no restore was attempted.
+The ordered private correction creates only the missing private parent in its
+new owned volume with umask 077, then execs the exact delivered worker as PID 1.
+It changes no production source, binary, original input, assertion or deadline.
+
+Actual complete rescue now passes in
+`factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`.
+Native result SHA-256 is
+`5ff8ad46ab8e53f7501d8055c09d74395abded146184ff9089f58877ba58e752`.
+Independent `closure.json` SHA-256 is
+`5bd88f7424c67bb50467eea8243478d160615580b90dc54b6f90c524a6e04990`.
+
+The exact original 8-GiB image is reconstructed and verified to
+`d0df6ea26c51eeabe20486f6704045ec7e1d2225c9d5aa3376b641944d177afd`,
+mounted read-only on original device 7:0 with its original filesystem UUID,
+then independently imported and actually restored. The original EEF CLI
+`42381f1a...`, original CRIU `6263dd24...` and original Sysbox recipe remain.
+The complete original application response equals the saved pre-failure
+response. The complete settled agent-cancellation receipt also equals its
+original, with one original tool launch and no provider request. Exactly one
+new application POST increments its private counter and writes a new marker;
+the next read retains that work. No uncertain mutation or tool is replayed.
+
+Target deletion, exact source/lock unmounts, removal of only helper-created
+empty source-epoch directories, owned loop release and graceful worker exit 0
+all pass. The entire original image hash is checked again unchanged; exact
+owner container and volume are absent, and global sentinels are unchanged.
+Total lifecycle time including preparation and cleanup is 93.332868 seconds,
+within the original 420-second deadline. Normal artifact preflight used
+25,559,588,864 allocated bytes with the unchanged 8-GiB reserve. No capacity
+policy, Sysbox comparison, recipe identity or source guard was weakened.
+
+This closes useful recovery of the specifically selected original ENOSPC
+pause. The prior 92e954 refusal remains failed and fully reconstructable;
+the original 61eed source remains complete. The corrected actual service
+prefix succeeds where an inode-identical manager bind alias did not. This
+does not qualify the old known-bug package as production rollback, prove
+current-CRIU compatibility with old checkpoints, resolve the historical EBUSY,
+or count as an ordinary current-package series trial.
+
+The final ordinary declaration is now frozen in
+`factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3`.
+Plan SHA-256 is
+`8f7d6f1f0724845f696009120008fc5535aee38c9f31a1aab768eaac571f7edd`.
+The unchanged runner SHA-256 is
+`6946eac82a743a24e71be5df2706649e851e516578df84f91fb6c33e74fc1da0`.
+It binds current 6016/829f, exact package/image/CLI/source/test/tool/input hashes,
+and all twenty original full commands, alternating ten Minimal and ten Factory
+lifecycles. Factory retains Theia and the local OpenCode assertions. The full
+420-second lifecycle, normal start reserve and every original assertion remain.
+All prior series declarations remain unchanged with zero executed trials.
+No prior fault case is counted retroactively and no failed trial is replaced.
+
+Input verification passes before execution. The existing supervisor starts at
+`2026-10-24T20:46:49.017915+00:00`, PID 4159956 with birth 29058716; its original
+exec session is 16901. Its first Minimal trial,
+`factorybox-consumer-worker-loss-87f90eecec264db7a3d7ab29b5540822`, passes with
+cleanup. The series is still running at this entry. Continue observing this
+same live supervisor/session and its progress rather than restarting uncertain
+work. The supervisor's exact 20-row result, not this first success, is required
+for series closure.
+
+The full goal stays active and production qualification remains false.
+Historical EBUSY attribution, actual-provider continuation/cancellation/
+uncertain-effect cases, remaining ordinary trials, actual operations/update/
+rollback and the final complete coverage/profile audit remain required.

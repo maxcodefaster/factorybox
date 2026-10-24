@@ -17,8 +17,11 @@ and subsequent independent descendants. All seventeen main Go/storage groups
 now pass with exact core/component binding in
 `factorybox-current-main-native-closure-9c499b4ac32a4ac0824da84515a910ce`;
 the same CRIU component's eighteen cases/two cycles are bound separately.
-Targeted timer/retirement/metadata/stop-guard cases and other consumer cases,
-actual-provider acceptance and operations acceptance remain open. See the
+The additional eleven targeted timer/restore-hold/metadata groups, complete
+retirement/capacity cases, both interrupted public epoch cases, all four full
+pressure consumers and all fifteen integration cases now pass as indexed in
+the current status. Actual-provider acceptance, remaining coverage audit,
+operations acceptance and the running ordinary series remain open. See the
 [current release status](first-release-status.md) for the current matrix.
 
 The following consumer and eighteen-group native evidence belongs to the
@@ -144,7 +147,17 @@ refusal. At a limit, close new intake and keep existing sources, confirmed
 pauses and selected recovery inputs. Do not delete partial imports to make an
 uncertain recovery appear fresh. The original 8-GiB ENOSPC attempt is retained;
 its integrity inspection alone does not prove useful recovery after reclaim.
-That acceptance remains required.
+The original selected 8-GiB pause now has an actual independent useful rescue in
+`factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`.
+This uses its original exact EEF CLI/CRIU/runtime recipe, unchanged read-only
+image on its original loop0/device identity, a separate writable destination,
+and fresh actual service prefixes matching the saved recipe. The full original
+application and settled cancellation match; one new useful application mutation
+passes without replay, followed by exact cleanup and unchanged full-image hash.
+Total lifecycle time is 93.33 seconds. This is a forensic recovery of this old
+selected state, not qualification of the old package as a rollback version or
+compatibility with the new CRIU recipe. Keep the exact saved recipe for such
+states; do not substitute a path alias for an actual manager service prefix.
 
 The smaller delivered 512-MiB runtime fixture now passes actual useful restore
 of its retained checkpoint after exact owned pressure reclaim, followed by a
