@@ -8545,3 +8545,162 @@ preserves ten exact files and returns 207,372,288 allocated bytes.
 completely verifies and shares 37 identical closed encoded helpers/runtime
 probes, returning 265,441,280 bytes. All original result and encoding receipts
 remain unchanged; no active payload or unresolved failure is targeted.
+
+## Current Factory planned replacement survives full recovery storage pressure
+
+`factorybox-consumer-worker-loss-e93e35730ff44d1580f77d3fb0f11b18` passes the
+complete unchanged Factory worker-loss case on delivered worker 1308, with the
+original separate Theia and local OpenCode flow, a 32-GiB store, retained
+checkpoint inspection, actual post-admission import ENOSPC and public epoch
+retirement. The old loop slot is held by an empty separately owned worker, so
+the same exact image is recovered on loop 1 instead of loop 0. Inspection
+verifies all 351 published files and nine original filesystem trees.
+
+After actual import ENOSPC, the original checkpoint remains intact, incomplete
+import cancellation uses the exact public inventory at zero available bytes,
+and only the owned pressure allocation is released. Full original recovery,
+exact replay, new checkpoint/fork, independent RAM/file mutations, Theia edits
+and descendant usefulness after source deletion all pass. Public retirement
+preserves the caller marker and provenance, removes every authorized old
+payload, replays exactly, and leaves an independent successor resumed/useful.
+Its observed free capacity rises by 2,874,503,168 bytes.
+
+The preparation and recovery Go cases pass in 45.88 and 255.01 seconds. The
+131.07-second retirement observation is included in the recovery case, not an
+additional duration. First useful recovery is observed at 45.76 seconds.
+The final worker stop takes 9.07 seconds with 79.20 seconds remaining before
+the complete lifecycle deadline. Full cleanup and unchanged global settings
+pass. This is one successful observation, not a p95 or general latency promise,
+and is additional to the final twenty-run series. Three other complete pressure
+consumers and both interrupted epoch cases still require current-core results.
+
+## Current Factory abrupt pressure case fails a later post-retirement resume
+
+`factorybox-consumer-worker-loss-ad6530e1a56440fd9dcef4545b53f08b` is failed,
+with full cleanup and unchanged global settings. It uses the same exact 1308
+CLI/components and complete original pressure/epoch fixture as the planned pass,
+changing only planned worker exit to actual abrupt worker loss. Its original
+committed pause survives, real initial recovery and exact replay succeed, and
+the original application becomes useful in 46.50 seconds. The later independent
+committed pause and old epoch retirement also return completed reports.
+
+The following `resume` of snapshot `cccccccccccccccccccccccccccccccc` fails:
+`restore completion worker: exit status 1: restore did not enter its pre-resume
+hold: guard handshake did not arrive: <nil>`. The runtime state is stopped,
+the record remains `resuming`, and deletion refuses the unresolved operation.
+The complete Go case fails in 225.07 seconds. The retained files identify new
+epoch `44d9bb1d86c9276045804c335efe29d6`, runtime
+`fbx-bbe0e4b9638bfb0a9052c2b2625a305c` and original resume request time
+`2026-10-24T14:14:26.963636802Z`. No replacement attempt is made or counted.
+
+Its complete 34,360,786,944-byte failed volume archive is verified before
+cleanup, raw SHA-256
+`fb9c96b87131671f49fa526bdda1139d65d49493b74fd7f9e7936a9e01a68317`.
+Original encoded SHA-256 is
+`f6baa51f42951c185f9eda6abd8cd666cde061ad7745fe2f4ad6cdefe17fbab8`,
+3,341,881,460 bytes. This is the current unresolved complete failure input.
+The first hypotheses are an early backend error hidden by the handshake,
+an actual restore exceeding its fifteen-second handshake deadline, or an
+abnormal backend process termination. The timeout text alone distinguishes none
+of them. Investigation starts with its exact saved CRIU/runtime logs and bounded
+read-only inspection, without changing the timeout or production code.
+The ordinary series remains unexecuted and release qualification remains false.
+
+Closed repack `factorybox-storage-repack-5ac97868e1aa4c4a82d4180346857696`
+verifies all original decoded bytes and replaces only their encoding. The full
+current failure now occupies 1,445,811,358 bytes, encoded SHA-256
+`64c04a860751930d771cc5473eef064ece707cfaf577aa5206a186376bfc425a`;
+1,896,070,102 encoded bytes are reclaimed, with unchanged original result and
+encoding receipts. Offline inspection
+`factorybox-resume-failure-inspection-4fca606dc19c4e8585cdd968cf3268f1`
+refuses a complete sparse working copy at the physical artifact limit, removes
+only that temporary duplicate and retains the canonical complete archive.
+The next offline reader uses bounded compressed chunks and the installed
+read-only libext2fs interface. Its disposable sixteen-MiB calibration reads the
+known 262,912-byte file exactly, refuses a missing file and leaves the image
+byte-identical; this calibration is not native runtime qualification.
+
+## Original post-retirement failure traced to a falsely successful truncated capture
+
+Offline indexed inspections `factorybox-resume-indexed-inspection-4927758e937442d2be0715234c34ec4c`,
+`factorybox-resume-descriptor-inspection-6b01ce8a47614e02a941b8dfb592f757`
+and `factorybox-resume-capture-log-inspection-82e75c031ac74184b8c10ab1b228edcf`
+all pass, verify the entire original tar/image and remove their temporary chunks.
+They use the same calibrated strictly read-only installed libext2fs adapter,
+eight cached eight-MiB chunks and bounded retained diagnostic files. The canonical
+complete failure remains unchanged. The image's verified first chunk reports
+clean ext4 state 1 and no journal-replay-needed bit.
+
+The original restore log is explicit: `file_master()` finds no owner for Unix
+socket ID `0xdc`, triggers its BUG and the CRIU restore process receives SIGSEGV.
+The missing pre-resume handshake is a consequence, not the primary failure.
+Upstream SCM/fake-queuer fix `82bff75c0f93038eec0d4a0ef97df9807195fa7c` is
+saved with exact source/patch provenance but rejected for this counterexample:
+the socket is not queued through SCM_RIGHTS. Its saved owner is dockerd PID 111,
+FD 29, but PID 111 is absent from the saved process tree.
+
+The published capture and prepared resume metadata match byte for byte. The
+actual committed checkpoint's compact digest is the exact original CLI pause
+digest `a07b61d6e45a89328c40e5b8264fa352f5eedc6b1fdaf483cb01ceccf43ac8de`.
+Its process tree has only eight processes despite seventeen task-core images.
+The nine absent processes include the Docker owner and a `wget` zombie. The
+original 2,396,560-byte dump log, SHA-256
+`ccdd4d8255760db159724a294035be6311d278a5fa54b0b27eeaafb0a8c696e6`,
+shows the precise sequence: after eight successful process entries, PID
+3247/real 832 fails `Nested zombie requires its verified parent PID namespace`
+at line 36708. The dump continues and reports `Dumping finished successfully`
+at line 37011. The original capture thus already contained the truncated tree.
+
+`dump_pstree()` kept `ret == 0` from the preceding successful protobuf write
+when a later namespace check or allocation jumped to its error exit. New
+regression `tests/criu-pstree-dump.c` compiles the actual unchanged extracted
+function body at its namespace/image-writer seam. Red native compile/run
+`factorybox-criu-pstree-red-8c4ecb9b124d4b68bf21986c8a88f0d6` detects all three
+false-success paths. Ordered unselected
+`criu-pstree-error-propagation-candidate.patch` resets failure status before
+each entry; all seven unchanged assertions then pass in
+`factorybox-criu-pstree-green-328a13e64fd0455793646cc1e0a3d6c2`.
+The original context is unchanged and all 1,030 upstream test files remain
+byte-identical. Candidate context `e963520381a94617b6cb39ea5e8eb19b` is frozen
+as that green test's input; it is not a built or selected CRIU component.
+An earlier fixture compile `5fcdae...` failed for a missing standard `pid_t`
+header before executing assertions. Its exact header-only compatibility delta
+and before/after hashes are retained; no original test assertion was weakened.
+
+The actual three-process kernel regression `tests/criu-zombie-parent.c` creates
+a namespace init and a waitable child in that namespace whose real parent
+remains outside. It requires a complete saved tree, termination of every
+original process, actual restore into the same namespace relationship and the
+original parent's wait of the original outer PID with exit status 47. Native
+`factorybox-criu-zombie-parent-ad06e3f0c86e45adbbee4ac032f759cd` reproduces the
+original bug in 0.115 seconds: dump exit 0, only two of three processes saved.
+All inputs/global settings stay unchanged and exact cleanup passes. This is a
+failed regression, not runtime acceptance. The earlier `b0a9f9...` reaches the
+same rejection but its ordinary kill/wait blocks on PID-1 orphan reaping; its
+30-second timeout and full images remain failed. A declared, hash-bound fixture
+change uses the production leave-running capture followed by exact pidfd stop
+and PID-1 reaping, preserving every complete-tree/restore/wait assertion.
+
+`factorybox-unix-scm-analysis-4ba277ceae7c4e66a40d80e251ef9e253/closure.json`
+independently binds these original logs, published checkpoint, matching resume
+metadata and red/green/native proofs. Correct error propagation is only the
+first part of the fix. Full cross-namespace zombie recovery and the original
+unmodified complete Factory pressure case must still pass. No worker package
+changes, final-series trials or production qualification are claimed.
+
+Closed storage sharing `e268be7187164207a28150d75a4f2ac6` preserves seven exact
+encoded inputs and returns 45,961,216 allocated bytes; source sharing
+`ce1f31f408254450a724e4fd4190fcbd` preserves 7,666 identical source files and
+returns 80,150,528 bytes. Retirement
+`factorybox-superseded-pid-replay-retirement-4fb1b750f1934e4680fa0d5df427f934`
+fully verifies/inventories two superseded generated PID replay stores before
+retiring their 521,064,839 and 500,172,591 encoded bytes, retaining source,
+results, member hashes and about 2.49 MiB diagnostics each. The first has its
+exact passing seeded replacement `d5264f...`. The second is explicitly an
+obsolete setup copy rejected before restore for old tar metadata loss; the
+replacement is the passing native archiver metadata roundtrip, not a claimed
+passing historical lifecycle. Those two generated copies are intentionally no
+longer fully reconstructable. Both the original PID counterexample 097 and
+current ad6530 complete archives are rehashed and remain unchanged. The
+original 8-GiB, provider and busy-mount selections remain retained. The full
+eight-GiB build/native start reserve is restored and remains mandatory.

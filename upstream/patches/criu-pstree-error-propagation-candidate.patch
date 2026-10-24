@@ -1,0 +1,13 @@
+--- a/criu/pstree.c
++++ b/criu/pstree.c
+@@ -317,6 +317,10 @@
+ 		return -1;
+ 
+ 	for_each_pstree_item(item) {
++		/* A previous successful entry must not mask this entry's
++		 * namespace validation or allocation failure. */
++		ret = -1;
++
+ 		pr_info("Process: %d(%d)\n", vpid(item), item->pid->real);
+ 
+ 		e.pid = vpid(item);
