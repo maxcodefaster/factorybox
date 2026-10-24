@@ -148,7 +148,9 @@ type restoreHoldReady struct {
 	CRIUOrigin bool   `json:"criu_returned_to_original_worker"`
 }
 
-func (e *Engine) heldRestore(ctx context.Context, lock *os.File, target Record, request any, sealed *os.File, relative, operation string) error {
+// The independent restore worker owns this handshake through activation and
+// durable publication. Its public controller may stop or die in the meantime.
+func (e *Engine) heldRestoreWorker(ctx context.Context, lock *os.File, target Record, request any, sealed *os.File, relative, operation string) error {
 	data, err := json.Marshal(request)
 	if err != nil {
 		return err

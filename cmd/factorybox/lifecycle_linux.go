@@ -30,6 +30,9 @@ func runLifecycle(args []string) error {
 	if handled, err := lifecycle.TimerWorkerCommand(args); handled {
 		return err
 	}
+	if handled, err := lifecycle.RestoreWorkerCommand(args); handled {
+		return err
+	}
 	flags := flag.NewFlagSet("factorybox", flag.ContinueOnError)
 	var config lifecycle.Config
 	var workerRunRoot string

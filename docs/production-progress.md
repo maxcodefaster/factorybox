@@ -6017,3 +6017,116 @@ native capture gate. No labeled Factorybox container remains, and allocated
 artifacts are 25,761,652,736 bytes, preserving the required 8-GiB start reserve
 inside 32 GiB. Further generation must repeat its capacity check; the margin
 above that reserve is small. The full goal and parallel-chat handoff are intact.
+
+## Independent restore completion preserves the original controller-loss assertion
+
+The public controller previously performed the pre-resume acknowledgement,
+timer activation and final restore-receipt publication itself. An independent
+runtime child could therefore no longer finish when that controller stopped.
+The runtime's three-second acknowledgement timeout entered the observed abort
+path; the original twenty-second controller-loss assertion failed repeatedly.
+
+`internal/lifecycle/restore_worker_linux.go` moves the complete existing
+handshake into a private worker in the runtime package. The public controller
+passes a sealed bounded envelope, the original sealed runtime request and
+descriptors for its exact root and already-held operation lock. The worker
+verifies seals, strict JSON, root/boot/lock identities, the persisted target
+digest, the original fork or completed-pause resume recipe, epoch fencing and
+the empty owned cgroup. It inherits the same exclusive flock and completes
+activation plus durable publication independently of the public controller.
+Its observed command identifies the real restore/resume backend operation;
+the pinned Sysbox child now runs below this coordinator. No test dependency
+enters the shipped CLI. Cancellation and the existing sixty-second execution
+bound remain; the helper remains inside the same owned outer worker limits.
+
+The original handshake body is byte-identical after renaming its Go function
+to `heldRestoreWorker`. Its task/tracer identity, frozen-group checks, exact
+acknowledgement, held receipt and timer activation checks are retained. The
+public CLI and native TestMain gain only the private dispatcher. Exact TestMain
+compatibility is declared in
+`factorybox-restore-worker-proof-f234ce0e0670482cabcc66d984637e23/intent.json`:
+f9481fb62a134418b1a8585471b42c3bf81d9ab717ad585a9f961797353fc287
+becomes d3b5584bd49fd88e0083512df009002f1d8339656d16af630133d3c425a2e911
+by adding only the restore-worker dispatch block. All 95 prior test files
+otherwise remain byte-identical, including the original failing assertion.
+New real-memfd tests reject unsealed, oversized, unknown-field and trailing
+requests, accept a valid sealed request, and verify inherited offsets do not
+change. Every original assertion and the twenty-second deadline remain intact.
+
+The unchanged complete native capture suite passes in
+`factorybox-runtime-51670eb9ae5b424d832d9651c216def7`: 12 top-level tests and
+78 subtests, no skips. The exact actual-controller-loss case passes in 1.69 s:
+the controller remains stopped while its independent backend finishes, is
+killed after durable completion, and a fresh controller recovers the original
+PID/owner/RAM from the receipt. Subsequent recapture, independent descendant
+and exact deletion assertions also pass. This single fault-case time is not a
+performance distribution. The original failure and all diagnostic verdicts stay.
+
+The same core passes the complete pause suite in
+`factorybox-runtime-dc2369cfd93341b0895116114579660f`, 12 top-level tests and
+67 subtests, and namespace suite in
+`factorybox-runtime-0d1542c06ca049d98f57e4b953a11679`, 14 top-level tests and
+62 subtests. These retain RAM-releasing repeated pause/resume, independent
+resumed descendants, time-namespace admission and nested-zombie semantics.
+All original assertions, exact owned cleanup, inputs, sources and components
+pass without skips or OOM. Resource limits and the 420-second native deadline
+are unchanged. Sysbox and CRIU binaries are identical to the original failure.
+
+Independent `evaluate.py` and `fix-proof.json` in F234 verify all three native
+contexts/inputs and full archive decompression, bind the original failed run,
+and confirm every old failed/pass case appears among the full new passes.
+The only existing-file changes are CLI dispatch, the renamed original function
+and TestMain dispatch; the new worker and its tests are separate files. This
+proves the original controller-loss counterexample on the new native core.
+It does not yet qualify a final worker package, loss of the completion worker
+itself, all other fault cases or production. The original historical EBUSY is
+separate and still open. Required final-package consumer/timer/hold/storage and
+remaining native acceptance stay mandatory.
+
+To retain capacity without changing failure outcomes, explicit
+`--include-closed-failed-runtime-tests` allows immutable encoded-test sharing
+only after stopped/cleanup/source/component checks and full canonical decode.
+The actual operation `factorybox-storage-share-test-encodings-095e6bd5a7ba4dc0b0760aceba1068c6`
+shares five identical compiled-test encodings and reclaims 52,080,640 allocated
+bytes. Every path, source, result, log, encoding receipt and failure dump stays.
+The missing-result interrupted run is ineligible. Subsequent passing current-core
+test encodings share their identical bytes under the existing passing-run guard.
+
+Two older successful pause stores are superseded only after the current full
+79 named assertions pass. Maintenance
+`factorybox-passed-pause-successor-retirement-cd8665a18698480f9c115e7a8d97702b`
+declares exact prior/current source compatibility and completely decodes each
+old store before retaining every archived member header/hash and bounded
+diagnostics. Their results, sources, binary inputs and logs remain; their old
+large payloads are explicitly no longer fully reconstructable. The current
+passing store and all selected actual failures remain complete.
+
+The equivalent namespace preflight
+`factorybox-passed-namespace-successor-retirement-26e43ff855724d0faea2596233da6477`
+first rejects a comparison against storage_linux_test.go, which did not yet
+exist in the exact old source manifest. No archive is touched. Its failed result
+is retained. The declared new copy
+`factorybox-passed-namespace-successor-retirement-62234c55d077497db8c4c5a3c0741106`
+requires that exact old absence, binds the additional new test source and keeps
+every prior-byte/76-named-assertion check before superseding only the one old
+successful namespace store. Required headroom also refuses two attempted
+portable-check allocations before any check starts; those are unrun allocations,
+not failed or passing assertions. Further maintenance/checks follow separately.
+
+Source sharing in
+`factorybox-storage-share-sources-191f652ae50e44ed9778a0dab748db97`
+verifies 706 closed trees and shares 8,859 byte-, metadata- and mtime-identical
+files, reclaiming 83,251,200 allocated bytes. Its 21,341,911-byte plan is
+losslessly encoded with complete decompression verification and the original
+SHA-256 retained in its encoding receipt. No failure result or dump changes.
+The subsequent complete portable check
+`factorybox-checks-bca164e13f7e46ec9a3968739ea1b688` passes all six groups,
+including Go tests/vet, worker-probe compilation, Python tests, all 232 sealed
+reference files, ordered fixture verification and whitespace checks.
+
+The intervening user-requested performance/effort explanation is a no-progress
+goal turn: it changes no implementation or acceptance result. Resumption
+confirms the check above is terminal and successful and that no build, native
+suite or portable check remains live. The next action is to commit the proven
+core fix and independently build the delivered package. The complete goal and
+parallel-chat handoff remain unchanged; production qualification remains false.

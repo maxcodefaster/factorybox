@@ -10,6 +10,7 @@ import shutil
 import uuid
 
 import reference
+import upstream_unit
 
 
 def sha(path):
@@ -31,6 +32,8 @@ def main():
                         help='also share encoded consumer helpers bound to their exact native inputs_sha256')
     parser.add_argument('--include-closed-runtime-tests', action='store_true',
                         help='also share encoded lifecycle tests of passing stopped native runs, bound to their exact inputs_sha256')
+    parser.add_argument('--include-closed-failed-runtime-tests', action='store_true',
+                        help='also share identical encoded tests of stopped failed runtime suites with confirmed cleanup and unchanged complete sources/components; preserve failed results and dumps')
     args = parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('encoded input sharing requires every native worker to close')
@@ -39,7 +42,7 @@ def main():
     for run in sorted((reference.ROOT / 'artifacts').iterdir()):
         native = re.fullmatch(r'factorybox-(?:checkpoint-retirement|bounded-store|bounded-store-loss|bounded-loss|storage-admission)-[0-9a-f]{32}', run.name)
         consumer = args.include_closed_consumer_helpers and re.fullmatch(r'factorybox-consumer-worker-loss-[0-9a-f]{32}', run.name)
-        runtime = args.include_closed_runtime_tests and re.fullmatch(r'factorybox-runtime-([0-9a-f]{32})', run.name)
+        runtime = (args.include_closed_runtime_tests or args.include_closed_failed_runtime_tests) and re.fullmatch(r'factorybox-runtime-([0-9a-f]{32})', run.name)
         if not native and not consumer and not runtime:
             continue
         result = run / 'result.json'
@@ -49,12 +52,17 @@ def main():
         if outcome.get('cleanup') is not True:
             continue
         if runtime:
-            if (outcome.get('passed') is not True or
+            closed_failure = (args.include_closed_failed_runtime_tests and outcome.get('passed') is False and
+                all(outcome.get(key) is True for key in ['inputs_unchanged','source_context_unchanged','components_unchanged']) and
+                isinstance(outcome.get('source_context'), dict))
+            if ((outcome.get('passed') is not True and not closed_failure) or
                     outcome.get('container_state', {}).get('Running') is not False or
                     outcome.get('container_state', {}).get('Pid') != 0):
                 continue
             if outcome.get('owner') != runtime[1]:
                 raise ValueError('closed runtime test owner differs from its directory')
+            if closed_failure and upstream_unit.context_manifest(run/'context') != outcome['source_context']:
+                raise ValueError('closed failed runtime test source changed')
         if runtime:
             candidates = {'lifecycle.test': outcome.get('inputs_sha256', {}).get('lifecycle.test')}
         elif native:
@@ -97,7 +105,8 @@ def main():
     save(artifact / 'intent.json', {'schema': 1, 'groups': rows, 'results_and_receipts': hashes,
                                   'capacity_before': before, 'canonical_complete_decodes_verified': True,
                                   'include_closed_consumer_helpers': args.include_closed_consumer_helpers,
-                                  'include_closed_runtime_tests': args.include_closed_runtime_tests})
+                                  'include_closed_runtime_tests': args.include_closed_runtime_tests,
+                                  'include_closed_failed_runtime_tests': args.include_closed_failed_runtime_tests})
     result = {'schema': 1, 'passed': False, 'completed': [], 'production_qualified': False}
     reclaimed = 0
     try:
@@ -140,7 +149,7 @@ def main():
         result.update(passed=True, capacity_after=after,
                       reclaimed_allocated_bytes=reclaimed,
                       observed_artifact_allocation_delta_bytes=before['allocated_bytes'] - after['allocated_bytes'],
-                      scope='Only byte-identical encoded helpers of closed native runs. Optional consumer helpers and passing stopped runtime tests require exact inputs_sha256 bindings. Full canonical decompression and all native executable/encoding identities verified. Every path remains usable; results, logs, sources and encoding receipts unchanged. No failure dump, frozen build, active input or historical experiment changed.')
+                      scope='Only byte-identical encoded helpers of closed native runs. Optional consumer helpers and stopped runtime tests require exact inputs_sha256 bindings. Failed runtime tests require explicit opt-in, confirmed cleanup and unchanged complete sources/components. Full canonical decompression and all native executable/encoding identities verified. Every path remains usable; failed outcomes, logs, sources and encoding receipts unchanged. No failure dump, frozen build, active input or historical experiment changed.')
     except Exception as error:
         result['error'] = str(error)
         raise
