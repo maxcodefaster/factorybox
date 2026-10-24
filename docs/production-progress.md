@@ -8428,3 +8428,120 @@ seventeen new certificate cases and seven held-guard inventory cases. The
 parent confirms exact delivered core, unchanged inputs and complete cleanup.
 The remaining eighteen-group native matrix is being repeated on this new core;
 the earlier 29cb matrix remains historical evidence.
+
+## Current native matrix advances; component proofs bind identical selected bytes
+
+Current-core native groups pass in these separate serialized batches:
+
+| Parent artifact | Passing groups |
+| --- | --- |
+| `factorybox-pilot-native-gates-e57913a719f4478f93fd7c18a14c734b` | lifecycle, guard, capture, pause |
+| `factorybox-pilot-native-gates-d90b9602278d481ca604f342d087be16` | base, base-pause, delegation, auxiliary |
+| `factorybox-pilot-native-gates-9bf9c12fd8d94e5ea18c11e6feff41c5` | namespaces, time; parent remains failed on the subsequent capacity preflight |
+| `factorybox-pilot-native-gates-5a3dd4fd80794ac49b22798efe7042a8` | mountfd, overlay |
+| `factorybox-pilot-native-gates-838caba36deb4744800ca15111bb8e16` | interruption, admission |
+
+The 9bf9 parent refuses its next child before `reference.new_artifact` creates
+any mountfd run: allocated artifacts are 24.03 GiB and the unchanged eight-GiB
+start reserve would exceed the 32-GiB limit. There is no native mountfd attempt
+in that parent; overlay is unrun there. Its failed result stays unchanged.
+Closed-input sharing and full-decode verified identical test-encoding sharing
+restore headroom before the first actual new-core mountfd/overlay runs, both
+of which pass completely. No required native assertion or final-series trial
+is discarded or reclassified. Both twenty-run predecessor plans and the new
+a69d plan remain at zero trials.
+
+The new exact component closure
+`factorybox-current-component-closure-6ce1a57f6ce347b6b843a35498aa067d/component-closure.json`,
+SHA-256 `4917d12475dcfb79fc1feaf0c29c580dbf089bc2fe5e8a1005eb3b5e0b1f75a1`,
+revalidates frozen source, delivered component bytes, native host and original
+raw outcomes for 727 Sysbox Go passes with eighteen original skips, seven
+lifecycle Bats passes, four systemd passes with the two original unsupported
+skips, and eighteen CRIU cases with two cycles and 1030 unchanged upstream files.
+The fresh verifier differs from the prior verified recipe only in the two
+selected worker build IDs; all of its original assertions remain.
+Its separate `integration-closure.json` binds the unchanged libcontainer
+28 top-level/thirty subtests and runc 47 passes/twelve original skips to the
+same exact component source and raw outcomes, using the current coverage and
+skip-set verifier. This transfers component-only evidence. No previous
+Factorybox Go-core, consumer or ordinary-series acceptance is transferred.
+
+Closed immutable input sharing c298fd42, 367874c4, ca645143 and 60e8cfd7 returns
+519,831,552, 407,027,712, 203,513,856 and 203,513,856 allocated bytes respectively.
+`factorybox-storage-share-test-encodings-962bea3374904d2d8d1265db5d753f5e`
+verifies complete ELF decompression and shares eleven identical encodings,
+returning another 117,145,600 bytes. All old source, native results, logs,
+unresolved failure images and encoding receipts remain unchanged.
+
+## Current native matrix complete; ordinary declaration retains its reserve
+
+Worker-loss batch
+`factorybox-pilot-native-gates-661a0f969eb447f387c27b30121dd6a4`
+passes on delivered worker 1308. Storage batch
+`factorybox-pilot-native-gates-7e01806130674ac8ac307164b0e3db99`
+passes both storage-admission and storage-controller-loss. Together with the
+earlier batches, all seventeen required Go/runtime/storage native groups have
+now executed successfully on this core. The eighteenth group is the unchanged
+exact CRIU component evidence revalidated by closure 6ce1a57f above. It is not
+claimed as a newly executed CRIU suite. An earlier storage start refuses the
+capacity preflight before creating a parent or any native attempt.
+
+Replacement-bound retirement
+`factorybox-passed-native-successor-retirement-57923777f40a44afb752a3dcaf28c5bb`
+fully decodes and inventories twelve superseded successful 29cb native stores,
+checks their exact matching current-core passing replacements and unchanged
+original assertions, and retires 575,569,432 encoded bytes. Their source,
+inputs, results, logs, member hashes and diagnostics remain; their complete old
+filesystems are intentionally non-reconstructable. Every corresponding new
+1308 passing filesystem remains complete. Selected unresolved original 8-GiB,
+provider and busy-mount inputs remain unchanged.
+
+The fresh ordinary-series declaration
+`factorybox-first-release-ordinary-series-c5663e4172ef495485621d537afbbef9/plan.json`,
+SHA-256 `ec9cbaa19c68ce0e22b6587fa827de5fe49bf3131fd5de2422c5cd72c559608d`,
+keeps the same twenty commands, ordinals, selected 1308/3611 package and complete
+source/tool/fixture/input/goal/handoff bindings. Its private runner adds the
+existing closed compiled-encoding sharing command after closed plaintext input
+sharing between trials, with separate logs and recorded failures. The full
+eight-GiB native start reserve and exclusive execution guard remain. All three
+predecessor plans stay unchanged and unexecuted. Input-only verification first
+fails on the obsolete default Docker context, before any execution marker or
+native run; it passes with the declared default/sudo context. This new series
+also has zero trials. The complete release goal remains active and unqualified.
+
+## Two further delivered Docker interruption cases pass
+
+`factorybox-pilot-integration-gates-7ed616e3e9cd4039942a17587c0d26db`
+passes the original docker-root and docker-daemon cases on the current core.
+Children `factorybox-devx-lifecycle-c37f432c5ecd4bdfb236a1842101de98` and
+`factorybox-devx-lifecycle-831b41056c4c42b8a86cf78635d9217b` both execute
+the ordinary delivered CLI `2f434bfc`, with no candidate compile options and
+the exact selected components. Actual page-dump tracer loss preserves thirteen
+original processes and 111 threads in each observation. New Docker exec,
+useful recovered app, source progress, new capture and independent current/prior
+forks pass. The original Go cases take 68.35 and 71.64 seconds respectively.
+Both inputs and global settings remain unchanged, with complete cleanup.
+These are required fault-case observations, not final-series trials or a
+performance distribution. Four current Docker cases and two precisely bound
+unchanged upstream integrations now cover six of the fifteen named integration
+requirements; the other nine remain open.
+
+`factorybox-pilot-integration-gates-e69adb7ecdb24781a5b1abd9d92040ee`
+then passes both remaining Docker interruption cases, docker-pause and
+docker-helper. Their complete ordinary-build children are
+`factorybox-devx-lifecycle-c69d7b6c242946339ebde3d9fce6ca2c` and
+`factorybox-devx-lifecycle-f10bd54aa4ff473296e8b2c665c90dda`.
+Both again bind the exact delivered CLI/components, preserve every original
+assertion, leave inputs/global settings unchanged and clean up fully. All six
+required Docker fault cases now pass on the final core. With the two unchanged
+upstream integrations, eight of the fifteen named integration requirements
+have current evidence; the five retained cases and two complete consumer cases
+remain separate requirements. None is counted into the final twenty-run series.
+
+Intervening closed-input sharing
+`factorybox-storage-share-inputs-4a500f0884eb4d8ea75b8b20755eee27`
+preserves ten exact files and returns 207,372,288 allocated bytes.
+`factorybox-storage-share-test-encodings-9ecc6e8ceba24d8d8b95d2b565d77fc2`
+completely verifies and shares 37 identical closed encoded helpers/runtime
+probes, returning 265,441,280 bytes. All original result and encoding receipts
+remain unchanged; no active payload or unresolved failure is targeted.
