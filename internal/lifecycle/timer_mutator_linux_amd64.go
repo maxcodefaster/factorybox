@@ -124,6 +124,37 @@ func timerSetFrozen(config captureGuardConfig, anchors captureGuardAnchors, froz
 	}
 }
 
+func timerDetachedCaptureReturned(config captureGuardConfig, anchors captureGuardAnchors) error {
+	// Detach wakes a ptrace-stopped task so it can acknowledge the cgroup
+	// freezer again. The request stays set, but frozen can briefly become 0.
+	// Observe that acknowledgement without repairing a changed freeze request.
+	for deadline := time.Now().Add(2 * time.Second); ; {
+		if err := captureGuardValidate(config, anchors); err != nil {
+			return err
+		}
+		requested, err := captureReadFile(anchors.group, "cgroup.freeze", 2)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(requested, []byte("1\n")) {
+			return fmt.Errorf("timer completion freeze request changed: %q", requested)
+		}
+		events, err := captureGuardEvents(anchors.group)
+		frozen, hasFrozen := events["frozen"]
+		populated, hasPopulated := events["populated"]
+		if err != nil || !hasFrozen || !hasPopulated || populated != 1 || frozen > 1 {
+			return fmt.Errorf("detached timer source has invalid freezer state: %v: %v", events, err)
+		}
+		if frozen == 1 {
+			return captureGuardCaptureReturned(config, anchors)
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("detached timer source freezer did not settle")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func timerOffset(pid int, clock int32) (int64, error) {
 	name := "monotonic"
 	if clock == 7 {
@@ -539,7 +570,7 @@ func runTimerMutator() (resultErr error) {
 		}
 		delete(traces, tid)
 	}
-	if err := captureGuardCaptureReturned(request.Guard, anchors); err != nil {
+	if err := timerDetachedCaptureReturned(request.Guard, anchors); err != nil {
 		return err
 	}
 	return captureGuardWrite(anchors.evidence, "timer-prepare-complete.json", map[string]any{"version": 1, "token": request.Guard.Token, "passed": true,

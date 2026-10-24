@@ -8846,3 +8846,77 @@ freeze request or source identity, and the original complete pause test.
 If Go runtime bytes change, rebuild/reproduce and redo affected final-package
 acceptance. All failed outcomes and both original full recovery stores remain
 retained; the twenty ordinary trials remain unstarted and the full goal active.
+
+## Post-detach completion correction passes the real Go regression and pause suite
+
+The new native-only `TestNativeTimerDetachCompletion` exercises the actual Go
+completion immediately after ptrace detach, without a diagnostic read first.
+Its owned child has a shared application counter; separate owned CPU pressure
+makes the kernel acknowledgement transition observable within the unchanged
+three-CPU/three-GiB worker. It never changes global settings. The strict source,
+runtime ownership, PID-1 and live-tracer checks remain enabled.
+
+`factorybox-timer-detach-native-0dab0a3a38eb4e5a997c0979b6c3bee3` is the real
+red regression: cycle 70 rejects completion with the original error while the
+freeze request is still `1` and the application counter remains unchanged.
+Result SHA-256 is
+`7d3141744a9c3806e3224630f1bb07fc994487f97756f4e390d078a413519b00`.
+Earlier owned fixture attempts are retained separately: three refuse before
+the test loop because of runtime-file ownership or a PID-1 test controller;
+the corrected supervisor runs 256 cycles without observing the transition;
+another pressure control observes transitions but lets them settle during a
+diagnostic pre-read. None of those is reported as the regression's red result.
+Each fixture adjustment has its exact before/after hash receipt in its run.
+
+Both normal timer completion paths now acknowledge the post-detach freezer
+transition with bounded reads. They require the original source identity,
+unchanged freeze request and populated cgroup throughout, wait at most the
+existing two-second acknowledgement bound, then run the original full frozen
+source and detached-tracer validation. They do not write or repair the freezer.
+A changed request or source is refused immediately.
+
+Final-source green
+`factorybox-timer-detach-native-e672e822f1f0474582f20456bd7f5128` passes all
+256 real completion cycles and three negative controls: an external thaw is
+refused without rewriting it, changed source birth is refused, and a live
+tracer is refused explicitly. The test source is byte-identical to the red
+test, SHA-256
+`94e01fa38499fc3e558ba6bbe937a1490ca454d73306c3e67ba4b73fc3e622fe`.
+Vet, unchanged inputs and exact cleanup pass. Result SHA-256 is
+`ec5954f492eff5e280c90e24cc3d276c26dfcb6eba30fd05730bce2b0478869e`.
+This is a native source-level regression, not a delivered-package test.
+
+The original complete pause suite also passes on the final source under
+`factorybox-runtime-283512b708c04c14904a5bee9f0a981f`: 12 top-level tests,
+67 subtests, no skips, all 16 original repeated restore/delete cycles, no OOM,
+unchanged inputs/components/source and exact cleanup. Result SHA-256 is
+`9c776ba012b9dd55f6f8ac84c4950c093b6f5d4c4aea41d9f6a8c0b1dce24102`.
+The complete closed native archive is retained with verified lossless encoding.
+The preceding successful pause run `47238930a3634ca2859e7a6e503232cb` used the
+first reader implementation; the final run uses the existing bounded reader.
+Neither successful run discards the original full failure `aaf8fa3...`.
+
+This Go correction still needs a new worker package, independent identical
+rebuild and affected final-package native, consumer and operating acceptance.
+The CRIU/Sysbox components remain unchanged. The complete Factory pressure
+success `98bb5cea...` applies to the preceding package, not these new Go bytes.
+The twenty ordinary final-package trials remain unstarted. Historical large
+recovery, busy-mount attribution, actual-provider continuation and the rest of
+the full release scope remain open; production qualification stays false.
+
+Fresh portable run `factorybox-checks-58b833c6a05641fdbf380509c8371b85` passes
+all six required groups on this final source, including Go tests with vet,
+tagged consumer compilation, Python tests, all 232 immutable reference files,
+declared fixture extensions and diff validation.
+
+Closed input sharing `83868c22591b411baa4564bb7ec431a2` returns 85,352,448
+allocated bytes; encoded-helper sharing `e145c69c8b944935a5360b4e1759819e`
+returns 42,565,632. Legacy transport retention
+`ce1e619680264f5394e3f14c06e08192` preserves four older completed package
+paths in two fully decoded/hash-verified lossless encodings, returning
+101,986,304 allocated bytes. Closed native-test encoding
+`2465e22f15b14711bcd8c9af341d7871` preserves five uniquely linked regression
+executables with complete reconstruction receipts and returns 50,491,392
+allocated bytes. Original results, logs, source, selected inputs and complete
+failure stores remain unchanged. These maintenance operations restore the
+mandatory eight-GiB start reserve without bypassing it.

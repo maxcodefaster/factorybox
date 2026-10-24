@@ -203,7 +203,7 @@ func runTimerActivation() (resultErr error) {
 		}
 		delete(traces, tid)
 	}
-	if err := captureGuardCaptureReturned(request.Guard, anchors); err != nil {
+	if err := timerDetachedCaptureReturned(request.Guard, anchors); err != nil {
 		return err
 	}
 	return captureGuardWrite(anchors.evidence, "timer-activation-complete.json", map[string]any{"version": 1, "token": request.Guard.Token, "passed": true, "source_frozen": true, "tracers_detached": true, "targets": targets, "code_sha256": timerKernelSHA})
