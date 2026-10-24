@@ -1,15 +1,18 @@
 # Stand der ersten lokalen Freigabe
 
-Stand: 24. Oktober 2026. Die Freigabe ist offen. Verbindlicher Umfang bleibt
+Stand: 25. Oktober 2026. Die Freigabe ist offen. Verbindlicher Umfang bleibt
 [GOAL.md](../GOAL.md), einschließlich aller dort genannten Grenzen.
 Der 24-Stunden-Dauerlauf und die 100er-Serie gehören zur späteren Etappe.
 
-Die reguläre Serie hat am 24. Oktober um 21:25 UTC neun vollständige Läufe
-bestanden; der zehnte läuft. Das laufende Ergebnis steht in
-`artifacts/factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3/progress.json`.
-Die Betriebs-, Speicher- und Drain-Prüfungen sind mit festen Eingaben dahinter
-eingereiht. Sie starten erst nach erfolgreichem Abschluss der vorhergehenden
-Prüffolge und erhalten eigene Ergebnisse. Ein eingereihter Test ist kein Pass.
+Die reguläre Serie ist vollständig bestanden und unabhängig geprüft: zehn
+Minimal- und zehn Factory-Läufe, ohne Fehlschlag, Wiederholung oder verworfenen
+Versuch. Der ursprüngliche Ablauf ist beendet. Das vollständige Ergebnis steht
+in `artifacts/factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3/result.json`.
+Die fünf Betriebsfälle sind anschließend vollständig bestanden und unabhängig
+geprüft: Startfehler, Speicheridentität, alle acht Stop-Schutzfälle, der gelieferte
+Compose-Ablauf und tatsächlicher Update/Rückfall. Die weiteren Speicher-/Drain-
+Prüfungen benötigen weiterhin ihre vollständigen Ergebnisse. Ein eingereihter
+Test ist kein Pass.
 
 Für die Abnahme verwenden wir den korrigierten Worker
 `6016296965364344a8ef9eede420dbc8`, unabhängig identisch nachgebaut als
@@ -117,14 +120,14 @@ unter der unten benannten neuen Erklärung.
 | Anforderung | Belegter Stand des aktuellen Kandidaten | Noch erforderlich |
 | --- | --- | --- |
 | Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
-| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Fünf weitere bestehende Speicher-Prüfaufrufe auf dem endgültigen Paket ausführen: StoreFS, Basis-/Geräte-Recovery mit Retained-Kontrollen, öffentliche Basisaufnahme und beide Abschlussgrößen-Grenzfälle. Die Nachweise im Endprofil verbinden. |
+| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. Die weiteren StoreFS-, Basis-/Geräte-Recovery-/Retained- und öffentlichen Aufnahmeprüfungen sind ebenfalls bestanden. | Beide Abschlussgrößen-Grenzfälle mit der erklärten Altbestand-Fixture abschließen und die weiteren Speicherbelege unabhängig prüfen. Die Nachweise im Endprofil verbinden. |
 | Vollständige Integration | Alle 15 benannten Fälle sind unabhängig geprüft: fünf Retained-, sechs Docker-Abbruch-, zwei vollständige Anwendungs- und zwei unveränderte Komponentenfälle. Die erwartete Ablehnung beschädigten RAMs und ursprünglichen Upstream-Skips bleiben ausgewiesen. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Anwendung bei vollem Speicher wiederherstellen | Alle vier vollständigen Factory-/Minimal-Fälle bei geplantem und hartem Worker-Verlust bestehen auf 6016, einschließlich Platzmangel und Epochenstilllegung. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Bestanden in `factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`: unverändertes schreibgeschütztes Original auf Loop0, unabhängiger Import und echte Wiederherstellung mit dem ursprünglichen CLI-/CRIU-Rezept. Vollständiger ursprünglicher Anwendungszustand und gespeicherter Agentenabbruch stimmen überein; eine neue Anwendungsänderung besteht ohne Werkzeug-Replay. Originalabbild unverändert, Aufräumen vollständig, insgesamt 93,33 Sekunden. Die tatsächlichen Dienstpfade des frischen Workers mussten dem gespeicherten Rezept entsprechen. | Nachweis ins Endprofil aufnehmen. Dieser forensische Weg qualifiziert weder das alte Paket als Rückfallversion noch einen Rezeptwechsel für alte Sicherungen. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
-| Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. | Echte Fortsetzung, Abbruch und unklare Werkzeugwirkungen nachweisen. Keine Wiederholung vor `2026-10-24T23:59:59.953093Z`. |
-| Update, Drain und Rollback prüfen | Betriebsanleitung und festgelegte Prüffolgen liegen vor. Die vier vorhandenen Drain-Abbruchfälle und der ursprüngliche separate CLI-Worker-Recovery-Test haben bisher nur ältere Paketnachweise. | Startfehler, Speicheridentität, alle acht Stop-Schutzfälle, gelieferten Compose-Ablauf und tatsächlichen Update-/Rückfallversuch auf 6016 abschließen; außerdem beide Verbraucher mit/ohne erzwungenen Loop-Wechsel beim Drain-Abbruch sowie beide ursprünglichen CLI-Worker-Verlustarten prüfen. Kompatibilität oder kontrolliertes Leeren vor einem Rezeptwechsel; kein bekannt fehlerhaftes Paket als qualifizierte Rückfallversion. |
-| Reguläre Wiederholungsserie | Neue vollständige Erklärung für 6016/829f ist vorab eingefroren und geprüft. Die Serie `factorybox-first-release-ordinary-series-97f5b8e9af9846f7b00f34e793dbf6d3` ist gestartet. Frühere Serien behalten null Läufe; Fehlerfälle zählen nicht rückwirkend mit. | Alle 20 festgelegten vollständigen Läufe ausführen und unabhängig prüfen. Kein Fehlschlag wird ersetzt oder verworfen. |
+| Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. Die acht bestehenden echten Anbieterfälle sind für 6016 festgelegt und hinter den vorherigen Abnahmen eingereiht. | Die beiden nativen Gateway-Kontrollen und alle acht vollständigen Anbieterfälle unabhängig abnehmen: normaler Ablauf, einmal verlorener abgeschlossener Modellaufruf, beide Worker-Verlustarten sowie Abbruch und unklare Werkzeugwirkung jeweils bei geplantem/hartem Verlust. Keine Inferenz vor `2026-10-24T23:59:59.953093Z`. |
+| Update, Drain und Rollback prüfen | Alle fünf Betriebsfälle sind auf 6016 bestanden und unabhängig geprüft, einschließlich aller acht Stop-Schutzfälle, Compose und tatsächlichem Update/Rückfall. Der Versuch leert vor dem Rezeptwechsel kontrolliert, verweigert ein falsches Rezept und stellt die gesicherte aktuelle Anwendung mit dem richtigen Paket wieder her. | Beide Verbraucher mit/ohne erzwungenen Loop-Wechsel beim Drain-Abbruch sowie beide ursprünglichen CLI-Worker-Verlustarten prüfen. Die alten Pakete sind keine qualifizierten Rückfallversionen. |
+| Reguläre Wiederholungsserie | Alle 20 vorab festgelegten vollständigen Läufe auf 6016/829f sind bestanden und unabhängig geprüft, je zehn Minimal/Factory. Befehle, Reihenfolge, Originaltests, Eingaben, Ressourcen, Speicherfreigabe und vollständiges eigenes Aufräumen stimmen. Frühere Serien behalten null Läufe; Fehlerfälle zählen nicht rückwirkend mit. | Vollständigen Nachweis im endgültigen Abnahmeprofil verbinden. |
 
 Die [Fortschrittsbelege](production-progress.md) enthalten die einzelnen
 Artefakte, Fehler und Ersetzungen. Die
@@ -164,3 +167,68 @@ deren weiche Speichergrenze aus. Die harte Worker-Grenze bleibt 3 GiB.
 Die qualifizierte Kernel-Beobachtung und die ursprüngliche unmittelbare
 Unmount-Assertion bleiben erhalten. Der Versuch ist noch nicht ausgeführt;
 auch ein Erfolg würde die historische Fehlerursache nicht erklären.
+
+Die Anbieterfolge liegt unter demselben Handoff in
+`current-external-acceptance/`. Sie wartet auf den vollständigen Abschluss der
+vorhergehenden Prüffolge und wahrt zusätzlich die gespeicherte Kontingentsperre.
+Jeder ursprüngliche Verbraucher prüft das ausdrücklich kostenlose Modell
+erneut. Ein fehlgeschlagener Lauf hält die Folge an; es gibt keinen Wechsel
+von Modell, Identität oder Kostenklasse. Die Einreihung ist kein Anbieter-Pass.
+
+Die erste weitere Speicherfolge besteht StoreFS, Basis-/Geräte-Recovery mit
+allen Retained-Kontrollen und öffentliche Basisaufnahme. Sie stoppt vor dem
+ersten Abschlussgrößen-Test an einem versehentlich ausgewählten, bereits
+fehlgeschlagenen Diagnoseeingang. Mit dem vorhandenen vollständigen Eingang
+stoppt der alte Test dann bei der richtigen früheren 2-MiB-Aufnahmegrenze,
+bevor sein 4-MiB-Altbestand entsteht. Beide Fehler bleiben ausgewiesen.
+Die getrennte Fixture `ledger-legacy-fixture/` erzeugt diesen Altbestand über
+die bestehende explizite Controller-CLI auf dem eigenen Test-Store. Alle
+ursprünglichen Prüfbedingungen für den anschließend normalen begrenzten
+Worker, Daten, Fences, Unmounts und Aufräumen bleiben erhalten. Die Runtime
+und ihre Aufnahmegrenze sind unverändert. Die neue, vollständig vorab
+festgelegte Fortsetzung liegt in `acceptance-after-legacy-fixture-correction/`.
+Die früheren eingereihten Folgen sind ohne eigene native Ausführung beendet.
+
+Die ausgewählte ursprüngliche 8-GiB-Sicherung bleibt vollständig erhalten.
+Nur die inzwischen durch den erfolgreichen Rettungstest ersetzte Arbeitskopie
+des Fehlversuchs `92e954...` wurde nach vollständiger Archivprüfung stillgelegt.
+Alle 70.449 Einträge und 59.384 Datei-Hashes sowie 23 Diagnosedateien sind
+gesichert. Quellen, Logs, ursprüngliche negative Ergebnisse und die getrennte
+Original-Sicherung bleiben erhalten. Die überholten RAM-/Dateinutzdaten dieser
+Arbeitskopie sind ausdrücklich nicht mehr rekonstruierbar. Netto wurden rund
+819 MiB frei; Belege liegen unter `resolved-rescue-retention/` im Handoff.
+
+## Messungen der vollständigen 20er-Serie
+
+Je Beispiel sind zehn vollständige Läufe enthalten. Die folgende Tabelle zeigt
+Median und beobachteten Bereich in Sekunden. Rootfs und Projektimages waren
+vorab gebaut; jeder Lauf verwendet einen neuen eigenen Worker/32-GiB-Store.
+Vorbereitung und erste nutzbare Anwendung sind getrennt gemessen.
+
+| Messpunkt | Minimal: Median, Bereich | Factory: Median, Bereich |
+| --- | ---: | ---: |
+| Worker-Start | 0,91; 0,74–0,95 | 0,74; 0,55–0,78 |
+| Rootfs-/Basisvorbereitung | 29,46; 15,66–38,00 | 24,92; 17,67–45,38 |
+| Vorbereiteter Start bis nutzbare Anwendung | 9,10; 8,71–10,67 | 23,45; 19,94–26,08 |
+| Neuer Worker mit Vorbereitung bis nutzbare Anwendung | 39,16; 26,02–49,36 | 51,02; 42,75–69,71 |
+| Checkpoint der Quelle | 2,86; 2,60–3,26 | 14,41; 9,23–21,17 |
+| Nutzbarer Fork eines vorhandenen Checkpoints | 3,18; 2,75–3,46 | 11,99; 7,44–15,38 |
+| Neuer Checkpoint und nutzbarer Fork | 6,01; 5,41–6,72 | 24,34; 17,05–36,55 |
+| Pause mit RAM-Freigabe | 2,77; 2,34–3,17 | 16,59; 10,06–18,42 |
+| Nutzbares Resume | 2,17; 1,76–2,72 | 12,48; 7,98–14,69 |
+| Neuer Checkpoint nach Resume und nutzbarer Fork | 5,18; 4,85–6,56 | 36,54; 21,81–38,86 |
+
+In allen zwanzig Pausen sind anonymer RAM der pausierten Quelle und residente
+Snapshot-Seiten null. Die vollständigen Worker enthalten weiterhin Dienste,
+andere Test-/Anwendungsarbeit und Dateisystemcache. Ihre gemessenen Gesamtwerte
+nach der Pause liegen bei 2,75–3,00 GB für Minimal und 2,16–2,70 GB für Factory.
+Die unabhängigen Nachkommen sind Teil des vollständigen Tests; dies ist keine
+Messung eines alleinstehenden leeren Workers.
+
+Die getrennten IDE-Beobachtungen, Speicherzähler, Einzelwerte, genaue
+Vorbereitung und Fehlerstände stehen in `final-performance/final-20.json`
+unter dem Handoff. Die Messung läuft auf dem gemeinsamen Desktop-Host mit
+unkontrolliertem Seitencache; zeitweise Archivarbeit auf dem Host ist im
+Bericht vermerkt. Die Host-Vorbereitung der Testprogramme und die separate
+IDE-Vorabprüfung sind eigene Werte. Diese Serie belegt keine p95, garantierte
+Latenz, abgesicherte Beschleunigung oder Langzeitstabilität.

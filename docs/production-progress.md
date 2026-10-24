@@ -9673,3 +9673,203 @@ package requirements, not a narrower release or added feature programme.
 Actual operating/storage/drain outcomes, historical attribution, actual free
 provider acceptance after its recorded reset and final independent closure
 remain open. The twenty ordinary trials keep their separate exact inventory.
+
+## 2026-10-24: resolved rescue target retired and actual-provider matrix queued
+
+The final package and runtime sources are unchanged. The original ordinary
+supervisor passes sixteen trials by the first performance extraction, eight
+per example. No ordinary native failure has occurred. It continues on its
+original process identity; remaining ordinary trials are not replaced.
+
+The full resolved `92e954...` rescue archive is independently reconstructed
+through its frozen custom `a8806.../runner.py --stdout` decoder. Both the decoder
+and an outer streaming verifier match all 12,111,052,800 original raw bytes,
+SHA-256 `a584154adc24e170e20d2160379d5ca681b1bd366ac5e1c9474af86e4ce8f592`.
+All 70,449 member headers and 59,384 regular-file hashes are retained, with
+2,208,575 bytes in 23 unique controller/CRIU/workspace diagnostic files.
+The verifier reads only this closed archive and its pinned inputs, streams
+without a large disk expansion, and retains less than the 128-MiB bound.
+
+The exact passing E66 result/closure binds the same original app, settled
+cancellation, use verifier, delivered EEF image and original read-only source.
+Its actual service-prefix correction resolves the former pre-resume-hold
+failure. This permits retirement of that superseded writable-target dump,
+without retiring the selected original `61eed.../7305...` input or qualifying
+the old package as a production fallback.
+
+Private retention verifier v1 stops before decoder startup because a JavaScript
+JSON round-trip rounded an integer nanosecond timestamp by 40 ns. No payload
+is created or removed by that failed preflight. Separate v2 files preserve
+nanoseconds as exact decimal strings, retain all identity/content checks and
+tighten metadata bounds. The original code, plan, start record, precise error
+and before/after hashes remain in `resolved-rescue-retention/correction.json`.
+V2 plan SHA-256 is
+`d9deefd98edcc04d611ed7893cf9d133afc3d15f394b51c8e009f5574261a7c1`.
+Verification completes in 91.88 seconds before the separate retirement step.
+
+The residual's 865,221,610 encoded bytes are then removed only after exact
+identity, source/proof hashes, retained diagnostic content and canonical input
+are rechecked. Three exclusive retirement markers explicitly withdraw full
+92e target reconstruction; historical sharing receipts remain unchanged.
+The source result remains false. Independent `closure.py` verifies the full
+member/diagnostic index and all markers after deletion, then rehashes the
+complete selected canonical archive to its unchanged
+`eef853abffd1ab71be3853a826353acbe3a8c123a82df7a005f21ad1555037c9`.
+Observed net allocation reclaimed before the small closure receipt is
+858,734,592 bytes. No active guest-root, volume or privileged-output traversal,
+native retry, reference change or production qualification follows.
+
+All retention files are under
+`factorybox-current-release-handoff-ff320800515d412d836e5ac38d149dd9/resolved-rescue-retention/`.
+Verification SHA-256 is
+`93369a6d2c24f9aa2bc553024942ce08c1a3ebccac556486b9f6ac3077e70b10`;
+retirement-result SHA-256 is
+`68c74850cd86c2d211dd221da492e8088e5874c28c000b4ced7738c0b2d7a2b1`.
+This is retention of generated test evidence, separate from runtime checkpoint
+or epoch retirement qualification. All unresolved failure inputs remain kept.
+
+The same handoff's `current-external-acceptance/plan.json` is verified and
+started, SHA-256
+`e3020944a3d05ff34b056f925b71e2a4dd8a6ecda4192986e544025085bb1b08`.
+Original exec session is 62622, PID 85724/birth 29369783. It waits for all five
+preceding current drain/restart cases and that exact supervisor's terminal
+identity. Two original native gateway controls then qualify the ordinary and
+effect-only helper on the actual 6016 image. Their synthetic namespace HTTP
+exchanges need no external inference and may precede the quota reset.
+
+Eight complete actual-provider cases follow the exact recorded UTC backoff:
+ordinary lifecycle, completed-response disconnect/replay, planned and abrupt
+held-tool worker loss, planned and abrupt cancellation, and planned and abrupt
+outside-effect loss/reconciliation. These are the eight existing real-model
+flows previously passed only on c9a0/EEF, not new reduced replacements. The
+first four keep separate Theia; cancellation/effect retain their original
+no-IDE fixture constraints. Each original driver refreshes live catalog/free
+pricing and uses the pinned OpenCode 2.0.27 and `glm-5.3-flash-free`. All actual
+requests must start no earlier than `2026-10-24T23:59:59.953093Z`. No paid model,
+new identity, inference fallback or replacement of a failed native trial is
+declared. The sequence stops on its first failure. No provider case has started
+at this entry, and none is counted as passed.
+
+The strict existing lifecycle timing reader now extracts the first sixteen
+passing current-series observations into
+`final-performance/partial-15.json` under the handoff. Its filename was chosen
+before the sixteenth trial completed; the stored count is sixteen, eight per
+example. Prepared-start medians are 9.096 s Minimal and 23.450 s Factory;
+worker startup plus complete rootfs/base preparation and first-use medians are
+44.324 s and 55.045 s. The raw ranges and each sample remain in that report.
+Every observed pause has zero source anonymous bytes and zero resident
+snapshot bytes; separate whole-worker counters retain their actual values.
+The report records concurrent closed-archive host work from 21:29:48 through
+21:35:26 UTC, uncontrolled page cache, fresh bounded stores and prebuilt inputs.
+It claims no p95, guaranteed latency, controlled speed gain or zero whole-worker
+memory. Final performance extraction still requires the original supervisor
+to be terminal with all twenty passing rows. Production qualification remains
+false and the full first-release scope stays active.
+
+## 2026-10-24: all twenty ordinary trials independently closed
+
+The original supervisor `16901` finishes with exit 0 and all twenty rows passed.
+There are exactly ten Minimal and ten Factory cases, in their original
+predeclared order on 6016/829f. No native failure, substituted trial, retry or
+retroactive fault-case count occurs. The operating supervisor then starts its
+original sequence: startup refusals, bounded identity and all eight stop guards
+pass; the supplied Compose/workflow case is active at this entry.
+
+Independent verification in
+`factorybox-current-release-handoff-ff320800515d412d836e5ac38d149dd9/ordinary-series-closure/verify.py`
+checks the full fixed plan, all source/test/tool/fixture/build/input hashes,
+identical package/image/layers, every exact command and its unique original
+native PASS without skip/failure, original production fixture assertions,
+actual 3-CPU/3-GiB/32-GiB worker commands, remaining 420-second stop budget,
+normal worker exit, preserved globals, source/snapshot RAM release and exact
+absence of each run's own containers/volumes. Factory retains the actual
+separate IDE and local OpenCode assertions. Eighty archived native input
+executables are fully decoded and hashed; 540 other frozen input files are
+verified directly. This is separate from the original runner's own verdict.
+
+Its `closure.json` SHA-256 is
+`2d0e8ad3e46c50906a5624632293d6b9af9e190817ccf6e537ab7c9678458775`.
+It proves the complete ordinary series and keeps production qualification false.
+The frozen plan, original final result, all native results/logs and source inputs
+remain. Operating/storage/drain/provider and historical attribution gates are
+still separate requirements.
+
+The final strict timing extraction requires the original supervisor to be
+terminal before reading its final JSON. It passes all twenty observations in
+`final-performance/final-20.json`, SHA-256
+`ffad7d36f78151550e634ee7dc142a7cbd2a160bc0a0cb5ded984149b15c4d3b`.
+Prepared useful-work medians are 9.096 s Minimal and 23.450 s Factory; complete
+worker startup/base preparation/useful-work medians are 39.155 s and 51.020 s.
+Source capture plus useful fork medians are 6.014 s and 24.344 s; pause 2.770 s
+and 16.590 s; useful resume 2.166 s and 12.478 s. Every source-anon and
+snapshot-resident after-pause count is zero. Actual whole-worker memory,
+separate IDE observations, raw samples, retained data and concurrent host
+archive-work interval remain explicit. No percentile, controlled speed gain,
+latency guarantee, zero whole-worker memory or production acceptance follows.
+
+A first draft release evidence index now independently binds the already
+completed groups, actual 201 current Go source files, both bundles and identical
+package/image/layers, component identities and ordered CRIU patches. It verifies
+17 main native rows, 13 targeted/retirement/capacity rows, 15 integration rows,
+all four full pressure consumers, both public epochs and the four original
+component-unit/Bats/CRIU rows. These are group inventories, not disjoint test
+counts. The intentional original corruption result stays false under its
+declared negative oracle, and original component skips remain in their records.
+Reference and ordered fixture checks pass again. The index is
+`release-profile/candidate-evidence-index.json`, SHA-256
+`a57a67f2f7ca325b2e6bb928354a395677a26c990e6ee951cabd2b7949341daf`.
+It is explicitly a draft with incomplete release requirements, not the final
+release profile and not a rewrite of the historical pilot profile.
+
+## 2026-10-25: operating cases closed; remaining storage fixture corrected
+
+All five original 541b operating entries pass on 6016. Independent
+`operations-closure/verify.py` binds their exact commands, original results,
+161 frozen tool/private fixture files, delivered image/CLI/package and source
+inputs. It re-reads both original startup reports from their archives, checks
+the actual expected failure states, all eight Stop cases and unchanged base
+backing, the supplied Compose workflow and its deliberate wrong-identity
+refusal, and the 42 update/refusal/recovery steps. All exact owned containers
+and volumes are absent. The closure SHA-256 is
+`daef687b2027e777589b5e34fc911fbbe814bab26a6ed767f4697124db21f34b`.
+The private verifier's initial attempt compared a SHA string with the manifest's
+whole hash object and stopped before writing a closure. Correcting that reader
+to select `sha256` changes no test, fixture, result or runtime assertion.
+
+The original 2138 storage supervisor passes StoreFS, base/device recovery with
+the full retained controls, and public base admission. Its fourth entry selects
+failed diagnostic acquisition 06ec instead of already passing 7d3. Worker base,
+image and package hashes in fact match; the input's own `passed:false` causes
+refusal before any native worker allocation. Native result bcc9 and all stopped
+downstream GC/drain/provider supervisors stay false and intact. Their exact
+original process births are terminal before any continuation starts.
+
+The separate `acceptance-after-diagnostic-input-correction/` plan uses verified
+7d3 acquisition. Native 634d reaches real base preparation, then stops at the
+correct 2-MiB canonical admission refusal before the older test can construct
+its 4-MiB ledger. Its original failure and complete failed-store archive remain.
+This is an obsolete negative-test preparation, not a demonstrated failure of
+the production admission rule. No successful first-three storage case is rerun.
+
+The separately declared `ledger-legacy-fixture/` keeps every original raise,
+assertion, encoded boundary and bounded worker Stop/replacement/trace/cleanup
+check. Only real fixture base preparation selects the existing explicit
+controller CLI with the owned live controller paths, exact runtime/CRIU hashes,
+manager root, storage floor and write reserve. This creates the otherwise
+policy-unreachable oversized legacy inventory; it is not a supported way to
+admit production work. No production source, reference or imported overlay
+changes. Before SHA-256 is
+`45aad7abf4ea7db38b72ea40edfa4b2feb5651c63d4710ae836bb2248cfcf9b7`,
+after `19f0ff95d0980ed47d81b4a59c0e15d8b002e7a9eb6dcd2094a69002bcfd7cda`,
+ordered patch `be88721c6f37c30ccc8cd5b61ca67322eee48cfb0c2dddf8ff32c774c93143fc`.
+
+The new complete continuation is
+`acceptance-after-legacy-fixture-correction/plan.json`, SHA-256
+`e40fa37f1d9bd8c20ad71fe0eceaab8098d9747a54a4c95ba9808b5bc10cbe4b`.
+Its verified inputs preserve all prior failures, the two original byte-boundary
+assertions, the historical GC diagnostic with both Go limits off, all five
+unstarted original drain/restart entries and all ten unstarted gateway/provider
+entries. It keeps the original commands outside the declared fixture change,
+normal artifact reserve, resource/deadline limits, maintenance and provider UTC
+backoff. Original exec is 56846, PID 151609/birth 29538353. A queue entry is not
+a pass. Production qualification remains false and the full goal stays active.
