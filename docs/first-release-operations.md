@@ -4,10 +4,22 @@ This is the candidate procedure for the scope in [GOAL.md](../GOAL.md).
 Production qualification remains false until the final profile binds all
 required passing evidence. The older pilot profile does not qualify this
 candidate. The current independently reproduced package is
-`factorybox-build-worker-a1945111cf6248ac97aeb62e83900488`, with comparison
-`factorybox-build-worker-51d2779bac804da089b0a5984c03ea1f`.
+`factorybox-build-worker-29cba13df6534ab9ba999d367d21f51e`, with comparison
+`factorybox-build-worker-e23f9862edab4ed99960d598573b608a`.
 Older evidence below identifies the package on which it ran and does not replace
 the remaining current-package qualification.
+
+The complete Factory planned-loss consumer, including actual full-storage
+import failure/cancellation, retained-checkpoint inspection, changed loop
+attachment, public epoch retirement, retained Theia, local OpenCode flow and
+both graceful worker exits, passes the unchanged shared 420-second gate in
+`factorybox-consumer-worker-loss-b3c94cb31be94a4685f658990919f2f6`.
+The matching abrupt case also passes in
+`factorybox-consumer-worker-loss-e01715a8779545e99f7d1fa33db141bd`, with exact
+source-worker SIGKILL after committed pause and graceful replacement exit.
+Remaining final-package gates still require their own passing evidence.
+This does not qualify the original 8-GiB recovery or
+complete native interrupted epoch retirement on this later core.
 
 ## Start and verify
 

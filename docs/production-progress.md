@@ -7687,3 +7687,87 @@ native deadline compliance nor a percentile. The full six portable groups,
 including reference and ordered fixture-extension verification, pass in
 `factorybox-checks-004e0612ef1046bb86e23887c645d39a`. Packaged native proof
 and the complete unchanged Factory consumer deadline remain required.
+
+## Complete Factory planned-loss deadline passes on reproduced 29cb
+
+Worker `factorybox-build-worker-29cba13df6534ab9ba999d367d21f51e` and its
+independent no-cache comparison
+`factorybox-build-worker-e23f9862edab4ed99960d598573b608a` both pass with identical
+source, complete bundle, raw transport, image and layers. CLI SHA-256 is
+`05170b6d8074d7851adf4ef87b0cc499679a78322427756b3d49cf596f57f6ff`, package
+SHA-256 `795042e9217018fdbdca7f31755dc929cc3c11bcbcbd9319a512a20e82055e8a`,
+image `sha256:2356852dca1a4e77df5354026167222d4da30dcb38d0378d37087c8291b6c123`.
+Pinned Sysbox/CRIU, 3-CPU/3-GiB workers, separate 1-CPU/768-MiB Theia,
+256-MiB Go soft limit and complete shared 420-second deadline are unchanged.
+Neither package is selected or production qualified.
+
+`factorybox-consumer-worker-loss-b3c94cb31be94a4685f658990919f2f6` passes the
+complete planned Factory consumer, both original Go bodies, strict pressure
+and epoch verifiers, both graceful worker exits and exact owned cleanup.
+Preparation includes 41.52 seconds of base preparation; prepared-start first
+use is 18.76 seconds through the real Connector response, and the original
+prepare body passes in 72.73 seconds (80.39-second outer probe).
+The replacement's retained-checkpoint inspection takes 26.59 seconds before
+its probe. Useful recovered application work is observed at 50.40 seconds;
+the actual public recovery call is 47.34 seconds. Public old-epoch retirement
+takes 102.50 seconds, exact replay 1.01, useful Resume 12.51, new Checkpoint
+12.42 and independent Fork 15.90. The entire original recover body passes in
+242.01 seconds (242.26-second outer probe), including independent edits through
+one retained Theia connection and useful descendants after source deletion.
+
+Actual import ENOSPC, full-store cancellation, unchanged old checkpoint and
+metadata, exact cancellation replay, preserved failed-target reservation and
+admission after exact owned reclaim all pass. The public epoch proof verifies
+every authorized payload absent, retained provenance/caller input unchanged,
+an independent useful successor and exact request replay. This scoped consumer
+does not claim the separate interrupted native epoch protocol is qualified.
+At the final worker Stop, 62.11 seconds remain in the original shared budget;
+Stop takes 8.81 seconds, returns exit 0 without OOM, and exact removal succeeds.
+The original prepare worker also exits 0 without OOM. Global sysctls remain
+unchanged. The preceding failed verdicts remain FAIL; none is relabelled.
+
+Read-only process observations are saved in
+`factorybox-epoch-process-observation-9ac3f97cc357461e93258db984e13578`.
+They verify exact container ownership and host PID start identity before
+sampling, without signals, attachments or environment changes. Its 348 samples
+record an observed retirement-process VmHWM of 163,528 KiB. The worker's
+post-pause total cgroup charge is 1,985,871,872 bytes, including 1,776,455,680
+file-cache bytes and 32,083,968 anonymous bytes; this is not anonymous memory
+retained by the paused workload. The post-retirement charge is 1,247,719,424
+bytes, including 1,074,589,696 file-cache bytes. A handful of shared-host
+timings establishes no p95 or controlled whole-native speedup. The earlier
+allocation reduction and this complete case pass are separate evidence.
+
+The matching Factory abrupt case is recorded below. Minimal planned
+and abrupt cases, current native gates, original 8-GiB useful recovery,
+historical EBUSY attribution, actual external agent/cancellation/effect cases,
+tested update/rollback, the predetermined ordinary series and final profile
+remain open. The full goal and production qualification false are unchanged.
+
+## Complete Factory abrupt-loss deadline also passes on the same 29cb bytes
+
+`factorybox-consumer-worker-loss-e01715a8779545e99f7d1fa33db141bd` passes the
+complete abrupt Factory case with all the same delivered bytes, inputs,
+capacity-pressure/epoch extensions, resource ceilings and shared deadline.
+The prepared source publishes its complete pause before exact worker SIGKILL;
+its expected probe/worker exit is 137, with no OOM. This is the intended abrupt
+transition, not a claim that the source exits gracefully or that the prepare
+Go test body returns normally. Prepared-start first useful response is 20.55
+seconds. The complete original replacement body passes in 239.63 seconds
+(239.92-second outer probe); first useful recovery is 47.99 seconds.
+
+Public epoch retirement takes 105.15 seconds, exact replay 1.06 seconds.
+Actual full-store import failure, unchanged retained checkpoint/metadata,
+explicit cancellation/replay, independent useful successor, retained Theia,
+new checkpoint/fork, independent edits and useful descendants after source
+deletion all pass their original assertions and strict output verifiers.
+The final worker Stop begins with 97.81 seconds remaining, takes 9.60 seconds,
+and exits 0 without OOM. Exact owned cleanup and unchanged global sysctls pass.
+This is a second complete green outer case, not merely an application response
+or a completed Go test with Stop unrun. Historical failed runs remain FAIL.
+
+Both required large Factory consumer loss modes therefore have current-core
+passing evidence. The smaller examples and remaining required native,
+integration, external-provider, operations and final-series gates retain their
+own acceptance requirements. Current interrupted native epoch retirement is
+running next. The goal stays active and production qualification stays false.
