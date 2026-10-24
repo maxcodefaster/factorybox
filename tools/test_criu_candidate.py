@@ -9,6 +9,40 @@ import criu_candidate
 
 
 class CandidatePatchTests(unittest.TestCase):
+    def test_verified_base_lock_recipe_retains_exit_hold_without_legacy_flag(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            name, archive, result = self.fixture(root, True)
+            for filename in ['exit-hold.patch', 'exit-hold-socket.patch']:
+                content = ('frozen ' + filename).encode()
+                (archive / filename).write_bytes(content)
+                result['candidate_patch_sha256'][filename] = hashlib.sha256(content).hexdigest()
+            before = json.dumps(result).encode()
+            (archive / 'result.json').write_bytes(before)
+            with mock.patch.object(criu_candidate.reference, 'ROOT', root), \
+                    mock.patch.object(criu_candidate.sources, 'tree_sha', return_value='frozen-context'), \
+                    mock.patch.object(criu_candidate.sources, 'validate_inputs'), \
+                    mock.patch.object(criu_candidate.sources, 'check_source', return_value=1030):
+                loaded = criu_candidate.load(name)[1]
+                self.assertNotIn('exit_hold_candidate', loaded)
+                self.assertTrue(criu_candidate.supports_exit_hold(loaded))
+                self.assertEqual((archive / 'result.json').read_bytes(), before)
+                self.assertEqual(loaded, result)
+
+    def test_exit_hold_capability_preserves_explicit_flags_and_requires_complete_recipe(self):
+        complete = {'candidate_patch_sha256': {'exit-hold.patch': 'a' * 64,
+                                              'exit-hold-socket.patch': 'b' * 64}}
+        self.assertTrue(criu_candidate.supports_exit_hold(complete))
+        self.assertTrue(criu_candidate.supports_exit_hold({'exit_hold_candidate': True}))
+        self.assertFalse(criu_candidate.supports_exit_hold(dict(complete, exit_hold_candidate=False)))
+        for row in [{}, {'candidate_patch_sha256': {}},
+                    {'candidate_patch_sha256': {'exit-hold.patch': 'a' * 64}},
+                    {'candidate_patch_sha256': {'exit-hold-socket.patch': 'b' * 64}}]:
+            self.assertFalse(criu_candidate.supports_exit_hold(row))
+        for flag in [1, 'true', None]:
+            with self.assertRaises(ValueError):
+                criu_candidate.supports_exit_hold({'exit_hold_candidate': flag})
+
     def test_explicit_frozen_base_allows_only_unrelated_component_changes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

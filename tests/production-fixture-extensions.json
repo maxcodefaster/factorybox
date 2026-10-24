@@ -8,6 +8,14 @@
   "upstream_assertions_modified": false,
   "latency_comparable_to_previous_fixture": false,
   "files": {
+    "tests/criu-retained-candidate/native.py": {
+      "before_sha256": "4b1957f718b498f1683a1913960094d8652319f084096365e1c5cee9fdd3461e",
+      "after_sha256": "b4e8276521a35306f9627af77f0f8be362d235d53cb202c33533c0cd570bc063",
+      "patch": "tests/compatibility/retained-recipe-capability.patch",
+      "patch_sha256": "fc63b7b0c891a9fc3516021caafd79da8986964c67fd8873f798143a527017d8",
+      "before_file": "factorybox-retained-fixture-compat-88fd8226c2374080938d65844983f21f/tests_criu-retained-candidate_native.py.before",
+      "reason": "Use the existing page-hold diagnostic protocol when a fully verified base-lock CRIU recipe contains both exit-hold patches but omits its legacy convenience flag; explicit true/false flags retain their meaning. CRIU/runtime bytes, limits, timeouts and every original fault/RAM/network/prior-checkpoint/cleanup assertion remain unchanged. Select exactly the same eleven original adapter tests and 61 subtests in a fresh declared script copy, preserving all assertions and the zero-skip requirement; separately scoped opt-in ext4 tests retain their separate requirements and are not counted as passes here. Archive the original script and exact ordered selection patch. Vet remains enabled."
+    },
     "tests/sysbox-shm-candidate/startup.py": {
       "before_sha256": "73b8f52e64d6e8de186341c80e3b55f5af5844f11215ebcf3ed28a7c0f8eb506",
       "after_sha256": "e0408671990a9ced0e32f1878ae02a0c65d080570bcdb562955b167ad860065d",

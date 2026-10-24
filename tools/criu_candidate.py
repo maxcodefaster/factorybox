@@ -7,6 +7,23 @@ import reference
 import sources
 
 
+def supports_exit_hold(result):
+    """Read a verified build's page-hold capability without changing its receipt.
+
+    Base-lock rebuilds retain the verified patch chain but can omit the legacy
+    convenience flag. Explicit flags keep their original meaning.
+    """
+    if 'exit_hold_candidate' in result:
+        flag = result['exit_hold_candidate']
+        if type(flag) is not bool:
+            raise ValueError('exit-hold capability flag must be boolean')
+        return flag
+    patches = result.get('candidate_patch_sha256', {})
+    return isinstance(patches, dict) and all(
+        isinstance(patches.get(name), str) and re.fullmatch(r'[0-9a-f]{64}', patches[name])
+        for name in ['exit-hold.patch', 'exit-hold-socket.patch'])
+
+
 def load(name, *, base_lock=None):
     if not re.fullmatch(r"factorybox-build-criu-retained-[0-9a-f]{32}", name):
         raise ValueError("expected one exact retained-context candidate build")

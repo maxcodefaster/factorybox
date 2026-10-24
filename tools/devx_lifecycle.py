@@ -249,9 +249,10 @@ def main():
     else:
         criu_archive, criu = reference_lifecycle.component_build(
             options.criu_build, "factorybox-build-criu-")
+    exit_hold = criu_candidate.supports_exit_hold(criu)
     if any(component.get("platform", "linux/arm64") != target for component in [sysbox, criu]):
         raise ValueError("developer lifecycle component platforms differ from the native target")
-    if options.docker_fault_component == "guard" and not criu.get("exit_hold_candidate"):
+    if options.docker_fault_component == "guard" and not exit_hold:
         parser.error("the guard-loss proof requires the pinned exit-observer candidate")
     owner = uuid.uuid4().hex
     name = "factorybox-devx-lifecycle-" + owner
@@ -303,7 +304,7 @@ def main():
         "consumer_inputs": options.consumer_inputs, "project_images": options.project_images,
         "sysbox_build": options.sysbox_build, "criu_build": options.criu_build or options.retained_candidate,
         "retained_candidate": bool(options.retained_candidate),
-        "exit_hold_candidate": bool(criu.get("exit_hold_candidate")),
+        "exit_hold_candidate": exit_hold,
         "native_base_build": options.native_base_build, "native_image": image,
         "runtime_rootfs_sha256": consumers["rootfs_tar_sha256"],
         "project_images_sha256": projects["archive_sha256"],
@@ -441,7 +442,7 @@ def main():
             command += ["--env", "FACTORYBOX_DEVX_CRIU_FAULT=" + options.docker_fault_process,
                         "--env", "FACTORYBOX_DEVX_CRIU_FAULT_OPERATION=" + options.docker_fault_operation,
                         "--env", "FACTORYBOX_DEVX_CRIU_FAULT_COMPONENT=" + options.docker_fault_component]
-            if criu.get("exit_hold_candidate"):
+            if exit_hold:
                 command += ["--env", "FACTORYBOX_CRIU_EXIT_HOLD=1"]
         mounts = [
             (output, "/output", False), (components, "/component-input", True),

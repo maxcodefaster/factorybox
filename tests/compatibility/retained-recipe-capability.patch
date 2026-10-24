@@ -1,0 +1,46 @@
+diff --git i/tests/criu-retained-candidate/native.py w/tests/criu-retained-candidate/native.py
+index 91b5867..40d5702 100644
+--- i/tests/criu-retained-candidate/native.py
++++ w/tests/criu-retained-candidate/native.py
+@@ -45,6 +45,7 @@ if options.guard_loss and (not options.grant_control or options.controller_loss)
+ candidate_name = options.candidate
+ corruption_control = options.corruption_control
+ candidate, criu, _, _ = criu_candidate.load(candidate_name)
++exit_hold = criu_candidate.supports_exit_hold(criu)
+ base_name = options.native_base_build
+ target = options.candidate_platform or "linux/arm64"
+ host = json.loads(reference.docker(["info", "--format", "{{json .}}" ]))
+@@ -83,6 +84,7 @@ for file, package, test in [
+                    cwd=context, env=env, check=True, timeout=120)
+ for script in ["lifecycle-native.sh", "private-cgroup-delegation.sh", "capture-archive.sh"]:
+     shutil.copyfile(root / "tests" / script, archive / script)
++adapter_fixture_selection = lifecycle_native.select_adapter_fixture(archive)
+ components = archive / "components"
+ components.mkdir()
+ for file in ["sysbox-runc", "sysbox-fs", "sysbox-mgr"]:
+@@ -117,7 +119,7 @@ for file, target in [
+ ]:
+     command += ["--mount", f"type=bind,source={archive / file},target={target},readonly"]
+ command += ["--entrypoint", "/bin/bash", image, "/native.sh"]
+-if criu.get("exit_hold_candidate"):
++if exit_hold:
+     location = command.index("--entrypoint")
+     command[location:location] = ["--env", "FACTORYBOX_CRIU_EXIT_HOLD=1"]
+ if corruption_control:
+@@ -148,7 +150,7 @@ result = {
+     "owner": owner, "container_name": name, "volume_name": name, "command": command,
+     "candidate": candidate_name, "candidate_sha256": criu["binary_sha256"],
+     "platform": target, "native_lifecycle_qualified": False, "compile_options": compile_options,
+-    "exit_hold_candidate": bool(criu.get("exit_hold_candidate")),
++    "exit_hold_candidate": exit_hold,
+     "corruption_control": corruption_control,
+     "pause": options.pause,
+     "grant_control": options.grant_control,
+@@ -159,6 +161,7 @@ result = {
+     "guard_loss": options.guard_loss,
+     "inputs_sha256": inputs, "component_sha256": component_hashes, "source_sha256": source_sha,
+     "fixture_context_patches": fixture_patches,
++    "adapter_fixture_selection": adapter_fixture_selection,
+     "scope": "Actual CRIU kill during pages dump; only the original independent guard may authorize "
+              "process cure and source release. Complete 32-MiB RAM, TCP, previous committed fork "
+              "and original running-source assertions remain required. Process-tree candidate.",

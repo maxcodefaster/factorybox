@@ -7947,3 +7947,84 @@ effect cases, remaining upstream/integration groups, tested update/drain/
 rollback, the predeclared twenty ordinary trials and final auditable profile
 remain open. None is implied by this native result. Production qualification
 stays false and the full goal remains active.
+
+## Verified recipe capability fixes the retained-fault test driver
+
+The first current integration batch
+`factorybox-pilot-integration-gates-bc0ea0efb2d84a0eb78693b14a0e7f94`
+passes the complete Factory/local-OpenCode lifecycle
+`factorybox-consumer-worker-loss-c68966a474bb4960937165c3ed172a49`
+and Minimal planned worker replacement
+`factorybox-consumer-worker-loss-e6019c2821014f1da3623248e0193cd5`.
+Its retained-corruption child `factorybox-runtime-retained-4366a112d1764c768e4ac97405f2803c`
+fails before the intended page-image interruption boundary. An unchanged
+reproduction `factorybox-runtime-retained-e190002180fe4de8bf69de5faa2a5b9a`
+fails at the same boundary. Both failed results and complete original source
+archives remain failed and preserved. Later selected cases in that batch
+were not run and receive no acceptance credit.
+
+`factorybox-retained-corruption-diagnosis-7ba79fa12a5a4c92a296a5e9bce30052`
+fully decodes and hashes the original source archive and extracts only bounded
+logs. CRIU reports that the child did not acknowledge its armed context.
+The verified base-lock rebuild contains both existing exit-hold patches but
+omits their legacy convenience flag. The driver interpreted the absent flag
+as false and selected the older ptrace interruption protocol. A fresh copied
+driver in `factorybox-retained-exit-hold-control-b6c5ed021dbf4e76a225494cb46d0203`
+changes only this protocol selection. With the identical CRIU/runtime bytes,
+its child `factorybox-runtime-retained-8cd7fc8e0ffe4723b420048bd4d3dfae`
+reaches the intended page boundary and fires the original complete-RAM
+corruption assertion. Its separate unexpected opt-in adapter skip still
+prevents accepting the whole case. This control is not relabelled as a pass.
+
+`criu_candidate.supports_exit_hold` now derives a missing flag from both
+verified frozen patch hashes. Explicit boolean flags retain their meaning;
+malformed flags are rejected. The loader and every historical build receipt
+remain unchanged. The retained native driver and Docker fault driver use
+this shared capability. The retained driver also uses the existing declared
+selection of all eleven original adapter tests and 61 subtests in its fresh
+script copy. The additional bounded-device case keeps its separate ext4
+fixture and is not counted as passing here. Original assertions, vet, resource
+ceilings, deadlines and the zero-skip rule remain intact. Runtime Go sources,
+delivered CLI, component binaries and image are unchanged.
+
+Two regression tests fail before the helper exists in
+`factorybox-retained-capability-red-6f015ed877de45ffbddaf3018af58ade`.
+After the fix, `factorybox-checks-e50cce237fee4da7b907124e16e0fcf3`
+passes all six portable groups, including all 270 Python tests and immutable
+reference/ordered-fixture checks. The exact native driver before bytes are
+preserved in `factorybox-retained-fixture-compat-88fd8226c2374080938d65844983f21f`.
+The production fixture declaration records its before/after hashes and ordered
+`tests/compatibility/retained-recipe-capability.patch` hash.
+`factorybox-retained-fixture-reconstruction-fe4daee02e434ee59bee74773af6e044`
+applies that patch with zero fuzz to a fresh copy and reconstructs the exact
+declared current driver hash.
+
+The corrected original corruption command is accepted by the strict existing
+parent oracle in
+`factorybox-pilot-integration-gates-84dbbe72789d401883af228b1f06011a`,
+child `factorybox-runtime-retained-61e337e0718a453bb004ae0e9914ed0c`.
+The child intentionally remains failed: exactly the original complete-RAM
+assertion detects the injected corruption. All eleven adapter tests and 61
+subtests pass; there are no other failures or skips, cleanup and frozen inputs
+are intact and there is no OOM. No earlier failed batch is changed to pass.
+The remaining integration cases retain their individual acceptance requirements.
+The old ordinary-series plan is not executed and remains unchanged; its tool
+inventory predates this test-driver correction and requires an explicit fresh
+plan before the twenty additional ordinary trials.
+
+## Exact current component closure reverified
+
+`factorybox-current-component-closure-0292c831596e429fa7da412e37e6fdbe/component-closure.json`
+passes against current worker 29cb and its identical independent e23f rebuild.
+It verifies full component source contexts, binary hashes, build receipts and
+the matching native Linux-AMD64/kernel platform. It reparses the original
+Sysbox Go JSONL evidence `factorybox-upstream-662ad4adabc74a25b2895048dae22cf6`:
+727 passes and the unchanged eighteen original skips, with all five selected
+SHM cases actually passing. It reverifies the exact component bytes and TAP
+from `factorybox-bats-fa352808c7c6428aafb43fa36aa9240a` and
+`factorybox-bats-dd234e09657d459cb5493021e62ccc70`: seven lifecycle and four
+systemd cases pass, with the original bionic/archlinux skips still visible.
+Current CRIU core evidence is the fresh 39cb run recorded above. This is
+component-only reuse on identical source/binaries/platform, not reuse of old
+Factorybox-core native acceptance or acceptance of skipped upstream cases.
+Production qualification remains false.
