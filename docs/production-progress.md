@@ -9140,3 +9140,40 @@ the current API and old prepared metadata; no image is expanded or adopted.
 The original EBUSY attribution, remaining consumer/epoch/integration/provider/
 operations cases, twenty ordinary trials and final full audit remain required.
 Production qualification is false and the full goal remains active.
+
+## Current complete public interrupted-epoch cases
+
+Both original complete `tools/bounded_store_loss.py --epoch-retirement` cases
+pass on worker `6016296965364344a8ef9eede420dbc8`:
+
+- Planned original worker loss:
+  `factorybox-bounded-loss-ca6d142979f94db4b96569fe99a55ef4`, result SHA-256
+  `0592043c56b8b57f0b68e9eff11fca7d12dee0fbab9d7e7c7b7446ca6a5a8fd0`.
+- Abrupt original worker loss:
+  `factorybox-bounded-loss-e9d74c5b0e384ada80deabab359dc019`, result SHA-256
+  `35200215d1cf447a1ad904636617c82784b667e82cdebacf281b4bab24664bdb`.
+
+Each retains the complete original three-stage Prepare/Recover/Finish sequence,
+including useful original independent recovery, public retirement admission,
+actual ENOSPC preparation/cancellation controls, protected selections and
+successor, foreign-entry/covering-mount refusals, registered-base retirement,
+actual interrupted public unlink and worker SIGKILL after acceptance. A third
+worker uses a changed loop slot, replays the exact acceptance and completes the
+operation with a useful independent successor and retained source tombstone.
+Observed returned capacity is 83,476,480 and 83,480,576 bytes respectively.
+The observations take 103.203 and 102.585 seconds; no distribution is claimed.
+
+Both results confirm cleanup and unchanged complete source/test trees, inputs
+and global settings. The independent frozen `verify_epochs.py` under
+`factorybox-current-targeted-native-gates-1d4dba81823b45019d0d37e747face60`
+revalidates every structured proof hash, stage outcome, original/accepted
+worker exit status and exact absence of all owned containers/volumes. Its
+`epoch-closure.json` SHA-256 is
+`0e607b454d1cd407bb784811ace3bdf49831e2f7ad232a90f44fe6b0d3d0ccf5`.
+Only after this closure are both exact native probes losslessly encoded;
+immutable sharing `factorybox-storage-share-test-encodings-e49ed01bf0f8413e9df799976e2aa0e5`
+preserves their complete decoded identity and returns 21,405,696 allocated bytes.
+Original results and all failures remain unchanged. These two cases are not
+ordinary-series trials or a full production release. All remaining consumer,
+integration, historical failure, provider, operations, series and final-profile
+requirements stay active.

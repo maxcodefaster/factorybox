@@ -62,6 +62,14 @@ bestandenen Stilllegungs- und Kapazitätsfälle erneut. Damit sind in diesen
 13 Gruppen 20 ursprüngliche Haupttests belegt, ohne reduzierte Metadatenfälle,
 Prototypen oder Wiederholungen fehlgeschlagener Läufe.
 
+Beide vollständigen nativen Epochenfälle bestehen ebenfalls auf diesem Paket:
+`factorybox-bounded-loss-ca6d142979f94db4b96569fe99a55ef4` mit geplantem und
+`factorybox-bounded-loss-e9d74c5b0e384ada80deabab359dc019` mit hartem ursprünglichem
+Worker-Verlust. Beide unterbrechen zusätzlich die akzeptierte Stilllegung,
+wechseln den Worker und das Loop-Gerät und schließen die exakte Operation mit
+nützlicher unabhängiger Nachfolge-Sicherung ab. Die ursprünglichen
+Platzmangel-, Besitz-, Fremdeintrags- und Abbruchprüfungen bleiben erhalten.
+
 Die Serien `93d21ac9...` und `a3d09ea4...` hielten nach fünf beziehungsweise
 acht weiteren Erfolgen vor der nächsten Gruppe an der Artefaktreserve an.
 Diese Gruppen hatten noch nicht begonnen. Beide negativen Gesamtstände
@@ -74,9 +82,9 @@ sind damit alle 17 Hauptgruppen belegt. Die reguläre 20er-Serie ist ungestartet
 | Anforderung | Belegter Stand des aktuellen Kandidaten | Noch erforderlich |
 | --- | --- | --- |
 | Paket reproduzieren | 6016 und 829f sind identisch. | Endgültiges Abnahmeprofil mit allen Ergebnissen verbinden. |
-| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite mit acht Haupttests und der Kapazitätsfall bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Die beiden unterbrochenen nativen Epochenfälle auf dem aktuellen Paket abschließen und im Endprofil verbinden. |
+| Native Laufzeit, Speicher und Stilllegung | Alle 17 Hauptgruppen, elf weitere gezielte Timer-/Restore-Hold-/Metadatenfälle, die vollständige Stilllegungssuite, Kapazität und beide unterbrochenen nativen Epochenfälle bestehen; CRIU-Kernprüfung ist bytegleich gebunden. | Die Nachweise im Endprofil verbinden und die vollständige Anforderungsabdeckung prüfen. |
 | Vollständige Integration | Frühere Docker- und Komponentenbelege bleiben erhalten; unveränderte Komponenten können exakt gebunden werden. | Alle 15 benannten Fälle auf dem aktuellen Stand nachweisen: fünf Retained-, sechs Docker-Abbruch-, zwei volle Verbraucher- und zwei Komponentenfälle. |
-| Anwendung bei vollem Speicher wiederherstellen | Der vollständige harte Factory-Verlust besteht auf 6016. | Geplanten Factory-Fall, beide Minimal-Fälle und beide unterbrochenen nativen Epochenfälle auf demselben Paket abschließen. |
+| Anwendung bei vollem Speicher wiederherstellen | Der vollständige harte Factory-Verlust besteht auf 6016. | Geplanten Factory-Fall und beide Minimal-Fälle auf demselben Paket abschließen. |
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Alle 322 RAM-/Metadatendateien und neun Dateisystembäume sind geprüft und unverändert. | Tatsächlich wiederherstellen und nützliche Arbeit prüfen. |
 | Alten Busy-Mount-Fehler erklären | Spätere Wiederholungen und gezielte Ursachen-Kontrollen sind erhalten. | Ursprünglichen Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. |
 | Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. | Echte Fortsetzung, Abbruch und unklare Werkzeugwirkungen nachweisen. Keine Wiederholung vor `2026-10-24T23:59:59.953093Z`. |
