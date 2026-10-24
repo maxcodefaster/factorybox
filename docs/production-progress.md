@@ -7397,3 +7397,229 @@ full required regression, historical EBUSY attribution, real external-agent
 acceptance, tested update/rollback, ten predetermined lifecycles per example
 and final release profile remain open. The full goal remains active and
 production qualification false.
+
+## Optional admission receipts blocked complete Factory epoch retirement
+
+The next current-f308 minimal planned-loss consumer,
+`factorybox-consumer-worker-loss-13233d1b7cab4ddaa97fbfc8689bf854`, passes every
+original assertion, including actual zero-available-byte import cancellation,
+exact replay and public epoch retirement. Both phases and exact cleanup pass;
+prepare/recover probe durations are 32.87/113.58 seconds. Together with `6bf4c40f`,
+this closes both minimal loss modes on f308, before the following runtime fix.
+
+The full Factory planned-loss run
+`factorybox-consumer-worker-loss-f43a8db2257b47e4a73dbad558b496a3` is a real FAIL.
+Its restored application answers successfully after 56.197 seconds, but public
+epoch retirement rejects the runtime-created `guard/descriptor-admission.json`.
+Subsequent original consumer assertions do not run. Preparation and exact owned
+cleanup pass; no production qualification follows from the useful response.
+Lossless repack `factorybox-storage-repack-9cfd9630b67a4a5fb4495a2a985b29bd`
+verifies all 34,360,786,944 original archive bytes, SHA-256
+`c31962a313bf10d1033013e97b615f10d88eb46bfcefdf297e5d91fa5544c478`, and retains
+the complete unresolved state in a 1,454,646,607-byte encoding. Its source,
+original failed result, logs and reconstruction receipts remain unchanged.
+
+The guard inventory omitted two exact optional files produced by existing
+runtime admission: descriptor and timer admission receipts. Commit `314cb5d`
+adds only `descriptor-admission.json` and `timer-admission.json` to retained
+private metadata. Neither file grants deletion authority or becomes a payload.
+Original type, mode, ownership, complete inventory and dependency admission
+remain enabled. The real filename producers were checked; `checkpoint-intent`
+belongs to the parent generation and is not added to the guard catalogue.
+
+`factorybox-epoch-admission-red-70e30c8132464954814f7e30beeaa3dd` reproduces the
+exact refusal for settled and rejected observations of both receipt types before
+the fix. `factorybox-epoch-admission-green-66684030dcd34737952f9bba35285aad`
+passes all selected epoch tests after it, including unchanged guard data and
+unknown-entry refusal. The native public epoch fixture now deterministically
+includes both optional receipts through the real exclusive writer, preserves
+any actual receipt already present, and checks exact bytes after interrupted
+retirement and replacement. Fixture-created observations do not claim an actual
+admission wait. Every original native assertion remains present. All six
+portable groups pass in `factorybox-checks-be781c594c2940818e019a6e2905c77c`.
+Packaged native and full consumer acceptance of this changed core is required.
+
+Verified retention
+`factorybox-resolved-import-archive-retention-e14435ef97664502b343d20ca5058999`
+retires only the now-resolved original 500/A66 complete generated dumps after
+matching the complete passing planned-loss replacement `13233d1b`. Both entire
+original 32-GiB archives were decoded, hashed and indexed before unlink. Their
+original failed verdicts, source, inputs and saved outer logs remain; their
+former complete generated filesystems are intentionally no longer reconstructable.
+The receipts reclaim 1,961,780,339 encoded bytes and preserve the current f43
+failure, all other selected failures, full goal and parallel-chat handoff.
+The prior attempted retention script `1e3baed8` has no plan/result and its tool
+handle is missing. It remains unchanged; the fresh logged continuation fixes
+its incorrect frozen patch filename and records the observed incomplete state.
+
+## Optional admission metadata passes complete native retirement on 6dd
+
+Worker `factorybox-build-worker-6dd795c14ed34918a0d298da234af1a0` and its
+independent no-cache comparison
+`factorybox-build-worker-2299fb18d9c64c9d833dbf873f9ad095` both pass with identical
+source, bundle, package and image. Package SHA-256 is
+`0756c82530482015c983f24985dbb6e78e356f3fef84498d14c1cfdb8f32b6e0`; image is
+`sha256:a5d7482550501aa26f2707bcac1f2a3e7411310bba0ac62916cccbe73aa133c1`.
+The selected Sysbox/CRIU components remain unchanged. Neither build is selected
+or production-qualified.
+
+The first complete native attempt, `factorybox-bounded-loss-a4e8ffd706c84775b5d5bf0d40d88bec`,
+remains a FAIL with its complete 1-GiB failed image and original logs. Original
+useful recovery passes, then real preparation ENOSPC leaves no allocatable data
+block for the fixture's required nonempty foreign-file negative control.
+`factorybox-epoch-pressure-diagnosis-50f9288c73854ef792775a4b81519e47`
+verifies the entire original archive and reads the closed ext4 superblock
+without mounting or changing it. Its free-block count alone is not a measurement
+of the earlier worker's available blocks; the nonempty-file write failure is
+recorded in the original native log.
+
+Fixture declaration `factorybox-epoch-fixture-compat-19c737a3c49642438fbb3870bd3bc640`
+retains every original nonblank line in order and records exact before/after
+hashes. It returns exactly one 4096-byte block from the test's own still-open
+pressure file after the actual preparation failure, allowing the original
+foreign-input assertion to execute. The real ENOSPC, original-data preservation,
+all refusals and original <=512-KiB cancellation-pressure bound stay enabled.
+The later formatter-only change is separately bound by
+`factorybox-epoch-fixture-format-6b57cbd312a245d2acc3264f998673bf`.
+These are test-only changes; the delivered production core is unchanged.
+
+`factorybox-bounded-loss-4ae64c2c08fe4fd2afa5741410f8e200` passes the complete
+public native protocol on 6dd: all original recovery assertions, actual ENOSPC,
+all cancellation/dependency/foreign-mount refusals, public unlink interruption,
+exact controller SIGKILL, replacement on a changed loop attachment, completed
+retirement and exact replay, useful independently recovered successor and a
+second obsolete epoch's retirement. Both optional admission receipts remain
+byte-identical after completion. Cancellation sees five available 4096-byte
+blocks, within the original bound; all exact owned resources are cleaned up.
+No failed original run is discarded or relabelled. The six portable groups also
+pass in `factorybox-checks-b3e584227adc4442bc08448cfb6982fe`.
+Full Factory reproduction, the abrupt variant and final-package gates remain
+required; production qualification stays false.
+
+## Factory functional assertions pass, but the complete 420-second gate fails
+
+`factorybox-consumer-worker-loss-182cdb1df6564fe1a5d298174177a1b6` retains a
+failed overall verdict with exact cleanup. Both original Factory Go test bodies
+pass on the independently reproduced 6dd CLI, including actual full-pressure
+import cancellation/replay, public old-epoch retirement, retained Theia, new
+checkpoint/fork, independent changes and useful descendants after source
+deletion. Both strict output verifiers also pass. This proves the original
+unknown admission-receipt retirement refusal is corrected; it does not pass
+the complete delivered-worker gate.
+
+The existing shared 420-second lifecycle deadline covers both phases and Stop.
+Prepare probe takes 72.17 seconds and its Stop 4.40 seconds. Additional full
+retained-checkpoint inspection before recover takes 28.33 seconds. The recover
+probe takes 309.47 seconds, including a 165.89-second public retirement call;
+first useful recovery is observed at 57.96 seconds. Startup and remaining
+checks use the rest. The runner correctly refuses to start Stop with no budget
+left: `consumer has no remaining lifecycle budget for worker Stop`. Graceful
+replacement-worker exit is therefore unrun, and the whole result remains FAIL.
+Neither the deadline nor the original assertions are changed.
+
+The entire latest failed image is kept. Lossless repack
+`factorybox-storage-repack-81b060faccd94e00b8a9e5136ff8bea1` verifies every
+original byte and reclaims 2,100,951,674 encoded bytes. All source, failed
+verdicts, logs and reconstruction receipts remain. The 309-second Go body alone
+does not establish compliance with the whole 420-second lifecycle.
+
+Investigation is focused on the required deadline. Owned-tree hashing currently
+allocates `io.Copy`'s temporary read buffer for every regular file, whereas the
+filesystem verifier already reuses one buffer for a complete sequential scan.
+A real small-file inventory benchmark is prepared to measure allocation and
+time before selecting a change. At this point it is unrun and no buffer
+optimization is implemented or qualified. Ordinary optional performance work
+remains deferred; first-release qualification stays false and the full goal
+remains active.
+
+## Sequential inventory buffers reduce measured allocation before deadline retry
+
+The real 1,000-file benchmark in
+`factorybox-ownedtree-buffer-before-27b557bd6b964ee1a0dbbac49b1887f8` records
+67,988,045 / 67,988,133 / 67,990,928 allocated bytes per complete inventory
+and 82.91 / 78.99 / 85.37 milliseconds. The allocation profile attributes
+95.39 percent of its sampled allocation volume to `io.copyBuffer`. This
+identifies a concrete source of temporary allocation on the failed retirement
+path, rather than attributing the whole native delay to an unobserved cause.
+
+Commit `679ab13` reuses one 32-KiB buffer for each sequential owned-tree capture,
+complete validation and removal scan. Every regular file is still fully hashed;
+capture still independently validates the entire inventory, and removal still
+validates identity and content before unlink. No content cache, sampled checks,
+new deletion authority or extended timeout is introduced. A focused large-file,
+empty-file and short-file case checks independent complete contents across
+successive buffer uses. All original assertions remain enabled.
+
+`factorybox-ownedtree-buffer-after-a42c2cb9a4e4449f99d1442e2f2e5f50` passes the
+original owned-tree cases and records 2,508,120 bytes per inventory. The same
+three-by-three benchmark command in
+`factorybox-ownedtree-buffer-series-959b0bc4c57e4bd4ba2663bf693a5c21` records
+2,505,360 / 2,509,064 / 2,506,362 bytes and 35.82 / 35.46 / 39.23 milliseconds.
+These are descriptive host-side observations with two Go scheduler threads and
+a 256-MiB Go memory limit. The later series overlaps portable checks; it is not
+a controlled native latency comparison or a percentile claim. Allocation drops
+about 96 percent in this fixture. All six portable groups pass in
+`factorybox-checks-a03c97bc661645a9a8b2c7c54d2f399a`.
+A new package and the complete unchanged native deadline case remain required.
+
+Storage receipt
+`factorybox-resolved-guard-archive-retention-9ceb522d3b5f4d3e9d3d1c5b7a2f889d`
+fully decodes and indexes the superseded original f43 guard-refusal archive
+before retiring its 1,454,646,607-byte encoding. The replacement proof is scoped
+to that exact runtime refusal: complete packaged native retirement `4ae64c2c`
+passes with both receipts retained, and both original Factory Go bodies plus
+strict public-retirement and pressure verifiers pass in 182. Its complete outer
+verdict stays FAIL for the distinct shared-deadline failure. The entire latest
+182 image remains reconstructable from verified repack `81b060fa`; the former
+complete f43 generated filesystem is intentionally no longer reconstructable.
+Original f43 source, failed verdict, inputs and saved logs remain. No current
+unresolved failure, other selected original, full goal or handoff is removed.
+Exact completed-build sharing `factorybox-storage-share-comparison-de52d3a3d65344339e78ea12c7939781`
+returns another 50,688,000 allocated bytes from the identical 6dd/2299 CLI and
+package pair while both complete loaders still verify every original input.
+
+## Buffer candidate reproduces exactly; complete Factory deadline remains red
+
+`factorybox-build-worker-a1945111cf6248ac97aeb62e83900488` and independent
+`factorybox-build-worker-51d2779bac804da089b0a5984c03ea1f` both pass with identical
+source, complete bundle, package, image and layers. CLI SHA-256 is
+`e53b556c59eacbe1efd4737b3de563c17726dbadcd589b2ab8637c58175ab69e`, package
+SHA-256 `7254463c7429848ad7de89f136e6c3c37dcef03e3439e7f9508dd44ef631341a`,
+image `sha256:7fc3a93445c85e5699589c5ab02733380b52785eb0851fc8bf8928f6cf21722f`.
+Selected components and ceilings are unchanged; neither build is production
+qualified. No other build overlaps the following native consumer.
+
+`factorybox-consumer-worker-loss-9fea3952d8644511a6906899e900bf94` remains FAIL
+with confirmed exact cleanup: `consumer whole lifecycle exceeded 420 seconds`.
+The original prepare Go body passes in 95.28 seconds. The recovered application
+answers at 79.07 seconds. Actual recovery call is 75.18 seconds, extra
+post-pressure retained inspection 12.65 seconds and pre-retirement pause
+23.75 seconds. Public epoch retirement completes in 129.59 seconds and useful
+application work is verified afterward. That call is shorter than the previous
+165.89-second observation, while preparation, recovery and pause are slower.
+These uncontrolled shared-host observations do not establish an overall native
+latency improvement or an explanation of every delay.
+
+The complete 420-second deadline then expires before the remaining original
+recover assertions and graceful Stop can finish. They are unrun, not passed.
+The smaller allocation benchmark is therefore no substitute for the still-red
+whole lifecycle gate. The complete latest 32-GiB generated image, raw tar
+SHA-256 `872ccafb775d5577a8210472cbc821a9b8e08cd3a46321d6a2d7e23ec8d8b91f`,
+is preserved by full verified repack
+`factorybox-storage-repack-8ac58e49b9894385ae3a791dd825e25e`, reclaiming
+2,090,098,991 encoded bytes. The preceding 182 deadline failure also remains
+fully reconstructable. All old failed verdicts and source/inputs/logs remain.
+
+Current final-core consumer matrix:
+
+| Example | Planned loss | Abrupt loss |
+| --- | --- | --- |
+| Minimal | Not run on a194 | Not run on a194 |
+| Factory, Theia and local OpenCode | FAIL shared deadline, `9fea3952` | Not run on a194 |
+
+The earlier complete native epoch proof `4ae64c2c` qualifies its exact 6dd core,
+not this later owned-tree implementation. The final required native gates,
+remaining full consumers, original 8-GiB useful recovery, historical EBUSY
+attribution, actual external agent/cancellation/effect cases, tested update and
+rollback, predetermined ten ordinary lifecycles per example and final profile
+remain open. The 24-hour run remains deferred. The complete goal stays active.

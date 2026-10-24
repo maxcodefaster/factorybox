@@ -4,8 +4,10 @@ This is the candidate procedure for the scope in [GOAL.md](../GOAL.md).
 Production qualification remains false until the final profile binds all
 required passing evidence. The older pilot profile does not qualify this
 candidate. The current independently reproduced package is
-`factorybox-build-worker-2291d87be1f24212ba7af731968ea94b`, with comparison
-`factorybox-build-worker-68c046296c8e440a8afe8a43114d1f23`.
+`factorybox-build-worker-a1945111cf6248ac97aeb62e83900488`, with comparison
+`factorybox-build-worker-51d2779bac804da089b0a5984c03ea1f`.
+Older evidence below identifies the package on which it ran and does not replace
+the remaining current-package qualification.
 
 ## Start and verify
 
