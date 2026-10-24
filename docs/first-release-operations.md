@@ -48,6 +48,13 @@ provides the bounded-store arguments and the 45-second graceful stop window.
 Preserve the 3 CPU/3 GiB worker and two-sandbox ceilings. A separate Theia has
 its own 1 CPU/768 MiB ceiling.
 
+Keep the delivered privileged outer worker's capability set. The selected
+timer inspection reads kernel symbols and BPF state; dropping `CAP_SYSLOG`
+in a wrapper masks the required symbol and checkpoint admission refuses.
+The native one-capability comparison and corrected complete Docker-root
+interruption proof are recorded in `docs/production-progress.md`. This does
+not add a capability to inner workloads or permit changing host sysctls.
+
 Before starting, verify that the previous exact worker has stopped and been
 removed. Keep the full volume exclusively attached to this trust domain.
 Read `/run/factorybox/worker.json` through the container file/archive API before

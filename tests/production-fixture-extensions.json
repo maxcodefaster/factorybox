@@ -8,6 +8,14 @@
   "upstream_assertions_modified": false,
   "latency_comparable_to_previous_fixture": false,
   "files": {
+    "tests/devx-lifecycle.sh": {
+      "before_sha256": "6ec7c7e19105abeb314dcbfeb7b6f089be01d6db07ac2d54b294cc47585253fe",
+      "after_sha256": "459c32d0073555b075fe294fa405aa384b6bd62fd9d2acd79c34a7fe4f093fde",
+      "patch": "tests/compatibility/devx-timer-symbol-capability.patch",
+      "patch_sha256": "b1f00ec8266afeb6ed124d15560034260ac0048bad3fd58600a27cb12fff9c31",
+      "before_file": "factorybox-docker-fixture-compat-00941bd982b3441c9c8208747a1a4dc3/tests_devx-lifecycle.sh.before",
+      "reason": "Retain CAP_SYSLOG in the privileged outer diagnostic worker, matching the already-tested delivered Go worker. The selected runtime uses read-only kernel-symbol and BPF timer inspection; the original fixture masked that symbol before the intended Docker fault. A native one-capability control verifies the exact cause without kernel/sysctl changes. Keep the four other capability drops, every original Docker/RAM/filesystem/cure/prior-checkpoint assertion, vet, isolation boundary, resource ceilings and complete deadline. No workload capability or production binary change."
+    },
     "tests/criu-retained-candidate/native.py": {
       "before_sha256": "4b1957f718b498f1683a1913960094d8652319f084096365e1c5cee9fdd3461e",
       "after_sha256": "b4e8276521a35306f9627af77f0f8be362d235d53cb202c33533c0cd570bc063",

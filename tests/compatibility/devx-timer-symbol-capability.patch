@@ -1,0 +1,11 @@
+diff --git a/tests/devx-lifecycle.sh b/tests/devx-lifecycle.sh
+index 4f462e9..7481c66 100644
+--- a/tests/devx-lifecycle.sh
++++ b/tests/devx-lifecycle.sh
+@@ -4,5 +4,5 @@ set -euo pipefail
+ test "${FACTORYBOX_DEVX_LIFECYCLE:-}" = 1
+ . /delegate.sh > /output/cgroup-delegation.txt
+ mount --make-rprivate /
+-exec setpriv --bounding-set=-sys_module,-sys_rawio,-sys_boot,-sys_time,-syslog \
++exec setpriv --bounding-set=-sys_module,-sys_rawio,-sys_boot,-sys_time \
+   /bin/bash /devx-lifecycle-body.sh

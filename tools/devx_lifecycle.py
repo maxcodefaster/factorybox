@@ -381,7 +381,7 @@ def main():
     try:
         context = archive / "context"
         source_directories = ["cmd/factorybox", "internal", "tests/devx-actor", "tests/devx-lifecycle",
-                              "tests/devx-registry", "tests/ide-filesystem"]
+                              "tests/devx-registry", "tests/ide-filesystem", "tests/provider-fixture"]
         if options.suite == "minimal":
             source_directories.append("tests/minimal-actor")
         for directory in source_directories:

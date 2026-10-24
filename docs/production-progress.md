@@ -2882,6 +2882,7 @@ The separate proof index and ordered source reconstruction are
 Production qualification remains false.
 
 
+
 ## Native admission fixture coverage on ordinary worker bytes
 
 The first renewed native-admission invocation,
@@ -8028,3 +8029,106 @@ Current CRIU core evidence is the fresh 39cb run recorded above. This is
 component-only reuse on identical source/binaries/platform, not reuse of old
 Factorybox-core native acceptance or acceptance of skipped upstream cases.
 Production qualification remains false.
+
+## All five current retained-fault integration cases accepted
+
+The five retained cases in
+`factorybox-pilot-integration-gates-84dbbe72789d401883af228b1f06011a`
+have individually verified passing parent verdicts. Corruption is the deliberate
+original RAM assertion failure described above. The four positive children are
+`factorybox-runtime-retained-c02c63dd59754131af4e2337f6b526be` (child loss),
+`factorybox-runtime-retained-6f9e39192cb94b0cb121ff14608eb26a` (controller loss),
+`factorybox-runtime-retained-2286b56726df40bebb7655cb7bc276dc` (guard loss) and
+`factorybox-runtime-retained-1bb20986eda94a679ccbb691489567db` (thread churn).
+Each passes twelve top-level tests and 61 subtests with unchanged inputs and
+exact cleanup; each result hash matches the parent. Their native Docker
+commands explicitly select `linux/amd64`. The historical driver's separate
+`platform` receipt field incorrectly contains its last mount target; that
+field is not evidence of native qualification. Verified host/image, command,
+compiled target and pinned components supply the actual platform evidence.
+
+The batch as a whole remains failed: its next Docker case
+`factorybox-devx-lifecycle-3b334e5d00ea4680910f6cf29f92c3a3`
+fails during compilation, before starting a native workload. Its isolated
+source copy omits `tests/provider-fixture`, now imported by an existing consumer
+test. `factorybox-docker-fixture-dependency-control-03189a10d2e34e7581f7d7f7ae2704f9`
+reproduces that exact compile failure in a new copy of the frozen failed
+context; adding only the three unchanged provider-fixture source files makes
+the same `go test -c` command pass with vet. The original failed context and
+all existing test sources/assertions remain unchanged. `devx_lifecycle.py`
+now copies that dependency, as the delivered-worker consumer driver already did.
+
+## Docker fixture retains the delivered worker's timer-inspection capability
+
+The next actual Docker attempt
+`factorybox-devx-lifecycle-ce7f1e7b70ef4bf08b5bdaf2297725f0`
+compiles, starts the useful Factory application and refuses its first
+checkpoint with `relative timer restart symbol is masked or ambiguous`.
+Its CLI SHA-256 is exactly the delivered 29cb CLI. The older shell fixture
+drops `CAP_SYSLOG`; the delivered privileged Go worker retains it.
+`factorybox-docker-timer-capability-control-47555f0ab77d4311bf42ffaffdc979d2`
+proves the cause on the same native base/boot/kernel. With the exact original
+five capability drops, the sole matching restart symbol has a zero address.
+Changing only the SYSLOG drop yields exactly one nonzero symbol. The four
+other drops, kernel/sysctl settings, resource caps and host boot stay unchanged.
+The owned control exits cleanly and verifies unchanged global sysctls.
+
+The shell fixture now retains that capability in its privileged outer worker;
+inner workload capabilities and production binaries do not change. Original
+Docker/cure/RAM/filesystem/independent-fork assertions, other capability drops,
+vet and complete deadlines remain. Before bytes are preserved in
+`factorybox-docker-fixture-compat-00941bd982b3441c9c8208747a1a4dc3`;
+the production declaration pins exact before/after hashes and the ordered
+`tests/compatibility/devx-timer-symbol-capability.patch`. Its reconstruction
+proof applies with zero fuzz and matches the exact current fixture.
+`factorybox-checks-d7723f180b5f4748995b9281c9dbaa53` passes all six portable
+groups, including all 270 Python tests and immutable reference/fixture checks.
+
+The original complete Docker-root interruption command now passes in
+`factorybox-pilot-integration-gates-7723f3aa759646f8a5a89538845920cc`,
+child `factorybox-devx-lifecycle-bb1f6c525ae04c058990e6ea441ff3ed`.
+It verifies the real page-dump tracer loss, preserved fourteen processes and
+112 threads, useful original application, fresh Docker exec and independent
+current/prior checkpoint forks; the original Go case passes in 69.90 seconds.
+The parent confirms complete cleanup and unchanged inputs. The other Docker
+and upstream integration cases retain their own individual requirements.
+
+## New exact ordinary-series declaration preserves all twenty original commands
+
+`factorybox-first-release-ordinary-series-441c51f127674625ac05666d0d37ddc4/plan.json`,
+SHA-256 `68578703df8b167caff8bb28f37431dffc965ac7ea7b7f92ff58629a4e998db7`,
+preserves every ordinal and command from the unexecuted eef184 plan. Its sole
+supersession is the refreshed tool/test-fixture inventory after the above
+driver compatibility fixes. It binds the identical independently reproduced
+29cb/e23f package, complete original test tree including imported dependencies,
+consumer input receipts, runner, goal and preserved parallel-chat handoff.
+Input-only verification passes without starting a trial. No earlier integration
+or pressure run is counted in the twenty. At declaration, zero trials have
+started. The runner records each start before execution, refuses a second
+execution, preserves every failure and stops rather than retrying or replacing
+an uncertain/failed child. Execution must serialize after the current native
+integration batch. The full production goal remains active and unqualified.
+
+## Lossless retention restores native-run headroom
+
+The additional failure image exhausted the unchanged eight-GiB start reserve;
+the next diagnostic was refused before creating an artifact or native worker.
+`factorybox-storage-share-inputs-31c3f86f1c1948c4aea01057edba353f`
+shares 23 byte-identical closed inputs and returns 413,192,192 allocated bytes.
+`factorybox-storage-share-sources-95096ea0c85148e89fa5362282913b7b`
+reverifies 790 closed source trees/results, shares 9,326 identical files and
+returns 97,554,432 allocated bytes before its own receipt cost. Source bytes,
+metadata, original results and complete failure dumps are preserved.
+
+`factorybox-storage-repack-dffc5526c4b4447a97611389e5b1d75f`
+losslessly re-encodes the new unresolved ce7f Docker failure. Both the original
+and replacement are completely decompressed and hashed against the original
+3,862,953,984-byte tar, SHA-256
+`0a9863828987fe30b082e31b82606b1f132159f31a17eabd957a428c7118403a`.
+The verified replacement returns 891,138,309 encoded bytes. The complete
+unresolved filesystem remains reconstructable through its durable resolver
+receipt; the failed result, source, logs and compiled input encodings remain.
+No historical experiment or original 8-GiB/provider/EBUSY counterexample is
+targeted. Native preflight then admits the bounded capability control and
+subsequent integration batch under the original reserve and host-free-space
+policy.
