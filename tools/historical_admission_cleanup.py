@@ -18,6 +18,7 @@ import native_base
 import reference
 import reference_lifecycle
 import upstream_unit
+import upstream_bats
 
 ORIGINAL = 'factorybox-runtime-8829166825b0476888776bdfd2c7d5ae'
 PATTERN = '^Test((Filesystem|Descriptor|ProcDirectory|DetachedFile|SocketQueue)Admission|CaptureSocketDescriptor)Native$'
@@ -103,17 +104,24 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--tracer-build',help='exact successful owned-PID-namespace observer build')
     parser.add_argument('--focus-proc',action='store_true',help='repeat both original proc cases twenty times; this is not a full main admission suite')
+    parser.add_argument('--proc-repetitions',type=int,choices=range(1,41),default=PROC_COUNT,
+                        help='predeclare 1-40 paired Proc repetitions within the unchanged native deadline; requires --focus-proc')
+    parser.add_argument('--stream-archive',action='store_true',
+                        help='verify and compress the complete stopped volume while streaming; automatic above twenty Proc pairs')
     parser.add_argument('--busy-observer-build',help='reproduced original binary with declared post-failure-only native test observation')
     parser.add_argument('--fs-tracer-build',help='exact root/pwd observer, supplementing --tracer-build')
     parser.add_argument('--fs-tracer-control',help='exact successful three-case root/pwd native control')
     args=parser.parse_args()
+    if not args.focus_proc and args.proc_repetitions != PROC_COUNT:
+        parser.error('--proc-repetitions requires --focus-proc')
     if bool(args.fs_tracer_build)!=bool(args.fs_tracer_control) or args.fs_tracer_build and not args.tracer_build:
         parser.error('fs observation requires its native control and the existing file observer')
     root = reference.ROOT
     source = root/'artifacts'/ORIGINAL
     before = reference.sha(source/'result.json')
     original = json.loads((source/'result.json').read_text())
-    count, pattern = (PROC_COUNT, PROC_PATTERN) if args.focus_proc else (COUNT, PATTERN)
+    count, pattern = (args.proc_repetitions, PROC_PATTERN) if args.focus_proc else (COUNT, PATTERN)
+    stream_archive = args.stream_archive or args.focus_proc and count > PROC_COUNT
     expected = expected_outcomes((source/'stdout.txt').read_text(),count,proc_only=args.focus_proc)
     if original['passed'] is not False or not all(original[k] for k in ['cleanup','inputs_unchanged','source_context_unchanged','components_unchanged']):
         raise ValueError('requires the exact retained failed suite with intact inputs')
@@ -219,10 +227,13 @@ test -s /output/fs-trace-ready.json
               'original_result_sha256':before,'predetermined_repetitions':count,'proc_focus':args.focus_proc,
               'predetermined_full_suite_repetitions':None if args.focus_proc else COUNT,
               'diagnostic_only':True,'historical_failure_explained':False,'production_qualified':False,
-              'scope':('Exact original test/CLI/components with twenty repetitions of both original ProcDirectoryAdmissionNative cases and first-failure stop. Adapter assertions still run once. This is a focused diagnostic, not the complete main admission suite.' if args.focus_proc else
+              'scope':(f'Exact original test/CLI/components with {count} repetitions of both original ProcDirectoryAdmissionNative cases and first-failure stop. Adapter assertions still run once. This is a focused diagnostic, not the complete main admission suite.' if args.focus_proc else
                        'Exact original test/CLI/components with three full admission repetitions and first-failure stop.')+' Original immediate unmount assertions and resources retained. No inferred repair.',
               'invocation_sha256':reference.sha(artifact/'invocation.sh'),'runner_sha256':reference.sha(artifact/'runner.py'),
               'global_sysctls_before':sysctls()}
+    result['archive_mode'] = 'verified-compressed-complete-volume' if stream_archive else 'selected-capture-paths'
+    if stream_archive:
+        result['scope'] += ' After the original 360/420-second native deadline, the stopped read-only volume is archived with complete streaming decompression verification and a separate 600-second offline archive bound.'
     result['expected_pass_outcomes'] = dict(expected)
     result['test_binary_sha256']=test_sha
     result['historical_test_binary_byte_identical']=test_source is None
@@ -320,7 +331,20 @@ test -s /output/fs-trace-ready.json
         preserve = False
         try:
             if attempted:
-                try: lifecycle_native.archive_capture(artifact,name,owner,result,image)
+                try:
+                    if stream_archive:
+                        fixture=json.loads(reference.docker(['container','inspect',name]))[0]
+                        if fixture['Config'].get('Labels',{}).get('com.factorybox.run')!=owner:
+                            raise ValueError('stream archive fixture ownership changed')
+                        if fixture['State']['Running']:
+                            reference.docker(['container','stop','--time=2',name])
+                            fixture=json.loads(reference.docker(['container','inspect',name]))[0]
+                        if fixture['State']['Running'] or fixture['State']['Pid']!=0:
+                            raise ValueError('stream archive source still has writers')
+                        upstream_bats.archive_stopped_volumes(artifact,name,owner,[name],image,result,
+                                                             timeout=600,compressed=True)
+                    else:
+                        lifecycle_native.archive_capture(artifact,name,owner,result,image)
                 except Exception as error:
                     preserve = True;result['archive_error'] = str(error);result['retained_source_volume'] = name;failure = failure or error
                 reference.owned_delete('container',name,owner)

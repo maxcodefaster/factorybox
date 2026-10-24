@@ -38,6 +38,12 @@ class HistoricalAdmissionInventory(unittest.TestCase):
         self.assertEqual(expected['TestProcDirectoryAdmissionNative/transient-foreign-proc-directory'],20)
         self.assertEqual(expected['TestFilesystemCopyNative'],1)
         self.assertNotIn('TestDescriptorAdmissionNative',expected)
+        extended=diagnostic.expected_outcomes(log,40,proc_only=True)
+        self.assertEqual(sum(n for name,n in extended.items() if '/' not in name),51)
+        self.assertEqual(sum(n for name,n in extended.items() if '/' in name),141)
+        self.assertEqual(extended['TestProcDirectoryAdmissionNative/held-foreign-proc-directory'],40)
+        self.assertEqual(extended['TestProcDirectoryAdmissionNative/transient-foreign-proc-directory'],40)
+        self.assertEqual(extended['TestFilesystemCopyNative'],1)
         renamed=log.replace('held-foreign-proc-directory','unknown-proc-directory')
         with self.assertRaisesRegex(ValueError,'complete proc assertion inventory differs'):
             diagnostic.expected_outcomes(renamed,20,proc_only=True)

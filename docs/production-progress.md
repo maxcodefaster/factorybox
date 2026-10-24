@@ -6287,3 +6287,80 @@ external-provider cases, broader storage/operator recovery, complete tested
 operating procedures, the final ten-per-example series and final release
 profile remain required. The goal stays active and production qualification
 remains false.
+
+## Untraced original Proc repetition and complete archive reconciliation
+
+The preceding goal turn makes substantive progress: commits `d0d2834` and
+`320ff8f` preserve the restore-worker fix, independently reproduced delivered
+package, actual Factory/Theia lifecycle and thirteen additional boundaries.
+Resumption verifies the clean worktree and absence of live native/build jobs.
+The full production goal and saved parallel-chat context remain unchanged.
+
+The historical admission driver now accepts an explicit bounded
+`--proc-repetitions` count, defaulting to the previous twenty and allowing up
+to forty without changing either original case, fixture, 360-second Go timeout
+or 420-second native deadline. Its original inventory tests retain all earlier
+assertions and additionally verify the exact forty-pair frequencies. Portable
+check `factorybox-checks-927cf20f4c1d421dab9a27a477bbe872` passes all six groups.
+
+Native diagnostic
+`factorybox-historical-admission-ae7dcc7d5da743c9b1c2c91b6f642d90`
+uses the same historical CLI/components and reproduced test binary with only
+the previously declared post-failed-unmount observation. It has no continuous
+file or root/cwd tracer. All forty pairs pass, with 51 top-level and 141
+subtest outcomes, no skips, no failures and exit zero. The immediate ordinary
+unmount assertions remain unchanged. The historical EBUSY does not reproduce;
+this is neither an attribution nor a repair or current-package acceptance.
+
+The larger run exposes a diagnostic retention limit: its selected-path raw
+archive reaches 3,562,602,496 bytes before the separate 180-second archive
+timeout. The native assertions already completed within their unchanged
+deadline. The original result remains failed with cleanup false and its full
+owned source volume retained. No assertion failure is inferred from this
+archive-only failure, and no partial tar is treated as complete.
+
+Offline reconciliation
+`factorybox-historical-archive-reconcile-f7f46835d3e14d3289bba7b72117b388`
+then archives the complete stopped volume through the existing bounded,
+read-only streaming encoder. All 6,276,775,936 raw bytes, SHA-256
+`a371c62c940253f88fa7b90e5b25e7dab70efef1ab1c5fe80cb38be9ea7b02d6`,
+are independently decoded and verified in 20.46 seconds. It also preserves
+every byte of the original incomplete tar with a full reconstruction receipt.
+The source volume is deleted only after both verifications. Its final
+next-run capacity query nevertheless fails at 24.05 GiB; argument evaluation
+prevents its final status update even though archive preservation and exact
+resource removal already succeeded. This failed maintenance journal remains
+unchanged as well.
+
+Explicit offline repacks
+`factorybox-storage-repack-a3a80d59a3c94f30bd7871c381aea13d` and
+`factorybox-storage-repack-d418c4051a1243f2bf2ee33d0f52e884`
+first verify exact resource absence, source identities and both unchanged
+failed results. They completely decode and preserve the full-volume archive
+and incomplete-tar bytes, reclaiming respectively 93,479,340 and 66,561,053
+encoded bytes. Standard verified replacement pointers retain reconstruction;
+the partial tar remains explicitly incomplete. No source, native result,
+assertion or selected actual failure is retired.
+
+Independent `verify-closure.py` and `closure.json` in the reconciliation
+artifact reverify the full volume, partial-output reconstruction, all forty
+paired original outcomes, preserved failure journals and exact absent owned
+resources. The required 8-GiB next-run headroom passes. This is a new audit of
+actual completed retention/cleanup, not a rewrite of either failed result.
+
+The diagnostic driver now explicitly supports `--stream-archive`, automatically
+selected above twenty paired repetitions. It stops and verifies its exact
+owned source, then preserves the complete read-only volume with bounded
+streaming compression and full decompression verification. The separate
+offline archive bound is 600 seconds; native deadlines and all assertions
+remain unchanged. All six portable check groups pass in
+`factorybox-checks-8ccaab1c5a5d427fab2debba08734dfa`. A fresh single-pair
+integration observation of this new archive branch follows separately.
+
+That complete original single-pair integration passes in
+`factorybox-historical-admission-a4832767c9074e788174a3e96512377f`,
+including all adapter assertions, complete compressed-volume preservation,
+unchanged inputs/globals and exact owned cleanup. Both original Proc cases
+pass in 7.84 seconds. The fixed archival path is exercised through the actual
+diagnostic CLI rather than inferred from its unit checks. The earlier failed
+journals stay false and the historical EBUSY cause remains open.
