@@ -1,10 +1,16 @@
-# Local pilot worker contract, schema 1
+# Local worker contract, schema 1
 
-This contract is qualified for the exact local
-[pilot profile](../upstream/amd64-pilot-profile.json), with the results and
-limits in [pilot-validation.md](pilot-validation.md). The original v0.1
-composition remains the frozen comparison. Production qualification remains
-false. The worker is a privileged administrative service for one
+The historical [pilot profile](../upstream/amd64-pilot-profile.json) retains only
+its exact results and limits in [pilot-validation.md](pilot-validation.md).
+The current first-release candidate is the independently reproduced 6016/829f
+package described in [the operating procedure](first-release-operations.md).
+It uses the bounded-store Compose profile. Its native, ordinary, pressure and
+operating gates pass; actual-provider acceptance, historical cleanup attribution
+and final qualification remain open. Older named package experiments below are
+development history and do not qualify or describe defects in the current
+package. Production qualification remains false.
+
+The worker is a privileged administrative service for one
 customer or trust domain. Consumers are separate processes inside its system
 containers. No IDE, agent, Python client or Dev Container is required by the
 Go runtime.
@@ -33,9 +39,11 @@ it does not provide VM isolation or imply Kubernetes support.
 
 ## Persistent and ephemeral state
 
-Mount the complete owned volume at `/var/lib/sysbox`. The Go supervisor creates
-`/var/lib/sysbox/store` mode 0700. It holds the store lease for its lifetime.
-Its `store.json` fixes the caller's store ID, `manager/` holds Sysbox-managed
+Mount the complete owned volume at `/var/lib/sysbox`. The selected bounded
+Compose profile mounts its fixed filesystem at `/var/lib/sysbox/fixed-store/data`
+and creates `store/` there with mode 0700. The older unbounded pilot instead
+uses `/var/lib/sysbox/store`. The Go supervisor holds the store lease for its
+lifetime. Its `store.json` fixes the caller's store ID, `manager/` holds Sysbox-managed
 data and `epochs/<random epoch>/controller/` holds that worker's lifecycle
 records, bases, captures and fork/recovery inputs. Persist all of them as one
 owned storage unit. Copying only CRIU page files is insufficient.
@@ -86,14 +94,14 @@ This candidate behavior is outside the frozen pilot profile.
 Operations that still write completion/deletion metadata can fail if the
 filesystem has no space at all; the admission exemption is not a success promise.
 
-The preflight observation does not reserve 4 GiB, cap guest writes or guarantee
-space throughout an operation. It is not a hard store quota or coordination
-between workers. Use bounded storage for that separate requirement; hard
-quotas and general concurrent-write exhaustion remain release work. The native
-pressure result covers the concrete failure described in
+The host preflight observation does not reserve 4 GiB, cap guest writes or
+guarantee space throughout an operation. The selected bounded filesystem below
+separately limits its own backing and applies its own admission policy. This
+is not capacity coordination between workers. The earlier host-only pressure
+result covers the concrete failure described in
 [production progress](production-progress.md#capacity-admission-and-rollback-space).
 
-An additional experimental profile explicitly accepts `worker --bounded-root
+The first-release candidate uses `worker --bounded-root
 ABSOLUTE_PRIVATE_DIRECTORY --bounded-bytes BYTES`. It creates a fixed image from
 512 MiB to 64 GiB, with no automatic migration, resizing or reformatting. The
 store becomes `DIRECTORY/data/store`; image identity and the outer lease remain
@@ -102,22 +110,26 @@ headroom, separate from the host's 12 GiB plus 4 GiB checks. Both observations
 appear in `capacity`. All admitted disk-backed bundle layers and bind sources
 must reside in the bounded filesystem; initially read-only external binds are
 also refused. This profile requires existing loop/ext4 support and direct I/O.
-It has native small-actor checkpoint/fork/pause/resume and real guest ENOSPC
-proofs. A separate 32-MiB RAM actor passes planned and abrupt same-host worker
-replacement through the delivered CLI, including independent resumed descendants.
-It also refuses duplicate ownership, changed store identity/capacity and partial
-initialization without rewriting image bytes. Full-consumer qualification remains
-open. This profile does not
-change the pilot deployment or production selection. See
-[the exact evidence and remaining limits](production-progress.md#opt-in-bounded-worker-and-actual-guest-capacity).
+The current package passes native capacity, retained-recovery and admission
+tests plus all four complete Minimal/Factory pressure consumers after planned
+or abrupt same-host worker loss. It also refuses duplicate ownership, changed
+store identity/capacity and partial initialization without rewriting image
+bytes. The [current release status](first-release-status.md) binds those
+results. The historical pilot deployment remains unchanged. These results
+cover the tested capacity and failure cases, not arbitrary workloads or
+coordination of several workers' host-space use.
 
 ## Local commands and responses
 
 Administrative clients execute the image's own binary inside the worker:
 
+The paths below use the delivered bounded Compose layout. Prepare the complete
+bundle on that filesystem. For recovery, save and use the old worker's exact
+`worker-status.lifecycle.root`; substitute its actual epoch for `OLD_EPOCH`.
+
 ```sh
 /opt/factorybox/factorybox worker-status
-/opt/factorybox/factorybox --worker-run-root /run/factorybox start --bundle /var/lib/sysbox/input/bundle source
+/opt/factorybox/factorybox --worker-run-root /run/factorybox start --bundle /var/lib/sysbox/fixed-store/data/store/input/bundle source
 /opt/factorybox/factorybox --worker-run-root /run/factorybox state source
 /opt/factorybox/factorybox --worker-run-root /run/factorybox checkpoint --snapshot-id aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa source
 /opt/factorybox/factorybox --worker-run-root /run/factorybox fork --source source --snapshot-id aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa branch
@@ -167,14 +179,15 @@ Deletion checks the exact saved object ownership before touching kernel state;
 it does not garbage-collect unrelated containers, volumes or old epochs.
 It confirms removal of the owned runtime, empty cgroups and owned fork overlay
 mount. Checkpoints, operation records and filesystem backing remain retained;
-automatic checkpoint retirement, store quotas and old-epoch garbage collection
-are not implemented by this command. Production operation needs an independently
-qualified retention/capacity policy that preserves live descendant and recovery
-inputs. See the proposed [production release gates](../README.md#path-to-the-first-production-release).
+automatic checkpoint retirement and old-epoch garbage collection are not
+implemented by this command. Use the bounded profile and explicit identity- and
+dependency-checked retirement procedures below. Their current-package evidence
+is indexed in the [operating procedure](first-release-operations.md); automatic
+retention remains deferred.
 
 ## Experimental checkpoint selections and retirement
 
-The unselected bounded-store candidate adds `select-checkpoint`,
+The bounded-store candidate provides `select-checkpoint`,
 `release-checkpoint` and `retire-checkpoint`. Each requires one positional source
 sandbox ID and `--snapshot-id`, `--source-owner` and `--checkpoint-sha256` naming
 the exact complete saved checkpoint. Selection/release additionally require
@@ -201,7 +214,12 @@ capacity is observed separately because live open references can retain blocks.
 Do not manually clear an uncertain intent or interpret a partial result as a
 completed retirement.
 
-This implementation is not qualified. The earlier BusyBox sleep and direct
+The following timer-integration notes describe preserved older package
+experiments. The selected package passes the complete retirement suite and
+targeted timer/restore-hold cases as indexed in the current release status;
+full production qualification still requires the remaining gates.
+
+The earlier BusyBox sleep and direct
 read-only-request/NULL-remainder failures remain preserved in the evidence.
 The integrated timer continuation in candidate
 `factorybox-build-worker-2fca9b438e664527a211a44df38bd0f7` passes the full
@@ -284,7 +302,7 @@ persistent volume, component identities and qualified host.
 
 ```sh
 /opt/factorybox/factorybox --worker-run-root /run/factorybox recover-paused \
-  --source-root /var/lib/sysbox/store/epochs/OLD_EPOCH/controller \
+  --source-root /var/lib/sysbox/fixed-store/data/store/epochs/OLD_EPOCH/controller \
   --source source --snapshot-id bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
   --source-owner EXACT_PAUSED_RECORD_OWNER \
   --checkpoint-sha256 EXACT_FULL_CHECKPOINT_SHA256 recovered
@@ -302,11 +320,14 @@ An actual 8-GiB full-consumer recovery attempt reached ENOSPC while copying
 private RAM images. Independent read-only verification of its complete saved
 image confirms that every published RAM/metadata file and all nine saved
 filesystem trees remain intact, with the original source still committed
-paused. That failed attempt remains failed. This integrity evidence does not
-authorize removing partial imports, adopting copied store identities or
-retrying uncertain operations. Useful recovery after reclaiming space still
-needs its separate acceptance. Exact evidence is indexed in
-[production progress](production-progress.md#external-provider-quota-and-original-enospc-checkpoint-integrity).
+paused. Its separate useful rescue subsequently passes using the exact old
+saved recipe and a separate writable destination in
+`factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`.
+The failed original attempt remains failed. This forensic rescue does not
+qualify the old package as a fallback or prove new-recipe compatibility. It
+does not authorize deleting uncertain partial imports or adopting copied store
+identities. Use the explicit inspection/cancellation protocol in the operating
+procedure. Exact evidence is indexed in the current release status.
 
 The native proofs cover planned and abrupt same-host whole-worker loss after
 a complete committed pause. Running unsaved RAM, host reboot, lost storage,
@@ -655,16 +676,17 @@ That evidence does not qualify the full public retirement protocol below.
 
 ## Manual epoch retirement candidate
 
-The unselected candidate adds `begin-epoch-retirement` and `retire-epoch`.
+The bounded-store candidate provides `begin-epoch-retirement` and `retire-epoch`.
 They require the current verified `--worker-run-root` and an exact JSON
 `--request-file`, without positional sandbox arguments. Bounded actor cases
 cover replacement after accepted partial deletion, a registered unused base,
 actual interruption of the public unlink process and a second epoch with
 fork/resume history. The separate full Factory case also retires its actually
 used base and original RAM backing while preserving a useful independent
-successor. These development results and their package boundaries are indexed
-in `factorybox-epoch-used-base-notes-ee369ef7a8124cba88c86996d05f3f69`.
-Complete final-package qualification remains required before production use.
+successor. Both complete current native epoch cases and all four pressure
+consumers are independently closed on the selected package. The operating
+procedure links their exact current evidence. Complete final-package
+qualification remains required before production use.
 
 First drain all sandboxes in this store to fully committed pauses or confirmed
 deletions. Release every active selection protecting a source checkpoint through

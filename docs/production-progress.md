@@ -10183,3 +10183,49 @@ queue remain byte-identical, all 232 reference files and ordered fixture
 extensions verify, and the documentation diff check passes. The GOAL and
 selected implementation remain unchanged. This updates evidence and operating
 instructions; it does not grant production qualification.
+
+## 2026-10-25: bounded CLI examples corrected and requirement audit saved
+
+The worker contract and example now use the selected bounded Compose layout
+throughout their first-release instructions. The Start bundle is
+`/var/lib/sysbox/fixed-store/data/store/input/bundle`, recovery uses the saved
+old worker's exact bounded controller root, and the workflow includes the
+matching `--bounded-bytes 34359738368`. The private environment file contains
+that capacity and both Compose files are selected from the first Start.
+The old unbounded profile remains explicitly historical. This corrects a real
+documentation mismatch with the unchanged workflow's admitted input root;
+it does not change the CLI, Compose files or runtime. The current Compose
+success 8399 replaces the older example package in the evidence paragraph.
+
+`release-profile/requirement-audit.json` under the handoff, SHA-256
+`4529af5c89424030374e3866930812c1304664ee6be949540d10d4d6fa343034`,
+rechecks all 201 delivered source files and 122 named evidence files. It binds
+all eleven closed groups, the current startup component comparison, actual
+sixteen successful starts, PID causal proof, performance, inventory/notices,
+original rescue and current instructions. The unchanged historical pilot is
+checked against the original goal baseline. All 204 live queue inputs still
+match. Seven shell blocks in the contract/example and two in the operating
+procedure pass syntax-only checks; local document targets exist. The original
+727 upstream passes and eighteen named skips, plus the two original Bats
+skips, remain explicitly distinct. No assertion, skip or failed result is
+reclassified. The three incomplete audit entries are historical cleanup
+attribution, actual-provider acceptance and the final complete profile.
+
+The next holder observation can reuse existing qualified inputs rather than
+inventing another observer. `busy-evidence-audit/holder-controls.json`, SHA-256
+`495cacf0bc49be926f48bc1fb4b51399274b165bfe4a9abe78fd01734308d31a`,
+revalidates the exact original-context post-failure observer and the existing
+root/pwd tracer's three real controls. Each actual cwd, chroot or fork-inherited
+cwd holder causes kernel EBUSY without an open target FD; ordinary unmount
+succeeds after exact holder exit. All forty raw events, six unmounts and error/
+miss counters are rechecked. The original-context observer reproduces the old
+binary first and changes only the declared diagnostics after a failed unmount;
+its diagnostic executable is not called byte-identical to the original.
+Root/pwd snapshots remain a partial reference inventory, with caller/child,
+transition and final-release bounds explicit. These are existing positive
+controls, not a new historical reproduction or runtime repair.
+
+Only the original provider supervisor remains live. No new build or native
+diagnostic consumes the reserved headroom before its unchanged eight-case
+queue. Root GOAL, selected source/component bytes, reference and imported
+overlays remain unchanged; the full release goal stays active and unqualified.

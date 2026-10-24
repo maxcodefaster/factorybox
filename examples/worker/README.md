@@ -3,9 +3,13 @@
 This optional administrative client uses the delivered Go worker and its
 schema-1 CLI. The existing [minimal Dev Container](../minimal) and
 [Factory composition](../factory) remain separate consumers. Read the
-[worker contract](../../docs/worker-contract.md) and the current
-[qualification evidence](../../docs/pilot-validation.md) and
-[selected local profile](../../upstream/amd64-pilot-profile.json) before integration.
+[worker contract](../../docs/worker-contract.md),
+[current release status](../../docs/first-release-status.md) and
+[operating procedure](../../docs/first-release-operations.md) before integration.
+The commands below use the bounded-store first-release candidate, whose
+production qualification remains false. The older
+[pilot profile](../../upstream/amd64-pilot-profile.json) and
+[pilot evidence](../../docs/pilot-validation.md) remain historical comparisons.
 
 Set an exact locally built image digest, a fresh store identity and a dedicated
 volume name. Preserve the same values across worker replacement. Provision the
@@ -17,13 +21,17 @@ volume and never pulls or publishes an image.
 export FACTORYBOX_WORKER_IMAGE='YOUR_LOCAL_IMAGE@sha256:EXACT_IMAGE_DIGEST'
 export FACTORYBOX_STORE_ID="$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 export FACTORYBOX_STORE_VOLUME="factorybox-$FACTORYBOX_STORE_ID"
+export FACTORYBOX_STORE_BYTES=34359738368
 (
   umask 077
-  printf 'FACTORYBOX_WORKER_IMAGE=%s\nFACTORYBOX_STORE_ID=%s\nFACTORYBOX_STORE_VOLUME=%s\n' \
-    "$FACTORYBOX_WORKER_IMAGE" "$FACTORYBOX_STORE_ID" "$FACTORYBOX_STORE_VOLUME" > factorybox-worker.env
+  printf 'FACTORYBOX_WORKER_IMAGE=%s\nFACTORYBOX_STORE_ID=%s\nFACTORYBOX_STORE_VOLUME=%s\nFACTORYBOX_STORE_BYTES=%s\n' \
+    "$FACTORYBOX_WORKER_IMAGE" "$FACTORYBOX_STORE_ID" "$FACTORYBOX_STORE_VOLUME" \
+    "$FACTORYBOX_STORE_BYTES" > factorybox-worker.env
 )
 docker volume create --label "io.factorybox.store-id=$FACTORYBOX_STORE_ID" "$FACTORYBOX_STORE_VOLUME"
-docker compose --env-file factorybox-worker.env --project-name factorybox-demo --file examples/worker/compose.yaml up --detach --pull never worker
+docker compose --env-file factorybox-worker.env --project-name factorybox-demo \
+  --file examples/worker/compose.yaml --file examples/worker/compose.bounded.yaml \
+  up --detach --pull never worker
 ```
 
 Use the Docker context and administrative access appropriate to the qualified
@@ -34,7 +42,8 @@ the calling shell's exported variables. The workflow writes its own validated
 private copy inside the response directory before issuing Compose commands.
 
 Before the workflow, an administrator places a complete application OCI bundle
-under `/var/lib/sysbox/input/bundle` in the running worker. The current capture
+under `/var/lib/sysbox/fixed-store/data/store/input/bundle` in the running worker.
+All bundle backing must be on that bounded filesystem. The current capture
 path requires these private sibling directories: `lower`, `upper`, `work` and
 `rootfs`. `rootfs` must be the admitted overlay mounted with exactly those
 lower/upper/work paths (the tested path uses `index=off`); `config.json` refers
@@ -63,7 +72,9 @@ replacement and retains the old container/store for inspection.
 
 ```sh
 mise exec -- python3 examples/worker/workflow.py \
-  --project factorybox-demo --bundle /var/lib/sysbox/input/bundle \
+  --project factorybox-demo \
+  --bundle /var/lib/sysbox/fixed-store/data/store/input/bundle \
+  --bounded-bytes 34359738368 \
   --context default --sudo --output /absolute/new/private-response-directory
 ```
 
@@ -79,10 +90,9 @@ its retained snapshots are intentionally no longer needed.
 
 ## Bounded-store candidate
 
-For the controlled first-release candidate, combine `compose.yaml` with
-`compose.bounded.yaml`. Keep the same complete external volume and store ID.
-Add the exact fixed image size to the private environment file, for example
-`FACTORYBOX_STORE_BYTES=34359738368` for 32 GiB. This is the tested Factory
+The commands above combine `compose.yaml` with `compose.bounded.yaml`. Keep the
+same complete external volume, store ID and exact fixed image size across
+worker replacement. `FACTORYBOX_STORE_BYTES=34359738368` selects 32 GiB. This is the tested Factory
 capacity, not a promise that every workload or recovery generation fits.
 The worker reports capacity and refuses writes that cannot be admitted.
 
@@ -101,15 +111,21 @@ controller epochs and all backing remain one persistent storage unit.
 The [first-release operating procedure](../../docs/first-release-operations.md)
 tracks the required acceptance separately from the historical pilot.
 
-The bounded example passes with the actual independently reproduced
-`2291d87be1f24212ba7af731968ea94b` worker package and a 32-GiB store in
-`factorybox-worker-example-3f93920dace74945b3cb7d405211a90d`.
+The bounded example passes with the current independently reproduced
+`factorybox-build-worker-6016296965364344a8ef9eede420dbc8` package and a 32-GiB store in
+`factorybox-worker-example-83994d5e4825404fb3eb121c0afda237`.
 It checks unchanged mounts after a refused identity request, both clean
 worker stops, exact recovery replay and an independent descendant. The
 32-MiB actor uses the full delivered rootfs input. The earlier 4-GiB attempt
 fills the store during recovery cloning and remains failed with its complete
-archive retained. Full consumer, external-agent and final-release acceptance
-remain separate.
+archive retained. Current complete Minimal/Factory consumers, all twenty
+ordinary trials and all five operating cases are independently closed as
+indexed in the operating procedure. Actual external-agent acceptance,
+historical cleanup attribution and the final profile remain open.
+
+The older unbounded pilot uses only `compose.yaml`, omits `--bounded-bytes` and
+places its input under `/var/lib/sysbox/input`. It does not provide this fixed
+store limit and is not the selected first-release deployment.
 
 Historical validation: the previous Compose/workflow client passes with the C9
 delivered worker in
