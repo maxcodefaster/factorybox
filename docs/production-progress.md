@@ -6990,3 +6990,91 @@ required regression coverage. Historical EBUSY attribution, external-agent
 acceptance, operating update/rollback, final series and final release profile
 remain open. Performance observations of the preceding delivered package do
 not qualify this newly changed runtime source.
+
+## Interrupted import identified; explicit cancellation candidate
+
+Worker build `factorybox-build-worker-f2c46c7ecf074db19b6c1390d96b1586`
+successfully packages commit `b2fda3b`, with package SHA-256
+`0e0fbad8739fefe1cb6c571d7fc0018ec526b9245478d5f71ff21c6e9b8df60f`
+and image `sha256:a0e7d3f726b1bed80e8c04dc638f11474c12c15a9175800e6672805cbb7c8c42`.
+Its original full recovery-pressure consumer run,
+`factorybox-consumer-worker-loss-a66d0c25e0b74b4eae10c29b5667265c`, gets
+past the previous missing-intent admission failure. Actual admitted copy ENOSPC,
+unchanged complete original checkpoint, exact pressure release, unchanged
+partial import on retry and independent useful recovery/replay all pass.
+The original complete minimal RAM/files comparison passes. The run then fails
+at public old-epoch retirement with `incomplete descendant fork/import blocks
+epoch retirement`. Later original assertions remain unrun. Overall result is
+false, cleanup and unchanged global settings true.
+
+The guard is correct: the failed copy is still an unresolved dependency.
+The candidate now adds read-only `inspect-recovery-import` and explicit
+`cancel-recovery-import`, under the current/retained controller locks and
+verified bounded-store lease. A fresh exact inventory, directory birth/change
+identity, reservation owner, same boot and pinned original pause/recipe must
+match before any removal. Only the unpublished `recovery` subtree and at most
+one exact root-owned private interrupted publication file can be removed.
+Original `import.json`, target identity and old backup remain. The cancellation
+receipt is published only after payload removal and sync; exact replay returns
+that original completion. Interrupted deletion requires a fresh inspection.
+Foreign mounts/hardlinks, unknown entries, changed contents, a published object
+or accepted retirement refuse. Only verified terminal cancellations stop
+reserving a future restore and cease blocking ancestor retirement.
+
+The declared ordered consumer patch now leaves the failed copy intact through
+the original full useful-recovery assertions, then explicitly inspects/cancels
+it through the delivered CLI before original epoch retirement. A second exact
+owned pressure inode fills the store to zero available blocks before inspection
+and cancellation. Complete original consumer success and an unchanged terminal
+reservation at cleanup remain mandatory. No original assertion, vet setting,
+resource ceiling or deadline is removed.
+
+Root-owned focused regression evidence
+`factorybox-recovery-import-cancel-checks-ece11b9a923343e9bef25839a4e25d40`
+passes nine top-level tests, including changed identity/content/inventory,
+partial deletion, resurrection, interrupted publication and original unknown
+inventory controls. An earlier check runner failed before starting a build or
+test because its source manifest incorrectly traversed archived artifacts;
+that failure is recorded in `factorybox-recovery-import-cancel-checks-84968b2cac2048d89f60dc1a42bf99db`.
+All six portable groups pass in
+`factorybox-checks-7fefdaffbc7f4087848d16487f1c67fc`, including enabled vet,
+tagged consumer compilation and unchanged reference/ordered fixture verification.
+Native full-store cancellation is still pending; these results do not qualify
+the candidate or close broader import interruption cases. Failure before the
+initial journal and mounted later-stage imports still need explicit acceptance.
+
+The complete A66 failed store remains reconstructable through lossless repack
+`factorybox-storage-repack-0dc5a343b461446ba09ac94836c4ce2e`: all
+34,360,786,944 original bytes, SHA-256
+`278a2604a8a92da93c19f49785b1552b77a8bc3f596e1892b055c745a6eae725`,
+verify in both encodings; 954,530,319 encoded bytes are reclaimed.
+
+Storage maintenance first retired 24 superseded closed PASS generated
+filesystems in `factorybox-runtime-archive-retention-4919376533d44554a8fc9cd10ad8154c`,
+after complete raw/member verification and complete matching replacement
+observations. It preserves 15,467,578 diagnostic bytes and returns
+1,000,622,370 encoded bytes. Current core archives and selected failures remain.
+
+The next maintenance plan,
+`factorybox-resolved-archive-retention-77aa2afc7d8d4a01af5b88e952c7276e`,
+verifies 18 explicitly selected closed failed generated filesystems against
+complete passing replacements. Selected original runtime test files must be
+exact or strictly additive, and every originally observed case must pass.
+The operating example separately keeps its byte-identical workflow/inputs and
+same worker bytes: its original 4-GiB outcome stays failed, while its complete
+32-GiB replacement passes. This grants no 4-GiB success claim. The maintenance
+stops on a bookkeeping KeyError after nine independently completed retirements;
+the remaining nine finish in
+`factorybox-resolved-archive-continuation-91b268542a1d465fbf8777640889207f`.
+Both the partial maintenance failure and every original native failure remain
+recorded. Post-verification checks all 18 exact receipts, original sources,
+results and logs, and unchanged goal/handoff. Complete raw decompression and
+member hashes precede every removal. Former generated filesystems are
+intentionally unavailable after retirement; frozen inputs, saved logs/results,
+member indexes and retained diagnostics remain. Total retired encodings are
+1,236,410,020 bytes. This restores required start headroom, without changing
+the 32-GiB limit, 8-GiB start reserve or host free-space floor. Original EBUSY,
+500/A66 import failures, full Factory failures and current provider rejection
+retain their selected complete archives.
+
+The full first-release goal remains active and production qualification false.

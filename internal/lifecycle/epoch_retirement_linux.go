@@ -360,6 +360,9 @@ func (e *Engine) epochDependencies(ctx context.Context, forest *epochRetirementF
 		for _, entry := range forks {
 			record, found := records[entry.Name()]
 			if !found || record.Fork == nil {
+				if controller.cancelledRecoveryImport(ctx, entry.Name()) {
+					continue
+				}
 				return fmt.Errorf("incomplete descendant fork/import blocks epoch retirement")
 			}
 			intent, err := controller.readForkIntent("forks/"+record.ID, record.Fork.SourceID, record.Fork.CheckpointID, record.ID)

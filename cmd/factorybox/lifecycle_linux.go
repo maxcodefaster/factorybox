@@ -71,9 +71,24 @@ func runLifecycle(args []string) error {
 	var retainedRoot string
 	var epochRequest lifecycle.EpochRetirementRequest
 	var epochPreparation lifecycle.EpochPreparationInspection
+	var importInspection lifecycle.RecoveryImportInspection
+	var importTarget string
+	inspectImport := command == "inspect-recovery-import"
+	cancelImport := command == "cancel-recovery-import"
 	epochOperation := command == "retire-epoch" || command == "begin-epoch-retirement" || command == "cancel-epoch-preparation"
 	epochInspection := command == "inspect-epoch-preparation"
-	if epochInspection {
+	if inspectImport {
+		operation := flag.NewFlagSet(command, flag.ContinueOnError)
+		operation.StringVar(&retainedRoot, "source-root", config.Root, "exact current or fenced earlier controller")
+		operation.StringVar(&importTarget, "target", "", "exact unpublished recovery target")
+		if err := operation.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = operation.Args()
+		if workerRunRoot == "" || importTarget == "" || len(remaining) != 0 {
+			return fmt.Errorf("inspect-recovery-import requires --worker-run-root and --target without sandbox arguments")
+		}
+	} else if epochInspection {
 		operation := flag.NewFlagSet(command, flag.ContinueOnError)
 		operation.StringVar(&retainedRoot, "source-root", "", "exact old controller with an unaccepted preparation")
 		if err := operation.Parse(remaining); err != nil {
@@ -83,15 +98,15 @@ func runLifecycle(args []string) error {
 		if workerRunRoot == "" || retainedRoot == "" || len(remaining) != 0 {
 			return fmt.Errorf("inspect-epoch-preparation requires --worker-run-root and --source-root without sandbox arguments")
 		}
-	} else if epochOperation {
+	} else if epochOperation || cancelImport {
 		operation := flag.NewFlagSet(command, flag.ContinueOnError)
-		requestFile := operation.String("request-file", "", "exact old epoch and explicit recovery handovers as JSON")
+		requestFile := operation.String("request-file", "", "exact operation request or saved inspection as JSON")
 		if err := operation.Parse(remaining); err != nil {
 			return err
 		}
 		remaining = operation.Args()
 		if workerRunRoot == "" || *requestFile == "" || len(remaining) != 0 {
-			return fmt.Errorf("retire-epoch requires --worker-run-root and --request-file, without sandbox arguments")
+			return fmt.Errorf("%s requires --worker-run-root and --request-file, without sandbox arguments", command)
 		}
 		file, err := os.OpenFile(*requestFile, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 		if err != nil {
@@ -100,7 +115,7 @@ func runLifecycle(args []string) error {
 		info, err := file.Stat()
 		if err != nil || !info.Mode().IsRegular() || info.Size() > 4<<20 {
 			file.Close()
-			return fmt.Errorf("epoch retirement request is not a bounded regular JSON file")
+			return fmt.Errorf("%s request is not a bounded regular JSON file", command)
 		}
 		limited := &io.LimitedReader{R: file, N: (4 << 20) + 1}
 		decoder := json.NewDecoder(limited)
@@ -109,10 +124,13 @@ func runLifecycle(args []string) error {
 		if command == "cancel-epoch-preparation" {
 			target = &epochPreparation
 		}
+		if cancelImport {
+			target = &importInspection
+		}
 		decodeErr := decoder.Decode(target)
 		if decodeErr == nil {
 			if err := decoder.Decode(new(any)); err != io.EOF || limited.N <= 0 {
-				decodeErr = fmt.Errorf("epoch retirement request has trailing or excessive data")
+				decodeErr = fmt.Errorf("%s request has trailing or excessive data", command)
 			}
 		}
 		if err := errors.Join(decodeErr, file.Close()); err != nil {
@@ -191,7 +209,7 @@ func runLifecycle(args []string) error {
 	if command == "capacity" && len(remaining) != 0 {
 		return fmt.Errorf("capacity requires no sandbox ID")
 	}
-	if command != "capacity" && !epochOperation && !epochInspection && len(remaining) != 1 {
+	if command != "capacity" && !epochOperation && !epochInspection && !inspectImport && !cancelImport && len(remaining) != 1 {
 		return fmt.Errorf("%s requires one sandbox ID", command)
 	}
 	engine, err := lifecycle.Open(config)
@@ -208,6 +226,20 @@ func runLifecycle(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if inspectImport {
+		result, err := engine.InspectRecoveryImport(ctx, retainedRoot, importTarget)
+		if result.Version != 0 {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
+	if cancelImport {
+		result, err := engine.CancelRecoveryImport(ctx, importInspection)
+		if result.Version != 0 {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
 	if epochInspection {
 		result, err := engine.InspectEpochPreparation(ctx, retainedRoot)
 		if result.Version != 0 {

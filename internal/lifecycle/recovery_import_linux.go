@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"factorybox/internal/ownedtree"
 )
@@ -112,9 +113,10 @@ func (e *Engine) readUnpublishedRecoveryImport(operation, targetID string) (reco
 	if err != nil {
 		return p, err
 	}
+	temporaries := 0
 	for _, entry := range entries {
 		switch entry.Name() {
-		case "import.json":
+		case "import.json", "import-cancelled.json":
 			if !entry.Type().IsRegular() {
 				return p, fmt.Errorf("recovery import journal is not a private regular file")
 			}
@@ -123,10 +125,46 @@ func (e *Engine) readUnpublishedRecoveryImport(operation, targetID string) (reco
 				return p, fmt.Errorf("recovery import copy directory changed")
 			}
 		default:
-			return p, fmt.Errorf("unpublished recovery import contains unrecognized entry: %s", entry.Name())
+			if err := e.recoveryImportTemporary(operation, entry.Name()); err != nil {
+				return p, err
+			}
+			temporaries++
 		}
 	}
+	completed, err := e.recoveryImportCancellation(operation, p)
+	if err != nil {
+		return p, err
+	}
+	if temporaries > 1 || completed != nil && temporaries != 0 {
+		return p, fmt.Errorf("recovery import contains repeated or post-cancellation publication")
+	}
 	return p, nil
+}
+
+// A killed publication can leave one partial private temporary file. Its
+// contents confer no intent or completion authority. Cancellation requires a
+// fresh inventory of every byte before removing this exact known control file.
+func (e *Engine) recoveryImportTemporary(operation, name string) error {
+	if !strings.HasPrefix(name, ".checkpoint-") || !tokenID.MatchString(strings.TrimPrefix(name, ".checkpoint-")) {
+		return fmt.Errorf("unpublished recovery import contains unrecognized entry: %s", name)
+	}
+	info, err := e.root.Lstat(operation + "/" + name)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || info.Size() > checkpointManifestLimit {
+		return fmt.Errorf("recovery import publication temporary changed: %s", name)
+	}
+	// Capture verifies links, mounts and complete content, including truncated
+	// non-JSON publications. Control metadata also requires exact root ownership.
+	plan, err := ownedtree.Capture(context.Background(), e.root, []string{operation + "/" + name})
+	if err != nil {
+		return err
+	}
+	if len(plan.Entries) != 1 || plan.Entries[0].Object.UID != 0 || plan.Entries[0].Object.GID != 0 || plan.Entries[0].Links != 1 {
+		return fmt.Errorf("recovery import publication temporary is not exclusively root owned")
+	}
+	return nil
 }
 
 func (e *Engine) verifyCompletedRecoveryImport(operation string, intent forkIntent) (bool, error) {
@@ -136,6 +174,9 @@ func (e *Engine) verifyCompletedRecoveryImport(operation string, intent forkInte
 	}
 	if err != nil {
 		return false, err
+	}
+	if _, err := e.root.Lstat(operation + "/import-cancelled.json"); !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("completed recovery has a cancelled import reservation: %v", err)
 	}
 	if intent.Recovery == nil || p.Owner != intent.Owner ||
 		!reflect.DeepEqual(p.Request, intent.Recovery.Request) || !reflect.DeepEqual(p.Source, intent.Source) {

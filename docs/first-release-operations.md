@@ -96,6 +96,29 @@ work remains fenced until exact completion, including across worker replacement.
 Unknown objects, live dependencies and changed ownership require refusal.
 Automatic retention remains deferred.
 
+The next candidate exposes explicit cancellation of an unpublished recovery
+copy. It preserves `import.json` and permanently reserves that failed target
+ID. Save the complete inspection outside the bounded store, then submit that
+exact file:
+
+```sh
+/opt/factorybox/factorybox --worker-run-root /run/factorybox \
+  inspect-recovery-import --target failed-target > /output/import-inspection.json
+/opt/factorybox/factorybox --worker-run-root /run/factorybox \
+  cancel-recovery-import --request-file /output/import-inspection.json
+```
+
+For a fenced earlier controller, add its exact `--source-root` to inspection.
+The operation requires the same host/boot, current verified store attachment,
+no published target and a complete unchanged inventory. It removes only that
+operation's private copy and at most one exact interrupted publication file.
+It never releases mounts or removes the original backup. After an interrupted
+deletion, inspect the surviving copy again. After confirmed completion, exact
+replay returns the original cancellation receipt. A fresh recovery needs a
+different target ID. Unknown entries and a failed initial `import.json`
+publication still require separate investigation. Root-owned focused tests
+pass; full native cancellation under ENOSPC remains pending for this candidate.
+
 The current image passes the complete existing public retirement fault fixture
 in `factorybox-bounded-loss-29c1db8cc9db4ae089f9667c5122e266`. It includes
 actual preparation ENOSPC, public inspection/cancellation while space remains

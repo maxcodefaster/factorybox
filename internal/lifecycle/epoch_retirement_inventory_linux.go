@@ -680,6 +680,11 @@ func (e *Engine) inventoryEpochPayloads(ctx context.Context) (epochPayloadInvent
 	for _, entry := range forks {
 		record, found := b.records[entry.Name()]
 		if !found || record.Fork == nil {
+			if e.cancelledRecoveryImport(ctx, entry.Name()) {
+				b.file("forks/" + entry.Name() + "/import.json")
+				b.file("forks/" + entry.Name() + "/import-cancelled.json")
+				continue
+			}
 			return result, fmt.Errorf("epoch contains an incomplete or unknown fork/import")
 		}
 		intent, err := e.readForkIntent("forks/"+record.ID, record.Fork.SourceID, record.Fork.CheckpointID, record.ID)

@@ -360,6 +360,16 @@ func (e *Engine) workerMetadataBound(ctx context.Context, delta workerMetadataDe
 			if err != nil {
 				return err
 			}
+			completed, err := e.recoveryImportCancellation("forks/"+entry.Name(), prepared)
+			if err != nil {
+				return err
+			}
+			if completed != nil {
+				if err := e.inspectUnpublishedRecoveryExit(ctx, "forks/"+entry.Name(), entry.Name()); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := e.workerForkMetadata(ctx, b, prepared.proposal(), false, nil); err != nil {
 				return err
 			}

@@ -33,7 +33,8 @@ class RecoveryPressureFixture(unittest.TestCase):
             after = (source / pressure.FILE).read_text()
             self.assertTrue(receipt['assertions_preserved'])
             self.assertFalse(receipt['upstream_assertions_modified'])
-            self.assertEqual(after.replace(pressure.NEW, pressure.OLD), before)
+            self.assertEqual(after.replace(pressure.NEW, pressure.OLD).replace(pressure.CANCEL, pressure.RETIRE), before)
+            self.assertLess(after.index('worker loss changed complete minimal RAM/files'), after.index('cancelRecoveryImport()'))
             reconstruction = artifact / 'reconstruction'
             target = reconstruction / pressure.FILE
             target.parent.mkdir(parents=True)
@@ -71,7 +72,9 @@ class RecoveryPressureFixture(unittest.TestCase):
             value = {key: True for key in ['passed', 'admitted_before_copy', 'actual_import_enospc',
                 'original_metadata_unchanged', 'old_checkpoint_fully_verified_under_pressure',
                 'incomplete_target_refused', 'partial_inventory_unchanged_by_retry',
-                'partial_retained_after_full_consumer', 'partial_inventory_preserved_at_cleanup',
+                'partial_retained_through_useful_recovery', 'explicit_cancellation_completed',
+                'cancellation_replayed_exactly', 'cancellation_under_full_store',
+                'cancelled_reservation_preserved_at_cleanup',
                 'only_exact_owned_pressure_released', 'admission_restored']}
             value.update(source_root='/old', full_original_consumer_passed=False)
             (Path(temporary) / 'recovery-pressure.json').write_text(json.dumps(value))

@@ -49,7 +49,7 @@ func recoveryPressureCommand(t *testing.T, f *fixture, label string, args ...str
 	return stdout.Bytes(), stderr.String(), err
 }
 
-func checkConsumerRecoveryPressure(t *testing.T, f *fixture, saved consumerPauseProof, originalRequest []string) {
+func checkConsumerRecoveryPressure(t *testing.T, f *fixture, saved consumerPauseProof, originalRequest []string) func() {
 	t.Helper()
 	status, err := worker.Current("/run/factorybox")
 	if err != nil || status.Lifecycle.Root != f.root || status.Lifecycle.BoundedStore == nil ||
@@ -185,6 +185,7 @@ func checkConsumerRecoveryPressure(t *testing.T, f *fixture, saved consumerPause
 		"original_metadata_unchanged": true, "old_checkpoint_fully_verified_under_pressure": true, "inspection": inspection,
 		"incomplete_target_refused": true, "incomplete_target_error": retryFailure, "partial_inventory": partial,
 		"partial_inventory_unchanged_by_retry": true, "only_exact_owned_pressure_released": true, "admission_restored": true}
+	var terminal *ownedtree.Plan
 	t.Cleanup(func() {
 		root, err := os.OpenRoot(f.root)
 		if err != nil {
@@ -193,13 +194,12 @@ func checkConsumerRecoveryPressure(t *testing.T, f *fixture, saved consumerPause
 		}
 		defer root.Close()
 		final, err := ownedtree.Capture(context.Background(), root, partial.Paths)
-		if err != nil || !reflect.DeepEqual(final, partial) {
-			t.Error("full original consumer changed its retained incomplete import", err)
-			return
+		if err != nil || terminal == nil || !reflect.DeepEqual(final, *terminal) {
+			t.Error("full original consumer lost or changed its explicitly cancelled reservation", err)
+		} else {
+			proof["cancelled_reservation_preserved_at_cleanup"] = true
 		}
-		proof["partial_inventory_preserved_at_cleanup"] = true
 		proof["full_original_consumer_passed"] = !t.Failed()
-		proof["partial_retained_after_full_consumer"] = !t.Failed()
 		proof["passed"] = !t.Failed()
 		data, err := json.MarshalIndent(proof, "", "  ")
 		if err != nil {
@@ -210,4 +210,153 @@ func checkConsumerRecoveryPressure(t *testing.T, f *fixture, saved consumerPause
 			t.Error(err)
 		}
 	})
+	return func() {
+		// The ordered fixture invokes this only after the complete original
+		// recovery/replay and first-use RAM/files assertions have passed.
+		root, err := os.OpenRoot(f.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer root.Close()
+		if err := ownedtree.ValidateComplete(ctx, root, partial); err != nil {
+			t.Fatal("useful independent recovery changed the retained failed import", err)
+		}
+		proof["partial_retained_through_useful_recovery"] = true
+		cancelPressure := consumerCancellationPressure(t, status, saved.Owner)
+		full := capacity()
+		if full.AvailableBytes != 0 || full.WriteAdmitted {
+			t.Fatal("cancellation must exercise an actually full bounded store", full)
+		}
+		data, failure, err := recoveryPressureCommand(t, f, "inspect-import", "inspect-recovery-import", "--target", "capacity-import")
+		var inspected lifecycle.RecoveryImportInspection
+		if decodeErr := json.Unmarshal(data, &inspected); err != nil || decodeErr != nil ||
+			!reflect.DeepEqual(inspected.Inventory, partial) || inspected.Cancelled != nil {
+			t.Fatal("public import inspection differs from exact retained copy", err, decodeErr, failure)
+		}
+		requestFile := "/output/recovery-import-cancellation.json"
+		if err := os.WriteFile(requestFile, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		args := []string{"cancel-recovery-import", "--request-file", requestFile}
+		cancelled, failure, err := recoveryPressureCommand(t, f, "cancel-import", args...)
+		var completion lifecycle.RecoveryImportCancellation
+		if decodeErr := json.Unmarshal(cancelled, &completion); err != nil || decodeErr != nil ||
+			completion.TargetID != "capacity-import" || completion.Owner != inspected.Owner || completion.CompletedAt == "" {
+			t.Fatal("explicit import cancellation under full storage failed", err, decodeErr, failure)
+		}
+		proof["explicit_cancellation_completed"], proof["cancellation_under_full_store"] = true, true
+		proof["cancellation_capacity"], proof["cancellation_inspection"], proof["cancellation"] = full, inspected, completion
+		replayed, failure, err := recoveryPressureCommand(t, f, "cancel-import-replay", args...)
+		if err != nil || !bytes.Equal(replayed, cancelled) {
+			t.Fatal("exact import cancellation replay changed its completion", err, failure)
+		}
+		proof["cancellation_replayed_exactly"] = true
+		for _, name := range []string{"forks/capacity-import/recovery", "forks/capacity-import/intent.json", "objects/capacity-import"} {
+			if _, err := root.Lstat(name); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("cancelled import retained payload or gained runtime authority", name, err)
+			}
+		}
+		for name, expected := range metadata {
+			actual, err := os.ReadFile(saved.SourceRoot + "/" + name)
+			if err != nil || !bytes.Equal(actual, expected) {
+				t.Fatal("cancellation changed original committed backup metadata", name, err)
+			}
+		}
+		final, err := ownedtree.Capture(ctx, root, partial.Paths)
+		if err != nil || len(final.Entries) != 3 {
+			t.Fatal("cancelled import must retain only its directory and two provenance records", err)
+		}
+		for _, before := range partial.Entries {
+			if before.Path == "forks/capacity-import/import.json" {
+				found := false
+				for _, after := range final.Entries {
+					found = found || reflect.DeepEqual(before, after)
+				}
+				if !found {
+					t.Fatal("cancellation changed original target reservation")
+				}
+			}
+		}
+		terminal = &final
+		if err := cancelPressure(); err != nil {
+			t.Fatal(err)
+		}
+		proof["cancellation_capacity_after_release"] = capacity()
+	}
+}
+
+// Allocate only one exact new owned pressure inode. Its cleanup never adopts a
+// same-name replacement. Leaving zero available blocks tests cancellation's
+// ability to reclaim its own partial copy before publishing completion.
+func consumerCancellationPressure(t *testing.T, status worker.Status, owner string) func() error {
+	t.Helper()
+	path := status.Store + "/recovery-cancellation-pressure-" + owner
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held unix.Stat_t
+	if err := unix.Fstat(int(file.Fd()), &held); err != nil || held.Mode != unix.S_IFREG|0600 || held.Nlink != 1 ||
+		held.Dev != status.Lifecycle.BoundedStore.BlockDevice {
+		file.Close()
+		t.Fatal("cancellation pressure is not its exact private bounded inode", err)
+	}
+	released := false
+	release := func() error {
+		if released {
+			return nil
+		}
+		var current, named unix.Stat_t
+		if err := errors.Join(unix.Fstat(int(file.Fd()), &current), unix.Lstat(path, &named)); err != nil {
+			return err
+		}
+		for _, observed := range []unix.Stat_t{current, named} {
+			if observed.Dev != held.Dev || observed.Ino != held.Ino || observed.Mode != held.Mode ||
+				observed.Uid != held.Uid || observed.Gid != held.Gid || observed.Nlink != 1 {
+				return fmt.Errorf("cancellation pressure identity changed")
+			}
+		}
+		if err := errors.Join(file.Truncate(0), file.Sync()); err != nil {
+			return err
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		if err := errors.Join(unix.Syncfs(int(file.Fd())), file.Close()); err != nil {
+			return err
+		}
+		released = true
+		return nil
+	}
+	t.Cleanup(func() {
+		if err := release(); err != nil {
+			t.Error("release exact cancellation pressure only", err)
+		}
+	})
+	chunk := int64(32 << 20)
+	for attempt := 0; attempt < 2048; attempt++ {
+		var capacity unix.Statfs_t
+		if err := unix.Fstatfs(int(file.Fd()), &capacity); err != nil {
+			t.Fatal(err)
+		}
+		if capacity.Bavail == 0 {
+			if err := errors.Join(file.Sync(), unix.Syncfs(int(file.Fd()))); err != nil {
+				t.Fatal(err)
+			}
+			return release
+		}
+		info, err := file.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = unix.Fallocate(int(file.Fd()), 0, info.Size(), min(chunk, int64(capacity.Bavail)*capacity.Bsize))
+		if err != nil {
+			if !errors.Is(err, unix.ENOSPC) || chunk <= capacity.Bsize {
+				t.Fatal("fill exact bounded cancellation fixture", err)
+			}
+			chunk = max(capacity.Bsize, chunk/2)
+		}
+	}
+	t.Fatal("bounded cancellation pressure did not converge")
+	return nil
 }
