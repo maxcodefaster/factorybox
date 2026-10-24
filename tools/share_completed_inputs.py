@@ -11,6 +11,7 @@ import uuid
 import build_worker
 import reference
 import reference_lifecycle
+import upstream_unit
 
 
 ROLES=("consumer-worker.test","devx-actor","devx-registry","minimal-actor","ide-filesystem",
@@ -38,6 +39,8 @@ def main():
                         help='Also share exact pinned component inputs of closed startup-manager diagnostics, including failures with confirmed unchanged inputs; preserve every diagnostic and outcome')
     parser.add_argument('--include-closed-component-refusals', action='store_true',
                         help='Also share pinned Sysbox copies of closed pre-run candidate-base refusals; retain the failed result and complete inputs')
+    parser.add_argument('--include-closed-failed-runtime-inputs', action='store_true',
+                        help='Also share byte-identical compiled inputs of failed runtime suites with stopped containers, confirmed cleanup and unchanged complete sources/components; preserve failed results and dumps')
     args=parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('immutable input sharing requires all Factorybox runs to finish')
@@ -117,9 +120,20 @@ def main():
         result_path=run/"result.json"
         if run.is_symlink() or result_path.is_symlink() or not result_path.is_file():continue
         result=json.loads(result_path.read_text())
-        if result.get("passed") is not True or result.get("cleanup") is not True:continue
+        closed_runtime_failure = (
+            args.include_closed_failed_runtime_inputs and
+            re.fullmatch(r'factorybox-runtime-[0-9a-f]{32}', run.name) and
+            result.get('passed') is False and result.get('cleanup') is True and
+            result.get('inputs_unchanged') is True and result.get('source_context_unchanged') is True and
+            result.get('components_unchanged') is True and
+            result.get('container_state', {}).get('Running') is False and
+            result.get('container_state', {}).get('Pid') == 0 and
+            isinstance(result.get('source_context'), dict))
+        if (result.get("passed") is not True or result.get("cleanup") is not True) and not closed_runtime_failure:continue
         if result.get("owner") != match[1]:
             raise ValueError("closed native proof owner differs from its directory")
+        if closed_runtime_failure and upstream_unit.context_manifest(run/'context') != result['source_context']:
+            raise ValueError('closed failed runtime source changed')
         results[str(result_path)]=reference.sha(result_path)
         expected_inputs = {role: result.get("inputs_sha256", {}).get(role) for role in ROLES}
         expected_inputs.update({"components/" + role: result.get("component_sha256", {}).get(role)
@@ -142,7 +156,8 @@ def main():
           'verified_worker_builds':workers,
           'include_closed_startup_manager_inputs': args.include_closed_startup_manager_inputs,
           'include_closed_component_refusals': args.include_closed_component_refusals,
-          "scope":"Only exact compiled input roles of complete passing consumer proofs, explicitly included completed worker builds and optionally closed startup-manager diagnostics with unchanged inputs and confirmed stopped containers or closed pre-run candidate-base refusals whose copied components match their pinned completed build. Failed outcomes and contents remain preserved. Source, results, logs, executable bytes, modes, ownership, packages and image identities are unchanged. Identical files adopt the canonical inode's mtime; both original and shared mtimes are retained in this receipt. No archived input is rewritten in place."}
+          'include_closed_failed_runtime_inputs': args.include_closed_failed_runtime_inputs,
+          "scope":"Only exact compiled input roles of complete passing consumer proofs, explicitly included completed worker builds and optionally closed startup-manager diagnostics with unchanged inputs and confirmed stopped containers, failed stopped runtime suites with confirmed cleanup and unchanged complete sources/components, or closed pre-run candidate-base refusals whose copied components match their pinned completed build. Failed outcomes and dumps remain preserved. Source, results, logs, executable bytes, modes, ownership, packages and image identities are unchanged. Identical files adopt the canonical inode's mtime; both original and shared mtimes are retained in this receipt. No archived input is rewritten in place."}
     write(artifact/"plan.json",plan)
     done=[]
     try:

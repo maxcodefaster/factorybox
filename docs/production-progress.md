@@ -5895,3 +5895,125 @@ All six portable check groups pass in
 vet, worker-probe compilation, 244 Python tests, all 232 sealed reference files,
 ordered fixture verification and diff validation. GOAL.md and the saved
 parallel-chat handoff retain their previously recorded SHA-256 identities.
+
+## Current-package basic gates and reproducible restore-controller-loss failure
+
+The current A66 core passes the complete basic lifecycle suite in
+`factorybox-runtime-056c8b690897413a868b7a48c6daa565`: six top-level tests and
+three subtests. Its source guard passes in
+`factorybox-runtime-b826cea65d414aca9c944bc952ce3fcc`: one top-level test and
+twelve subtests. Both have zero skips, exact owned cleanup and unchanged
+sources, inputs and components. The first batch
+`factorybox-pilot-native-gates-e19bde208f86415083309f475deeb3f0` remains failed:
+lifecycle passes, then the required artifact headroom refuses guard before it
+starts. A separate remaining batch
+`factorybox-pilot-native-gates-598b6332589745baa63bbe16ffac5b56` passes guard
+and stops on a real capture assertion failure. Neither batch is relabeled.
+
+The complete capture gate fails in
+`factorybox-runtime-f4c3aecdb75548d392ea4ffae284695d`. The unchanged
+`actual-controller-loss-after-restore` case stops its exact public controller
+after observing the matching direct restore backend. That backend does not
+exit within the existing twenty-second deadline. Eleven adapter tests and
+seventy subtests pass; the required enclosing capture test fails, with no skips
+or OOM. Later recapture/delete attempts also cannot acquire the still-held
+operation lock. The full selected failure archive, every input and all original
+assertions remain. This gate blocks release independently of the unresolved
+historical EBUSY. No test timeout, assertion or production runtime is changed.
+
+The first passive observation attempt in
+`factorybox-restore-controller-observation-deb276800cf54d17adf1cb55834a219c`
+uses generic Docker inspection before its same-named container exists and
+mistakes the already-created volume for a container. Its KeyError is retained.
+The child runner subsequently disappears without its outer result. Its exact
+container is independently confirmed stopped with exit 1 and its stdout repeats
+the same original failure after twenty seconds. The separate frozen
+`reconcile.py` verifies the complete source and executable/component inputs
+against F4, archives the entire stopped owned volume with complete decompression
+verification, and removes only that exact owned container/volume. Its outcome
+remains false, with no process snapshot or original outer qualification claimed.
+
+Declared new-copy observers inspect containers explicitly and always wait for
+the native child even if observation fails. The unchanged full native capture
+gate fails again in `factorybox-runtime-c745f204225b4280b0c18dbde56dd68a`,
+`factorybox-runtime-3ec1b28098704bd2acbd01107a1f9dec` and
+`factorybox-runtime-27569afbca654de5bbcb82dd393abc5e`, each with the same
+eleven top-level passes/seventy subtest passes, no skips, exact owned cleanup
+and unchanged source/component/executable inputs. These are diagnostic repeats,
+not members of the final ten-run acceptance series. Every failed verdict stays.
+
+The immediate snapshot in observation CBE2564B confirms the exact stopped
+controller and direct matching Sysbox restore child, but is too early to locate
+the later wait. Observation
+`factorybox-restore-controller-observation-61e63a1ef27b4158811489594598326c`
+waits two seconds after observing the already-stopped controller, then reads
+only its descendant process/thread state and exact target cgroup. The target
+is populated and frozen; its restored actor is still traced. The prepared
+runtime is polling and CRIU is awaiting an RPC response. No held/final restore
+receipt exists. The pinned runtime's pre-resume protocol sends the exact held
+task identity, waits up to three seconds for the controller's sealed-request
+acknowledgement, and only later publishes a held receipt. The Go controller
+performs that acknowledgement and subsequent timer activation itself.
+
+Observation
+`factorybox-restore-controller-observation-096c6d3f3c4141169ab55a750caff045`
+instead reads the same failure window after ten seconds. CRIU is now in wait4
+for the exact namespace-init PID found in the same descendant snapshot; that
+init is in zap_pid_ns_processes. The prepared runtime and outer backend wait
+for their children. The target still requests cgroup.freeze=1, is populated,
+and reports frozen=0 during teardown. Neither completion receipt exists.
+The snapshots and pinned code support a controller-dependent acknowledgement
+timeout followed by incomplete abort teardown. They do not yet identify the
+remaining namespace member/reaping dependency. No repair, historical EBUSY
+attribution, successful controller-loss recovery or production acceptance is
+claimed. The original red gate must be preserved while correcting completion
+independence and/or exact owned abort teardown, including the existing
+pre-activation identity, freeze and timer protections.
+
+Independent `evaluate.py` in the ten-second observation binds the six complete
+native outcomes to A66's exact core/components, verifies every frozen input and
+fully decodes all four failed capture archives and the separately reconciled
+complete failed volume. It binds both snapshot phases to their actual native
+results and the pinned controller/runtime protocol source. Diagnostic success
+means the failure was observed and retained; capture qualification remains false.
+
+Storage maintenance keeps the required reserve without deleting failures.
+`factorybox-storage-repack-3f59e18998184bfaa22d2b0c9d18ac48` losslessly
+re-encodes the current successful admission store after full original/replacement
+decompression, reclaiming 16,379,996 bytes. Old successful EF76 admission and
+06A1 worker-loss stores are retired only after their current A66 successors
+pass the same named native assertions. Their source-compatibility declarations
+retain exact prior/current test hashes and explain the unrelated metadata
+profile, timer dispatch and added bounded-storage test; every prior assertion
+body remains. The original sources, native results/logs, compiled inputs and
+all archived member headers/hashes plus bounded diagnostics remain. Only these
+two older complete passing stores cease to be reconstructable; current stores
+and unresolved failures stay complete. The first retirement batch
+`factorybox-passed-native-successor-retirement-2958c727fa7e4bd7a1327739a28719a8`
+retires EF76, then its exact import-spacing comparison rejects the remaining
+pair before that archive is touched. Its failure is retained. The declared
+new copy `factorybox-passed-worker-loss-retirement-43633d5881d84d1db83033763097305d`
+restores the one pre-existing separator newline in that comparison and retires
+only the remaining 06A1 store after all unchanged checks pass.
+
+Explicit `--include-closed-failed-runtime-inputs` extends immutable compiled
+input sharing to failed runtime suites only with confirmed cleanup, stopped
+containers, unchanged complete source/component flags, reverified full source
+manifests and exact owner/input hashes. Identical input paths/bytes/modes/owners
+remain; receipts retain original/shared mtimes. Failed results, logs and dumps
+are not rewritten or retired. The first such actual maintenance,
+`factorybox-storage-share-inputs-4021d8cf62c64b64bd418e4171f5ed32`, verifies and
+shares five inputs, reclaiming 101,572,608 allocated bytes. Subsequent closed
+diagnostic runs use the same guards. The separate interrupted native without an
+outer result is ineligible and retains its direct inputs unchanged. No new
+performance optimization or runtime service is introduced; the full goal stays
+active, with both current restore-controller-loss and historical EBUSY open.
+
+All six portable groups pass after the sharing-tool extension in
+`factorybox-checks-0bc12b09338e4438b29cc2b0022252dd`: Go tests/vet, worker-probe
+compilation, 244 Python tests, all 232 sealed imports, ordered fixture checks
+and diff validation. These portable successes do not override the failed
+native capture gate. No labeled Factorybox container remains, and allocated
+artifacts are 25,761,652,736 bytes, preserving the required 8-GiB start reserve
+inside 32 GiB. Further generation must repeat its capacity check; the margin
+above that reserve is small. The full goal and parallel-chat handoff are intact.
