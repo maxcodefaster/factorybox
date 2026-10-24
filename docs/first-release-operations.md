@@ -122,10 +122,10 @@ complete planned-loss ENOSPC consumers now pass for both the minimal example
 and Factory with Theia/local OpenCode. Their exact candidate has an independently
 identical package/image build. Evidence is bound by
 `factorybox-import-cancellation-closure-99e5f00053194df0997f0c3cfca22839`.
-Later mounted-stage interruption, initial reservation-publication failure and
-the remaining loss combinations still require acceptance.
+Later mounted-stage interruption and the remaining full-consumer loss
+combinations still require acceptance.
 
-The next source candidate also distinguishes an initial metadata stage whose
+Candidate `factorybox-build-worker-f3086761c73449e3aef5f636a7ebd68b` also distinguishes an initial metadata stage whose
 `import.json` was never published. Its inspection reports
 `reservation_absent: true`, with no invented owner or preparation hash. It
 accepts only an empty private operation directory or one exact private
@@ -136,7 +136,14 @@ unaccepted stage has no durable missing-entry replay: after interruption obtain
 a fresh inspection of any remainder; an absent stage or new same-name
 generation cannot inherit the previous request. A committed import reservation
 keeps the terminal-receipt and reserved-ID behavior described above. Focused
-root-owned tests pass; native initial-publication acceptance remains pending.
+root-owned tests and both complete native planned/abrupt replacement fixtures
+pass. Both hit actual initial journal ENOSPC, cancel at zero free inodes,
+preserve the original backup, complete every original 32-MiB RAM/files recovery
+assertion and stop the replacement cleanly. An independent build reproduces
+the complete package and image. The binding is
+`factorybox-import-initial-closure-d9879765b7994d4eac13330ccaea21b8`.
+This closes the basic initial-publication fixture, not mounted-stage or full
+consumer acceptance.
 
 The current image passes the complete existing public retirement fault fixture
 in `factorybox-bounded-loss-29c1db8cc9db4ae089f9667c5122e266`. It includes
@@ -185,7 +192,11 @@ recovery/replay, a subsequent checkpoint and an independent descendant pass.
 Independent binding is
 `factorybox-bounded-example-proof-b1eee18e7e604e5e8ef023c583f5a8dc`.
 The first 4-GiB attempt fails with ENOSPC while copying recovery backing;
-its complete store, source, logs and failed result remain preserved. The
+its frozen source, logs and failed result remain preserved. Its superseded
+generated store dump was fully verified and retired with receipts in
+`factorybox-resolved-archive-retention-77aa2afc7d8d4a01af5b88e952c7276e` and
+`factorybox-resolved-archive-continuation-91b268542a1d465fbf8777640889207f`.
+The original 4-GiB verdict stays failed. The
 same workflow and actor pass with the previously exercised 32-GiB capacity.
 This uses a small administrator-prepared actor and does not replace complete
 minimal, Factory/Theia or external-agent acceptance.

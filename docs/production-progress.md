@@ -7221,3 +7221,61 @@ fully verifies both completed ac0/7317 worker packages before and after sharing
 their byte-identical CLI and package encodings, reclaiming 50,663,424 allocated
 bytes. Original paths, contents, build results and selected failure encodings
 remain intact. The artifact limit, new-run reserve and host floor are unchanged.
+
+## Initial-publication recovery passes both native worker-loss cases
+
+Commit `0b8b04f` is packaged by
+`factorybox-build-worker-f3086761c73449e3aef5f636a7ebd68b`. Independent no-cache
+build `factorybox-build-worker-69a8a0f010f54b5a9b5f8dcb01412fad` reproduces the
+complete source context, CLI, component bundle, raw package, image and layers.
+CLI SHA-256 is `4475f25d69c11264b86ccc17b620eb8737680e77ef0708fcd8d3f6d149911d90`;
+package SHA-256 is `bde7f80dedf09696eaca18a08011376b41f1c0561be9f04897e41553b395cbfc`;
+image is `sha256:89868f9345cbd0f7daab9763f588c3b787efd51906bb4bc342167c48749b2c4a`.
+
+Both complete native initial-publication pressure fixtures pass without skips:
+
+| Worker loss | Complete evidence | Recover test | Whole driver |
+| --- | --- | ---: | ---: |
+| Planned | `factorybox-bounded-loss-7177e9755b1a49d9b2d51420c321ea11` | 27.23 s | 39.70 s |
+| Abrupt SIGKILL | `factorybox-bounded-loss-dd029eb1b0a646258e22bbb0edad56d5` | 26.96 s | 34.49 s |
+
+Each uses the actual delivered CLI and exact 1-GiB bounded filesystem. Only
+fixture-owned zero-byte inodes are exhausted. Block admission succeeds with
+one free inode; making the target directory consumes it and actual journal
+publication fails with kernel ENOSPC. The public inspection and explicit
+cancellation succeed with zero free inodes, without inventing a reservation.
+Old requests refuse absent and recreated stages. The private truncated
+publication variant also cancels at zero free inodes. Complete original backup
+inventory is unchanged, and all 65,278 fixture-created files are released only
+after their exact inode/mount/content/ownership validation.
+
+Every original recovery assertion then passes: complete 32-MiB private RAM and
+files, exact replay, independent checkpoint/fork, pause with RAM release,
+resume, fork of the resumed descendant and useful work after source deletion.
+The replacement workers both stop with exit 0. Exact owned containers/volumes
+are absent, global settings and frozen inputs are unchanged. These are fault
+fixture durations, not ordinary latency measurements or a p95 sample.
+
+Audit `factorybox-import-initial-closure-d9879765b7994d4eac13330ccaea21b8`
+fully loads both packages, verifies complete frozen build/native source
+contexts and executable hashes, checks exact inspection/cancellation identities,
+zero-inode accounting, all original native assertions, clean terminal states
+and actual exact-resource absence. It also verifies the focused root regression,
+unchanged original red verdict, final six-group portable report, all 232
+reference files and unchanged full goal/parallel-chat handoff hashes.
+
+The recovery subcases now have separate status, rather than one unchanged
+capacity/import checklist entry:
+
+| Subcase | Current evidence/status |
+| --- | --- |
+| Admitted copy ENOSPC and manual cancellation, full minimal and Factory/local-agent consumers | Both complete planned-loss consumers pass on ac0; closure `99e5f000` above |
+| Initial journal ENOSPC and metadata-only cancellation | Both complete basic planned/abrupt native cases pass on f308; closure `d9879765` above |
+| Import interrupted after its immutable mounts exist; cancellation through a fenced retained controller | Native acceptance remains open |
+| Remaining full-consumer loss combinations and final-package capacity/import regression | Remain open |
+
+These results close the basic initial-publication case. They do not close the
+whole capacity/import gate, historical EBUSY attribution, external-provider
+agent cases, tested operating update/rollback, required full final regression,
+predetermined ten-lifecycle consumer series or final release profile. The full
+goal remains active and production qualification false.
