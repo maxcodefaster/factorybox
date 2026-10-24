@@ -8372,3 +8372,59 @@ The regression also requires that no activation or abort metadata is created.
 groups on that correction. Source-build worker c49ba874 completes successfully
 before this refusal-context correction and is therefore superseded for final
 qualification; it is not a reproduced or accepted release package.
+
+## Reproduced 1308 worker passes both actual Docker cures and ungranted protections
+
+Source commit f93f2d3 is packaged as
+`factorybox-build-worker-130870231710425a8ee16a71c34a611e`. Independent no-cache
+build `factorybox-build-worker-361170cd105a4c9a84f44bc5029430f3` reproduces its
+exact 94,720,000-byte raw package, SHA-256
+`0af860a4edf1c12a7bc135d6c5917b33d3f172ac64e3ad555e8039ffb9b454b7`,
+CLI SHA-256
+`2f434bfcbe51ad1d2fa4824983405c4a0708697a3856643122f53a80211b2c6d`,
+and image `sha256:026979231889e1f5ac3f07394447841622909eac511130de7c5aee9a03e9dfd6`.
+The pinned Sysbox, CRIU, native base, Go toolchain and resource/deadline limits
+are unchanged. Both package encodings are completely decompression-verified;
+only each new build's optional compiler scratch is retired with its inventory.
+
+Actual delivered-CLI ungranted protection cases pass separately:
+`factorybox-checkpoint-retirement-e24329e39181478a947dd84a0fbb041a`
+retains the original staged source after controller/worker SIGKILL, and
+`factorybox-checkpoint-retirement-bc4594cb6f0a4f5e9c0f38bf7f10541d`
+retains it after guard/worker SIGKILL with the original controller surviving.
+Both preserve every original refusal, pending-signal/no-progress, unchanged
+source/replay and no-false-completion assertion, with full cleanup and unchanged
+inputs. Their original test sources are unchanged.
+
+`factorybox-pilot-integration-gates-ca6d87e560104aaf9a34d4a16f66390a` passes
+both complete final-core Docker fault cases. Controller child
+`factorybox-devx-lifecycle-bfd81213f38b451a9dc5b4bdbad86c50` passes its original
+Go case in 69.21 seconds; guard child
+`factorybox-devx-lifecycle-9d3cb5f828b946bcaa7ba0066bb851db` passes in 71.22
+seconds. Both execute exactly CLI 2f434bfc and the delivered component bytes,
+preserve thirteen original processes/109 threads, verify useful original app
+and new Docker exec, failed-transaction replay, a fresh post-cure capture and
+independent current/prior checkpoint forks. Cleanup, unchanged inputs, no OOM
+and unchanged global sysctls all pass. These are four distinct newly accepted
+fault boundaries; old 29cb core proofs do not become current-core proofs.
+
+The new ordinary-series declaration
+`factorybox-first-release-ordinary-series-a69d88b28f9b43db9986466dcbee1e34/plan.json`,
+SHA-256 `3b62a722bfa81d5a6c2750feae4a3c8c4e0c12fd59b7c81a36ee62207cb05ae7`,
+binds that independently reproduced package and the complete exact current
+source/tool/test/fixture/consumer inventory. Every original ordinal and workload
+argument remains; only the selected worker identity changes in the twenty
+commands. Input-only verification passes without starting a trial. Both prior
+plans remain unchanged with zero trials. This new plan also has zero trials;
+do not count the above fault cases or older consumer passes into its twenty.
+The new full retirement suite and remaining current-package acceptance retain
+their own requirements; the complete production goal stays active/unqualified.
+
+The complete current-package native retirement suite then passes in
+`factorybox-checkpoint-retirement-f50c83e9c93b4237ac6b8c7d0d213109` with all
+eight top-level tests and no skips. It includes every original lifecycle,
+immutable alias, timer and worker-exit recovery-fence assertion, plus all
+seventeen new certificate cases and seven held-guard inventory cases. The
+parent confirms exact delivered core, unchanged inputs and complete cleanup.
+The remaining eighteen-group native matrix is being repeated on this new core;
+the earlier 29cb matrix remains historical evidence.

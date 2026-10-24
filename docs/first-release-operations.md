@@ -4,12 +4,16 @@ This is the candidate procedure for the scope in [GOAL.md](../GOAL.md).
 Production qualification remains false until the final profile binds all
 required passing evidence. The older pilot profile does not qualify this
 candidate. The current independently reproduced package is
-`factorybox-build-worker-29cba13df6534ab9ba999d367d21f51e`, with comparison
-`factorybox-build-worker-e23f9862edab4ed99960d598573b608a`.
+`factorybox-build-worker-130870231710425a8ee16a71c34a611e`, with comparison
+`factorybox-build-worker-361170cd105a4c9a84f44bc5029430f3`.
 Older evidence below identifies the package on which it ran and does not replace
 the remaining current-package qualification.
 
-The complete Factory planned-loss consumer, including actual full-storage
+The following consumer and eighteen-group native evidence belongs to the
+earlier 29cb package. It remains useful regression history; the new runtime
+requires its own complete current-package acceptance.
+
+The earlier complete Factory planned-loss consumer, including actual full-storage
 import failure/cancellation, retained-checkpoint inspection, changed loop
 attachment, public epoch retirement, retained Theia, local OpenCode flow and
 both graceful worker exits, passes the unchanged shared 420-second gate in
@@ -24,7 +28,7 @@ The current interrupted native epoch fixtures also pass in
 The original 8-GiB recovery and remaining release gates retain their own
 acceptance requirements.
 
-The same current package also passes the complete Minimal planned/abrupt
+The earlier 29cb package also passes the complete Minimal planned/abrupt
 consumers with the same bounded-store, actual pressure, retained-checkpoint,
 changed-attachment and public-retirement checks:
 `factorybox-consumer-worker-loss-16d115cb54b14e99b2eb63e7ea1ec08e` and
@@ -32,27 +36,24 @@ changed-attachment and public-retirement checks:
 These four consumer passes do not complete the remaining native, upstream,
 external-agent, operations and predetermined-series qualification.
 
-All eighteen declared native gate groups now pass in
+All eighteen declared native gate groups pass for the earlier 29cb core in
 `factorybox-pilot-native-gates-b4189cf518b44b2f870f7988f0417916` against this
 delivered core and pinned components, including a fresh eighteen-case CRIU
 core run. This leaves the remaining upstream/integration, actual-provider,
 operations, historical-error and final-series requirements open.
 
-The current Docker controller-loss qualification case remains failed. If the
-controller dies after a staged relative timer and process rollback, the original
-guard confirms its process cure but retains the source frozen because timer
-activation is unconfirmed. The public pause replay and deletion refuse. Keep
-the complete store and exact transaction evidence; this candidate has no
-accepted automatic useful-source recovery for that boundary. Its thirteen
-individually passing integration cases do not remove this release blocker.
-
-A source-build correction now passes that complete original controller-loss
-test in `factorybox-devx-lifecycle-0a8a9a435d674494a697a15b3aad6548`. It adds a
-separate guarded timer activation only after the exact authorized process cure,
-then confirms the original application, replay and independent old/new forks.
-This does not change the failed verdict for delivered package 29cb. The new
-guard-loss/protection regressions, independently reproduced replacement package
-and its full acceptance remain required before release.
+The current 1308 package passes both complete original Docker controller-loss
+and guard-loss cases in
+`factorybox-pilot-integration-gates-ca6d87e560104aaf9a34d4a16f66390a`.
+Their CLI and component hashes match the delivered package exactly. A separate
+guarded timer activation now completes only after the exact authorized process
+cure; original useful application state, replay and independent old/new forks
+all pass. The ungranted timer-orphan and guard-loss protections also pass in
+`factorybox-checkpoint-retirement-e24329e39181478a947dd84a0fbb041a` and
+`factorybox-checkpoint-retirement-bc4594cb6f0a4f5e9c0f38bf7f10541d`.
+They retain the frozen source and refuse false completion without a grant.
+The full new-package native/consumer/integration matrix, historical errors,
+external agent, operations and declared ordinary series remain required.
 
 ## Start and verify
 
