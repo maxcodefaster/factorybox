@@ -6,15 +6,59 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
 import uuid
 
 import build_worker
+import build_config
 import consumer_worker_loss
+import native_base
 import reference
 import upstream_bats
+import upstream_unit
+
+
+def require_native_worker(worker, host, candidate):
+    native_base.require_native_host(worker["platform"], host)
+    actual = worker.get("native_candidate")
+    if candidate:
+        if actual != build_worker.native_candidate_profile(worker["platform"], host):
+            raise ValueError("Factory consumer candidate must match its exact native kernel recipe")
+    elif actual is not None:
+        raise ValueError("unqualified Factory consumer worker requires explicit --native-candidate")
+
+
+def load_consumer(name, platform):
+    if not re.fullmatch(r'factorybox-build-consumer-[0-9a-f]{32}', name):
+        raise ValueError('requires one exact current Factory consumer build')
+    root = reference.ROOT / 'artifacts' / name
+    if root.resolve() != root or (root / 'result.json').is_symlink():
+        raise ValueError('Factory consumer build cannot be redirected')
+    consumer = json.loads((root / 'result.json').read_text())
+    if (consumer.get('passed') is not True or consumer.get('cleanup') is not True or
+            consumer.get('platform') != platform or
+            consumer.get('hub_bun') != '/opt/factory/opencode/musl/bun' or
+            set(consumer.get('images', {})) != {'runtime', 'hub'} or
+            upstream_unit.context_manifest(root / 'context') != consumer.get('source_context')):
+        raise ValueError('rebuild the exact current native Factory consumer and Linux Bun inputs')
+    for role, key in [('runtime', 'image'), ('hub', 'hub_image')]:
+        image = consumer['images'][role]
+        if (image.get('platform') != platform or consumer[key] != image.get('image') or
+                not re.fullmatch(r'[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}', consumer[key])):
+            raise ValueError('Factory consumer image roles or platform differ')
+        inspected = json.loads(reference.docker(['image', 'inspect', image['image']]))[0]
+        native_base.verify_image(image, inspected)
+    return root, consumer
+
+
+def run_owned_container(run, containers, name, arguments, **options):
+    # A timeout is an unknown create outcome, not proof that Docker created
+    # nothing. Register the exact cleanup identity before the external call.
+    containers.append(name)
+    return run(['run', '--name', name, *arguments], **options)
 
 
 def main():
@@ -24,15 +68,24 @@ def main():
     parser.add_argument('--factory-repo', type=Path, required=True)
     parser.add_argument('--project-images', required=True)
     parser.add_argument('--reserve', action='store_true')
+    parser.add_argument('--native-candidate', action='store_true')
     args = parser.parse_args()
     worker_root, worker = build_worker.load(args.worker_build)
-    consumer_root = reference.ROOT/'artifacts'/args.consumer_build
-    consumer = json.loads((consumer_root/'result.json').read_text())
-    if not consumer['passed'] or consumer['platform'] != 'linux/amd64':
-        raise ValueError('Requires an exact completed native consumer image build')
+    host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
+    require_native_worker(worker, host, args.native_candidate)
+    platform = worker['platform']
+    architecture = build_config.architecture(platform)
+    consumer_root, consumer = load_consumer(args.consumer_build, platform)
+    repo = args.factory_repo.resolve()
+    for name, digest in consumer['source_context'].items():
+        if (repo / name).is_symlink() or reference.sha(repo / name) != digest['sha256']:
+            raise ValueError('current Factory consumer source differs from its exact image build')
+    if not re.fullmatch(r'factorybox-devx-project-images-[0-9a-f]{32}', args.project_images):
+        raise ValueError('requires one exact completed native project-image archive')
     projects = reference.ROOT/'artifacts'/args.project_images
     images = json.loads((projects/'result.json').read_text())
-    if not images['passed'] or reference.sha(projects/'images.tar') != images['archive_sha256']:
+    if (not images['passed'] or reference.sha(projects/'images.tar') != images['archive_sha256'] or
+            any(row.get('architecture') != architecture or row.get('os') != 'linux' for row in images['images'])):
         raise ValueError('Project image archive changed')
     node = images['images'][0]['image']
     if not node.startswith('docker.io/library/node:') or len(images['images']) != 1:
@@ -44,7 +97,6 @@ def main():
     output = reference.new_artifact(name)
     output.mkdir(mode=0o755)
     shutil.copyfile(__file__, output/'runner.py')
-    repo = args.factory_repo.resolve()
     frozen = output/'factory';frozen.mkdir()
     for file in ['prepare.py','export-rootfs.sh','bootstrap.sh','reserve-bootstrap.sh']:
         shutil.copyfile(repo/'packages/runtime-kubernetes/src/factorybox'/file,frozen/file)
@@ -59,26 +111,27 @@ def main():
     reused_mirror=None
     for previous in sorted((reference.ROOT/'artifacts').glob('factorybox-factory-consumer-*/result.json')):
         saved=json.loads(previous.read_text());binary=previous.parent/'native-registry';source=previous.parent/'registry-source'
-        if saved.get('cleanup') is not True or not binary.is_file() or binary.is_symlink() or not source.is_dir():continue
+        if saved.get('platform') != platform or saved.get('cleanup') is not True or not binary.is_file() or binary.is_symlink() or not source.is_dir():continue
         if source_hashes!={str(p.relative_to(source)):reference.sha(p) for p in source.rglob('*') if p.is_file()}:continue
         if reference.sha(binary)!=saved.get('registry_binary_sha256'):raise ValueError('Closed fixture binary changed')
         os.link(binary,mirror);reused_mirror=str(previous);break
     if not reused_mirror:
         subprocess.run(['go','build','-trimpath','-buildvcs=false','-o',str(mirror),'./tests/devx-registry'],
-                       cwd=mirror_source,env=dict(os.environ,CGO_ENABLED='0'),check=True,capture_output=True,timeout=90)
+                       cwd=mirror_source,env=dict(os.environ,GOOS='linux',GOARCH=architecture,CGO_ENABLED='0'),check=True,capture_output=True,timeout=90)
+    build_config.require_elf(mirror, platform)
     pins=output/'project-images.json';pins.write_text(json.dumps(images['images']))
     result = {'schema':1,'owner':owner,'attemptID':attempt,'podUID':pod_uid,'passed':False,'cleanup':False,
+              'platform':platform,'native_candidate':worker.get('native_candidate'),
               'worker_build':args.worker_build,'consumer_build':args.consumer_build,'consumer_image':consumer['image'],
               'reserve':args.reserve,'reserve_images':[node] if args.reserve else None,
               'fixture_registry_mirror':True,'registry_binary_sha256':reference.sha(mirror),
               'registry_source_sha256':source_hashes,'registry_reused_from':reused_mirror,
               'native_profile_only':True,'kubernetes_qualified':False,'production_qualified':False,
               'source_sha256':{p.name:reference.sha(p) for p in frozen.iterdir()},
-              'hub_sha256':reference.sha(hub),'bun_sha256':reference.sha(bun),'commands':[]}
-    before = consumer_worker_loss.sysctls()
-    before['net/ipv4/ip_forward'] = Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()
-    if Path('/proc/sys/net/mptcp/enabled').exists():
-        before['net/mptcp/enabled']=Path('/proc/sys/net/mptcp/enabled').read_text().strip()
+              'hub_sha256':reference.sha(hub),'bun_sha256':reference.sha(bun),
+              'hub_image':consumer['hub_image'],'hub_bun':consumer['hub_bun'],'commands':[]}
+    before = consumer_worker_loss.sysctls(docker_image=worker['native_base_image'],
+        owner=owner, artifact=output, phase='before', factory_network=True)
     result['host_sysctls_before'] = before
     deadline = time.monotonic()+420
     containers = []
@@ -87,8 +140,14 @@ def main():
     live_pid = None
 
     def run(arguments, *, body=None, timeout=30, check=True):
-        done = subprocess.run([*reference.DOCKER,*arguments],input=body,capture_output=True,
-                              text=True,timeout=max(.1,min(timeout,deadline-time.monotonic())))
+        started = time.monotonic()
+        try:
+            done = subprocess.run([*reference.DOCKER,*arguments],input=body,capture_output=True,
+                                  text=True,timeout=max(.1,min(timeout,deadline-started)))
+        except subprocess.TimeoutExpired as error:
+            result['commands'].append({'arguments':arguments,'timeout':error.timeout,
+                                       'seconds':time.monotonic()-started,'outcome':'unconfirmed'})
+            raise
         result['commands'].append({'arguments':arguments,'exit':done.returncode,'stdout':done.stdout,'stderr':done.stderr})
         if check and done.returncode:
             raise ValueError('Native Factory consumer command failed: '+done.stderr[-2500:])
@@ -109,8 +168,12 @@ def main():
         raise TimeoutError(message+': '+str(last)[-3000:])
 
     def endpoint(path='/', method='GET'):
-        script = "import urllib.request;request=urllib.request.Request('http://127.0.0.1:18181'+path,method=method,headers={'x-fixture-owner':owner});print(urllib.request.urlopen(request,timeout=8).read().decode())"
-        return json.loads(run(['exec',server_id,'python3','-c','path='+repr(path)+'\nmethod='+repr(method)+'\nowner='+repr(owner)+'\n'+script]))
+        script = ("const response=await fetch(" + json.dumps('http://127.0.0.1:18181'+path) +
+                  ",{method:" + json.dumps(method) + ",headers:{'x-fixture-owner':" +
+                  json.dumps(owner) + "},signal:AbortSignal.timeout(8000)});"
+                  "if(!response.ok)throw new Error('Owned native endpoint HTTP '+response.status);"
+                  "console.log(await response.text());")
+        return json.loads(run(['exec',server_id,consumer['hub_bun'],'-e',script]))
 
     def memory():
         own(name,worker_id)
@@ -119,17 +182,18 @@ def main():
 
     try:
         for volume in [name,name+'-source']:
-            run(['volume','create','--label','com.factorybox.run='+owner,volume]);volumes.append(volume)
+            volumes.append(volume)
+            run(['volume','create','--label','com.factorybox.run='+owner,volume])
         # The image exporter has only the empty seed directory, no Source or assignment.
         helper = name+'-directories'
-        run(['run','--name',helper,'--label','com.factorybox.run='+owner,'--network=none',
+        run_owned_container(run,containers,helper,['--label','com.factorybox.run='+owner,'--network=none',
              '--cpus=.25','--memory=64m','--mount',f'type=volume,source={name},target=/volume',
-             '--entrypoint','mkdir',worker['native_base_image'],'-p','/volume/seed']);containers.append(helper)
+             '--entrypoint','mkdir',worker['native_base_image'],'-p','/volume/seed'],timeout=65)
         exporter = name+'-export'
-        containers.append(exporter)
         started = time.monotonic()
-        run(['run','--name',exporter,'--label','com.factorybox.run='+owner,'--network=none',
+        run_owned_container(run,containers,exporter,['--label','com.factorybox.run='+owner,'--network=none',
              '--cpus=1','--memory=256m','--cap-drop=ALL','--security-opt=no-new-privileges',
+             '--tmpfs','/var/lib/docker:rw,size=16m',
              '--mount',f'type=volume,source={name},target=/factory-seed,volume-subpath=seed',
              '--env','FACTORY_POD_UID='+pod_uid,'--env','FACTORY_STORE_ID='+owner,
              '--env','FACTORY_RUNTIME_IMAGE='+consumer['image'],'--entrypoint','/bin/sh',consumer['image'],
@@ -137,21 +201,20 @@ def main():
         result['export_seconds'] = time.monotonic()-started
         for label in [exporter,helper]:
             reference.owned_delete('container',label,owner);containers.remove(label)
-        server_name = name+'-hub';containers.append(server_name)
-        server_id = run(['run','--detach','--name',server_name,'--label','com.factorybox.run='+owner,
+        server_name = name+'-hub'
+        server_id = run_owned_container(run,containers,server_name,['--detach','--label','com.factorybox.run='+owner,
             '--network=none','--cpus=.5','--memory=192m','--pids-limit=32','--cap-drop=ALL',
             '--user','65534:65534','--read-only','--mount',f'type=bind,source={hub},target=/hub.js,readonly',
-            '--mount',f'type=bind,source={bun},target=/bun,readonly','--entrypoint','/bun',
-            worker['native_base_image'],'/hub.js',owner,attempt]).strip()
-        containers.append(name)
-        worker_id = run(['run','--detach','--name',name,'--label','com.factorybox.run='+owner,
+            '--entrypoint',consumer['hub_bun'],
+            consumer['hub_image'],'/hub.js',owner,attempt],timeout=65).strip()
+        worker_id = run_owned_container(run,containers,name,['--detach','--label','com.factorybox.run='+owner,
              '--privileged','--cgroupns=private','--cpus=3','--memory=3g','--pids-limit=512','--network=none',
              '--stop-timeout=45','--env','GOMAXPROCS=2','--env','GOMEMLIMIT=256MiB',
              '--env','FACTORY_POD_UID='+pod_uid,'--env','FACTORY_STORE_ID='+owner,
              '--mount',f'type=volume,source={name},target=/var/lib/sysbox',
              '--mount',f'type=volume,source={name}-source,target=/factory-source',worker['image'],
              '--store-id',owner,'--bounded-root','/var/lib/sysbox/fixed-store','--bounded-bytes',str(8<<30),
-             '--health-listen','127.0.0.1:8081']).strip()
+             '--health-listen','127.0.0.1:8081'],timeout=65).strip()
         status = wait(lambda:json.loads(run(['exec',worker_id,'/opt/factorybox/factorybox','worker-status'],check=False)),
                       lambda v:v.get('ready_at') and v.get('store_id')==owner,'Worker readiness',120)
         result['worker_identity'] = status
@@ -159,11 +222,20 @@ def main():
         if w['HostConfig']['Memory']!=3<<30 or w['HostConfig']['NanoCpus']!=3_000_000_000 or w['HostConfig']['NetworkMode']!='none' or s['HostConfig']['NetworkMode']!='none':
             raise ValueError('Native fixture resource bounds changed')
         wp,sp = w['State']['Pid'],s['State']['Pid']
+        network_name = name+'-network'
+        network_id = run_owned_container(run,containers,network_name,['--detach','--label','com.factorybox.run='+owner,
+            '--privileged','--pid=host','--userns=host','--network=none','--read-only',
+            '--cpus=.25','--memory=64m','--pids-limit=32',
+            '--entrypoint','/bin/sleep',worker['native_base_image'],'420'],timeout=65).strip()
+        network = own(network_name,network_id)
+        if network['HostConfig']['PidMode']!='host' or network['HostConfig']['NetworkMode']!='none':
+            raise ValueError('Owned native network helper changed its namespace bounds')
         def ip(pid, arguments):
             if own(name,worker_id)['State']['Pid']!=wp or own(server_name,server_id)['State']['Pid']!=sp:
                 raise ValueError('Owned fixture process changed')
-            subprocess.run(['sudo','-n','nsenter','--net=/proc/'+str(pid)+'/ns/net','--','ip',*arguments],
-                           check=True,capture_output=True,timeout=10)
+            if pid not in {wp,sp}:raise ValueError('Refusing a foreign fixture network namespace')
+            own(network_name,network_id)
+            run(['exec',network_id,'nsenter','--net=/proc/'+str(pid)+'/ns/net','--','ip',*arguments],timeout=10)
         ip(wp,['link','add','name','proof-out','alias','fixture:'+owner,'type','veth','peer','name','proof-in','netns',str(sp)])
         for pid,interface,address in [(wp,'proof-out','192.0.2.1/30'),(sp,'proof-in','192.0.2.2/30')]:
             ip(pid,['addr','add',address,'dev',interface]);ip(pid,['link','set',interface,'up'])
@@ -222,7 +294,7 @@ def main():
         result['start']=native;live_pid=native['runtime']['pid']
         runc=['exec',worker_id,'/opt/factorybox/components/sysbox-runc','--root',status['lifecycle']['root']+'/runtime','exec',native['record']['runtime_id']]
         wait(lambda:run([*runc,'docker','info','--format','{{json .}}'],check=False),lambda v:v.startswith('{'),'Private Docker startup')
-        if 'net/mptcp/enabled' in before:
+        if before.get('net/mptcp/enabled') is not None:
             result['guest_mptcp_enabled']=run([*runc,'cat','/proc/sys/net/mptcp/enabled']).strip()
             if result['guest_mptcp_enabled']!='0':raise ValueError('Factory guest did not select checkpointable ordinary TCP')
         endpoint('/prepared','POST')
@@ -292,6 +364,11 @@ def main():
                 result['retained_volumes']=volumes[:]
         for label in reversed(containers):
             try:
+                # owned_delete also accepts an absent exact name. A failed
+                # create may not have reached Docker at all.
+                if not run(['container','ls','--all','--quiet','--filter','name=^/'+label+'$']).strip():
+                    reference.owned_delete('container',label,owner)
+                    continue
                 facts=json.loads(reference.docker(['inspect',label]))[0]
                 if facts['Config']['Labels'].get('com.factorybox.run')!=owner:raise ValueError('Native consumer cleanup owner changed')
                 if label==name:(output/'worker.log').write_text(reference.docker(['logs',label]))
@@ -303,8 +380,8 @@ def main():
             try:reference.owned_delete('volume',volume,owner)
             except Exception as error:result.setdefault('cleanup_errors',[]).append(str(error))
         result['cleanup']=not result.get('cleanup_errors') and not result.get('retained_volumes')
-        after=consumer_worker_loss.sysctls();after['net/ipv4/ip_forward']=Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()
-        if Path('/proc/sys/net/mptcp/enabled').exists():after['net/mptcp/enabled']=Path('/proc/sys/net/mptcp/enabled').read_text().strip()
+        after=consumer_worker_loss.sysctls(docker_image=worker['native_base_image'],
+            owner=owner, artifact=output, phase='after', factory_network=True)
         result['host_sysctls_unchanged']=after==before
         result['inputs_unchanged']=all(reference.sha(frozen/file)==value for file,value in result['source_sha256'].items()) and reference.sha(hub)==result['hub_sha256'] and reference.sha(bun)==result['bun_sha256']
         result['passed']=result['passed'] and result['cleanup'] and result['host_sysctls_unchanged'] and result['inputs_unchanged']

@@ -101,10 +101,14 @@ def require_agent_cancel_continuation(recovered):
     return {"passed": True, "targets": ["recovered", "branch"], "distinct_prompts": True, "launches_each": 1}
 
 
-def sysctls(*, docker_image=None, owner=None, artifact=None, phase=None):
+def sysctls(*, docker_image=None, owner=None, artifact=None, phase=None, factory_network=False):
     tree = ast.parse((reference.ROOT / "tests/global-sysctl-observation.py").read_text())
     names = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and
                  any(isinstance(target, ast.Name) and target.id == "NAMES" for target in node.targets))
+    if factory_network:
+        if docker_image is None:
+            raise ValueError("Factory network sentinels require the explicit owned Docker-host observer")
+        names = list(dict.fromkeys([*names, "net/ipv4/ip_forward", "net/mptcp/enabled"]))
     if docker_image is not None:
         import re
         if (not isinstance(docker_image, str) or
@@ -128,13 +132,15 @@ def sysctls(*, docker_image=None, owner=None, artifact=None, phase=None):
                   "  return None\n"
                   "print(json.dumps({name:read(name) for name in names},sort_keys=True))\n")
         command = [*reference.DOCKER, "run", "--pull=never", "--name", name,
-                   "--label", "com.factorybox.run=" + owner, "--network=none", "--read-only",
+                   "--label", "com.factorybox.run=" + owner,
+                   "--network=host" if factory_network else "--network=none", "--read-only",
                    "--cpus=.25", "--memory=64m", "--pids-limit=32", "--cap-drop=ALL",
                    "--security-opt=no-new-privileges",
                    "--userns=host",
                    "--entrypoint", "python3", docker_image, "-c", script]
         observation = {"schema": 1, "command": command, "passed": False, "cleanup": False,
-                       "scope": "Read the unchanged fixed global sentinel set through the Docker host kernel's ordinary procfs, explicitly in the host user namespace. Read-only container, no bind mount, sysctl write, host installation or kernel configuration."}
+                       "factory_network": factory_network,
+                       "scope": "Read the unchanged fixed global sentinel set through the Docker host kernel's ordinary procfs, explicitly in the host user namespace. The explicit Factory lane also reads its original IPv4-forwarding/MPTCP sentinels in the Docker host network namespace. Read-only container, no bind mount, sysctl write, host installation or kernel configuration."}
         started = time.monotonic()
         try:
             # Native startup controls also exceeded thirty seconds on Docker.

@@ -56,6 +56,24 @@ class DockerSysctlObservationTests(unittest.TestCase):
             self.assertFalse(saved["passed"])
             self.assertTrue(saved["cleanup"])
 
+    def test_factory_network_lane_keeps_every_original_sentinel_and_observes_absence(self):
+        values = {"kernel/panic": "0", "vm/overcommit_memory": "1",
+                  "net/ipv4/ip_forward": "1", "net/mptcp/enabled": None}
+        self.run.return_value.stdout = json.dumps(values)
+        self.assertEqual(self.observe(factory_network=True), values)
+        command = self.run.call_args.args[0]
+        self.assertIn("--network=host", command)
+        self.assertIn("--cap-drop=ALL", command)
+        self.assertNotIn("--privileged", command)
+        saved = json.loads((self.artifact / "global-sysctls-before.json").read_text())
+        self.assertEqual(saved["unavailable_sentinels"], ["net/mptcp/enabled"])
+        del values["net/ipv4/ip_forward"]
+        self.run.return_value.stdout = json.dumps(values)
+        with self.assertRaisesRegex(ValueError, "sentinel"):
+            self.observe(factory_network=True)
+        with self.assertRaisesRegex(ValueError, "explicit owned"):
+            consumer_worker_loss.sysctls(factory_network=True)
+
     def test_absent_kernel_interface_is_retained_as_in_the_original_observer(self):
         values = {"kernel/panic": "0", "vm/overcommit_memory": None}
         self.run.return_value.stdout = json.dumps(values)
