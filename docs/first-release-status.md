@@ -18,6 +18,23 @@ bestanden und unabhängig geprüft. Offen bleiben die acht echten Anbieterfälle
 die historische Busy-Mount-Zuordnung und das endgültige Freigabeprofil.
 Ein eingereihter Test ist kein Pass.
 
+Der erste echte Anbieterfall ist inzwischen am kostenlosen Tageskontingent
+gescheitert. Der Anbieter hat die tatsächliche Anfrage mit 429 abgewiesen,
+bevor das Werkzeug startete. Damit sind null von acht echten Anbieterfällen
+bestanden. Die gespeicherte Frist erlaubt einen weiteren Versuch frühestens
+am 26. Oktober um 00:00:00.194689 UTC; das garantiert keine Verfügbarkeit.
+
+Der neueste Aufräumvergleich besteht in beiden Varianten mit jeweils 13
+Haupt- und 65 Untertests. In der zweiten Variante warten 28 echte Helfer nach
+ihrer Antwort mindestens 1,9 Sekunden länger bis zum beobachteten Prozessende.
+Alle acht ursprünglichen unmittelbaren Unmounts je Variante gelingen. Die
+unvollständige Root-/Arbeitsverzeichnis-Beobachtung liefert dabei keinen
+überlappenden Besitzer. Der historische Fehler bleibt ungeklärt. Noch längere
+Verzögerungen sind durch diesen Versuch nicht begründet. Der unabhängige
+Nachweis liegt im Handoff unter `agent-exit-delay/root-window-json-closure.json`.
+Ein Fehler des ersten Auswerteprogramms bleibt als negativer Gesamtstand
+erhalten; seine JSON-Schlüsselkorrektur ändert keine nativen Testbedingungen.
+
 Für die Abnahme verwenden wir den korrigierten Worker
 `6016296965364344a8ef9eede420dbc8`, unabhängig identisch nachgebaut als
 `829faef7ea3143038bebf72493474070`. Paket, Image und jede Image-Schicht stimmen
@@ -49,8 +66,15 @@ neue Pause, Stilllegung der alten Epoche, nützliches zweites Resume und
 anschließender Checkpoint/Fork mit unabhängigen Nachkommen. Aufräumen und
 unveränderte globale Einstellungen sind bestätigt. Die erste nutzbare
 wiederhergestellte Antwort benötigt in diesem Einzellauf 51,29 Sekunden.
-Das ist keine Latenzverteilung oder Garantie. Die ursprünglichen vollständigen
-Fehlerbelege `ad6530e1...` und `aaf8fa3...` bleiben erhalten.
+Das ist keine Latenzverteilung oder Garantie. Die ursprünglichen negativen
+Ergebnisse, Quellen und Fehlerdiagnosen bleiben erhalten. Das inzwischen
+ersetzte vollständige Store-Abbild `ad6530e1...` wurde nach vollständiger
+Entpackungs-/Hashprüfung und bestandenem identischem Gesamtfall ausgemustert.
+Seine 612 bereits gesicherten Diagnose-Auswahlen sind erneut geprüft; der alte
+gesamte Store ist ausdrücklich nicht mehr rekonstruierbar. Der Beleg liegt im
+Handoff unter `resolved-pressure-retention/closure.json`. Andere ausgewählte
+Eingänge und die weiterhin unaufgelösten vollständigen Fehler bleiben erhalten.
+Damit ist die vorgeschriebene Reserve für neue native Tests wieder verfügbar.
 
 Alle 17 Hauptgruppen für Go-Laufzeit und Speicher bestehen auf dem neuen Kern.
 Der gemeinsame Nachweis

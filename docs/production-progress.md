@@ -10280,3 +10280,68 @@ pauses nor signals the provider. Timing alone and empty partial inventories
 cannot attribute a holder, and no failed native verdict can become a pass.
 The source remains staged until actual capacity and exact cleanup permit it.
 Production qualification remains false and the complete release goal active.
+
+## 2026-10-25: restore native headroom and complete the two-second cleanup comparison
+
+Lossless repack `factorybox-storage-repack-6a1d39ddb86448b089343d5d3a46df05`
+finishes successfully. The current provider failure retains all 34,360,786,944
+decoded bytes and its original raw hash. The replacement encoding is
+747,235,061 bytes, SHA-256
+`ccfdd46c340ffdb3ba11c36d6390fc5ec172ff8271cfd3afba2c95ecb6ce6bb5`.
+Its one-hop pointer and original encoding receipt preserve reconstruction.
+Reclaimed encoded bytes are 733,055,420; this alone does not restore headroom.
+
+The resolved old truncated-process-tree failure `ad6530e1...` has the complete
+passing final-package replacement `77412471...` with all 27 frozen test-source
+files and the complete abrupt Factory pressure/epoch profile unchanged.
+`resolved-pressure-retention/supersession.json` verifies the actual source
+manifests, current 260/204 pinned inputs and 612 retained original image-internal
+diagnostic selections. The old generated whole-store output is absent from
+those current inputs and is now superseded. Retirement
+`factorybox-storage-retirement-b5c4b31bd2c842cbbb4b83839404b034`
+verifies the full 34,360,786,944-byte decoded stream and six tar members before
+removing only its 1,445,811,358-byte compressed payload. Its tar-level payload
+is an ext4 image, so the generic retention reports zero selected tar-level
+diagnostic bytes; the 612 image-internal selections remain separately retained
+and reverified. The original failed verdict, frozen sources, results and logs
+are unchanged. The old whole store is deliberately no longer reconstructable.
+The current unresolved EBUSY, original signal/PID/8-GiB and provider inputs
+remain retained. Closure SHA-256 is
+`1d4899e5421894041773039857e844e46355e3a46f6945b5ca26dc45114fa0b0`.
+The unchanged native-start guard then passes at 25,099,243,520 allocated bytes.
+
+The predeclared coordinator starts only after exact cleanup and capacity pass.
+Its unselected build `factorybox-build-sysbox-fs-agent-exit-delay-1f732d5962284042a5ec48b90255fd56`
+passes the unchanged original tests and vet; binary SHA-256 is
+`aa8038716c6906459cd89ae814e041a3437c300da0e9888b1c181d452cff19ab`.
+Control `factorybox-historical-admission-a97df820fb3940579273cb206f492624`
+passes all 13 original main/65 subtests. The original coordinator subsequently
+fails its complete-summary comparison because Python operation keys are
+integers while their saved JSON object keys are strings. The false parent
+`result-root-window.json` remains unchanged and the fault has not yet started.
+
+An exact one-line private comparison compatibility delta compares the complete
+Python JSON representation without dropping a field or rounding integer values.
+Before/after source and ordered-patch hashes are declared separately. No native
+test, assertion or runtime source changes. Continuation plan
+`368af18a8bc9131bc7dc77b3633a4042c0f8c32407c7833e32bec7b598aa75cc`
+pins 269 files, rechecks the same control/raw trace and runs only the previously
+unstarted fault with the same binary and observers. Fault
+`factorybox-historical-admission-fa9eaa92e17c4fcb9c9e87bcda3a7106`
+also passes all 13 main/65 subtests. Actual parent wait records number 48 each;
+28 fault waits are at least 1.9 seconds, versus zero in control. All eight
+original immediate unmounts per case return zero. The partial fs_struct
+inventory supplies no overlapping target-root/pwd witness at those calls.
+There are no probe misses or kernel errors in either filesystem trace.
+
+Independent `agent-exit-delay/root-window-json-closure.json`, SHA-256
+`c5a947179c19b72303c9fb33c59eb7a3074e961c352a4bd9dbf2914faeba7042`,
+rechecks the exact complete original stdout inventory, raw traces and summaries,
+actual waits, all pinned inputs, unchanged globals and absent owned containers
+and volumes. Both native sessions and both coordinators are terminal. Capacity
+after cleanup passes at 25,368,375,296 allocated bytes with the full eight-GiB
+reserve. No longer exit-delay experiment follows from this result: it still
+has no critical target-reference overlap witness. Empty partial observations
+do not exonerate the runtime or attribute original 882916. Its gate, all eight
+real-provider gates and final release qualification remain open. No additional
+provider request is made; the exact next permitted instant remains unchanged.
