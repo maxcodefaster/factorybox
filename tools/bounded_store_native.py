@@ -9,6 +9,7 @@ import subprocess
 import time
 import uuid
 
+import build_config
 import build_worker
 import consumer_worker_loss
 import native_base
@@ -19,9 +20,24 @@ import upstream_unit
 import worker_metadata_native
 
 
+def worker_compile_options(worker, host, *, native_candidate=False):
+    native_base.require_native_host(worker["platform"], host)
+    candidate = worker.get("native_candidate")
+    if native_candidate:
+        if candidate is None or candidate != build_worker.native_candidate_profile(worker["platform"], host):
+            raise ValueError("native candidate test requires the delivered worker's exact current kernel recipe")
+        tag, linked_kernel = candidate["compile_options"]
+        return [tag + ",factorybox_worker_probe", linked_kernel]
+    if candidate is not None:
+        raise ValueError("unqualified worker requires explicit --native-candidate test admission")
+    return ["-tags=factorybox_worker_probe"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
+    parser.add_argument('--native-candidate', action='store_true',
+                        help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
     parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata'], default='capacity')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
@@ -50,7 +66,9 @@ def main():
     if args.suite == 'retirement' or prototype or reader_only:
         args.timer_probe = True  # The complete required suite includes the timer regression.
     worker_path, worker = build_worker.load(args.worker_build)
-    native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
+    host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
+    compile_options = worker_compile_options(worker, host, native_candidate=args.native_candidate)
+    architecture = build_config.architecture(worker["platform"])
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
@@ -97,17 +115,22 @@ def main():
         dependencies = subprocess.check_output(['go', 'list', '-mod=readonly', '-deps', './cmd/factorybox'], cwd=source, text=True).splitlines()
         if 'factorybox/internal/timerstate' in dependencies:
             raise ValueError('linked timer reader requires a new delivered worker build')
-    busybox = json.loads((reference.ROOT / 'upstream/test-inputs.json').read_text())['busybox-amd64']
+    busybox = json.loads((reference.ROOT / 'upstream/test-inputs.json').read_text())['busybox-' + architecture]
     rootfs = reference.ROOT / '.cache/downloads' / busybox['archive']
     if reference.sha(rootfs) != busybox['sha256']:
         raise ValueError('native rootfs changed')
     output = artifact / 'output'
     output.mkdir()
     result = {'schema': 1, 'owner': owner, 'passed': False, 'cleanup': False, 'production_qualified': False,
+              'native_lifecycle_qualified': False, 'platform': worker['platform'],
+              'native_candidate': worker.get('native_candidate'), 'compile_options': compile_options,
+              'host': {key: host[key] for key in ['OSType', 'Architecture', 'KernelVersion']},
               'worker_build': args.worker_build, 'worker_image_id': worker['image_id'], 'source_context': manifest, 'suite': args.suite,
               'current_test_overlay_on_frozen_core': args.frozen_core,
               'runner_sha256': reference.sha(artifact / 'runner.py'), 'setup_sha256': reference.sha(artifact / 'setup.sh'),
-              'rootfs_sha256': busybox['sha256'], 'global_sysctls_before': consumer_worker_loss.sysctls(),
+              'rootfs_sha256': busybox['sha256'],
+              'global_sysctls_before': consumer_worker_loss.sysctls(
+                  docker_image=worker['native_base_image'], owner=owner, artifact=artifact, phase='before'),
               'scope': 'Exact delivered bounded worker, 512-MiB fixed filesystem, full RAM/filesystem checkpoint/fork, '
                        'pause/resume, actual guest ENOSPC, distinct host/internal admission, external writable bind '
                        'refusal, preserved prior checkpoint, actual retained restore/useful work after reclaim, fresh public '
@@ -156,13 +179,14 @@ def main():
     volume = container = preserve = False
     identity = None
     started = time.monotonic()
+    deadline = started + 420
     print(json.dumps({'running': str(artifact)}), flush=True)
     try:
         binary = artifact / 'probe.test'
         with (artifact / 'build.log').open('x') as log:
-            subprocess.run(['go', 'test', '-c', '-mod=readonly', '-trimpath', '-buildvcs=false',
-                            '-tags=factorybox_worker_probe', '-o', str(binary), './internal/lifecycle'],
-                           cwd=source, env=dict(os.environ, GOOS='linux', GOARCH='amd64', CGO_ENABLED='0'),
+            subprocess.run(['go', 'test', '-c', '-mod=readonly', '-trimpath', '-buildvcs=false', *compile_options,
+                            '-o', str(binary), './internal/lifecycle'],
+                           cwd=source, env=dict(os.environ, GOOS='linux', GOARCH=architecture, CGO_ENABLED='0'),
                            stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
         result['test_binary_sha256'] = reference.sha(binary)
         volume = True
@@ -220,9 +244,8 @@ def main():
         command += [worker['image'], '--store-id', owner, '--bounded-root', '/var/lib/sysbox/fixed-store', '--bounded-bytes', str(capacity)]
         result['command'] = command
         container = True
-        identity = reference.docker(command)
+        identity = reference.docker(command, timeout=max(.1, min(65, deadline-time.monotonic())))
         result['container_id'] = identity
-        deadline = time.monotonic() + 420
         result['startup'] = consumer_worker_loss.ready(name, owner, identity, deadline)
         with (artifact / 'stdout.txt').open('x') as stdout, (artifact / 'stderr.txt').open('x') as stderr:
             done = subprocess.run([*reference.DOCKER, 'exec', identity, '/bin/bash', '/setup.sh'], stdout=stdout, stderr=stderr,
@@ -435,7 +458,8 @@ def main():
                 reference.owned_delete('volume', name, owner)
             result['cleanup'] = not preserve
         finally:
-            result['global_sysctls_after'] = consumer_worker_loss.sysctls()
+            result['global_sysctls_after'] = consumer_worker_loss.sysctls(
+                docker_image=worker['native_base_image'], owner=owner, artifact=artifact, phase='after')
             result['inputs_unchanged'] = (upstream_unit.context_manifest(source) == manifest and
                                           reference.sha(artifact / 'runner.py') == result['runner_sha256'] and
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])

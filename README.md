@@ -356,6 +356,27 @@ Explicit lifecycle candidates link only their selected architecture and the
 actual native Docker kernel. `--candidate-platform linux/arm64` is available to
 the native lifecycle runner; it does not change ordinary worker admission.
 
+To test a delivered worker image before platform admission, pass
+`--native-candidate` to `tools/build_worker.py` with the exact component inputs
+above. It requires a matching native Linux Docker host and links only that host's
+kernel. The bundle and build receipt retain this unqualified candidate identity.
+It is not a release image and does not change ordinary builds or select a worker
+for Factory.
+
+The bounded-store proof can execute that exact delivered candidate, retaining
+the original ENOSPC, independent RAM, checkpoint/fork and pause/resume assertions:
+
+```sh
+mise exec -- python3 tools/bounded_store_native.py \
+  --worker-build "$worker_build" --native-candidate --suite capacity
+```
+
+The runner requires the delivered candidate's exact native kernel and observes
+the fixed global sysctl set on the Docker host, not on macOS. An absent kernel
+interface remains explicitly absent in both observations, as in the original
+global observer. This isolated proof does not qualify the remaining timer,
+worker-recovery or consumer suites.
+
 Use the [worker integration example](examples/worker/README.md) for the exact
 Compose deployment, store ownership, readiness and administrative workflow.
 The worker needs privileged container access and owns one persistent store.

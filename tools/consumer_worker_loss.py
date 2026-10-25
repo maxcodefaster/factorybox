@@ -101,10 +101,66 @@ def require_agent_cancel_continuation(recovered):
     return {"passed": True, "targets": ["recovered", "branch"], "distinct_prompts": True, "launches_each": 1}
 
 
-def sysctls():
+def sysctls(*, docker_image=None, owner=None, artifact=None, phase=None):
     tree = ast.parse((reference.ROOT / "tests/global-sysctl-observation.py").read_text())
     names = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and
                  any(isinstance(target, ast.Name) and target.id == "NAMES" for target in node.targets))
+    if docker_image is not None:
+        import re
+        if (not isinstance(docker_image, str) or
+                not re.fullmatch(r"[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}", docker_image) or
+                not isinstance(owner, str) or not re.fullmatch(r"[0-9a-f]{32}", owner) or
+                phase not in {"before", "after"} or artifact is None):
+            raise ValueError("Docker sysctl observation requires an exact pinned image, owner and phase")
+        artifact = Path(artifact).absolute()
+        if (artifact.resolve() != artifact or not artifact.is_dir() or
+                artifact.parent != reference.ROOT / "artifacts"):
+            raise ValueError("Docker sysctl observation must belong to its native artifact")
+        name = "factorybox-sysctl-observation-" + owner + "-" + phase
+        # Match global-sysctl-observation.py exactly: an absent kernel
+        # interface is observed as absent, never omitted or invented as zero.
+        # Permission errors and every other read error still fail.
+        script = ("import json,pathlib\nnames=" + repr(names) + "\n"
+                  "def read(name):\n"
+                  " try:\n"
+                  "  return (pathlib.Path('/proc/sys')/name).read_text().strip()\n"
+                  " except FileNotFoundError:\n"
+                  "  return None\n"
+                  "print(json.dumps({name:read(name) for name in names},sort_keys=True))\n")
+        command = [*reference.DOCKER, "run", "--pull=never", "--name", name,
+                   "--label", "com.factorybox.run=" + owner, "--network=none", "--read-only",
+                   "--cpus=.25", "--memory=64m", "--pids-limit=32", "--cap-drop=ALL",
+                   "--security-opt=no-new-privileges",
+                   "--userns=host",
+                   "--entrypoint", "python3", docker_image, "-c", script]
+        observation = {"schema": 1, "command": command, "passed": False, "cleanup": False,
+                       "scope": "Read the unchanged fixed global sentinel set through the Docker host kernel's ordinary procfs, explicitly in the host user namespace. Read-only container, no bind mount, sysctl write, host installation or kernel configuration."}
+        started = time.monotonic()
+        try:
+            # Native startup controls also exceeded thirty seconds on Docker.
+            # Use the existing worker readiness window, not a weaker sentinel set.
+            done = subprocess.run(command, capture_output=True, text=True, timeout=65)
+            observation["exit_code"] = done.returncode
+            if done.returncode:
+                observation["stdout"], observation["stderr"] = done.stdout, done.stderr
+            done.check_returncode()
+            values = json.loads(done.stdout)
+            if set(values) != set(names) or any(v is not None and (not isinstance(v, str) or not v)
+                                               for v in values.values()):
+                raise ValueError("Docker sysctl observation omitted a required global sentinel")
+            observation.update(passed=True, values=values,
+                               unavailable_sentinels=[name for name in names if values[name] is None])
+            return values
+        except Exception as error:
+            observation["error"] = str(error)
+            raise
+        finally:
+            try:
+                reference.owned_delete("container", name, owner)
+                observation["cleanup"] = True
+            finally:
+                observation["seconds"] = time.monotonic() - started
+                reference_lifecycle.write_json(artifact / ("global-sysctls-" + phase + ".json"), observation)
     return {name: (Path("/proc/sys") / name).read_text().strip() for name in names}
 
 

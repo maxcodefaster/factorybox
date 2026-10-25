@@ -33,11 +33,7 @@ ADAPTER_TESTS = (
 
 
 def candidate_compile_options(platform, kernel):
-    architecture = build_config.architecture(platform)
-    if not isinstance(kernel, str) or not re.fullmatch(r"[A-Za-z0-9_.+-]+", kernel):
-        raise ValueError("unsupported candidate kernel release encoding")
-    return ["-tags=factorybox_candidate_" + architecture, "-ldflags=-X=" +
-            "factorybox/internal/platform.candidateKernel=" + kernel]
+    return build_config.candidate_compile_options(platform, kernel)
 
 
 def select_adapter_fixture(archive):

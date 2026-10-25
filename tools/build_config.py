@@ -43,6 +43,14 @@ def require_platform(platform, *inputs):
     return target
 
 
+def candidate_compile_options(platform, kernel):
+    target = architecture(platform)
+    if not isinstance(kernel, str) or not re.fullmatch(r"[A-Za-z0-9_.+-]+", kernel):
+        raise ValueError("unsupported candidate kernel release encoding")
+    return ["-tags=factorybox_candidate_" + target, "-ldflags=-X=" +
+            "factorybox/internal/platform.candidateKernel=" + kernel]
+
+
 def add_arguments(parser, *, bounded_builder=True, required_platform=False):
     parser.add_argument('--platform', choices=PLATFORMS, required=required_platform,
                         default=None if required_platform else 'linux/arm64',

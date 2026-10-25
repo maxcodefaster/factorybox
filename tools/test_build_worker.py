@@ -88,6 +88,40 @@ class WorkerBuildInputs(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "image identity"):
             build_worker.load(self.name)
 
+    def test_native_candidate_requires_matching_native_host_and_exact_kernel(self):
+        for platform, architecture in [("linux/arm64", "aarch64"), ("linux/amd64", "x86_64")]:
+            host = {"OSType": "linux", "Architecture": architecture, "KernelVersion": "7.0.14-test"}
+            candidate = build_worker.native_candidate_profile(platform, host)
+            self.assertEqual(candidate["platform"], platform)
+            self.assertIn("candidateKernel=7.0.14-test", candidate["compile_options"][1])
+            with self.assertRaisesRegex(ValueError, "matching Linux"):
+                build_worker.native_candidate_profile(platform, {**host, "Architecture": "foreign"})
+            with self.assertRaisesRegex(ValueError, "kernel"):
+                build_worker.native_candidate_profile(platform, {**host, "KernelVersion": "7.0 -X=foreign"})
+
+    def test_candidate_recipe_cannot_be_silently_qualified_or_changed(self):
+        candidate = build_worker.native_candidate_profile("linux/amd64", {
+            "OSType": "linux", "Architecture": "x86_64", "KernelVersion": "7.0.14-test"})
+        result = {"platform": "linux/amd64", "selected": False, "production_qualified": False,
+                  "native_lifecycle_qualified": False, "native_candidate": candidate,
+                  "compile_command": ["go", "build", "-trimpath", "-buildvcs=false",
+                                      *candidate["compile_options"], "-o", "owned", "./cmd/factorybox"]}
+        recipe = {"selected": False, "production_qualified": False, "native_candidate": candidate}
+        build_worker.verify_native_candidate(result, recipe)
+        for key in ["selected", "production_qualified", "native_lifecycle_qualified"]:
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "unqualified"):
+                build_worker.verify_native_candidate({**result, key: True}, recipe)
+        with self.assertRaisesRegex(ValueError, "recipe"):
+            build_worker.verify_native_candidate(result, {**recipe, "native_candidate": None})
+        with self.assertRaisesRegex(ValueError, "compile options"):
+            build_worker.verify_native_candidate({**result, "compile_command": []}, recipe)
+        with self.assertRaisesRegex(ValueError, "compile options"):
+            build_worker.verify_native_candidate({
+                **result, "compile_command": [*result["compile_command"][:6],
+                                             "-tags=foreign", *result["compile_command"][6:]]}, recipe)
+        with self.assertRaisesRegex(ValueError, "recipe"):
+            build_worker.verify_native_candidate({k: v for k, v in result.items() if k != "native_candidate"}, recipe)
+
     def test_false_target_is_rejected_even_when_all_hashes_are_redeclared(self):
         path = self.bundle / "components/criu"
         path.write_bytes(elf("arm64"))

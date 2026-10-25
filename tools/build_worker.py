@@ -20,6 +20,34 @@ import sources
 import upstream_unit
 
 
+def native_candidate_profile(platform, host):
+    native_base.require_native_host(platform, host)
+    kernel = host["KernelVersion"]
+    return {"platform": platform, "kernel": kernel,
+            "compile_options": build_config.candidate_compile_options(platform, kernel)}
+
+
+def verify_native_candidate(result, recipe):
+    candidate = result.get("native_candidate")
+    if candidate is None and "native_candidate" not in recipe:
+        return
+    if (not isinstance(candidate, dict) or recipe.get("native_candidate") != candidate or
+            candidate.get("platform") != result["platform"] or
+            candidate.get("compile_options") != build_config.candidate_compile_options(
+                result["platform"], candidate.get("kernel")) or
+            set(candidate) != {"platform", "kernel", "compile_options"} or
+            any(result.get(key) is not False for key in
+                ["selected", "native_lifecycle_qualified", "production_qualified"]) or
+            any(recipe.get(key) is not False for key in ["selected", "production_qualified"])):
+        raise ValueError("native candidate worker differs from its unqualified exact kernel recipe")
+    command = result.get("compile_command", [])
+    if (not isinstance(command, list) or len(command) != 9 or
+            command[:4] != ["go", "build", "-trimpath", "-buildvcs=false"] or
+            command[4:6] != candidate["compile_options"] or command[6] != "-o" or
+            not isinstance(command[7], str) or not command[7] or command[8] != "./cmd/factorybox"):
+        raise ValueError("native candidate compile options differ from the delivered build recipe")
+
+
 def image_context_bytes(context):
     """Normalize transport metadata without touching hardlinked frozen inputs."""
     output = io.BytesIO()
@@ -68,6 +96,7 @@ def load(name):
     if upstream_unit.context_manifest(artifact / "source") != result["source_context"]:
         raise ValueError("completed worker source context changed")
     recipe = json.loads((bundle / "build.json").read_text())
+    verify_native_candidate(result, recipe)
     if recipe.get("platform", result["platform"]) != result["platform"]:
         raise ValueError("worker recipe has a different target platform")
     for path in [bundle / "factorybox", *(bundle / "components").iterdir()]:
@@ -124,7 +153,11 @@ def main():
     parser.add_argument("--discard-compiler-scratch", action="store_true", help="After a successful verified build, retain its generated compiler-cache inventory and remove only that new build's optional scratch cache")
     parser.add_argument('--compress-package', action='store_true', help='Publish this new package as a completely verified lossless .tar.zst; completed builds stay unchanged')
     parser.add_argument('--component-input-worker', help='Share byte-identical pinned components from one verified completed worker without changing the build recipe')
+    parser.add_argument('--native-candidate', action='store_true',
+                        help='Build an explicitly unqualified test worker pinned to the actual matching Docker host kernel; never enable ordinary platform admission')
     options = parser.parse_args()
+    candidate = (native_candidate_profile(options.platform, json.loads(
+        reference.docker(["info", "--format", "{{json .}}"]))) if options.native_candidate else None)
     base_image, base = native_base.load(options.native_base_build, candidate_platform=options.platform)
     sysbox_path, sysbox = reference_lifecycle.component_build(options.sysbox_build, "factorybox-build-sysbox-")
     criu_path, criu, _, _ = criu_candidate.load(options.retained_candidate, base_lock=options.criu_base_lock)
@@ -134,6 +167,8 @@ def main():
     if any(row is not None and row["platform"] != options.platform
            for row in [comparison, component_input[1] if component_input else None]):
         raise ValueError("comparison or shared worker has a different target platform")
+    if comparison is not None and comparison.get("native_candidate") != candidate:
+        raise ValueError("worker comparison has a different native candidate kernel or admission mode")
     for name, digest in sysbox["binary_sha256"].items():
         path = sysbox_path / "output" / name
         if reference.sha(path) != digest:
@@ -169,6 +204,8 @@ def main():
                        "build/test utilities; this does not qualify a reduced production image."}
     result['component_input_worker'] = options.component_input_worker
     result['shared_component_roles'] = []
+    if candidate is not None:
+        result["native_candidate"] = candidate
     if options.criu_base_lock:
         result["criu_base_source_lock_sha256"] = reference.sha(artifact / "criu-base-source-lock.json")
         if result["criu_base_source_lock_sha256"] != criu["base_source_lock_sha256"]:
@@ -187,12 +224,14 @@ def main():
         verified = subprocess.run(["go", "mod", "verify"], cwd=source, env=env, capture_output=True, text=True, timeout=60)
         (artifact / "modules.txt").write_text(verified.stdout + verified.stderr)
         verified.check_returncode()
-        compile_command = ["go", "build", "-trimpath", "-buildvcs=false", "-o", str(bundle / "factorybox"), "./cmd/factorybox"]
+        compile_options = candidate["compile_options"] if candidate is not None else []
+        compile_command = ["go", "build", "-trimpath", "-buildvcs=false", *compile_options,
+                           "-o", str(bundle / "factorybox"), "./cmd/factorybox"]
         result["compile_command"] = compile_command
         with (artifact / "go-build.log").open("x") as log:
             subprocess.run(compile_command, cwd=source, env=env, check=True, stdout=log, stderr=subprocess.STDOUT, timeout=180)
         build_config.require_elf(bundle / "factorybox", options.platform)
-        dependencies = subprocess.check_output(["go", "list", "-deps", "./cmd/factorybox"], cwd=source, env=env, text=True, timeout=60).splitlines()
+        dependencies = subprocess.check_output(["go", "list", *compile_options, "-deps", "./cmd/factorybox"], cwd=source, env=env, text=True, timeout=60).splitlines()
         if any(name.startswith("factorybox/tests/") for name in dependencies):
             raise ValueError("worker acquired a consumer test dependency")
         (artifact / "dependencies.txt").write_text("\n".join(dependencies) + "\n")
@@ -225,6 +264,9 @@ def main():
                   "criu_source_lock_sha256": criu["source_lock_sha256"],
                   "criu_patch_sha256": criu["candidate_patch_sha256"],
                   "base_image": base_image, "base_packages_sha256": base["packages_sha256"]}
+        if candidate is not None:
+            recipe["native_candidate"] = candidate
+        verify_native_candidate(result, recipe)
         if sysbox.get("shm_startup_reexec"):
             patch = sysbox_path / "shm-reexec.patch"
             proof = sysbox_path / "shm-reexec-source.json"
