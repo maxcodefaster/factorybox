@@ -41,6 +41,10 @@ def main():
     result["source_context"] = upstream_unit.context_manifest(source)
     attempted = False
     try:
+        tests = ["NativeOwnedRelativeTimerState", "ReleaseObservationDoesNotReopenAnObject",
+                 "MaplessPIDFilterPreservesExactMembershipAndLongExitBounds"]
+        if options.platform == "linux/arm64":
+            tests.append("NativeArm64SavedTimerRegisters")
         compile = ["go", "test", "-c", "-trimpath", "-buildvcs=false", "-o", str(binary), "./internal/timerstate"]
         subprocess.run(compile, cwd=source, check=True,
                        env=dict(os.environ, GOOS="linux", GOARCH=build_config.architecture(options.platform),
@@ -53,7 +57,7 @@ def main():
                    "--pids-limit=64", "--env", "FACTORYBOX_TIMERSTATE_NATIVE=1",
                    "--mount", f"type=bind,source={binary},target=/timerstate.test,readonly",
                    "--entrypoint", "/timerstate.test", image, "-test.v", "-test.timeout=15s",
-                   "-test.run=^Test(NativeOwnedRelativeTimerState|ReleaseObservationDoesNotReopenAnObject|MaplessPIDFilterPreservesExactMembershipAndLongExitBounds)$"]
+                   "-test.run=^Test(" + "|".join(tests) + ")$"]
         result["command"] = command
         reference_lifecycle.write_json(archive / "intent.json", result)
         attempted = True
@@ -62,9 +66,7 @@ def main():
         (archive / "stderr.txt").write_text(done.stderr)
         result["exit_code"] = done.returncode
         result["inputs_unchanged"] = upstream_unit.context_manifest(source) == result["source_context"]
-        result["passed"] = (done.returncode == 0 and "--- PASS: TestNativeOwnedRelativeTimerState" in done.stdout
-                            and "--- PASS: TestReleaseObservationDoesNotReopenAnObject" in done.stdout
-                            and "--- PASS: TestMaplessPIDFilterPreservesExactMembershipAndLongExitBounds" in done.stdout
+        result["passed"] = (done.returncode == 0 and all("--- PASS: Test" + name in done.stdout for name in tests)
                             and "--- SKIP:" not in done.stdout and result["inputs_unchanged"])
         if not result["passed"]:
             raise ValueError("native timer reader prerequisite failed")

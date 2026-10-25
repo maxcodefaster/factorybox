@@ -65,11 +65,42 @@ func (e *Engine) sandboxMemory(record Record) (SandboxMemory, error) {
 	return result, nil
 }
 
-// cgroup v2 batches memory.stat updates. A stopped small process can leave an
-// old anon count visible for more than a second even with populated=0. Commit
-// a pause only after both the original cgroup remains empty and its own anon
-// accounting confirms release. Never substitute a fabricated zero or force a
-// global flush. A timeout leaves the stopped checkpoint available for retry.
+// Read only this worker's accounting subtree. The kernel can leave a small
+// stopped child's memory.stat below its per-cgroup update threshold, even
+// after the periodic-flush interval. The worker's aggregate includes the
+// capture work and can flush those pending child statistics on read.
+// This is not a host/global flush, reclamation or a substitute zero.
+func (e *Engine) refreshStoppedMemoryAccounting(record Record) error {
+	if err := e.requireEmptyCgroup(record); err != nil {
+		return err
+	}
+	parent, err := captureGuardOpen(cgroupRoot)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	identity, err := cgroupFDIdentity(int(parent.Fd()))
+	if err != nil || identity != record.CgroupParent {
+		return fmt.Errorf("stopped memory worker cgroup identity changed: %v", err)
+	}
+	data, err := captureReadFile(parent, "memory.max", 4096)
+	if err != nil {
+		return err
+	}
+	limit, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil || limit == 0 {
+		return fmt.Errorf("stopped memory accounting requires its bounded private worker")
+	}
+	if _, err := captureReadFile(parent, "memory.stat", 256<<10); err != nil {
+		return err
+	}
+	return e.requireEmptyCgroup(record)
+}
+
+// Commit a pause only after the original cgroup remains empty and its own anon
+// accounting confirms release. The parent read can refresh batched statistics,
+// but never authorizes completion by itself. A timeout retains the stopped
+// checkpoint for exact retry.
 func (e *Engine) stoppedSandboxMemory(ctx context.Context, record Record) (SandboxMemory, error) {
 	deadline := time.NewTimer(3 * time.Second)
 	defer deadline.Stop()
@@ -78,6 +109,16 @@ func (e *Engine) stoppedSandboxMemory(ctx context.Context, record Record) (Sandb
 			return SandboxMemory{}, err
 		}
 		memory, err := e.sandboxMemory(record)
+		if err != nil {
+			return memory, err
+		}
+		if memory.Anon == 0 {
+			return memory, e.requireEmptyCgroup(record)
+		}
+		if err := e.refreshStoppedMemoryAccounting(record); err != nil {
+			return memory, err
+		}
+		memory, err = e.sandboxMemory(record)
 		if err != nil {
 			return memory, err
 		}

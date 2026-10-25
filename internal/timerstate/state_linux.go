@@ -157,7 +157,23 @@ func waitReleased(id uint32, nextID func([]byte) error) error {
 // Read emits only the requested tasks in the caller's PID namespace. Every
 // thread is pinned before the iterator runs; kernel birth ticks must match the
 // caller's frozen ownership inventory. The caller owns the freezer boundary.
-func Read(tasks []Task) (observation Observation, resultErr error) {
+func Read(tasks []Task) (Observation, error) {
+	return read(tasks, false)
+}
+
+// ReadWithRegisters retains the same exact PID/namespace/birth and release
+// checks, adding saved native ARM64 user registers and an unshifted kernel
+// clock observation. The kernel helper
+// returns task_pt_regs; its first 272 bytes are the Linux user_pt_regs ABI.
+// Other architectures must not interpret this native layout.
+func ReadWithRegisters(tasks []Task) (Observation, error) {
+	if runtime.GOARCH != "arm64" {
+		return Observation{}, fmt.Errorf("saved timer registers require native ARM64")
+	}
+	return read(tasks, true)
+}
+
+func read(tasks []Task, registers bool) (observation Observation, resultErr error) {
 	if len(tasks) == 0 || len(tasks) > 32768 {
 		return observation, fmt.Errorf("invalid timer task count")
 	}
@@ -354,11 +370,29 @@ func Read(tasks []Task) (observation Observation, resultErr error) {
 	}
 	p.read(-240, int32(blockSize), 7, blockOffset)
 	p.read(-248, 8, 7, fields["birth"])
+	recordSize := blockSize + 16
+	if registers {
+		p.mov(1, 7)
+		p.emit(0x85, 0, 0, 0, 175) // bpf_task_pt_regs, no new descriptor or attachment.
+		p.jump(0x15, 0, 0, 0)
+		p.mov(8, 0)
+		p.read(int16(-240+blockSize), 8, 8, 64)  // user_pt_regs.regs[8]
+		p.read(int16(-232+blockSize), 8, 8, 256) // user_pt_regs.pc
+		p.read(int16(-224+blockSize), 8, 8, 0)   // user_pt_regs.regs[0]
+		p.read(int16(-216+blockSize), 8, 8, 8)   // user_pt_regs.regs[1]
+		p.emit(0x61, 0, 10, int16(-240+sleepFields["clockid"]), 0)
+		p.emit(0x15, 0, 0, 2, 7)
+		p.emit(0x85, 0, 0, 0, 5) // bpf_ktime_get_ns, outside user time namespaces.
+		p.emit(0x05, 0, 0, 1, 0)
+		p.emit(0x85, 0, 0, 0, 125) // bpf_ktime_get_boot_ns.
+		p.emit(0x7b, 10, 0, int16(-208+blockSize), 0)
+		recordSize += 40
+	}
 	p.emit(0x79, 1, 6, int16(fields["ctxMeta"]), 0)
 	p.emit(0x79, 1, 1, int16(fields["seq"]), 0)
 	p.mov(2, 10)
 	p.add(2, -256)
-	p.emit(0xb7, 3, 0, 0, int32(blockSize+16))
+	p.emit(0xb7, 3, 0, 0, int32(recordSize))
 	p.emit(0x85, 0, 0, 0, 127)
 	code := p.finish()
 	observation.ProgramHash = fmt.Sprintf("%x", sha256.Sum256(code))
@@ -401,7 +435,7 @@ func Read(tasks []Task) (observation Observation, resultErr error) {
 		return observation, err
 	}
 	reader := os.NewFile(uintptr(iterFD), "owned task timer iterator")
-	maximum := len(tasks) * (blockSize + 16)
+	maximum := len(tasks) * recordSize
 	data, readErr := io.ReadAll(io.LimitReader(reader, int64(maximum)+1))
 	closeErr := reader.Close()
 	if err := errors.Join(readErr, closeErr); err != nil {
@@ -426,8 +460,16 @@ func Read(tasks []Task) (observation Observation, resultErr error) {
 			state.Remainder = binary.LittleEndian.Uint64(block[sleepFields["rmtp"]:])
 			state.ExpiresNS = int64(binary.LittleEndian.Uint64(block[sleepFields["expires"]:]))
 		}
+		if registers {
+			metadata := data[blockSize+16 : recordSize]
+			state.Registers = &Registers{Syscall: binary.LittleEndian.Uint64(metadata),
+				PC:         binary.LittleEndian.Uint64(metadata[8:]),
+				Argument0:  binary.LittleEndian.Uint64(metadata[16:]),
+				Argument1:  binary.LittleEndian.Uint64(metadata[24:]),
+				ObservedNS: int64(binary.LittleEndian.Uint64(metadata[32:]))}
+		}
 		observation.States = append(observation.States, state)
-		data = data[blockSize+16:]
+		data = data[recordSize:]
 	}
 	if err := checkLive(); err != nil {
 		return observation, err

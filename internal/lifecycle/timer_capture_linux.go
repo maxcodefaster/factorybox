@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,96 @@ type timerPendingCaughtSignal struct {
 	Caught  uint64 `json:"caught"`
 }
 
+type timerExpiredRestart struct {
+	TID      int   `json:"tid"`
+	Expires  int64 `json:"expires_ns"`
+	Observed int64 `json:"observed_ns"`
+}
+
+func (expired *timerExpiredRestart) Error() string {
+	return fmt.Sprintf("relative timer restart for TID %d expired before frozen admission (%d <= %d); unchanged source must settle before capture",
+		expired.TID, expired.Expires, expired.Observed)
+}
+
+func timerAdmissionSyscall(number string, frozenRestart bool) bool {
+	// Native ARM64 freezer stops can expose "-1 SP PC" after preparing the
+	// syscall restart, while the exact kernel restart block still owns a live
+	// timer. Treat that presentation as a candidate, not proof of no timer.
+	// The kernel reader and later exact restart/CPU validation remain required.
+	return frozenRestart && number == "-1" ||
+		number == strconv.Itoa(unix.SYS_NANOSLEEP) ||
+		number == strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) ||
+		number == strconv.Itoa(unix.SYS_RESTART_SYSCALL)
+}
+
+func timerAdmissionARM64ReturnPath(stack []byte) (bool, error) {
+	var syscall, interrupt bool
+	for _, line := range strings.Split(string(stack), "\n") {
+		frame := strings.Fields(line)
+		if len(frame) < 2 {
+			continue
+		}
+		syscall = syscall || strings.HasPrefix(frame[1], "el0_svc+")
+		interrupt = interrupt || strings.HasPrefix(frame[1], "el0_interrupt+") ||
+			strings.HasPrefix(frame[1], "el0t_64_irq_handler+")
+	}
+	if syscall && !interrupt {
+		return true, nil
+	}
+	if interrupt && !syscall {
+		return false, nil
+	}
+	return false, fmt.Errorf("frozen ARM64 timer has no unambiguous qualified syscall return path")
+}
+
+func timerAdmissionARM64Wait(state timerstate.State, fields []string) (bool, error) {
+	if state.Registers == nil {
+		return false, fmt.Errorf("frozen ARM64 timer has no exact saved user context")
+	}
+	if !timerAdmissionSyscall(strconv.FormatUint(state.Registers.Syscall, 10), false) {
+		return false, nil
+	}
+	nanosleep := state.Registers.Argument0 >= 4096 && state.Registers.Argument1 == state.Remainder
+	clock := (state.Registers.Argument0 == 0 || state.Registers.Argument0 == 1 ||
+		state.Registers.Argument0 == 7 || state.Registers.Argument0 == 11) && state.Registers.Argument1 == 0
+	if state.Registers.Syscall == uint64(unix.SYS_NANOSLEEP) && !nanosleep ||
+		state.Registers.Syscall == uint64(unix.SYS_CLOCK_NANOSLEEP) && !clock ||
+		state.Registers.Syscall == uint64(unix.SYS_RESTART_SYSCALL) && !nanosleep && !clock {
+		return false, nil
+	}
+	if len(fields) == 0 {
+		return false, fmt.Errorf("frozen ARM64 syscall presentation is absent")
+	}
+	if fields[0] != "-1" {
+		if len(fields) != 9 || fields[0] != strconv.FormatUint(state.Registers.Syscall, 10) {
+			return false, fmt.Errorf("frozen ARM64 syscall number differs from its kernel context")
+		}
+		return true, nil
+	}
+	if len(fields) != 3 {
+		return false, fmt.Errorf("frozen ARM64 syscall presentation is incomplete")
+	}
+	pc, err := strconv.ParseUint(fields[2], 0, 64)
+	if err != nil || pc != state.Registers.PC || pc < 4096 || pc%4 != 0 {
+		return false, fmt.Errorf("frozen ARM64 instruction pointer differs from its kernel context: %v", err)
+	}
+	instruction, err := timerMemoryRead(state.PID, pc, 4)
+	if err != nil {
+		return false, err
+	}
+	if !bytes.Equal(instruction, []byte{1, 0, 0, 0xd4}) {
+		return false, nil
+	}
+	stack, err := os.ReadFile(fmt.Sprintf("/proc/%d/stack", state.PID))
+	if err != nil {
+		return false, err
+	}
+	// A user interrupt can leave both X8 and a restart block from an already
+	// completed timer. Only the native syscall return path and exact rewound
+	// SVC are eligible; an IRQ/user-computation context is not a live wait.
+	return timerAdmissionARM64ReturnPath(stack)
+}
+
 func (signal *timerPendingCaughtSignal) Error() string {
 	return fmt.Sprintf("relative timer has an unprocessed caught signal (tid %d, pending %#x, blocked %#x, caught %#x); source continuation remains unconfirmed",
 		signal.TID, signal.Pending, signal.Blocked, signal.Caught)
@@ -64,6 +155,7 @@ func (guard *captureGuard) admitCheckpointTimers() error {
 	}
 	plan := captureTimerPlan{Version: 1, Token: guard.config.Token, Threads: threads}
 	var candidates []timerstate.Task
+	presentations := map[int][]string{}
 	for tid, birth := range threads {
 		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", tid))
 		if err != nil {
@@ -73,9 +165,7 @@ func (guard *captureGuard) admitCheckpointTimers() error {
 		if len(fields) == 0 {
 			return fmt.Errorf("empty frozen task syscall state")
 		}
-		if fields[0] != strconv.Itoa(unix.SYS_NANOSLEEP) &&
-			fields[0] != strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) &&
-			fields[0] != strconv.Itoa(unix.SYS_RESTART_SYSCALL) {
+		if !timerAdmissionSyscall(fields[0], runtime.GOARCH == "arm64") {
 			continue
 		}
 		start, err := strconv.ParseUint(birth, 10, 64)
@@ -83,10 +173,15 @@ func (guard *captureGuard) admitCheckpointTimers() error {
 			return err
 		}
 		candidates = append(candidates, timerstate.Task{PID: tid, StartTicks: start})
+		presentations[tid] = fields
 	}
 	if len(candidates) != 0 {
 		sort.Slice(candidates, func(i, j int) bool { return candidates[i].PID < candidates[j].PID })
-		plan.Observation, err = timerstate.Read(candidates)
+		if runtime.GOARCH == "arm64" {
+			plan.Observation, err = timerstate.ReadWithRegisters(candidates)
+		} else {
+			plan.Observation, err = timerstate.Read(candidates)
+		}
 		if err != nil {
 			return err
 		}
@@ -97,6 +192,15 @@ func (guard *captureGuard) admitCheckpointTimers() error {
 			if !state.RelativeTimer {
 				continue
 			}
+			if runtime.GOARCH == "arm64" {
+				active, err := timerAdmissionARM64Wait(state, presentations[state.PID])
+				if err != nil {
+					return err
+				}
+				if !active {
+					continue
+				}
+			}
 			if (state.Clock != 1 && state.Clock != 7) || state.ExpiresNS <= 0 ||
 				(state.TimespecType != 0 && state.TimespecType != 1) ||
 				(state.TimespecType == 0) != (state.Remainder == 0) {
@@ -104,6 +208,14 @@ func (guard *captureGuard) admitCheckpointTimers() error {
 			}
 			if err := timerNoPendingCaughtSignal(state.PID); err != nil {
 				return err
+			}
+			if runtime.GOARCH == "arm64" {
+				if state.Registers.ObservedNS <= 0 {
+					return fmt.Errorf("ARM64 frozen timer has no unshifted kernel clock observation")
+				}
+				if state.ExpiresNS <= state.Registers.ObservedNS {
+					return &timerExpiredRestart{TID: state.PID, Expires: state.ExpiresNS, Observed: state.Registers.ObservedNS}
+				}
 			}
 			plan.Targets = append(plan.Targets, state)
 		}

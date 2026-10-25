@@ -9,12 +9,23 @@ type Task struct {
 
 type State struct {
 	Task
-	BirthNS       uint64 `json:"birth_ns"`
-	RelativeTimer bool   `json:"relative_timer"`
-	Clock         int32  `json:"clock"`
-	TimespecType  int32  `json:"timespec_type"`
-	Remainder     uint64 `json:"remainder"`
-	ExpiresNS     int64  `json:"expires_ns"`
+	BirthNS       uint64     `json:"birth_ns"`
+	RelativeTimer bool       `json:"relative_timer"`
+	Clock         int32      `json:"clock"`
+	TimespecType  int32      `json:"timespec_type"`
+	Remainder     uint64     `json:"remainder"`
+	ExpiresNS     int64      `json:"expires_ns"`
+	Registers     *Registers `json:"arm64_registers,omitempty"`
+}
+
+// Registers is the native ARM64 saved user context needed to distinguish a
+// live frozen wait from a stale restart block. It is read without ptrace.
+type Registers struct {
+	Syscall    uint64 `json:"x8"`
+	PC         uint64 `json:"pc"`
+	Argument0  uint64 `json:"x0"`
+	Argument1  uint64 `json:"x1"`
+	ObservedNS int64  `json:"observed_clock_ns"`
 }
 
 type Observation struct {

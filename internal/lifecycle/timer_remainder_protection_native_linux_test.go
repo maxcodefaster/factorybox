@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package lifecycle
 
@@ -15,28 +15,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Keep the remainder on its own page: protecting it must not protect the
-// signal counter, return-result cell or the task's ordinary completion data.
-func nativeTimerRemainderProtectionAssembly() string {
-	assembly := nativeTimerRemainderAssembly()
-	assembly = strings.Replace(assembly, ".balign 8\nremaining: .quad 0x11111111, 0x22222222\n", ".balign 4096\nremaining: .quad 0x11111111, 0x22222222\n.zero 4080\n", 1)
-	assembly = strings.Replace(assembly, "    lea handler_delay(%rip), %rdx\n    xor %r10d, %r10d\n    syscall\n    ret\n", `    lea handler_delay(%rip), %rdx
-    xor %r10d, %r10d
-    syscall
-    mov $10, %eax
-    lea remaining(%rip), %rdi
-    mov $4096, %esi
-    mov $1, %edx
-    syscall
-    test %rax, %rax
-    jne failed
-    ret
-`, 1)
-	assembly = strings.Replace(assembly, "failed:\n    mov $79, %edi\n", timerNativeFailureReceipt, 1)
-	return assembly + ".section .rodata\nfailure_marker: .asciz \"/tmp/timer-failed\"\n.section .bss\n.balign 8\nfailure_state: .skip 64\n"
-}
-
-func TestNativeTimerRemainderProtection(t *testing.T) {
+func nativeTimerRemainderProtection(t *testing.T, activate func(*testing.T, boundedLossStatus, View, bool) map[string]any) {
 	if os.Getenv("FACTORYBOX_NATIVE_TIMER_REMAINDER_PROTECTION") != "1" {
 		t.Skip("owned native remainder copy-order fixture only")
 	}
@@ -72,7 +51,7 @@ func TestNativeTimerRemainderProtection(t *testing.T) {
 	}
 	proofs := map[string]any{}
 	activations := map[string]any{}
-	kernelPrototype := os.Getenv("FACTORYBOX_TIMER_KERNEL_PROTOTYPE") == "1"
+	kernelPrototype := activate != nil
 	modes := []string{"uncaptured", "prepared", "fork", "resumed"}
 	if kernelPrototype {
 		modes = []string{"uncaptured", "frozen-control", "prepared", "fork", "resumed", "queued"}
@@ -85,7 +64,7 @@ func TestNativeTimerRemainderProtection(t *testing.T) {
 				for deadline := time.Now().Add(time.Second); ; {
 					data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", view.Runtime.PID))
 					fields := strings.Fields(string(data))
-					active := len(fields) > 4 && (!prepared && fields[0] == "230" && fields[1] == "0x1" && fields[2] == "0x0" || prepared && nativeTimerActivatedWait(view.Runtime.PID, fields))
+					active := len(fields) > 4 && (!prepared && fields[0] == strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) && fields[1] == "0x1" && fields[2] == "0x0" || prepared && nativeTimerActivatedWait(view.Runtime.PID, fields))
 					if err == nil && active {
 						return
 					}
@@ -175,7 +154,7 @@ func TestNativeTimerRemainderProtection(t *testing.T) {
 				time.Sleep(600 * time.Millisecond)
 			}
 			if kernelPrototype && mode != "uncaptured" && mode != "frozen-control" {
-				activation := runNativeKernelActivationPrototype(t, status, view, mode == "queued")
+				activation := activate(t, status, view, mode == "queued")
 				activations[mode] = activation
 				if mode == "queued" {
 					sentNS = activation["signal_sent_ns"].(int64)

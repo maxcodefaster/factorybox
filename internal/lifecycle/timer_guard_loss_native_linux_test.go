@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package lifecycle
 
@@ -48,8 +48,9 @@ func TestNativeTimerGuardLoss(t *testing.T) {
 		t.Fatal("missing exact staged timer", err)
 	}
 	address := prepared.Targets[0].Address
-	code, err := timerMemoryRead(f.source.Runtime.PID, address, len(timerContinuationAMD64))
-	if err != nil || !bytes.Equal(code, timerContinuationAMD64) {
+	continuation := nativeTimerFaultContinuation(t, f.source.Runtime.PID, address)
+	code, err := timerMemoryRead(f.source.Runtime.PID, address, len(continuation))
+	if err != nil || !bytes.Equal(code, continuation) {
 		t.Fatal("source lacks its exact original staged code", err)
 	}
 	if err := unix.PidfdSendSignal(f.sourceFD, unix.SIGUSR1, nil, 0); err != nil {
@@ -148,7 +149,7 @@ func TestNativeTimerGuardLoss(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	codeAfter, err := timerMemoryRead(f.source.Runtime.PID, address, len(timerContinuationAMD64))
+	codeAfter, err := timerMemoryRead(f.source.Runtime.PID, address, len(continuation))
 	if err != nil || !bytes.Equal(code, codeAfter) {
 		t.Fatal("unconfirmed timer mutation changed after guard loss", err)
 	}

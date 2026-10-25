@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package lifecycle
 
@@ -17,38 +17,6 @@ import (
 
 	"golang.org/x/sys/unix"
 )
-
-// Derive a separate signal fixture without changing the original required
-// timer assembly. It requires one handler and raw -EINTR, retaining every
-// register, stack, flags and read-only request assertion from that task.
-func nativeTimerSignalAssembly() string {
-	assembly := strings.Replace(timerNativeAssembly, "_start:\n", `_start:
-    mov $13, %eax
-    mov $10, %edi
-    lea signal_action(%rip), %rsi
-    xor %edx, %edx
-    mov $8, %r10d
-    syscall
-    test %rax, %rax
-    jne failed
-`, 1)
-	assembly = strings.Replace(assembly, "cmpq $0, actual_result(%rip)", "cmpq $-4, actual_result(%rip)", 1)
-	assembly = strings.Replace(assembly, "    mov $257, %eax\n", "    cmpq $1, signal_count(%rip)\n    jne failed\n    mov $257, %eax\n", 1)
-	// Keep the successful task alive after its existing assertions, marker
-	// write and fsync. Otherwise an immediate correct EINTR can exit before
-	// the delivered resume command publishes its live-process receipt.
-	assembly = strings.Replace(assembly, "    xor %edi, %edi\n    jmp exit_task\n", "signal_success_hold:\n    mov $34, %eax\n    syscall\n    jmp signal_success_hold\n", 1)
-	assembly = strings.Replace(assembly, ".section .rodata\n", `signal_handler:
-    incq signal_count(%rip)
-    ret
-signal_restorer:
-    mov $15, %eax
-    syscall
-.section .rodata
-signal_action: .quad signal_handler, 0x04000000, signal_restorer, 0
-`, 1)
-	return assembly + ".section .bss\n.balign 8\nsignal_count: .skip 8\n"
-}
 
 func timerSignalStoppedController(t *testing.T, worker captureWorkerIntent) int {
 	t.Helper()
@@ -128,7 +96,7 @@ func TestNativeTimerSignalBoundary(t *testing.T) {
 			for deadline := time.Now().Add(time.Second); ; {
 				data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", view.Runtime.PID))
 				fields := strings.Fields(string(data))
-				if err == nil && len(fields) > 4 && fields[0] == "230" && fields[1] == "0x1" && fields[2] == "0x0" && fields[4] == "0x0" {
+				if err == nil && len(fields) > 4 && fields[0] == strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) && fields[1] == "0x1" && fields[2] == "0x0" && fields[4] == "0x0" {
 					break
 				}
 				if time.Now().After(deadline) {

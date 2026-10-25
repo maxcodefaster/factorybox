@@ -12,15 +12,17 @@ import (
 )
 
 type captureTimerAdmission struct {
-	Version     int                       `json:"version"`
-	Token       string                    `json:"token"`
-	SourcePID   int                       `json:"source_pid"`
-	SourceStart string                    `json:"source_start"`
-	Attempts    int                       `json:"attempts"`
-	Seconds     float64                   `json:"seconds"`
-	First       *timerPendingCaughtSignal `json:"first"`
-	Last        *timerPendingCaughtSignal `json:"last"`
-	Passed      bool                      `json:"passed"`
+	Version      int                       `json:"version"`
+	Token        string                    `json:"token"`
+	SourcePID    int                       `json:"source_pid"`
+	SourceStart  string                    `json:"source_start"`
+	Attempts     int                       `json:"attempts"`
+	Seconds      float64                   `json:"seconds"`
+	First        *timerPendingCaughtSignal `json:"first"`
+	Last         *timerPendingCaughtSignal `json:"last"`
+	ExpiredFirst *timerExpiredRestart      `json:"expired_first,omitempty"`
+	ExpiredLast  *timerExpiredRestart      `json:"expired_last,omitempty"`
+	Passed       bool                      `json:"passed"`
 }
 
 // Only an unmodified, pre-capture source may run to consume a pending caught
@@ -33,7 +35,7 @@ func (e *Engine) admitCheckpointSource(ctx context.Context, guard *captureGuard,
 		SourcePID: guard.config.PID, SourceStart: guard.config.Start}
 	var started, deadline time.Time
 	defer func() {
-		if observation.First == nil {
+		if observation.First == nil && observation.ExpiredFirst == nil {
 			return
 		}
 		observation.Seconds, observation.Passed = time.Since(started).Seconds(), resultErr == nil
@@ -73,19 +75,37 @@ func (e *Engine) admitCheckpointSource(ctx context.Context, guard *captureGuard,
 			admissionErr = guard.admitCheckpointTimers()
 		}
 		var pending *timerPendingCaughtSignal
-		if kind != "timers" || !errors.As(admissionErr, &pending) {
+		var expired *timerExpiredRestart
+		isPending := errors.As(admissionErr, &pending)
+		isExpired := errors.As(admissionErr, &expired)
+		if kind != "timers" || !isPending && !isExpired {
 			return kind, admissionErr
 		}
-		if observation.First == nil {
-			observation.First = pending
+		if isPending {
+			if observation.First == nil {
+				observation.First = pending
+			}
+			observation.Last = pending
+		} else {
+			if observation.ExpiredFirst == nil {
+				observation.ExpiredFirst = expired
+			}
+			observation.ExpiredLast = expired
+		}
+		if started.IsZero() {
 			started = time.Now()
 			deadline = started.Add(2 * time.Second)
 		}
-		observation.Last = pending
 		if time.Now().After(deadline) || observation.Attempts >= 32 {
+			if isExpired {
+				return kind, fmt.Errorf("pre-capture expired restart did not settle within the 2s/32-attempt bound: %w", expired)
+			}
 			return kind, fmt.Errorf("pre-capture caught signal did not settle within the 2s/32-attempt bound: %w", pending)
 		}
 		if guard.unsafe || guard.timerPlanSHA != "" {
+			if isExpired {
+				return kind, fmt.Errorf("expired restart cannot release a prepared or admitted timer source: %w", expired)
+			}
 			return kind, fmt.Errorf("pending signal cannot release a prepared or admitted timer source: %w", pending)
 		}
 		if err := captureGuardCaptureReturned(guard.config, guard.anchor); err != nil {

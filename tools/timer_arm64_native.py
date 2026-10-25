@@ -18,6 +18,8 @@ import upstream_unit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-base-build", required=True)
+    parser.add_argument("--fixtures", action="store_true",
+                        help="Execute all four raw ARM64 timer ABI fixture controls without Sysbox or checkpoint admission")
     options = parser.parse_args()
     platform = "linux/arm64"
     host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
@@ -39,6 +41,13 @@ def main():
               "cleanup": False, "native_lifecycle_qualified": False, "production_qualified": False,
               "source_context": upstream_unit.context_manifest(source),
               "scope": "Actual owned ARM64 ptrace timer CPU backend only; no admission or installed runtime"}
+    pattern = "^TestNativeArm64Timer(Remote|CodeABI)$"
+    expected = ["TestNativeArm64TimerRemote", "TestNativeArm64TimerCodeABI"]
+    if options.fixtures:
+        pattern = "^TestNativeArm64TimerFixtureABI$"
+        expected = ["TestNativeArm64TimerFixtureABI"]
+        result["scope"] = "Actual four raw ARM64 relative/signal/remainder/protected-remainder fixture controls, full GPR/SP/NZCV/read-only request assertions and real delayed signal handler. No Sysbox, capture, lifecycle or platform qualification."
+    result["fixture_controls"] = options.fixtures
     attempted = False
     try:
         compile = ["go", "test", "-c", "-trimpath", "-buildvcs=false", "-ldflags=-s -w",
@@ -54,8 +63,12 @@ def main():
                    "--privileged", "--network=none", "--read-only", "--cpus=1", "--memory=256m",
                    "--pids-limit=64", "--env", "FACTORYBOX_TIMER_ARM64_NATIVE=1",
                    "--mount", f"type=bind,source={binary},target=/lifecycle.test,readonly",
+                   *(["--tmpfs", "/tmp:rw,size=64m",
+                      "--mount", f"type=bind,source={archive / 'output'},target=/output"] if options.fixtures else []),
                    "--entrypoint", "/lifecycle.test", image, "-test.v", "-test.timeout=30s",
-                   "-test.run=^TestNativeArm64Timer(Remote|CodeABI)$"]
+                   "-test.run=" + pattern]
+        if options.fixtures:
+            (archive / "output").mkdir()
         result["command"] = command
         reference_lifecycle.write_json(archive / "intent.json", result)
         attempted = True
@@ -64,8 +77,7 @@ def main():
         (archive / "stderr.txt").write_text(done.stderr)
         result["exit_code"] = done.returncode
         result["inputs_unchanged"] = upstream_unit.context_manifest(source) == result["source_context"]
-        result["passed"] = (done.returncode == 0 and "--- PASS: TestNativeArm64TimerRemote" in done.stdout
-                            and "--- PASS: TestNativeArm64TimerCodeABI" in done.stdout
+        result["passed"] = (done.returncode == 0 and all("--- PASS: " + name in done.stdout for name in expected)
                             and "--- SKIP:" not in done.stdout and result["inputs_unchanged"])
         if not result["passed"]:
             raise ValueError("native ARM64 timer CPU prerequisite failed")

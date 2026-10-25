@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && (amd64 || arm64)
 
 package lifecycle
 
@@ -190,7 +190,7 @@ func timerNativeState(t *testing.T, prototype bool) {
 			t.Fatal("extract native continuation", err, string(output))
 		}
 	}
-	assembly := timerNativeAssembly
+	assembly := nativeRelativeTimerAssembly()
 	if prototype {
 		assembly = strings.Replace(assembly, "failed:\n    mov $79, %edi\n", timerNativeFailureReceipt, 1)
 		assembly += ".section .rodata\nfailure_marker: .asciz \"/tmp/timer-failed\"\n.section .bss\n.balign 8\nfailure_state: .skip 64\n"
@@ -281,7 +281,7 @@ func timerNativeState(t *testing.T, prototype bool) {
 	for deadline := time.Now().Add(2 * time.Second); ; {
 		data, err := os.ReadFile("/proc/" + strconv.Itoa(source.Runtime.PID) + "/syscall")
 		fields := strings.Fields(string(data))
-		if err == nil && len(fields) >= 5 && fields[0] == "230" && fields[1] == "0x1" && fields[2] == "0x0" && fields[4] == "0x0" {
+		if err == nil && len(fields) >= 5 && fields[0] == strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) && fields[1] == "0x1" && fields[2] == "0x0" && fields[4] == "0x0" {
 			requestAddress, err = strconv.ParseUint(fields[3], 0, 64)
 			if err != nil {
 				t.Fatal(err)

@@ -386,6 +386,28 @@ pressure. Every original assertion and refusal control remains in those
 fixtures. Their ARM64 passes do not replace the remaining interrupted-timer,
 recovery or Factory consumer qualification.
 
+The `timer-signal`, `timer-admission-signal`, `timer-remainder` and
+`timer-remainder-protection` suites use native ABI fixtures for either
+architecture. They retain the original raw EINTR, single-handler,
+interruption-time remainder and source/fork/resume assertions. Compatibility
+declarations pin the original assertion bodies and unchanged AMD64 assembly.
+On ARM64, `timer-admission-reader` also distinguishes a frozen live wait from
+computation or a completed restart, and exercises bounded settlement of an
+expired, unmodified source before capture.
+
+`stopped-memory` checks a real committed pause and rejects live or foreign
+cgroups. If a stopped child's anonymous-memory statistic is still batched, the
+runtime reads only its own identity-checked, bounded worker's statistics before
+rereading the child. Completion still requires the child's actual zero anonymous
+memory, an empty cgroup and the unchanged three-second observation deadline.
+There is no global flush or fabricated zero.
+
+`timer-orphan` and `timer-guard-loss` exercise actual controller/guard SIGKILL
+after completed process capture. They require the staged source and queued
+signal to remain held and unresolved requests to refuse replay or deletion.
+These completed-process boundary tests do not qualify automatic repair or
+recovery while a retained-cure grant is in flight.
+
 Use the [worker integration example](examples/worker/README.md) for the exact
 Compose deployment, store ownership, readiness and administrative workflow.
 The worker needs privileged container access and owns one persistent store.

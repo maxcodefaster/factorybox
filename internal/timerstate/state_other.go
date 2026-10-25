@@ -7,3 +7,7 @@ import "fmt"
 func Read(tasks []Task) (Observation, error) {
 	return Observation{}, fmt.Errorf("kernel timer capture is not qualified on this platform")
 }
+
+func ReadWithRegisters(tasks []Task) (Observation, error) {
+	return Observation{}, fmt.Errorf("saved kernel timer registers require native Linux ARM64")
+}

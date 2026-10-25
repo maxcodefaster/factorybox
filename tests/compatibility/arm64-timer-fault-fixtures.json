@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Run the original completed-process controller-loss and guard-loss assertions on native ARM64 as well as AMD64. Only the native clock_nanosleep number and staged-code selector differ. AMD64 retains the same continuation bytes. ARM64 independently verifies the complete private RX mapping, saved frame and exact direct-return branch before comparing the staged code across actual guard loss. No deadline, refusal, hold, signal, cleanup or qualification assertion is removed.",
+  "files": {
+    "internal/lifecycle/timer_orphan_native_linux_test.go": {
+      "before_sha256": "55cb5b2ee70b8d2a98e395a090ed15f63f00a10e7ae1f59ffedc0b261e90aaa1",
+      "after_sha256": "b31f242a8b298f7ce02755d2723cae7657b551006311bbb52d9ea50b1e12a0ec"
+    },
+    "internal/lifecycle/timer_guard_loss_native_linux_test.go": {
+      "before_sha256": "a4682a651836a69677506e51ab70ac97aa4221a7349440e359e56d1ebe1712b0",
+      "after_sha256": "65d318b984a971a98afb87099da0bec244b0f01389f123a001af2dfd2958fc87"
+    }
+  },
+  "added_files": {
+    "internal/lifecycle/timer_fault_abi_native_linux_amd64_test.go": "1967f49dfa9968d7fcfee413900d3a4809549ca4f190ab64b3b68e459e3ce3f9",
+    "internal/lifecycle/timer_fault_abi_native_linux_arm64_test.go": "94fd834f446a2ec816daa3e1749c49886a266a1866eedeaa1cb499692a9c518f"
+  },
+  "original_functions": {
+    "nativeTimerCaptureFaultFixture": {
+      "file": "internal/lifecycle/timer_orphan_native_linux_test.go",
+      "function": "nativeTimerCaptureFaultFixture",
+      "original_sha256": "31a8ed911ed12128313d3884e6f19dfa3a9ee569c40a9a0170bf2d427f0c5ca0",
+      "normalizations": [
+        ["strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP)+\" 0x1 0x0 \"", "\"230 0x1 0x0 \"", 1]
+      ]
+    },
+    "TestNativeTimerOrphan": {
+      "file": "internal/lifecycle/timer_orphan_native_linux_test.go",
+      "function": "TestNativeTimerOrphan",
+      "original_sha256": "06f89aecf6eefb6e3898e3d65ff9463824707ed85e1d141b87d4d11270d15194",
+      "normalizations": []
+    },
+    "TestNativeTimerGuardLoss": {
+      "file": "internal/lifecycle/timer_guard_loss_native_linux_test.go",
+      "function": "TestNativeTimerGuardLoss",
+      "original_sha256": "7dc1e71479b1f7efec9d8fb312eb10468e5375f01477f974114c4fb86b6f243d",
+      "normalizations": [
+        ["\tcontinuation := nativeTimerFaultContinuation(t, f.source.Runtime.PID, address)\n", "", 1],
+        ["len(continuation)", "len(timerContinuationAMD64)", 2],
+        ["bytes.Equal(code, continuation)", "bytes.Equal(code, timerContinuationAMD64)", 1]
+      ]
+    }
+  },
+  "unchanged_literals": {}
+}

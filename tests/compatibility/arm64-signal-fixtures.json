@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Share the original relative-wait, signal, admission, delayed-remainder and protected-remainder assertions across native AMD64 and ARM64. Only native syscall-number expressions, the CPU-specific assembly selector and the existing AMD64-only prototype callback differ in the assertion bodies. Preserve the original AMD64 assembly, three assembly builders and failure receipt byte-for-byte. The historical unselected AMD64 activation prototype retains its original cases; requesting that diagnostic on ARM64 fails explicitly rather than passing or skipping. New ARM64 tasks check the raw return, every X1-X30 register, SP, NZCV, unchanged read-only twelve-second request, exactly one handler and the same interruption-time remainder/copy-order constraints. Four raw native controls qualify the new fixture independently before delivered-worker capture proofs. No runtime admission, required-case, deadline, tolerance or vet relaxation.",
+  "files": {
+    "internal/lifecycle/timer_native_linux_test.go": {
+      "before_sha256": "001de1c751b7321958363f04695dd4b938dc03a91fbd490ea3f9cc4368e1c97a",
+      "after_sha256": "8df03827c3e599e31a768fa62cfb96363e2766c7608b9875fd15b190b8bae370"
+    },
+    "internal/lifecycle/timer_signal_native_linux_test.go": {
+      "before_sha256": "1d6a7e0c743caac42142e2ad3ba0fef9dc2ec411196c1b82063b4925ecaf6393",
+      "after_sha256": "9a6fab0bedc01c01c230607194463324e5ceabfdf0f96550dc0044cb3bf1aa0f"
+    },
+    "internal/lifecycle/timer_remainder_native_linux_test.go": {
+      "before_sha256": "4fcd6c21dd1f14f678ce696102084422db4eb979ab5d10e426dc1604f1942663",
+      "after_sha256": "75986edfe128ed8d2b7768fe8b4383b653e4922958204dbe4866ea0bc5996b0e"
+    },
+    "internal/lifecycle/timer_remainder_protection_native_linux_test.go": {
+      "before_sha256": "6b53f649dd8c8a43958eafb519fb37d9a20b282f852907764bbbed71983e6f13",
+      "after_sha256": "30520c78326989bdc159ff64fe7bbfb43875e81e00cb88536e2d8bfe4916e672"
+    },
+    "internal/lifecycle/timer_admission_signal_native_linux_test.go": {
+      "before_sha256": "708aa1a1dcad4d93962646f27b5242d405682b213a4ad84ac4ac6a858a7eb684",
+      "after_sha256": "928c496d65aecc2ace7283abeaa7ffeecba52c829762365291f0ce29e3e9a1a7"
+    },
+    "tools/timer_arm64_native.py": {
+      "before_sha256": "ff7ea204292a879922205938b9af160fb7dd3e63ca7dbdbee13a9db70257be7f",
+      "after_sha256": "ac530723bb6fb1cb1cebe1518b09a621aebcad82a58dd9acc9d26ce119eafbe4"
+    }
+  },
+  "added_files": {
+    "internal/lifecycle/timer_fixture_abi_native_linux_amd64_test.go": "582472e81c9e83328c42ac18cafd8d18ccb773e4d89e5152c674cfb02a10efdb",
+    "internal/lifecycle/timer_fixture_abi_native_linux_arm64_test.go": "afa9ea76261e25c5e86721388d78e72abf0189a52bc221896c61255e44955630",
+    "internal/lifecycle/timer_fixture_control_native_linux_arm64_test.go": "dbd2151e2ec8cd2245ee71e3d9059681f2358efcc6f1bd87d853cf008cae9d69",
+    "internal/lifecycle/timer_activation_native_linux_arm64_test.go": "2d104d9c91b82bbe7aad05bd9977ffd9d9a2ecbef55b8640a1a86875f8e1eba0"
+  },
+  "original_functions": {
+    "TestNativeCheckpointRetirementTimerState": {
+      "file": "internal/lifecycle/timer_native_linux_test.go",
+      "function": "TestNativeCheckpointRetirementTimerState",
+      "original_sha256": "8cd0a40704a8f32ebcd88dfa6a145310cb8524b0490b2d97b51e9ce923d6831b",
+      "normalizations": []
+    },
+    "TestNativeTimerRestartPrototype": {
+      "file": "internal/lifecycle/timer_native_linux_test.go",
+      "function": "TestNativeTimerRestartPrototype",
+      "original_sha256": "4b6192e234621a03b156fbe9049d64fc2a0d6c286d8e7d4d49f4dee3eb5c478e",
+      "normalizations": []
+    },
+    "timerNativeState": {
+      "file": "internal/lifecycle/timer_native_linux_test.go",
+      "function": "timerNativeState",
+      "original_sha256": "5a637966dcd8872a117ca1989a64e8e55fc8158569ca8ac735963839ad20bbd0",
+      "normalizations": [["strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP)", "\"230\"", 1], ["nativeRelativeTimerAssembly()", "timerNativeAssembly", 1]]
+    },
+    "nativeTimerSignalAssembly": {
+      "file": "internal/lifecycle/timer_fixture_abi_native_linux_amd64_test.go",
+      "function": "nativeTimerSignalAssembly",
+      "original_sha256": "d81a41b097c89109703c13a252d9a26feb80d1cb3bb6376cc11eeb2f0abac09e",
+      "normalizations": []
+    },
+    "timerSignalStoppedController": {
+      "file": "internal/lifecycle/timer_signal_native_linux_test.go",
+      "function": "timerSignalStoppedController",
+      "original_sha256": "e92eeed46c6954342d7817f86d92df30a953106140baec455c5ba4e361816ecf",
+      "normalizations": []
+    },
+    "TestNativeTimerSignalBoundary": {
+      "file": "internal/lifecycle/timer_signal_native_linux_test.go",
+      "function": "TestNativeTimerSignalBoundary",
+      "original_sha256": "1fe6683703b9960a13919d1bf80010d15643fd7ec254a82125b29fc45c421593",
+      "normalizations": [["strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP)", "\"230\"", 1]]
+    },
+    "nativeTimerRemainderAssembly": {
+      "file": "internal/lifecycle/timer_fixture_abi_native_linux_amd64_test.go",
+      "function": "nativeTimerRemainderAssembly",
+      "original_sha256": "ab29390ea47eab858c91916180766987e3d9e1a068deeced59249da812752532",
+      "normalizations": []
+    },
+    "TestNativeTimerRemainder": {
+      "file": "internal/lifecycle/timer_remainder_native_linux_test.go",
+      "function": "TestNativeTimerRemainder",
+      "original_sha256": "dd8db9ecfc3353fbc64628804f87a2a746e2da3d719ae5cc0b082cc059d2a6fd",
+      "normalizations": [["strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP)", "\"230\"", 2], ["strconv.Itoa(unix.SYS_RESTART_SYSCALL)", "\"219\"", 1]]
+    },
+    "nativeTimerRemainderProtectionAssembly": {
+      "file": "internal/lifecycle/timer_fixture_abi_native_linux_amd64_test.go",
+      "function": "nativeTimerRemainderProtectionAssembly",
+      "original_sha256": "9d2bd05b88dae204ef617a346d037263bbf8f25d3d85d8502cb9324cfb0440e6",
+      "normalizations": []
+    },
+    "TestNativeTimerRemainderProtection": {
+      "file": "internal/lifecycle/timer_remainder_protection_native_linux_test.go",
+      "function": "nativeTimerRemainderProtection",
+      "original_sha256": "7f3867e8611ba064e8c1e1b5de428da485a5c28e0a30b12a24852d92856b064c",
+      "normalizations": [
+        ["strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP)", "\"230\"", 1],
+        ["func nativeTimerRemainderProtection(t *testing.T, activate func(*testing.T, boundedLossStatus, View, bool) map[string]any)", "func TestNativeTimerRemainderProtection(t *testing.T)", 1],
+        ["kernelPrototype := activate != nil", "kernelPrototype := os.Getenv(\"FACTORYBOX_TIMER_KERNEL_PROTOTYPE\") == \"1\"", 1],
+        ["activation := activate(t, status, view, mode == \"queued\")", "activation := runNativeKernelActivationPrototype(t, status, view, mode == \"queued\")", 1]
+      ]
+    },
+    "TestNativeTimerAdmissionSignal": {
+      "file": "internal/lifecycle/timer_admission_signal_native_linux_test.go",
+      "function": "TestNativeTimerAdmissionSignal",
+      "original_sha256": "4c76334f7c8476b79ad5346bab8ccb93ea26bbc191b6329a22870fd8eb1656bf",
+      "normalizations": [["strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP)", "\"230\"", 1]]
+    }
+  },
+  "unchanged_literals": {
+    "timerNativeAssembly": "372b83e0f59aee8f53fbd8e6523a04ca7e7e8a28768c85480112e129232c5284",
+    "timerNativeFailureReceipt": "45da8ac92d29b2f732c872c9e9ef1eecd591499a14339ea4a25498d29aac49cd"
+  }
+}

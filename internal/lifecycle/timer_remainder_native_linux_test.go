@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package lifecycle
 
@@ -14,33 +14,6 @@ import (
 
 	"golang.org/x/sys/unix"
 )
-
-// A one-second handler makes the interruption-time remainder distinguishable
-// from a remainder incorrectly computed only after that handler returns.
-func nativeTimerRemainderAssembly() string {
-	assembly := nativeTimerSignalAssembly()
-	assembly = strings.Replace(assembly, "    mov %rsp, initial_sp(%rip)\n", `    mov $228, %eax
-    mov $1, %edi
-    lea sleep_started(%rip), %rsi
-    syscall
-    test %rax, %rax
-    jne failed
-    mov %rsp, initial_sp(%rip)
-`, 1)
-	assembly = strings.Replace(assembly, "    xor %r10d, %r10d\n", "    lea remaining(%rip), %r10\n", 1)
-	assembly = strings.Replace(assembly, "    test %r10, %r10\n    jne failed\n", "    lea remaining(%rip), %rax\n    cmp %rax, %r10\n    jne failed\n", 1)
-	assembly = strings.Replace(assembly, "signal_handler:\n    incq signal_count(%rip)\n    ret\n", `signal_handler:
-    incq signal_count(%rip)
-    mov $230, %eax
-    mov $1, %edi
-    xor %esi, %esi
-    lea handler_delay(%rip), %rdx
-    xor %r10d, %r10d
-    syscall
-    ret
-`, 1)
-	return assembly + ".section .rodata\nhandler_delay: .quad 1, 0\n.section .data\n.balign 8\nremaining: .quad 0x11111111, 0x22222222\n.section .bss\n.balign 8\nsleep_started: .skip 16\n"
-}
 
 func TestNativeTimerRemainder(t *testing.T) {
 	if os.Getenv("FACTORYBOX_NATIVE_TIMER_REMAINDER") != "1" {
@@ -94,7 +67,7 @@ func TestNativeTimerRemainder(t *testing.T) {
 			for deadline := time.Now().Add(time.Second); ; {
 				data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", view.Runtime.PID))
 				fields := strings.Fields(string(data))
-				if err == nil && len(fields) > 4 && fields[0] == "230" && fields[1] == "0x1" && fields[2] == "0x0" && fields[4] != "0x0" {
+				if err == nil && len(fields) > 4 && fields[0] == strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) && fields[1] == "0x1" && fields[2] == "0x0" && fields[4] != "0x0" {
 					break
 				}
 				if time.Now().After(deadline) {
@@ -128,7 +101,7 @@ func TestNativeTimerRemainder(t *testing.T) {
 			for deadline := time.Now().Add(time.Second); ; {
 				data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", view.Runtime.PID))
 				fields := strings.Fields(string(data))
-				active := len(fields) > 2 && (mode == "uncaptured" && (fields[0] == "230" || fields[0] == "219") || mode == "prepared" && nativeTimerActivatedWait(view.Runtime.PID, fields))
+				active := len(fields) > 2 && (mode == "uncaptured" && (fields[0] == strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) || fields[0] == strconv.Itoa(unix.SYS_RESTART_SYSCALL)) || mode == "prepared" && nativeTimerActivatedWait(view.Runtime.PID, fields))
 				if err == nil && active {
 					break
 				}

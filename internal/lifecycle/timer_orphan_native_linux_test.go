@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package lifecycle
 
@@ -94,7 +94,7 @@ func nativeTimerCaptureFaultFixture(t *testing.T, name string) nativeTimerFaultF
 	t.Cleanup(func() { unix.Close(sourceFD) })
 	for deadline := time.Now().Add(time.Second); ; {
 		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", source.Runtime.PID))
-		if err == nil && strings.HasPrefix(string(data), "230 0x1 0x0 ") {
+		if err == nil && strings.HasPrefix(string(data), strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP)+" 0x1 0x0 ") {
 			break
 		}
 		if time.Now().After(deadline) {

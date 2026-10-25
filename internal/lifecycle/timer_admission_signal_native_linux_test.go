@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package lifecycle
 
@@ -72,7 +72,7 @@ func TestNativeTimerAdmissionSignal(t *testing.T) {
 	for deadline := time.Now().Add(time.Second); ; {
 		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/syscall", view.Runtime.PID))
 		fields := strings.Fields(string(data))
-		if err == nil && len(fields) > 2 && fields[0] == "230" && fields[1] == "0x1" && fields[2] == "0x0" {
+		if err == nil && len(fields) > 2 && fields[0] == strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) && fields[1] == "0x1" && fields[2] == "0x0" {
 			break
 		}
 		if time.Now().After(deadline) {
