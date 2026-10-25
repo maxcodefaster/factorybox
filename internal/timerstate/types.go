@@ -18,9 +18,10 @@ type State struct {
 }
 
 type Observation struct {
-	States                       []State `json:"states"`
-	KernelBTFHash                string  `json:"kernel_btf_sha256"`
-	ProgramHash                  string  `json:"program_sha256"`
+	States        []State `json:"states"`
+	KernelBTFHash string  `json:"kernel_btf_sha256"`
+	ProgramHash   string  `json:"program_sha256"`
+	// MapID is zero for the inline owned-PID filter. No kernel map is created.
 	ProgramID, MapID             uint32
 	ProgramReleased, MapReleased bool
 }

@@ -326,9 +326,22 @@ Its receipt records the image and Factorybox executable digest. There is no
 push, installation or automatic runtime admission.
 
 ARM64 component and worker builds are supported, but the current runtime still
-rejects ARM64 execution. Its timer reader, timer continuation and activation
-need an ARM64 port and native lifecycle proofs. A successful build does not
+rejects ARM64 execution. The owned timer reader runs natively on ARM64, using
+the iterator's referenced BTF layouts and an inline PID filter without kernel
+maps. Timer continuation and activation still need an ARM64 port and complete
+native lifecycle proofs. A successful build does not
 remove that guard or qualify the target kernel.
+
+Run the timer-reader prerequisite against an exact native base for the target:
+
+```sh
+mise exec -- python3 tools/timerstate_native.py \
+  --platform linux/arm64 --native-base-build "$base_build"
+```
+
+It verifies the real relative deadline, PID/birth ownership, refusal of a wrong
+birth and removal of its temporary BPF program. It does not admit the platform,
+test RAM checkpoint/restore, or replace the required lifecycle/consumer suites.
 
 Use the [worker integration example](examples/worker/README.md) for the exact
 Compose deployment, store ownership, readiness and administrative workflow.

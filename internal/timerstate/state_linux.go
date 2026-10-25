@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package timerstate
 
@@ -19,50 +19,6 @@ import (
 
 	"golang.org/x/sys/unix"
 )
-
-type instruction struct {
-	opcode, registers byte
-	offset            int16
-	immediate         int32
-}
-type program struct {
-	code  []instruction
-	exits []int
-}
-
-func (p *program) emit(op byte, dst, src byte, offset int16, immediate int32) {
-	p.code = append(p.code, instruction{op, src<<4 | dst, offset, immediate})
-}
-func (p *program) jump(op, dst, src byte, immediate int32) {
-	p.exits = append(p.exits, len(p.code))
-	p.emit(op, dst, src, 0, immediate)
-}
-func (p *program) mov(dst, src byte)         { p.emit(0xbf, dst, src, 0, 0) }
-func (p *program) add(dst byte, value int32) { p.emit(0x07, dst, 0, 0, value) }
-func (p *program) read(dst int16, size int32, src byte, offset int32) {
-	p.mov(1, 10)
-	p.add(1, int32(dst))
-	p.emit(0xb7, 2, 0, 0, size)
-	p.mov(3, src)
-	p.add(3, offset)
-	p.emit(0x85, 0, 0, 0, 113)
-	p.jump(0x55, 0, 0, 0)
-}
-func (p *program) finish() []byte {
-	for _, index := range p.exits {
-		p.code[index].offset = int16(len(p.code) - index - 1)
-	}
-	p.emit(0xb7, 0, 0, 0, 0)
-	p.emit(0x95, 0, 0, 0, 0)
-	data := make([]byte, len(p.code)*8)
-	for index, row := range p.code {
-		offset := index * 8
-		data[offset], data[offset+1] = row.opcode, row.registers
-		binary.LittleEndian.PutUint16(data[offset+2:], uint16(row.offset))
-		binary.LittleEndian.PutUint32(data[offset+4:], uint32(row.immediate))
-	}
-	return data
-}
 
 func bpf(command uintptr, attr []byte) (int, error) {
 	var pinned runtime.Pinner
@@ -163,19 +119,36 @@ func objectID(fd int) (uint32, error) {
 }
 
 func released(command uintptr, id uint32) error {
+	return waitReleased(id, func(attr []byte) error {
+		_, err := bpf(command, attr)
+		return err
+	})
+}
+
+func waitReleased(id uint32, nextID func([]byte) error) error {
+	if id == 0 {
+		return fmt.Errorf("temporary BPF object has no exact release identity")
+	}
 	attr := make([]byte, 12)
-	binary.LittleEndian.PutUint32(attr, id)
+	binary.LittleEndian.PutUint32(attr, id-1)
 	for deadline := time.Now().Add(500 * time.Millisecond); ; {
-		fd, err := bpf(command, attr)
+		// Enumerating the ID does not acquire a new program/map reference.
+		// Reopening an FD here can continually postpone RCU destruction on
+		// kernels whose grace period is longer than the polling interval.
+		err := nextID(attr)
 		if errors.Is(err, unix.ENOENT) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		unix.Close(fd)
+		if next := binary.LittleEndian.Uint32(attr[4:]); next > id {
+			return nil
+		} else if next != id {
+			return fmt.Errorf("BPF release enumeration returned an invalid identity")
+		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("own temporary BPF object remains after close")
+			return fmt.Errorf("own temporary BPF object %d remains after close", id)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -237,13 +210,26 @@ func Read(tasks []Task) (observation Observation, resultErr error) {
 	if err != nil {
 		return observation, err
 	}
-	ids := map[string]uint32{}
-	for _, name := range []string{"bpf_iter__task", "task_struct", "pid", "upid", "bpf_iter_meta"} {
-		id, err := btf.named(name, 4)
+	contextID, err := btf.named("bpf_iter__task", 4)
+	if err != nil {
+		return observation, err
+	}
+	ids := map[string]uint32{"bpf_iter__task": contextID}
+	for _, row := range []struct{ owner, member, name string }{
+		{"bpf_iter__task", "task", "task_struct"},
+		{"bpf_iter__task", "meta", "bpf_iter_meta"},
+		{"task_struct", "thread_pid", "pid"},
+		{"pid", "numbers", "upid"},
+	} {
+		reference, _, err := btf.member(ids[row.owner], row.member)
 		if err != nil {
 			return observation, err
 		}
-		ids[name] = id
+		id, err := btf.referencedAggregate(reference, row.name)
+		if err != nil {
+			return observation, err
+		}
+		ids[row.name] = id
 	}
 	attach, err := btf.named("bpf_iter_task", 12)
 	if err != nil {
@@ -317,51 +303,20 @@ func Read(tasks []Task) (observation Observation, resultErr error) {
 			resultErr = errors.Join(resultErr, unix.Close(descriptors[index]))
 		}
 		if observation.ProgramID != 0 {
-			err := released(13, observation.ProgramID)
+			err := released(11, observation.ProgramID)
 			observation.ProgramReleased = err == nil
 			resultErr = errors.Join(resultErr, err)
 		}
-		if observation.MapID != 0 {
-			err := released(14, observation.MapID)
-			observation.MapReleased = err == nil
-			resultErr = errors.Join(resultErr, err)
-		}
 	}()
-	mapAttr := make([]byte, 72)
-	binary.LittleEndian.PutUint32(mapAttr, 1)
-	binary.LittleEndian.PutUint32(mapAttr[4:], 4)
-	binary.LittleEndian.PutUint32(mapAttr[8:], 8)
-	binary.LittleEndian.PutUint32(mapAttr[12:], uint32(len(tasks)))
-	mapFD, err := bpf(0, mapAttr)
-	if err != nil {
-		return observation, err
+	// The immutable requested PID set is part of this exact program's bytes.
+	// There is no map for a retired program to retain across a lazy RCU grace
+	// period. PID namespace and birth checks still precede publication.
+	observation.MapReleased = true
+	pids := make([]uint32, 0, len(wanted))
+	for pid := range wanted {
+		pids = append(pids, pid)
 	}
-	descriptors = append(descriptors, mapFD)
-	observation.MapID, err = objectID(mapFD)
-	if err != nil {
-		return observation, err
-	}
-	for pid, task := range wanted {
-		var pinned runtime.Pinner
-		key, value, attr := make([]byte, 4), make([]byte, 8), make([]byte, 32)
-		binary.LittleEndian.PutUint32(key, pid)
-		binary.LittleEndian.PutUint64(value, task.StartTicks)
-		binary.LittleEndian.PutUint32(attr, uint32(mapFD))
-		binary.LittleEndian.PutUint64(attr[8:], address(&pinned, key))
-		binary.LittleEndian.PutUint64(attr[16:], address(&pinned, value))
-		_, err = bpf(2, attr)
-		pinned.Unpin()
-		runtime.KeepAlive(key)
-		runtime.KeepAlive(value)
-		if err != nil {
-			return observation, err
-		}
-	}
-	freeze := make([]byte, 4)
-	binary.LittleEndian.PutUint32(freeze, uint32(mapFD))
-	if _, err := bpf(22, freeze); err != nil {
-		return observation, err
-	}
+	sort.Slice(pids, func(i, j int) bool { return pids[i] < pids[j] })
 	p := program{}
 	p.mov(6, 1)
 	p.emit(0x79, 7, 6, int16(fields["ctxTask"]), 0)
@@ -393,12 +348,10 @@ func Read(tasks []Task) (observation Observation, resultErr error) {
 	p.emit(0x79, 0, 10, -56, 0)
 	p.emit(0x79, 9, 10, -32, 0)
 	p.jump(0x5d, 0, 9, 0)
-	p.emit(0x18, 1, 1, 0, int32(mapFD))
-	p.emit(0, 0, 0, 0, 0)
-	p.mov(2, 10)
-	p.add(2, -48)
-	p.emit(0x85, 0, 0, 0, 1)
-	p.jump(0x15, 0, 0, 0)
+	p.emit(0x61, 0, 10, -48, 0)
+	if err := p.onlyPIDs(pids); err != nil {
+		return observation, err
+	}
 	p.read(-240, int32(blockSize), 7, blockOffset)
 	p.read(-248, 8, 7, fields["birth"])
 	p.emit(0x79, 1, 6, int16(fields["ctxMeta"]), 0)
@@ -487,13 +440,9 @@ func Read(tasks []Task) (observation Observation, resultErr error) {
 		}
 	}
 	descriptors = nil
-	if err := released(13, observation.ProgramID); err != nil {
+	if err := released(11, observation.ProgramID); err != nil {
 		return observation, err
 	}
 	observation.ProgramReleased = true
-	if err := released(14, observation.MapID); err != nil {
-		return observation, err
-	}
-	observation.MapReleased = true
 	return observation, nil
 }

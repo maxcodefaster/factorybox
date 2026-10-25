@@ -90,6 +90,33 @@ func (b *kernelBTF) named(name string, kind uint32) (uint32, error) {
 	return found, nil
 }
 
+// Follow the iterator's actual type graph. Kernel BTF may contain multiple
+// same-named aggregates with different nested type IDs. A global name lookup
+// must not pick one of those layouts arbitrarily.
+func (b *kernelBTF) referencedAggregate(id uint32, name string) (uint32, error) {
+	for depth := 0; depth < 16; depth++ {
+		if id == 0 || uint64(id) >= uint64(len(b.types)) {
+			return 0, fmt.Errorf("invalid referenced kernel BTF type")
+		}
+		t := b.types[id]
+		switch (t.info >> 24) & 127 {
+		case 2, 8, 9, 10, 11, 18:
+			id = t.value
+		case 3:
+			id = binary.LittleEndian.Uint32(b.data[t.tail:])
+		case 4:
+			actual, err := b.name(t.name)
+			if err != nil || string(actual) != name {
+				return 0, fmt.Errorf("referenced kernel BTF aggregate is not %s: %v", name, err)
+			}
+			return id, nil
+		default:
+			return 0, fmt.Errorf("referenced kernel BTF type is not an aggregate")
+		}
+	}
+	return 0, fmt.Errorf("recursive referenced kernel BTF type")
+}
+
 func (b *kernelBTF) member(id uint32, name string) (uint32, int32, error) {
 	return b.memberDepth(id, name, 0)
 }

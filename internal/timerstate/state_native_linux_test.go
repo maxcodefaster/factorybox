@@ -61,10 +61,10 @@ func TestNativeOwnedRelativeTimerState(t *testing.T) {
 	}
 	observation, err := Read([]Task{{PID: pid, StartTicks: ticks}})
 	if err != nil {
-		t.Fatal("native kernel timer read failed", err)
+		t.Fatal("native kernel timer read failed", err, observation)
 	}
 	if len(observation.States) != 1 || !observation.ProgramReleased || !observation.MapReleased ||
-		observation.ProgramID == 0 || observation.MapID == 0 || observation.KernelBTFHash == "" || observation.ProgramHash == "" {
+		observation.ProgramID == 0 || observation.MapID != 0 || observation.KernelBTFHash == "" || observation.ProgramHash == "" {
 		t.Fatal("native reader did not release its exact BPF objects", observation)
 	}
 	state := observation.States[0]
