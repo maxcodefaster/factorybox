@@ -55,8 +55,12 @@ def load(name):
     if 'package_encoding' in result:
         if type(result.get('package_bytes')) is not int or result['package_bytes'] <= 0:
             raise ValueError('encoded worker package has no exact raw byte bound')
-        encoded = reference.artifact_storage.verify_compacted(package, {
-            'file': package.name, 'bytes': result['package_bytes'], 'sha256': result['package_sha256']})
+        if not (artifact / result['package_encoding']['file']).exists() and package.with_name(package.name+'.bundle-retention.json').is_file():
+            import worker_bundle_transport
+            encoded = worker_bundle_transport.verify(artifact,result)
+        else:
+            encoded = reference.artifact_storage.verify_compacted(package, {
+                'file': package.name, 'bytes': result['package_bytes'], 'sha256': result['package_sha256']})
         if encoded != result['package_encoding']:
             raise ValueError('encoded worker package differs from build provenance')
         package_sha256 = result['package_sha256']
