@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Keep the independent Python iterator diagnostic read-only on native Linux AMD64 and ARM64. Select only the explicit native BPF syscall number. Resolve the iterator's actual referenced task/pid/upid/meta layouts rather than choosing among duplicate struct names. Observe the same exact program's release by non-owning ID enumeration after every original descriptor closes, preserving the fifty observations and ten-millisecond interval without reopening a reference. The BPF instruction builder, full PID/pidfd/birth/namespace ownership checks and result extraction remain byte-identical. No task-memory write, pinned BPF object, event attachment, omitted assertion, skip or vet change.",
+  "files": {
+    "tests/timer-probe/probe.py": {
+      "before_sha256": "90ade639c5175058e0d630a0702e898a61e016c2943d2df279627c93b14986ed",
+      "after_sha256": "a5278c8b99ddeca4869b618ef0c6a4712922570726e695a3746c759c306d6c2a"
+    }
+  },
+  "unchanged_sections": {
+    "program_class_sha256": "ee69bbcc92a0665fd990c7a221c501e34d2ac861c9b0af73960a3eeb72d6de41",
+    "ownership_and_result_tail_sha256": "53cdb21791f89e05db3fe81460255fbfe9f5ca0b4d70ffad128135f0c3abfc43"
+  }
+}

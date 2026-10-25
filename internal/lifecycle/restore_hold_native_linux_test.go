@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package lifecycle
 
@@ -17,17 +17,6 @@ import (
 
 	"golang.org/x/sys/unix"
 )
-
-const nativeRestoreHoldAssembly = `.section .text
-.global _start
-_start:
-    incq counter(%rip)
-    jmp _start
-.section .bss
-.balign 8
-counter: .skip 8
-.section .note.GNU-stack,"",@progbits
-`
 
 func nativeRestoreHoldFork(t *testing.T, e *Engine, lock *os.File, source, snapshot, target string) (Record, restoreRequest) {
 	t.Helper()

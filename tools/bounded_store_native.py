@@ -33,13 +33,32 @@ def worker_compile_options(worker, host, *, native_candidate=False):
     return ["-tags=factorybox_worker_probe"]
 
 
+def require_detach_coverage(log):
+    controls = ["foreign-thaw-refused", "changed-source-refused", "live-tracer-refused"]
+    required = ["--- PASS: TestNativeTimerDetachCompletion ",
+                "256 actual detach completions without a diagnostic pre-read"]
+    required += ["--- PASS: TestNativeTimerDetachCompletion/" + name + " " for name in controls]
+    if "--- SKIP:" in log or any(marker not in log for marker in required):
+        raise ValueError("native detach proof omitted its 256 cycles or original refusal controls")
+    return {"cycles": 256, "negative_controls": controls}
+
+
+def detach_fixture_arguments(worker_path, worker):
+    runtime = worker_path / "image-context/bundle/components/sysbox-runc"
+    expected = worker["bundle_sha256"]["components/sysbox-runc"]
+    if runtime.resolve() != runtime or reference.sha(runtime) != expected:
+        raise ValueError("detach fixture differs from the exact delivered Sysbox runtime")
+    return ["--env", "FACTORYBOX_RUNTIME_SHA256=" + expected,
+            "--mount", f"type=bind,source={runtime},target=/out/sysbox-runc,readonly"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
     parser.add_argument('--native-candidate', action='store_true',
                         help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata'], default='capacity')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
     parser.add_argument('--worker-metadata-minimal', action='store_true', help='Worker-metadata diagnostic only: four actual committed pauses and one prior public base instead of three pauses and 200 bases; retain all boundary/preservation assertions')
@@ -49,6 +68,7 @@ def main():
     prototype = args.suite == 'timer-restart-prototype'
     reader_only = args.suite == 'timer-state-reader'
     exit_guard = args.suite == 'timer-exit-guard'
+    detach = args.suite == 'timer-detach'
     signal_boundary = args.suite == 'timer-signal'
     admission_signal = args.suite == 'timer-admission-signal'
     remainder = args.suite == 'timer-remainder'
@@ -72,7 +92,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata
+    retirement = args.suite.startswith('retirement') or prototype or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -151,6 +171,8 @@ def main():
         result['unlinked_component_only'] = 'internal/timerstate/'
     if exit_guard:
         result['scope'] = 'Production timer exit guard against a controlled test-only tracer, including real normal/SIGKILL exit while the exact original source cgroup is thawed. Confirm source hold before kernel auto-detach. Not actual partial timer mutation rollback, controller-loss or production qualification.'
+    if detach:
+        result['scope'] = 'The original 256 real ptrace-detach completions under owned CPU pressure, unchanged application counter and exact freezer acknowledgement, with foreign-thaw, changed-source and live-tracer refusal controls. No host-wide CPU or sysctl setting changes or production qualification.'
     if signal_boundary:
         result['scope'] = 'Direct syscall signal controls and actual SIGUSR1 queued after completed Go timer preparation while the exact source is frozen and its capture worker stopped before CRIU starts. Original wait must return raw EINTR after resume with one handler and unchanged registers/request. No production qualification.'
     if admission_signal:
@@ -211,6 +233,9 @@ def main():
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_READER=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerReader$']
         if exit_guard:
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_EXIT_GUARD=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerExitGuard$']
+        if detach:
+            command += ['--env', 'FACTORYBOX_NATIVE_TIMER_DETACH=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerDetachCompletion$',
+                        *detach_fixture_arguments(worker_path, worker)]
         if signal_boundary:
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_SIGNAL=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerSignalBoundary$']
         if admission_signal:
@@ -254,8 +279,8 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = 1 if prototype or reader_only or exit_guard or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        prefix = 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = 1 if prototype or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -341,6 +366,8 @@ def main():
             if any(proof.get(key) is not True for key in ['passed', 'normal_exit', 'actual_sigkill', 'held_before_auto_detach', 'no_preparation_claim']):
                 raise ValueError('timer exit guard proof incomplete')
             result['proof_sha256'] = reference.sha(proof_path)
+        elif detach:
+            result['detach_completion'] = require_detach_coverage(log)
         elif signal_boundary:
             proof_path = output / 'timer-signal.json'
             proof = json.loads(proof_path.read_text())

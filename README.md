@@ -377,6 +377,15 @@ interface remains explicitly absent in both observations, as in the original
 global observer. This isolated proof does not qualify the remaining timer,
 worker-recovery or consumer suites.
 
+The same runner has explicit `restore-hold`, `timer-state-reader`,
+`timer-exit-guard` and `timer-detach` suites for either native architecture.
+They retain the original five sealed restore/resume acknowledgement cases,
+bulk and non-leader timer reads with an independent Python comparison, actual
+normal/SIGKILL tracer exit and 256 real detach completions under owned CPU
+pressure. Every original assertion and refusal control remains in those
+fixtures. Their ARM64 passes do not replace the remaining interrupted-timer,
+recovery or Factory consumer qualification.
+
 Use the [worker integration example](examples/worker/README.md) for the exact
 Compose deployment, store ownership, readiness and administrative workflow.
 The worker needs privileged container access and owns one persistent store.

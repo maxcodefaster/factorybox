@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Run the original restore-hold and read-only timer-reader test bodies on AMD64 and ARM64. Move the three architecture-independent owned-sandbox fixture helpers without changing their function bytes. Move the AMD64 counter assembly unchanged to its CPU-specific test file and add an ARM64 single-thread counter with the same observed state. Every original test/helper body, five-case restore inventory, failure assertion, timeout, cleanup rule, suite count and vet setting remains unchanged. The independent Python reader's architecture/BTF/release port has its own exact declaration.",
+  "files": {
+    "internal/lifecycle/restore_hold_native_linux_test.go": {
+      "before_sha256": "70a169c043b360cd706d5729efe37daf332388c1be3922c17bea030df2421452",
+      "after_sha256": "1cd27e3c657befe1aff6c5b0a5f4c3f0aec2c291a3052d75081494ca2a14f4c1"
+    },
+    "internal/lifecycle/timer_reader_native_linux_test.go": {
+      "before_sha256": "e77c1781234ac6c8886587a84686d856ddd03405f302eb9337639e82b6a3afed",
+      "after_sha256": "9a9ebcb3baf11aff04d0fa7911c7a3354814528d5c42ce863763886b300fb447"
+    }
+  },
+  "added_files": {
+    "internal/lifecycle/timer_fixture_native_linux_test.go": "89811146830886ff8ef7e1f43b24f7db003382ad04f2a89f2d70e0f11224c5c4",
+    "internal/lifecycle/restore_hold_cpu_native_linux_amd64_test.go": "00b3c444fef1a9dd575fdce3f7fac6c4ba186fd420711c76f98ecbc243404e46",
+    "internal/lifecycle/restore_hold_cpu_native_linux_arm64_test.go": "63e28ed6384b7eae951149721bd1486580edec78a39f0a73d049ecf2ffd28710"
+  },
+  "unchanged_functions": {
+    "internal/lifecycle/restore_hold_native_linux_test.go": {
+      "nativeRestoreHoldFork": "410bcc1652914bae21f34ac1f4056b22c826369c09ac624a667702a7f2f19770",
+      "nativeRestoreHoldResume": "ded9c2eb8387ed9ba0fb4229ff11456538903ea94f085d9480ab02d55ddb0d9b",
+      "nativeRestoreHoldCounter": "4cb561c29bc54b55e1e0db051b58eaebe5dd0fd73e86a4d2b448e88a8cfae0eb",
+      "TestNativeRestoreHold": "06b09d62e7db470c277a20dca8c0fcb1ef7301c2cf2c4ac6d3dbb5c1cd692769"
+    },
+    "internal/lifecycle/timer_reader_native_linux_test.go": {
+      "TestNativeTimerReaderOwnInit": "b2001f71f6ae3c0abae5c10303decfa8afb3da69d2f1d0dc45d3cdc7b92e1a5f",
+      "TestNativeTimerReader": "0339b98ba55a9cddaec1911da5334f5512c099e9ef04e22b94e331fb3cdc6d0a"
+    },
+    "internal/lifecycle/timer_fixture_native_linux_test.go": {
+      "timerReaderFixture": "824dcb75f9f84f23ec37db8cbc420e72477f1c4ba01cc19e5b8ebb5f75189684",
+      "timerReaderFixtureFiles": "2a85ad38631a8f84271457217f3ffb80d64ce464682d662ea9b292d976188a4a",
+      "timerReaderFixtureFilesWithCleanup": "b07c9644588a52467ff237908d0f810592b1709f54a88b03489280fb1f9aad0a"
+    }
+  },
+  "unchanged_literals": {
+    "internal/lifecycle/restore_hold_cpu_native_linux_amd64_test.go": {
+      "nativeRestoreHoldAssembly": "c4df4aa85156dc5316d414eecfa410c001c1725ecc33630df6da0a1e9ea95b1b"
+    }
+  }
+}

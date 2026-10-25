@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Only extend the architecture build constraint of the original timer-exit and detach-completion fixtures to native ARM64. All three complete function bodies remain byte-identical, including real normal/SIGKILL tracer exit, source hold before auto-detach, 256 detach cycles under owned CPU pressure and all three refusal controls. No timeout, assertion, CPU/sysctl setting, event or vet change. The new explicit runner lane retains the complete original detach fixture.",
+  "files": {
+    "internal/lifecycle/timer_watch_native_linux_test.go": {
+      "before_sha256": "4ac82538761d2c28634b94e4ec9fa66364dea4142d1b2ddfcb4e7cb3a53be953",
+      "after_sha256": "281c6e9e65bc4ea79634462f54c54bb4617f99d35f77ee4be1a55fbd15c1a5d5"
+    },
+    "internal/lifecycle/timer_detach_native_linux_test.go": {
+      "before_sha256": "94e01fa38499fc3e558ba6bbe937a1490ca454d73306c3e67ba4b73fc3e622fe",
+      "after_sha256": "7efc0c79cb8a7925d85ee479d8a88fcc2036e28c3401f806f4f3dff831fb6325"
+    }
+  },
+  "added_files": {},
+  "unchanged_functions": {
+    "internal/lifecycle/timer_watch_native_linux_test.go": {
+      "TestNativeTimerExitMutator": "9734196dfc092d1739ea7085997e74bad5f64ded7af427b1affb853b5d75475e",
+      "TestNativeTimerExitGuard": "5906c621ea158cda49d5dbd8ed47c5c109d0ed5bea83300863016ec9ba165c24"
+    },
+    "internal/lifecycle/timer_detach_native_linux_test.go": {
+      "TestNativeTimerDetachCompletion": "f1dc27a45c38191cf95c114dfe98c4bd5c4e833f2f16e56eb2d1390862b6b4fe"
+    }
+  },
+  "unchanged_literals": {}
+}

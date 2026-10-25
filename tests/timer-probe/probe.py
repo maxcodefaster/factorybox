@@ -45,7 +45,10 @@ class BTF:
                     if bits % 8:
                         continue
                     members.append((self.string(member), target, bits // 8))
-            self.types.append({'name': self.string(name), 'kind': kind, 'value': value, 'members': members})
+            record = {'name': self.string(name), 'kind': kind, 'value': value, 'members': members}
+            if kind == 3:
+                record['element_type'] = struct.unpack_from('<I', data, cursor)[0]
+            self.types.append(record)
             cursor += tail
         if cursor != end:
             raise ValueError('incomplete BTF types')
@@ -72,6 +75,52 @@ class BTF:
                 except KeyError:
                     pass
         raise KeyError(name)
+
+    def referenced_aggregate(self, identifier, name):
+        seen = set()
+        for _ in range(16):
+            if not isinstance(identifier, int) or not 0 < identifier < len(self.types) or identifier in seen:
+                raise ValueError('invalid or recursive referenced BTF type')
+            seen.add(identifier)
+            value = self.types[identifier]
+            if value['kind'] in (2, 8, 9, 10, 11, 18):
+                identifier = value['value']
+            elif value['kind'] == 3:
+                identifier = value['element_type']
+            elif value['kind'] == 4 and value['name'] == name:
+                return identifier
+            else:
+                raise ValueError('referenced BTF aggregate is not ' + name)
+        raise ValueError('referenced BTF type exceeds its depth bound')
+
+
+def bpf_syscall_number(machine):
+    try:
+        return {'x86_64': 321, 'aarch64': 280}[machine]
+    except KeyError:
+        raise ValueError('diagnostic requires native Linux AMD64 or ARM64') from None
+
+
+def wait_program_released(program_id, bpf):
+    if not isinstance(program_id, int) or not 0 < program_id < 1 << 32:
+        raise ValueError('temporary program lacks an exact release ID')
+    # Enumerating immediately before the exact ID acquires no new reference.
+    # Reopening its FD can itself defer RCU destruction on the native kernel.
+    attr = bytearray(struct.pack('<III', program_id - 1, 0, 0))
+    for _ in range(50):
+        try:
+            bpf(11, attr)  # BPF_PROG_GET_NEXT_ID, never GET_FD_BY_ID.
+        except OSError as error:
+            if error.errno == 2:
+                return
+            raise
+        next_id = struct.unpack_from('<I', attr, 4)[0]
+        if next_id > program_id:
+            return
+        if next_id != program_id:
+            raise ValueError('temporary program release returned an invalid ID')
+        time.sleep(.01)
+    raise ValueError('exact temporary BPF program remains after descriptor closure')
 
 
 class Program:
@@ -109,16 +158,21 @@ class Program:
         return b''.join(struct.pack('<BBhi', *row) for row in self.code)
 
 
-def task_restart(btf, source_pid):
+def task_layout(btf):
     ctx = btf.named('bpf_iter__task', 4)
-    task = btf.named('task_struct', 4)
-    pid = btf.named('pid', 4)
-    upid = btf.named('upid', 4)
-    meta = btf.named('bpf_iter_meta', 4)
+    task = btf.referenced_aggregate(btf.member(ctx, 'task')[0], 'task_struct')
+    meta = btf.referenced_aggregate(btf.member(ctx, 'meta')[0], 'bpf_iter_meta')
+    pid = btf.referenced_aggregate(btf.member(task, 'thread_pid')[0], 'pid')
+    upid = btf.referenced_aggregate(btf.member(pid, 'numbers')[0], 'upid')
     block, restart_offset = btf.member(task, 'restart_block')
     block_size = btf.types[block]['value']
     if not 16 <= block_size <= 128 or btf.types[upid]['value'] != 16:
         raise ValueError('unsupported bounded task restart layout')
+    return ctx, task, pid, upid, meta, block, restart_offset, block_size
+
+
+def task_restart(btf, source_pid):
+    ctx, task, pid, upid, meta, block, restart_offset, block_size = task_layout(btf)
     p = Program()
     p.mov(6, 1)
     p.emit(0x79, 7, 6, btf.member(ctx, 'task')[1])
@@ -160,11 +214,14 @@ def task_restart(btf, source_pid):
     code = p.finish()
     libc = ctypes.CDLL(None, use_errno=True)
     libc.syscall.restype = ctypes.c_long
+    syscall = bpf_syscall_number(os.uname().machine)
     def bpf(command, data):
-        attr = ctypes.create_string_buffer(data)
-        result = libc.syscall(321, command, attr, len(data))
+        attr = ctypes.create_string_buffer(bytes(data))
+        result = libc.syscall(syscall, command, attr, len(data))
         if result < 0:
             raise OSError(ctypes.get_errno(), 'diagnostic BPF command ' + str(command))
+        if isinstance(data, bytearray):
+            data[:] = attr.raw[:len(data)]
         return result
     insns = ctypes.create_string_buffer(code)
     license = ctypes.create_string_buffer(b'GPL\0')
@@ -200,24 +257,17 @@ def task_restart(btf, source_pid):
     finally:
         for descriptor in reversed(descriptors):
             os.close(descriptor)
-    # Check the exact temporary program after all iterator/link/program FDs close.
-    # An ID is an observation handle only; no program is signalled or modified.
-    for _ in range(50):
-        try:
-            descriptor = bpf(13, struct.pack('<III', program_id, 0, 0))
-        except OSError as error:
-            if error.errno == 2:
-                return result
-            raise
-        os.close(descriptor)
-        time.sleep(.01)
-    raise ValueError('exact temporary BPF program remains after descriptor closure')
+    # Check the same exact ID after every iterator/link/program FD has closed.
+    # No program is reopened, signalled, modified or left pinned.
+    wait_program_released(program_id, bpf)
+    return result
 
 
 def main():
     own_init = len(sys.argv) == 3 and sys.argv[1] == '--own-init-control' and os.getpid() == 1
-    if (len(sys.argv) != 2 and not own_init) or os.uname().machine != 'x86_64':
-        raise ValueError('native AMD64 diagnostic requires one exact frozen owned task PID')
+    if (len(sys.argv) != 2 and not own_init) or os.uname().sysname != 'Linux':
+        raise ValueError('native Linux diagnostic requires one exact frozen owned task PID')
+    bpf_syscall_number(os.uname().machine)
     source_pid = int(sys.argv[-1])
     if source_pid < 1 or source_pid == 1 and not own_init:
         raise ValueError('invalid source task')
