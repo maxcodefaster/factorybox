@@ -57,10 +57,12 @@ in `artifacts/factorybox-kubernetes-worker-3d777424a36a442f88a8abda81de84af/`.
 
 ## Product Workspace boundary
 
-Factory's normal Workspace Start, Source service, Connector and reserve
-controller still use their existing Envbox path. The new operator command
-admits administrator-prepared private OCI bundles. It does not prepare Project
-images, switch the product or add a second pool controller.
+Factory's Workspace Start and existing PostgreSQL reserve controller now use
+Factorybox through consumer-owned image preparation and durable lifecycle
+intents. The Source service and Connector keep their existing responsibilities.
+The operator command also admits administrator-prepared private OCI bundles.
+There is no second pool controller. See the [consumer acceptance](factory-consumer.md)
+for the exact implementation and native evidence.
 
 The product Source service and compute currently share canonical source inodes.
 Editor saves must remain available while execution is paused. The unselected
@@ -138,8 +140,9 @@ files, mappings, queued and future watches, the foreign-peer fence and exact
 cleanup. Host sysctls remain unchanged. The separate HTTP fixture does not
 qualify a Kubernetes CNI, cloud network or the complete Factory application.
 
-The complete Factory environment, Runtime Attempt/Connector and PostgreSQL
-reserve integration remain to be implemented and proved.
+The complete Factory Connector and reserve activation now pass the separate
+[native consumer acceptance](factory-consumer.md). PostgreSQL tests cover
+retained lifecycle outcomes, reserve ownership and canonical Source placement.
 Target-cluster admission and additional Linux profiles require their own native
 evidence. The existing
 [first-release gates](first-release-status.md) remain open and unchanged.

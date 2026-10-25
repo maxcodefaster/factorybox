@@ -21,8 +21,9 @@ with the [current release status](docs/first-release-status.md),
 
 The first [Kubernetes consumer admission](docs/kubernetes-worker.md) adds native
 HTTP readiness and exact worker identity guards. Its real CLI transport proof
-passes. A running Kubernetes cluster and shared-source Workspace integration
-are not yet qualified.
+passes. The [Factory consumer integration](docs/factory-consumer.md) also passes
+native Start, shared-source Pause/Resume and real reserve activation with the
+actual Connector. A running Kubernetes cluster is not yet qualified.
 
 ## Why use Factorybox
 

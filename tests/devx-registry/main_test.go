@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -67,6 +68,36 @@ func TestMirrorRejectsChangedContentBeforeServing(t *testing.T) {
 	} {
 		if _, err := load(bytes.NewReader(archive(t, named)), pins); err == nil {
 			t.Fatal("unverified image archive accepted")
+		}
+	}
+}
+
+func TestMirrorServesOnlyReferrersPresentInTheVerifiedArchive(t *testing.T) {
+	manifest := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json"}`)
+	hash := fmt.Sprintf("%x", sha256.Sum256(manifest))
+	referrer := []byte(fmt.Sprintf(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":"application/vnd.test","subject":{"digest":"sha256:%s"}}`, hash))
+	refHash := fmt.Sprintf("%x", sha256.Sum256(referrer))
+	mirror, err := load(bytes.NewReader(archive(t, map[string][]byte{"blobs/sha256/" + hash: manifest, "blobs/sha256/" + refHash: referrer})), []pin{{Canonical: "node@sha256:" + hash}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for digest, count := range map[string]int{hash: 1, refHash: 0} {
+		response := httptest.NewRecorder()
+		mirror.ServeHTTP(response, httptest.NewRequest("GET", "/v2/library/node/referrers/sha256:"+digest, nil))
+		var index struct {
+			Manifests []struct {
+				Digest string `json:"digest"`
+			} `json:"manifests"`
+		}
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &index) != nil || len(index.Manifests) != count || (count == 1 && index.Manifests[0].Digest != "sha256:"+refHash) {
+			t.Fatal("offline referrers differ", response)
+		}
+	}
+	for _, repo := range []string{"library/node", "foreign"} {
+		response := httptest.NewRecorder()
+		mirror.ServeHTTP(response, httptest.NewRequest("GET", "/v2/"+repo+"/referrers/sha256:"+fmt.Sprintf("%064x", 0), nil))
+		if response.Code != 404 {
+			t.Fatal("served unadmitted or absent referrers")
 		}
 	}
 }

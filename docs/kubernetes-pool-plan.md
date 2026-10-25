@@ -5,8 +5,10 @@ Planungsstand: 25. Oktober 2026. Erster Consumer ist das private Repository
 `0e2eeabca446a19b9ea533f58a3f2d6864d4332f`. Die Prüfung liest Quellcode und
 Charts; sie ist kein Test einer laufenden Installation. Der erste Worker-Anschluss
 ist inzwischen in beiden Repositories umgesetzt und nativ geprüft. Der genaue
-[Umsetzungsstand](kubernetes-worker.md) trennt diesen administrativen Anschluss
-von der noch offenen Umschaltung der normalen Factory-Workspaces.
+[Umsetzungsstand](factory-consumer.md) enthält inzwischen auch die umgesetzte
+Workspace- und Reserve-Anbindung mit nativer Consumer-Abnahme. Die folgenden
+Tabellen und Arbeitspunkte beschreiben den damaligen Ausgangsstand. Offen bleibt
+die Zulassung des tatsächlichen Zielclusters.
 
 Dieser Plan ersetzt den vorherigen allgemeinen Vorschlag für eine neue
 Poolsteuerung. Die Factory besitzt bereits eine Kubernetes-Anbindung und eine

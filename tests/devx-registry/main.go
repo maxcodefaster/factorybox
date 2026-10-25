@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -77,6 +78,7 @@ func load(archive io.Reader, pins []pin) (*mirror, error) {
 }
 
 func (mirror *mirror) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	log.Printf("offline registry %s %s", request.Method, request.URL.Path)
 	if request.Method != "GET" && request.Method != "HEAD" {
 		response.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -87,6 +89,40 @@ func (mirror *mirror) ServeHTTP(response http.ResponseWriter, request *http.Requ
 		return
 	}
 	path := strings.TrimPrefix(request.URL.Path, "/v2/")
+	if repo, digest, ok := strings.Cut(path, "/referrers/"); ok && mirror.repos[repo] &&
+		digestPattern.MatchString(digest) && len(mirror.blobs[digest]) != 0 {
+		// Docker 29 also asks for OCI referrers while pulling an image index.
+		// This offline registry answers only from its verified archive. A 404
+		// would make Docker fall through to the unreachable public registry.
+		type descriptor struct {
+			MediaType    string `json:"mediaType"`
+			Digest       string `json:"digest"`
+			Size         int    `json:"size"`
+			ArtifactType string `json:"artifactType,omitempty"`
+		}
+		references := []descriptor{}
+		for key, data := range mirror.blobs {
+			var manifest struct {
+				MediaType    string `json:"mediaType"`
+				ArtifactType string `json:"artifactType"`
+				Subject      *struct {
+					Digest string `json:"digest"`
+				} `json:"subject"`
+			}
+			if json.Unmarshal(data, &manifest) == nil && manifest.MediaType != "" && manifest.Subject != nil && manifest.Subject.Digest == digest {
+				references = append(references, descriptor{manifest.MediaType, key, len(data), manifest.ArtifactType})
+			}
+		}
+		sort.Slice(references, func(i, j int) bool { return references[i].Digest < references[j].Digest })
+		data, _ := json.Marshal(struct {
+			SchemaVersion int          `json:"schemaVersion"`
+			MediaType     string       `json:"mediaType"`
+			Manifests     []descriptor `json:"manifests"`
+		}{2, "application/vnd.oci.image.index.v1+json", references})
+		response.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+		http.ServeContent(response, request, digest, time.Time{}, bytes.NewReader(data))
+		return
+	}
 	for _, kind := range []string{"manifests", "blobs"} {
 		repo, digest, ok := strings.Cut(path, "/"+kind+"/")
 		if !ok || !mirror.repos[repo] || !digestPattern.MatchString(digest) {

@@ -33,6 +33,7 @@ def main():
     parser.add_argument('--docker-child', action='store_true', help='Run the workload in a real private Docker bridge network using the complete consumer rootfs')
     parser.add_argument('--factory-preparation-repo', type=Path, help='Use the frozen Factory consumer preparer with its real rootfs; the workload remains this contract fixture')
     args = parser.parse_args()
+    sandbox_id = 'runtime' if args.factory_preparation_repo else 'source'
     if args.diagnostic_criu_build and not args.diagnostic_runtime:
         raise ValueError('a CRIU override requires the explicitly unqualified diagnostic runtime')
     if args.alias_mount and args.consumer_inputs:
@@ -296,8 +297,12 @@ ca=pathlib.Path('/factory/registry-ca');ca.mkdir(parents=True);(ca/'ca.crt').wri
 '''
             run(['exec',identity,'python3','-c','pod='+repr(identity)+'\nowner='+repr(owner)+'\nimage='+repr(image)+'\nrootfs_sha='+repr(consumer['rootfs_tar_sha256'])+'\n'+seed])
             status = result['status']
+            bootstrap = 'export FACTORYBOX_NETWORK_URL=http://'+result['network_server_ip']+':18181/\n'
+            if args.rename_directory:
+                bootstrap += 'export FACTORYBOX_SHARED_SOURCE_SUBDIRECTORY=1\n'
+            bootstrap += 'exec /opt/factorybox-example-actor --docker-parent\n'
             request = {'version':1,'storeID':owner,'epoch':status['epoch'],'podUID':identity,
-                       'runtimeHostImage':image,'sharedSource':True,'bootstrap':'exec /opt/factorybox-example-actor --docker-parent\n'}
+                       'runtimeHostImage':image,'sharedSource':True,'bootstrap':bootstrap}
             code = factory_preparer.read_text()+'\n'
             code = code[:code.index("if __name__ == '__main__':")]+ '\nprint(json.dumps(prepare(json.loads(sys.argv[1]))))\n'
             result['factory_preparation'] = json.loads(run(['exec','--env','FACTORY_POD_UID='+identity,'--env','FACTORY_STORE_ID='+owner,
@@ -373,10 +378,18 @@ for name in ['bounding','effective','permitted']:
   if capability not in spec['process']['capabilities'][name]:spec['process']['capabilities'][name].append(capability)
 path.write_text(json.dumps(spec))
 '''
+        if factory_preparer:
+            configure = '''import os,pathlib
+project=pathlib.Path('/factory-source/project')
+for name,content in [('current.txt','before'),('held.txt','original-held---'*256)]:
+ path=project/name;path.write_text(content);os.chown(path,101000,101000)
+'''
+            if args.rename_directory:
+                configure += "(project/'folder').mkdir();os.chown(project/'folder',101000,101000)\n"
         run(['exec', identity, 'python3', '-c', 'bundle_path=' + repr(bundle) + '\n' + configure])
         ctl = ['exec', identity, '/opt/factorybox/factorybox', '--worker-run-root', '/run/factorybox',
                '--worker-store-id', owner, '--worker-epoch', status['epoch']]
-        result['start'] = json.loads(run([*ctl, 'start', '--bundle', bundle, 'source'], timeout=90))
+        result['start'] = json.loads(run([*ctl, 'start', '--bundle', bundle, sandbox_id], timeout=90))
         live_pid = result['start']['runtime']['pid']
         def docker_observation():
             prefix = ['exec', identity, '/opt/factorybox/components/sysbox-runc', '--root',
@@ -397,7 +410,7 @@ path.write_text(json.dumps(spec))
                 break
             except ValueError:
                 if args.docker_child:
-                    state = json.loads(run([*ctl,'state','source']))
+                    state = json.loads(run([*ctl,'state',sandbox_id]))
                     if state.get('runtime',{}).get('status')=='stopped':
                         raise ValueError('private Docker fixture stopped before first useful work; see its preserved private logs')
                 if time.monotonic() > useful_deadline:
@@ -413,7 +426,7 @@ path.write_text(json.dumps(spec))
         for kind in cases:
             phase = {'kind': kind, 'before': actor(), 'snapshot_id': uuid.uuid4().hex}
             result['phases'].append(phase)
-            phase['pause'] = json.loads(run([*ctl, 'pause', '--snapshot-id', phase['snapshot_id'], 'source'], timeout=90))
+            phase['pause'] = json.loads(run([*ctl, 'pause', '--snapshot-id', phase['snapshot_id'], sandbox_id], timeout=90))
             edit = '''import os,pathlib
 root=pathlib.Path('/factory-source/project')
 temporary=root/'.editor-save';temporary.write_text(content);os.chown(temporary,101000,101000)
@@ -445,15 +458,15 @@ print(json.dumps(result))
                 peer = result['start']['record']['network']['peer']
                 run(['exec',identity,'ip','link','add',peer,'type','dummy'])
                 run(['exec',identity,'ip','link','set',peer,'alias','fixture:'+owner])
-                run([*ctl,'resume','--snapshot-id',phase['snapshot_id'],'source'],failure=True)
-                refused = json.loads(run([*ctl,'state','source']))
+                run([*ctl,'resume','--snapshot-id',phase['snapshot_id'],sandbox_id],failure=True)
+                refused = json.loads(run([*ctl,'state',sandbox_id]))
                 link = json.loads(run(['exec',identity,'ip','-j','-d','link','show','dev',peer]))
                 if (refused['record']['phase']!='paused' or refused['record']['pause'].get('resume') is not None or
                         len(link)!=1 or link[0].get('ifalias')!='fixture:'+owner or link[0].get('linkinfo',{}).get('info_kind')!='dummy'):
                     raise ValueError('foreign network peer refusal changed the pause or unrelated interface')
                 run(['exec',identity,'ip','link','delete',peer])
                 phase['foreign_peer_refused_before_resume_transition'] = True
-            phase['resume'] = json.loads(run([*ctl, 'resume', '--snapshot-id', phase['snapshot_id'], 'source'], timeout=90))
+            phase['resume'] = json.loads(run([*ctl, 'resume', '--snapshot-id', phase['snapshot_id'], sandbox_id], timeout=90))
             live_pid = phase['resume']['runtime']['pid']
             phase['after'] = actor()
             if args.docker_child:
@@ -475,7 +488,7 @@ print(json.dumps(result))
                 raise ValueError('restored source directory watcher did not observe new edits')
         if not all(phase['queued_watch_preserved'] for phase in result['phases']):
             raise ValueError('Resume lost the source watch events queued during the pause')
-        result['delete'] = json.loads(run([*ctl, 'delete', 'source'], timeout=60))
+        result['delete'] = json.loads(run([*ctl, 'delete', sandbox_id], timeout=60))
         if args.outbound_network:
             rules = run(['exec',identity,'iptables-save'])
             links = json.loads(run(['exec',identity,'ip','-j','link','show']))
@@ -483,7 +496,13 @@ print(json.dumps(result))
             if 'factorybox:'+result['start']['record']['owner'] in rules or any(link['ifname']==peer for link in links):
                 raise ValueError('Delete left an owned network rule or peer')
             result['network_cleanup_verified'] = True
-        result['input_release'] = json.loads(run(['exec', identity, 'python3', '-c', mount_script, 'release', bundle, json.dumps(result['input_mounts'])]))
+        if factory_preparer:
+            code = factory_preparer.read_text()
+            code = code[:code.index("if __name__ == '__main__':")]+ '\nprint(json.dumps(release(json.loads(sys.argv[1]),False)))\n'
+            result['factory_input_release'] = json.loads(run(['exec','--env','FACTORY_POD_UID='+identity,'--env','FACTORY_STORE_ID='+owner,
+                                                            identity,'python3','-c',code,json.dumps(request)],timeout=60))
+        else:
+            result['input_release'] = json.loads(run(['exec', identity, 'python3', '-c', mount_script, 'release', bundle, json.dumps(result['input_mounts'])]))
         run(['stop', '--timeout', '45', identity])
         result['final_state'] = exact()['State']
         result['worker_log'] = run(['logs', identity])
