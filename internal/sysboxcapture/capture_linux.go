@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"factorybox/internal/fdstore"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,18 +23,23 @@ import (
 )
 
 type Request struct {
-	RuntimeRoot     string
-	RuntimeID       string
-	Owner           string
-	Rootfs          string
-	RuntimeCreated  string
-	PID             int
-	Generation      string
-	Criu            string
-	Bundle          string
-	ManagerRoot     string
-	Base            *FilesystemTree
-	ProcessCaptured func(Result) error
+	RuntimeRoot        string
+	RuntimeID          string
+	Owner              string
+	Rootfs             string
+	RuntimeCreated     string
+	PID                int
+	Generation         string
+	Criu               string
+	Bundle             string
+	ManagerRoot        string
+	Base               *FilesystemTree
+	SharedSource       *SharedSource
+	FDStoreSocket      string
+	FDStoreKey         string
+	PreviousFDStoreKey string
+	SourceThreads      map[int]string
+	ProcessCaptured    func(Result) error
 }
 
 type Result struct {
@@ -65,9 +71,16 @@ func writePrivate(path string, data []byte) error {
 // Capture uses a private read-only state view to supply a per-capture CRIU
 // configuration. The original Sysbox state, registration and ownership remain
 // under Sysbox. The caller must hold and validate the source guard throughout.
-func Capture(request Request) (Result, error) {
-	result := Result{SourcePID: request.PID, Images: request.Generation + "/images",
+func Capture(request Request) (result Result, resultErr error) {
+	result = Result{SourcePID: request.PID, Images: request.Generation + "/images",
 		LeaveRunning: true, CompleteWriter: true}
+	if request.SharedSource != nil {
+		defer func() {
+			if resultErr != nil {
+				resultErr = errors.Join(resultErr, fdstore.Release(request.FDStoreSocket, request.FDStoreKey))
+			}
+		}()
+	}
 	container, err := libcontainer.Load(request.RuntimeRoot, request.RuntimeID)
 	if err != nil {
 		return result, err
@@ -84,6 +97,18 @@ func Capture(request Request) (Result, error) {
 	checkpointConfiguration, err := checkpointConfigurationFromLabels(config.Labels)
 	if err != nil {
 		return result, err
+	}
+	if request.SharedSource != nil {
+		extra, err := sharedFDConfiguration(request.FDStoreSocket, request.FDStoreKey)
+		if err != nil {
+			return result, err
+		}
+		checkpointConfiguration = append(checkpointConfiguration, extra...)
+		external, _, err := previousSharedDescriptions(request)
+		if err != nil {
+			return result, err
+		}
+		checkpointConfiguration = append(checkpointConfiguration, external...)
 	}
 	owner := ""
 	for _, label := range config.Labels {
@@ -174,6 +199,10 @@ func Capture(request Request) (Result, error) {
 	if err := container.Checkpoint(options); err != nil {
 		return result, err
 	}
+	retained, err := retainSharedFiles(request)
+	if err != nil {
+		return result, err
+	}
 	after, err := os.ReadFile(path)
 	if err != nil || sha(after) != result.SourceStateSHA {
 		return result, fmt.Errorf("capture changed the original Sysbox state: %v", err)
@@ -188,6 +217,10 @@ func Capture(request Request) (Result, error) {
 	result.Filesystem, err = captureFilesystem(filesystem, request.Generation+"/filesystem")
 	if err != nil {
 		return result, err
+	}
+	result.Filesystem.SharedSource = request.SharedSource
+	if request.SharedSource != nil {
+		result.Filesystem.FDStoreKey, result.Filesystem.RetainedFiles = request.FDStoreKey, retained
 	}
 	filesystemData, err := json.MarshalIndent(result.Filesystem, "", "  ")
 	if err != nil {

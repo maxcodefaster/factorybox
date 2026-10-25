@@ -64,6 +64,8 @@ def main():
                         help='also share identical encoded tests of stopped failed runtime suites with confirmed cleanup and unchanged complete sources/components; preserve failed results and dumps')
     parser.add_argument('--include-closed-diagnostic-components', action='store_true',
                         help='also share exact encoded component inputs of closed PID namespace/startup diagnostics; retain failed outcomes, source, logs and full dumps')
+    parser.add_argument('--include-closed-shared-source-probes', action='store_true',
+                        help='also share identical encoded helpers of owned closed shared-source probes, preserving every failure and source')
     args = parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('encoded input sharing requires every native worker to close')
@@ -75,7 +77,8 @@ def main():
         runtime = (args.include_closed_runtime_tests or args.include_closed_failed_runtime_tests) and re.fullmatch(r'factorybox-runtime-([0-9a-f]{32})', run.name)
         diagnostic = args.include_closed_diagnostic_components and re.fullmatch(
             r'factorybox-(?:pid-inner-(?:time(?:-helper|-syscall)?|net(?:-control)?)|startup-manager)-[0-9a-f]{32}', run.name)
-        if not native and not consumer and not runtime and not diagnostic:
+        shared = args.include_closed_shared_source_probes and re.fullmatch(r'factorybox-shared-source-([0-9a-f]{32})', run.name)
+        if not native and not consumer and not runtime and not diagnostic and not shared:
             continue
         result = run / 'result.json'
         if run.is_symlink() or result.is_symlink() or not result.is_file():
@@ -95,7 +98,12 @@ def main():
                 raise ValueError('closed runtime test owner differs from its directory')
             if closed_failure and upstream_unit.context_manifest(run/'context') != outcome['source_context']:
                 raise ValueError('closed failed runtime test source changed')
-        if diagnostic:
+        if shared:
+            if outcome.get('owner') != shared[1]:
+                raise ValueError('closed shared-source owner differs from its directory')
+            candidates = {'shared-source-actor': outcome.get('actor_sha256'),
+                          'factorybox': outcome.get('runtime_binary_sha256')}
+        elif diagnostic:
             candidates = diagnostic_components(run, outcome)
             if candidates is None:
                 continue
@@ -144,6 +152,7 @@ def main():
                                   'include_closed_consumer_helpers': args.include_closed_consumer_helpers,
                                   'include_closed_runtime_tests': args.include_closed_runtime_tests,
                                   'include_closed_failed_runtime_tests': args.include_closed_failed_runtime_tests,
+                                  'include_closed_shared_source_probes': args.include_closed_shared_source_probes,
                                   'include_closed_diagnostic_components': args.include_closed_diagnostic_components})
     result = {'schema': 1, 'passed': False, 'completed': [], 'production_qualified': False}
     reclaimed = 0

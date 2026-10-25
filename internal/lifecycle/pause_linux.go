@@ -48,7 +48,7 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 		if err != nil || record.Phase != "paused" || state == nil || state.Status != "stopped" {
 			return View{Record: record, Runtime: state}, errors.Join(err, fmt.Errorf("pause replay lacks its stopped original runtime"))
 		}
-		return View{Record: record, Runtime: state}, nil
+		return View{Record: record, Runtime: state}, e.releaseSharedHistory(record)
 	}
 	if record.Phase == "running" {
 		if err := e.admitSandboxMetadata(record, false); err != nil {
@@ -137,7 +137,10 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 	record.Pause.CheckpointSHA256 = sum(identity)
 	record.Pause.Snapshot, record.Pause.After, record.Pause.CompletedAt = snapshotMemory, after, now()
 	record.Phase = "paused"
-	return View{Record: record, Runtime: state}, e.write(record)
+	if err := e.write(record); err != nil {
+		return View{Record: record, Runtime: state}, err
+	}
+	return View{Record: record, Runtime: state}, e.releaseSharedHistory(record)
 }
 
 func (e *Engine) recoverStoppedCheckpoint(relative string, record Record, id string, captured Checkpoint) (string, error) {

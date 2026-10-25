@@ -134,6 +134,9 @@ func (e *Engine) importPaused(ctx context.Context, lock *os.File, request Recove
 	if err != nil {
 		return intent, err
 	}
+	if source.SharedSource != nil {
+		return intent, sysboxcapture.ErrSharedSourceCopy
+	}
 	if source.Owner != request.SourceOwner || source.Phase != "paused" || source.Pause == nil ||
 		source.Pause.SnapshotID != request.SnapshotID || source.Pause.CompletedAt == "" ||
 		source.Pause.Error != "" || source.Pause.RejectedAt != "" || source.Pause.Resume != nil ||

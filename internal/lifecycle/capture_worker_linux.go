@@ -19,11 +19,12 @@ import (
 )
 
 type captureRequest struct {
-	TimerPlanSHA string             `json:"timer_plan_sha256,omitempty"`
-	Guard        captureGuardConfig `json:"guard"`
-	Criu         string             `json:"criu"`
-	CriuSHA256   string             `json:"criu_sha256"`
-	ManagerRoot  string             `json:"manager_root"`
+	TimerPlanSHA  string             `json:"timer_plan_sha256,omitempty"`
+	Guard         captureGuardConfig `json:"guard"`
+	Criu          string             `json:"criu"`
+	CriuSHA256    string             `json:"criu_sha256"`
+	ManagerRoot   string             `json:"manager_root"`
+	FDStoreSocket string             `json:"fd_store_socket,omitempty"`
 }
 
 const captureRequestSeals = unix.F_SEAL_WRITE | unix.F_SEAL_GROW | unix.F_SEAL_SHRINK | unix.F_SEAL_SEAL
@@ -122,7 +123,12 @@ func captureWorkerServe() (resultErr error) {
 		RuntimeCreated: request.Guard.Source.RuntimeCreated, PID: request.Guard.PID,
 		Generation: filepath.Dir(request.Guard.Evidence), Criu: request.Criu,
 		Bundle: request.Guard.Source.InputBundle, ManagerRoot: request.ManagerRoot,
-		Base: request.Guard.Source.Base,
+		Base:               request.Guard.Source.Base,
+		SharedSource:       request.Guard.Source.SharedSource,
+		FDStoreSocket:      request.FDStoreSocket,
+		FDStoreKey:         request.Guard.Source.Owner + ":" + filepath.Base(filepath.Dir(request.Guard.Evidence)),
+		PreviousFDStoreKey: previousSharedFDKey(request.Guard.Source),
+		SourceThreads:      threads,
 		ProcessCaptured: func(result sysboxcapture.Result) error {
 			if result.SourcePID != request.Guard.PID || !result.CompleteWriter || !result.LeaveRunning {
 				return fmt.Errorf("process completion lacks its retained original source")
@@ -245,7 +251,7 @@ func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File
 		return fmt.Errorf("capture frozen FUSE state: %w", err)
 	}
 	data, err := json.Marshal(captureRequest{Guard: guard.config, Criu: e.config.Criu, TimerPlanSHA: guard.timerPlanSHA,
-		CriuSHA256: e.config.CriuSHA256, ManagerRoot: e.config.ManagerRoot})
+		CriuSHA256: e.config.CriuSHA256, ManagerRoot: e.config.ManagerRoot, FDStoreSocket: e.config.FDStoreSocket})
 	if err != nil {
 		return err
 	}

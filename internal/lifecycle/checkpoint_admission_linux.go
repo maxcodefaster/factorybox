@@ -56,7 +56,7 @@ func (e *Engine) admitCheckpointSource(ctx context.Context, guard *captureGuard,
 			admissionErr = sysboxcapture.AdmitFilesystem(sysboxcapture.Request{
 				RuntimeRoot: e.config.Root + "/runtime", RuntimeID: record.RuntimeID,
 				Owner: record.Owner, Rootfs: record.Rootfs, Bundle: record.InputBundle,
-				ManagerRoot: e.config.ManagerRoot, Base: record.Base,
+				ManagerRoot: e.config.ManagerRoot, Base: record.Base, SharedSource: record.SharedSource,
 			})
 		}
 		if admissionErr == nil {

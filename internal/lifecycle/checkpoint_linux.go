@@ -95,6 +95,9 @@ func (e *Engine) Checkpoint(ctx context.Context, id, snapshot string) (_ Checkpo
 	if err != nil {
 		return Checkpoint{}, err
 	}
+	if record.SharedSource != nil {
+		return Checkpoint{}, fmt.Errorf("shared source requires Pause; independent checkpoints need a separate source contract")
+	}
 	relative, err := checkpointPath(id, snapshot)
 	if err != nil {
 		return Checkpoint{}, err
@@ -130,6 +133,9 @@ func (e *Engine) captureCheckpoint(ctx context.Context, lock *os.File, record Re
 	features := sysboxcapture.InspectFeatures(ctx, binary)
 	if err := binary.Close(); err != nil {
 		return Checkpoint{}, err
+	}
+	if record.SharedSource != nil && (!features.SharedFileDescriptions || !features.SharedSourceDirectories || e.config.FDStoreSocket == "") {
+		return Checkpoint{}, fmt.Errorf("shared source requires live worker descriptor retention and its verified CRIU feature")
 	}
 	if err := sysboxcapture.CheckExecutableParents(e.config.Criu); err != nil {
 		return Checkpoint{}, err

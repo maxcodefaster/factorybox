@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 
+	"factorybox/internal/fdstore"
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
@@ -63,6 +64,9 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 	}
 	if record.Phase == "running" && record.Pause.Resume != nil && record.Pause.Resume.CompletedAt != "" {
 		_, state, err := e.resumeCompleted(ctx, lock, record)
+		if err == nil {
+			err = e.releaseSharedHistory(record)
+		}
 		return View{Record: record, Runtime: state}, err
 	}
 	if record.Phase == "paused" {
@@ -79,6 +83,11 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 		}
 		if err := e.requireEmptyCgroup(record); err != nil {
 			return View{Record: record}, err
+		}
+		if record.SharedSource != nil {
+			if err := fdstore.VerifyRestore(e.config.FDStoreSocket, record.Owner+":"+record.Pause.SnapshotID); err != nil {
+				return View{Record: record}, err
+			}
 		}
 		record.Phase = "resuming"
 		record.Pause.Resume = &Operation{RequestedAt: now()}
@@ -120,7 +129,10 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 		return View{Record: record, Runtime: state}, err
 	}
 	record.Pause.Resume.CompletedAt, record.Pause.Resume.Error, record.Phase = result.CompletedAt, "", "running"
-	return View{Record: record, Runtime: state}, e.write(record)
+	if err := e.write(record); err != nil {
+		return View{Record: record, Runtime: state}, err
+	}
+	return View{Record: record, Runtime: state}, e.releaseSharedHistory(record)
 }
 
 func (e *Engine) prepareResume(ctx context.Context, lock *os.File, record Record, relative string, request resumeRequest) error {
@@ -131,6 +143,20 @@ func (e *Engine) prepareResume(ctx context.Context, lock *os.File, record Record
 	}
 	if !saved.SourceStopped {
 		return fmt.Errorf("resume checkpoint did not stop the original source")
+	}
+	if saved.Filesystem == nil {
+		return fmt.Errorf("resume checkpoint has no filesystem manifest")
+	}
+	if !reflect.DeepEqual(saved.Filesystem.SharedSource, record.SharedSource) {
+		return fmt.Errorf("resume shared source differs from its original admission")
+	}
+	if record.SharedSource != nil {
+		if saved.Filesystem.FDStoreKey != record.Owner+":"+record.Pause.SnapshotID {
+			return fmt.Errorf("shared-source descriptor generation differs")
+		}
+		if err := sysboxcapture.VerifyRetainedFiles(e.config.FDStoreSocket, saved.Filesystem.FDStoreKey, saved.Filesystem.RetainedFiles); err != nil {
+			return err
+		}
 	}
 	if err := e.verifyCheckpoint(ctx, record, saved.ID, generation, saved); err != nil {
 		return err

@@ -15,6 +15,8 @@ import (
 type Features struct {
 	Schema                  int  `json:"schema"`
 	RootOwnedTimeNamespaces bool `json:"root_owned_time_namespaces"`
+	SharedFileDescriptions  bool `json:"shared_file_descriptions,omitempty"`
+	SharedSourceDirectories bool `json:"shared_source_directories,omitempty"`
 }
 
 type featureOutput struct {

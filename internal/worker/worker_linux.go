@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"factorybox/internal/fdstore"
 	"factorybox/internal/lifecycle"
 	"factorybox/internal/platform"
 	"factorybox/internal/storefs"
@@ -422,6 +423,12 @@ func Current(runRoot string) (Status, error) {
 	if status.Schema != 1 || status.ReadyAt == "" || len(status.Epoch) != 32 || len(status.StoreID) != 32 {
 		return status, fmt.Errorf("invalid worker readiness identity")
 	}
+	if status.Lifecycle.FDStoreSocket != runRoot+"/retained-fds.sock" {
+		return status, fmt.Errorf("worker retained-file endpoint changed")
+	}
+	if err := fdstore.Ping(status.Lifecycle.FDStoreSocket); err != nil {
+		return status, err
+	}
 	if strings.Trim(status.Epoch, "0123456789abcdef") != "" || strings.Trim(status.StoreID, "0123456789abcdef") != "" ||
 		status.Lifecycle.Root != status.Store+"/epochs/"+status.Epoch+"/controller" || status.Lifecycle.ManagerRoot != status.Store+"/manager" ||
 		len(status.Components) != 4 || status.Lifecycle.RuntimeSHA256 != status.Components["sysbox-runc"] || status.Lifecycle.CriuSHA256 != status.Components["criu"] {
@@ -604,7 +611,8 @@ func Run(ctx context.Context, config Config) (runErr error) {
 		Manager: manager.identity,
 		Lifecycle: lifecycle.Config{Root: root + "/controller", Runtime: config.Components + "/sysbox-runc", RuntimeSHA256: binaries["sysbox-runc"],
 			Criu: config.Components + "/criu", CriuSHA256: binaries["criu"], ManagerRoot: config.Store + "/manager",
-			MinFreeBytes: localMinFreeBytes, WriteReserve: localWriteReserve, BoundedStore: bounded}}
+			MinFreeBytes: localMinFreeBytes, WriteReserve: localWriteReserve, BoundedStore: bounded,
+			FDStoreSocket: config.RunRoot + "/retained-fds.sock"}}
 	if bounded != nil {
 		status.Lifecycle.MinFreeBytes, status.Lifecycle.WriteReserve = boundedMinFreeBytes, boundedWriteReserve
 	}
@@ -664,6 +672,11 @@ func Run(ctx context.Context, config Config) (runErr error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+	retained, err := fdstore.Start(status.Lifecycle.FDStoreSocket)
+	if err != nil {
+		return err
+	}
+	defer retained.Close()
 	engine, err := lifecycle.Open(status.Lifecycle)
 	if err != nil {
 		return err

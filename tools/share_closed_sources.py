@@ -29,6 +29,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--include-closed-failed-native-inputs', action='store_true',
                         help='Also share byte-identical frozen Go sources of failed native runs with confirmed cleanup and unchanged inputs; never dumps or failed build contexts')
+    parser.add_argument('--include-closed-shared-source-probes', action='store_true',
+                        help='Also verify and share the combined runtime/actor source manifests of closed shared-source probes')
     args = parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('source sharing requires all Factorybox containers to be stopped')
@@ -43,14 +45,24 @@ def main():
         if run.is_symlink() or result_path.is_symlink() or not result_path.is_file():
             continue
         result = json.loads(result_path.read_text())
+        shared_probe = (args.include_closed_shared_source_probes and
+                        re.fullmatch(r'factorybox-shared-source-[0-9a-f]{32}', run.name) and
+                        result.get('cleanup') is True and result.get('inputs_unchanged') is True)
         closed_failure = (args.include_closed_failed_native_inputs and result.get('passed') is False and
                           result.get('cleanup') is True and result.get('inputs_unchanged') is True and
-                          not run.name.startswith('factorybox-build-') and isinstance(result.get('source_context'), dict))
+                          not run.name.startswith('factorybox-build-') and (isinstance(result.get('source_context'), dict) or shared_probe))
         if result.get('passed') is not True and not closed_failure:
             continue
         criu = re.fullmatch(r'factorybox-build-criu-retained-[0-9a-f]{32}', run.name)
         worker = re.fullmatch(r'factorybox-build-worker-[0-9a-f]{32}', run.name)
-        if criu and result.get('cleanup') is True:
+        if shared_probe:
+            tree, kind = run / 'source', 'manifest'
+            expected = {key: value for key, value in result['runtime_source_context'].items()
+                        if result.get('diagnostic_runtime') or key in ['go.mod', 'go.sum']}
+            expected.update({'tests/shared-source-actor/' + key: value for key, value in result['actor_source_context'].items()})
+            if upstream_unit.context_manifest(tree) != expected:
+                raise ValueError('closed shared-source runtime/actor input changed: ' + run.name)
+        elif criu and result.get('cleanup') is True:
             tree, kind, expected = run / 'context', 'criu', result['context_sha256']
             if sources.tree_sha(tree) != expected:
                 raise ValueError('completed CRIU source differs: ' + run.name)
@@ -85,6 +97,7 @@ def main():
                             'mtime_ns': info.st_mtime_ns, 'allocated_bytes': info.st_blocks * 512})
     plan = {'schema': 1, 'operation': 'share_identical_closed_verified_source_inputs',
             'include_closed_failed_native_inputs': args.include_closed_failed_native_inputs,
+            'include_closed_shared_source_probes': args.include_closed_shared_source_probes,
             'runner_sha256': reference.sha(artifact / 'runner.py'), 'trees': trees, 'actions': actions}
     save(artifact / 'plan.json', plan)
     completed = 0

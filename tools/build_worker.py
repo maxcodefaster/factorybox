@@ -124,6 +124,8 @@ def main():
               "scope": "Local candidate image assembly and reproducibility against one immutable native base. "
                        "No installation, publishing, platform or lifecycle qualification. Base includes its pinned "
                        "build/test utilities; this does not qualify a reduced production image."}
+    result['component_input_worker'] = options.component_input_worker
+    result['shared_component_roles'] = []
     if options.criu_base_lock:
         result["criu_base_source_lock_sha256"] = reference.sha(artifact / "criu-base-source-lock.json")
         if result["criu_base_source_lock_sha256"] != criu["base_source_lock_sha256"]:
@@ -156,10 +158,9 @@ def main():
             raise ValueError("incomplete component identity set")
         for name, digest in expected.items():
             original = criu_path / "criu" if name == "criu" else sysbox_path / "output" / name
-            if component_input is not None:
-                if component_input[1]['bundle_sha256']['components/' + name] != digest:
-                    raise ValueError('shared completed worker has different pinned components')
+            if component_input is not None and component_input[1]['bundle_sha256']['components/' + name] == digest:
                 original = component_input[0] / 'image-context/bundle/components' / name
+                result['shared_component_roles'].append(name)
             reference.artifact_storage.share_frozen_input(original, components / name, reference.ROOT, digest)
         notices = json.loads((reference.ROOT / "upstream/licenses.json").read_text())
         for file, notice in notices.items():

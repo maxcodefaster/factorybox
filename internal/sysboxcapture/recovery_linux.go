@@ -30,6 +30,9 @@ func RecoverFilesystemSnapshotWithBaseVerifier(ctx context.Context, generation, 
 }
 
 func recoverFilesystemSnapshot(ctx context.Context, generation, destination string, saved *FilesystemSnapshot, verify BaseRecoveryVerifier) (*FilesystemSnapshot, error) {
+	if saved != nil && saved.SharedSource != nil {
+		return nil, ErrSharedSourceCopy
+	}
 	if !cleanAbsolute(generation) || !cleanAbsolute(destination) || generation == destination ||
 		strings.HasPrefix(generation, destination+"/") || strings.HasPrefix(destination, generation+"/") {
 		return nil, fmt.Errorf("recovery requires separate canonical filesystem roots")

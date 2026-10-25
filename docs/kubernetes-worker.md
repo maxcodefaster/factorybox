@@ -63,16 +63,65 @@ admits administrator-prepared private OCI bundles. It does not prepare Project
 images, switch the product or add a second pool controller.
 
 The product Source service and compute currently share canonical source inodes.
-Editor saves must remain available while execution is paused. Factorybox's
-bounded profile currently refuses external binds and verifies its saved private
-filesystem before Resume. Copying the Project or restoring an old checkout
-would break the existing source/watch contract or lose accepted edits.
+Editor saves must remain available while execution is paused. The unselected
+shared-source candidate below admits one explicit project bind and keeps it
+outside private snapshots. Its root directory and mount retain their admitted
+identity; the editor may change file contents and replace files atomically.
 
-Before switching real Workspaces, implement and natively prove the explicit
-shared-source capture/restore contract, including edits by atomic replacement
-and relevant open handles. Then connect the existing Runtime Attempt/Connector
-and PostgreSQL reserve ownership to that proven path. Target-cluster admission
-and additional Linux profiles require their own native evidence. The existing
+The candidate retains the original open regular files, mappings and notification
+descriptions in worker PID 1. The ordered CRIU patch restores those objects and
+preserves queued source inotify events. A running sandbox retains one descriptor
+generation until its next committed Pause, so repeated captures can identify
+files whose original mount namespace has exited. Independent Fork, import and
+recovery of a shared-source snapshot are refused. The live descriptions cannot
+survive worker exit.
+
+The native contract proofs cover accepted editor changes, open and mapped file
+replacement, unchanged private RAM, project-root cwd and directory access,
+queued and future inotify events, and three consecutive Pause/Resume cycles.
+The alias fixture repeats the contract in a nested mount namespace at
+`/workspace/project`; it is not a Docker or Factory application test.
+
+The root-directory alias proof uses the exact delivered worker
+`factorybox-build-worker-e2a0ea05e41a4f0b9e756aa26870cf98`, package SHA-256
+`5ce4ee5821580a6e3d1450672db4a47ab07ca94239f7ce4533201dcc4a646453`:
+`artifacts/factorybox-shared-source-40b35e2acb65487ca6a78fffd7cee25b/result.json`.
+It does not qualify later source changes, a full application or a latency
+distribution.
+
+The subsequent directory contract also retains cwd, root and open directory
+identities. Worker PID 1 resolves each current directory beneath the pinned
+canonical project root without following symlinks, then the CRIU restorer opens
+that exact inode in the fresh mount namespace. This preserves a usable cwd
+after an editor renames its directory. Deleted directories, moves outside the
+admitted source and replacement inodes are refused before the Resume transition.
+The restorer repeats path confinement and inode checks at the actual open.
+
+`artifacts/factorybox-shared-source-7d95d08617ec47b7a50643d490fd62df/result.json`
+demonstrates three cycles with cwd and an open directory FD in
+`/workspace/project/folder`, renamed to `/workspace/project/renamed` during the
+second pause while the held file is replaced atomically. Queued events, RAM,
+old open file/mapping and new canonical source survive. This diagnostic proof
+uses frozen current Go sources and the independently built CRIU candidate
+`factorybox-build-criu-retained-617ed4b2eba14dc180d5b4d4b4d78537`.
+It is not a qualification of a newly delivered worker image.
+
+The shared-source annotation is a JSON object with only `source` and
+`destination`, for example:
+
+```json
+{"io.factorybox.shared-source":"{\"source\":\"/factory-source/project\",\"destination\":\"/home/coder/project\"}"}
+```
+
+The matching writable bind must be present in the OCI spec. No other external
+writable bind is admitted. The Factory Source service uses UID/GID 101000;
+the demonstrated guest mapping is root 100000 with a 65536-ID range and
+application UID/GID 1000. This permits both services to use the same inodes.
+
+The complete Factory environment, network access, Runtime Attempt/Connector
+and PostgreSQL reserve integration also remain to be implemented and proved.
+Target-cluster admission and additional Linux profiles require their own native
+evidence. The existing
 [first-release gates](first-release-status.md) remain open and unchanged.
 
 Reproduce the native transport proof from this repository with its pinned tools:

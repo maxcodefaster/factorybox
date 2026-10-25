@@ -1,0 +1,365 @@
+--- a/criu/config.c
++++ b/criu/config.c
+@@ -707,6 +707,7 @@
+ 		BOOL_OPT("skip-file-rwx-check", &opts.skip_file_rwx_check),
+ 		{ "lsm-mount-context", required_argument, 0, 1099 },
+ 		{ "network-lock", required_argument, 0, 1100 },
++		{ "factorybox-fdstore", required_argument, 0, 1150 },
+ 		BOOL_OPT("mntns-compat-mode", &opts.mntns_compat_mode),
+ 		BOOL_OPT("unprivileged", &opts.unprivileged),
+ 		BOOL_OPT("ghost-fiemap", &opts.ghost_fiemap),
+@@ -1051,6 +1052,9 @@
+ 				return 1;
+ 			}
+ 			break;
++		case 1150:
++			SET_CHAR_OPTS(factorybox_fdstore, optarg);
++			break;
+ 		case 'V':
+ 			pr_msg("Version: %s\n", CRIU_VERSION);
+ 			if (strcmp(CRIU_GITID, "0"))
+--- a/criu/cr-restore.c
++++ b/criu/cr-restore.c
+@@ -500,10 +500,16 @@
+ 	list_for_each_entry(fle, list, ps_list) {
+ 		struct file_desc *d = fle->desc;
+ 		int *inotify_fd;
++		int original;
+ 
+ 		if (d->ops->type != FD_TYPES__INOTIFY)
+ 			continue;
+ 
++		if (factorybox_inherited_fd(d, &original)) {
++			close(original);
++			continue;
++		}
++
+ 		if (fle != file_master(d))
+ 			continue;
+ 
+@@ -2971,6 +2977,9 @@
+ 	if (cr_plugin_init(CR_PLUGIN_STAGE__RESTORE))
+ 		return -1;
+ 
++	if (factorybox_load_fds())
++		goto err;
++
+ 	if (inherit_fd_move_to_fdstore())
+ 		goto err;
+ 
+--- a/criu/crtools.c
++++ b/criu/crtools.c
+@@ -136,7 +136,7 @@
+ 
+ 	/* Read-only ABI probe for the hash-pinned Factorybox caller. */
+ 	if (argc == 2 && !strcmp(argv[1], "factorybox-features")) {
+-		puts("{\"schema\":1,\"root_owned_time_namespaces\":true}");
++		puts("{\"schema\":1,\"root_owned_time_namespaces\":true,\"shared_file_descriptions\":true,\"shared_source_directories\":true}");
+ 		return 0;
+ 	}
+ 
+--- a/criu/files-reg.c
++++ b/criu/files-reg.c
+@@ -17,6 +17,7 @@
+ #include <elf.h>
+ #include <linux/fiemap.h>
+ #include <linux/fs.h>
++#include <linux/openat2.h>
+ 
+ #include "tty.h"
+ #include "stats.h"
+@@ -2417,6 +2418,37 @@
+ 	int inh_fd = -1;
+ 	int ret;
+ 
++	if (factorybox_inherited_fd(d, &tmp)) {
++		const char *current_path = factorybox_directory_path(d);
++		rfi = container_of(d, struct reg_file_info, d);
++		if (current_path) {
++			struct stat original, restored;
++			int fresh, flags = rfi->rfe->flags;
++			struct open_how how = {
++				.flags = (flags & ~(O_CREAT | O_EXCL | O_TRUNC)) | O_DIRECTORY | O_CLOEXEC,
++				.resolve = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS,
++			};
++			mntns_root = mntns_get_root_by_mnt_id(rfi->rfe->mnt_id);
++			fresh = sys_openat2(mntns_root, current_path + 1, &how, sizeof(how));
++			if (fresh < 0 || fstat(tmp, &original) || fstat(fresh, &restored) ||
++			    original.st_dev != restored.st_dev || original.st_ino != restored.st_ino ||
++			    (!(flags & O_PATH) && rfi->rfe->pos != -1ULL && lseek(fresh, rfi->rfe->pos, SEEK_SET) < 0)) {
++				pr_err("Factorybox shared directory changed before restore: %s\n", current_path);
++				close(tmp);
++				if (fresh >= 0)
++					close(fresh);
++				return -1;
++			}
++			close(tmp);
++			tmp = fresh;
++		}
++		if (restore_fown(tmp, rfi->rfe->fown)) {
++			close(tmp);
++			return -1;
++		}
++		return tmp;
++	}
++
+ 	if (inherited_fd(d, &tmp))
+ 		return tmp;
+ 
+--- a/criu/files.c
++++ b/criu/files.c
+@@ -10,6 +10,8 @@
+ #include <sys/mman.h>
+ #include <sys/stat.h>
+ #include <sys/socket.h>
++#include <sys/time.h>
++#include <stddef.h>
+ #include <sys/un.h>
+ #include <stdlib.h>
+ 
+@@ -1715,6 +1717,190 @@
+ 	return ret;
+ }
+ 
++/* Same-worker resources are received before restore enters the sandbox's
++ * namespaces. The endpoint must be root PID 1 in this worker, not a file path
++ * from the sandbox or a replacement service. No resource is reopened by name. */
++static struct {
++	unsigned int id;
++	char path[PATH_MAX];
++} factorybox_directories[128];
++static int factorybox_directory_count;
++
++const char *factorybox_directory_path(struct file_desc *d)
++{
++	int i;
++	for (i = 0; i < factorybox_directory_count; i++)
++		if (factorybox_directories[i].id == d->id && d->ops->type == FD_TYPES__REG)
++			return factorybox_directories[i].path;
++	return NULL;
++}
++
++int factorybox_load_fds(void)
++{
++	char request[256], prefix[256], reply[32768], name[PATH_MAX * 2 + 64];
++	struct sockaddr_un address = { .sun_family = AF_UNIX };
++	struct ucred peer;
++	socklen_t peer_size = sizeof(peer);
++	struct timeval timeout = { .tv_sec = 5 };
++	union {
++		struct cmsghdr alignment;
++		char data[CMSG_SPACE(128 * sizeof(int))];
++	} control;
++	struct iovec iov = { .iov_base = reply, .iov_len = sizeof(reply) - 1 };
++	struct msghdr message = { .msg_iov = &iov, .msg_iovlen = 1,
++		.msg_control = control.data, .msg_controllen = sizeof(control.data) };
++	struct cmsghdr *cmsg;
++	const char *key, *cursor, *end;
++	int socket_fd = -1, fds[128], count = 0, names = 0, size, result = -1, i;
++	ssize_t received;
++
++	if (!opts.factorybox_fdstore)
++		return 0;
++	key = strchr(opts.factorybox_fdstore, '|');
++	if (!key || key == opts.factorybox_fdstore || opts.factorybox_fdstore[0] != '/' ||
++	    key - opts.factorybox_fdstore >= (ptrdiff_t)sizeof(address.sun_path) || strlen(key + 1) != 65)
++		goto out;
++	for (i = 0; i < 65; i++) {
++		char value = key[1 + i];
++		if (i == 32 ? value != ':' : !((value >= '0' && value <= '9') || (value >= 'a' && value <= 'f')))
++			goto out;
++	}
++	memcpy(address.sun_path, opts.factorybox_fdstore, key - opts.factorybox_fdstore);
++	key++;
++	socket_fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
++	if (socket_fd < 0 || setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) ||
++	    setsockopt(socket_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) ||
++	    connect(socket_fd, (struct sockaddr *)&address, sizeof(address)) ||
++	    getsockopt(socket_fd, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size) || peer.uid != 0 || peer.pid != 1)
++		goto out;
++	size = snprintf(request, sizeof(request), "{\"operation\":\"restore\",\"key\":\"%s\"}", key);
++	if (size < 0 || size >= (int)sizeof(request) || send(socket_fd, request, size, MSG_NOSIGNAL) != size)
++		goto out;
++	received = recvmsg(socket_fd, &message, MSG_CMSG_CLOEXEC);
++	if (received < 0)
++		goto out;
++	for (cmsg = CMSG_FIRSTHDR(&message); cmsg; cmsg = CMSG_NXTHDR(&message, cmsg)) {
++		size_t bytes;
++		if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS || cmsg->cmsg_len < CMSG_LEN(0))
++			goto out;
++		bytes = cmsg->cmsg_len - CMSG_LEN(0);
++		if (bytes % sizeof(int) || bytes / sizeof(int) > (size_t)(128 - count))
++			goto out;
++		memcpy(fds + count, CMSG_DATA(cmsg), bytes);
++		count += bytes / sizeof(int);
++	}
++	if (message.msg_flags & (MSG_TRUNC | MSG_CTRUNC))
++		goto out;
++	reply[received] = 0;
++	size = snprintf(prefix, sizeof(prefix), "{\"operation\":\"restore\",\"key\":\"%s\",\"names\":[", key);
++	if (size < 0 || strncmp(reply, prefix, size))
++		goto out;
++	cursor = reply + size;
++	while (*cursor != ']') {
++		unsigned long long id;
++		const char *digits;
++		char *directory_path = NULL;
++		if (*cursor != '"' || names >= count)
++			goto out;
++		end = strchr(++cursor, '"');
++		if (!end || end - cursor >= (ptrdiff_t)sizeof(name))
++			goto out;
++		memcpy(name, cursor, end - cursor);
++		name[end - cursor] = 0;
++		if (!strcmp(name, "factorybox-source-root:1")) {
++			close(fds[names]);
++			fds[names] = -1;
++			goto next_name;
++		}
++		if (!strncmp(name, "factorybox-reg:", 15))
++			digits = name + 15;
++		else if (!strncmp(name, "factorybox-dir:", 15)) {
++			char *separator = strchr(name + 15, ':');
++			if (!separator || factorybox_directory_count >= 128)
++				goto out;
++			*separator = 0;
++			directory_path = separator + 1;
++			digits = name + 15;
++		}
++		else if (!strncmp(name, "factorybox-inotify:", 19))
++			digits = name + 19;
++		else if (!strncmp(name, "factorybox-fanotify:", 20))
++			digits = name + 20;
++		else
++			goto out;
++		if (!*digits || strspn(digits, "0123456789") != strlen(digits))
++			goto out;
++		errno = 0;
++		id = strtoull(digits, NULL, 10);
++		if (errno || !id || id > UINT32_MAX)
++			goto out;
++		if (directory_path) {
++			size_t length = strlen(directory_path), index;
++			char *path = factorybox_directories[factorybox_directory_count].path;
++			if (!length || length % 2 || length / 2 >= PATH_MAX || strspn(directory_path, "0123456789abcdef") != length)
++				goto out;
++			for (index = 0; index < length; index += 2) {
++				char pair[3] = { directory_path[index], directory_path[index + 1], 0 };
++				path[index / 2] = strtoul(pair, NULL, 16);
++				if (!path[index / 2])
++					goto out;
++			}
++			path[length / 2] = 0;
++			if (path[0] != '/')
++				goto out;
++			factorybox_directories[factorybox_directory_count++].id = id;
++			snprintf(name, sizeof(name), "factorybox-reg:%u", (unsigned int)id);
++		}
++		if (inherit_fd_add(fds[names], name))
++			goto out;
++next_name:
++		names++;
++		cursor = end + 1;
++		if (*cursor == ',') {
++			cursor++;
++			if (*cursor != '"')
++				goto out;
++		}
++		else if (*cursor != ']')
++			goto out;
++	}
++	if (strcmp(cursor, "]}") || names != count)
++		goto out;
++	pr_info("Factorybox retained %d original shared file descriptions\n", count);
++	result = 0;
++out:
++	if (socket_fd >= 0)
++		close(socket_fd);
++	if (result) {
++		for (i = 0; i < count; i++)
++			close(fds[i]);
++		pr_err("Factorybox live shared-file generation is unavailable or changed\n");
++	}
++	return result;
++}
++
++bool factorybox_inherited_fd(struct file_desc *d, int *fd_p)
++{
++	char key[64];
++	const char *kind;
++	int fd;
++
++	if (!opts.factorybox_fdstore)
++		return false;
++	switch (d->ops->type) {
++	case FD_TYPES__REG: kind = "reg"; break;
++	case FD_TYPES__INOTIFY: kind = "inotify"; break;
++	case FD_TYPES__FANOTIFY: kind = "fanotify"; break;
++	default: return false;
++	}
++	snprintf(key, sizeof(key), "factorybox-%s:%u", kind, d->id);
++	fd = inherit_fd_lookup_id(key);
++	if (fd < 0)
++		return false;
++	*fd_p = fd;
++	return true;
++}
++
+ bool inherited_fd(struct file_desc *d, int *fd_p)
+ {
+ 	char buf[PATH_MAX], *id_str;
+--- a/criu/fsnotify.c
++++ b/criu/fsnotify.c
+@@ -694,6 +694,15 @@
+ 
+ 	info = container_of(d, struct fsnotify_file_info, d);
+ 
++	if (factorybox_inherited_fd(d, &tmp)) {
++		if (restore_fown(tmp, info->ife->fown)) {
++			close(tmp);
++			return -1;
++		}
++		*new_fd = tmp;
++		return 0;
++	}
++
+ 	tmp = inotify_init1(info->ife->flags);
+ 	if (tmp < 0) {
+ 		pr_perror("Can't create inotify for %#08x", info->ife->id);
+@@ -726,6 +735,14 @@
+ 	info = container_of(d, struct fsnotify_file_info, d);
+ 
+ 	flags = info->ffe->faflags;
++	if (factorybox_inherited_fd(d, &ret)) {
++		if (restore_fown(ret, info->ffe->fown)) {
++			close(ret);
++			return -1;
++		}
++		*new_fd = ret;
++		return 0;
++	}
+ 	if (info->ffe->flags & O_CLOEXEC)
+ 		flags |= FAN_CLOEXEC;
+ 	if (info->ffe->flags & O_NONBLOCK)
+--- a/criu/include/cr_options.h
++++ b/criu/include/cr_options.h
+@@ -196,6 +196,7 @@
+ 	bool lazy_pages;
+ 	char *work_dir;
+ 	int network_lock_method;
++	char *factorybox_fdstore;
+ 	int skip_file_rwx_check;
+ 	int allow_uprobes;
+ 
+--- a/criu/include/files.h
++++ b/criu/include/files.h
+@@ -198,6 +198,9 @@
+ extern int inherit_fd_lookup_id(char *id);
+ 
+ extern bool inherited_fd(struct file_desc *, int *fdp);
++extern int factorybox_load_fds(void);
++extern bool factorybox_inherited_fd(struct file_desc *, int *fdp);
++extern const char *factorybox_directory_path(struct file_desc *);
+ 
+ extern FdinfoEntry *dup_fdinfo(FdinfoEntry *old, int fd, unsigned flags);
+ int dup_fle(struct pstree_item *task, struct fdinfo_list_entry *ple, int fd, unsigned flags);

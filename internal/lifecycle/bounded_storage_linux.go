@@ -92,11 +92,16 @@ func (e *Engine) boundedBundle(bundle, root string, spec map[string]json.RawMess
 		return err
 	}
 	var mounts []struct {
-		Type    string   `json:"type"`
-		Source  string   `json:"source"`
-		Options []string `json:"options"`
+		Type        string   `json:"type"`
+		Source      string   `json:"source"`
+		Destination string   `json:"destination"`
+		Options     []string `json:"options"`
 	}
 	if err := json.Unmarshal(spec["mounts"], &mounts); err != nil {
+		return err
+	}
+	shared, err := e.admitSharedSource(spec)
+	if err != nil {
 		return err
 	}
 	for _, mount := range mounts {
@@ -105,6 +110,9 @@ func (e *Engine) boundedBundle(bundle, root string, spec map[string]json.RawMess
 			bind = bind || option == "bind" || option == "rbind"
 		}
 		if bind {
+			if shared != nil && mount.Source == shared.Source && mount.Destination == shared.Destination {
+				continue
+			}
 			// Even an initially read-only external bind needs separate proof
 			// that guest remounts cannot upgrade it. Refuse it in this profile.
 			if !filepath.IsAbs(mount.Source) {
@@ -125,4 +133,52 @@ func (e *Engine) boundedBundle(bundle, root string, spec map[string]json.RawMess
 		}
 	}
 	return nil
+}
+
+func (e *Engine) admitSharedSource(spec map[string]json.RawMessage) (*sysboxcapture.SharedSource, error) {
+	var annotations map[string]string
+	if data := spec["annotations"]; len(data) != 0 {
+		if err := json.Unmarshal(data, &annotations); err != nil {
+			return nil, err
+		}
+	}
+	shared, err := sysboxcapture.SharedSourcePaths(annotations)
+	if err != nil || shared == nil {
+		return shared, err
+	}
+	if withinStore(e.config.Root, shared.Source) || (e.config.BoundedStore != nil && withinStore(e.config.BoundedStore.Target, shared.Source)) {
+		return nil, fmt.Errorf("shared source must be independently owned outside the private runtime store")
+	}
+	var mounts []struct {
+		Type, Source, Destination string
+		Options                   []string
+	}
+	if err := json.Unmarshal(spec["mounts"], &mounts); err != nil {
+		return nil, err
+	}
+	matched := 0
+	for _, mount := range mounts {
+		if mount.Destination == shared.Destination {
+			if mount.Type != "bind" || mount.Source != shared.Source {
+				return nil, fmt.Errorf("shared source does not match its explicit bind mount")
+			}
+			for _, option := range mount.Options {
+				switch option {
+				case "bind", "rbind", "rw", "rprivate", "nosuid", "nodev":
+				default:
+					return nil, fmt.Errorf("shared source bind option is not admitted: %s", option)
+				}
+			}
+			matched++
+		} else if strings.HasPrefix(mount.Destination, shared.Destination+"/") || strings.HasPrefix(shared.Destination, mount.Destination+"/") {
+			return nil, fmt.Errorf("shared source overlaps another initial mount")
+		}
+	}
+	if matched != 1 {
+		return nil, fmt.Errorf("shared source requires exactly one explicit bind mount")
+	}
+	if err := noInitialDescendantMounts(shared.Source); err != nil {
+		return nil, err
+	}
+	return sysboxcapture.IdentifySharedSource(*shared)
 }

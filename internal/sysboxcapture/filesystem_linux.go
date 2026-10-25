@@ -30,10 +30,13 @@ type filesystemRoot struct {
 }
 
 type FilesystemSnapshot struct {
-	Version      int              `json:"version"`
-	Roots        []FilesystemTree `json:"roots"`
-	DurabilityUS int64            `json:"durability_us,omitempty"`
-	AdmissionUS  int64            `json:"source_admission_us,omitempty"`
+	Version       int              `json:"version"`
+	Roots         []FilesystemTree `json:"roots"`
+	DurabilityUS  int64            `json:"durability_us,omitempty"`
+	AdmissionUS   int64            `json:"source_admission_us,omitempty"`
+	SharedSource  *SharedSource    `json:"shared_source,omitempty"`
+	FDStoreKey    string           `json:"fd_store_key,omitempty"`
+	RetainedFiles []RetainedFile   `json:"retained_files,omitempty"`
 }
 
 type FilesystemTree struct {
@@ -81,6 +84,9 @@ func AdmitFilesystem(request Request) error {
 }
 
 func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error) {
+	if err := VerifySharedSource(request.SharedSource); err != nil {
+		return nil, err
+	}
 	if !cleanAbsolute(request.Bundle) || !cleanAbsolute(request.ManagerRoot) ||
 		request.Rootfs != request.Bundle+"/rootfs" {
 		return nil, fmt.Errorf("filesystem capture requires explicit canonical overlay and manager roots")
@@ -92,6 +98,7 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 			Cloned  bool                         `json:"rootfs_cloned"`
 			Hooks   map[string][]json.RawMessage `json:"hooks"`
 			Shiftfs []json.RawMessage            `json:"shiftfs_mounts"`
+			Labels  []string                     `json:"labels"`
 			Mounts  []struct {
 				Source, Destination, Device string
 				IDMapped                    bool `json:"idmap_mount"`
@@ -107,6 +114,24 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 	}
 	if err := json.Unmarshal(stateData, &state); err != nil {
 		return nil, err
+	}
+	annotations := map[string]string{}
+	for _, label := range state.Config.Labels {
+		key, value, found := strings.Cut(label, "=")
+		if found && key == SharedSourceAnnotation {
+			if _, present := annotations[key]; present {
+				return nil, fmt.Errorf("duplicate shared source annotation")
+			}
+			annotations[key] = value
+		}
+	}
+	paths, err := SharedSourcePaths(annotations)
+	if err != nil {
+		return nil, err
+	}
+	if (paths == nil) != (request.SharedSource == nil) || (paths != nil &&
+		(paths.Source != request.SharedSource.Source || paths.Destination != request.SharedSource.Destination)) {
+		return nil, fmt.Errorf("shared source differs from original admitted configuration")
 	}
 	// IDMappedMount is 2 in the pinned Sysbox idShiftUtils enum.
 	if state.Config.Rootfs != request.Rootfs || state.Config.Shift != 2 || state.Config.Cloned ||
@@ -126,6 +151,7 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 		{Name: "upper", Source: request.Bundle + "/upper"},
 	}
 	seen := map[string]bool{}
+	sharedSeen := false
 	fusePrefix := state.Sysbox.Fs.Mountpoint + "/" + request.RuntimeID + "/"
 	for _, mount := range state.Config.Mounts {
 		if mount.Device != "bind" {
@@ -142,6 +168,16 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 		if strings.HasPrefix(mount.Source, fusePrefix) || mount.Source == "/dev/null" {
 			continue
 		}
+		if shared := request.SharedSource; shared != nil && mount.Source == shared.Source && mount.Destination == shared.Destination {
+			// An already shifted Project directory uses a direct bind when
+			// the consumer supplies its fixed UID/GID mapping. Sysbox only
+			// adds an ID-mapped mount when that translation is necessary.
+			if sharedSeen {
+				return nil, fmt.Errorf("duplicate shared source bind")
+			}
+			sharedSeen = true
+			continue
+		}
 		kind, ok := managedDirectories[mount.Destination]
 		expected := request.ManagerRoot + "/" + kind + "/" + request.RuntimeID
 		if !ok || !mount.IDMapped || mount.Source != expected || seen[kind] {
@@ -149,6 +185,9 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 		}
 		seen[kind] = true
 		roots = append(roots, filesystemRoot{Name: "volumes/" + kind, Source: mount.Source})
+	}
+	if (request.SharedSource != nil) != sharedSeen {
+		return nil, fmt.Errorf("runtime omitted its admitted shared source bind")
 	}
 	return roots, nil
 }
@@ -283,6 +322,9 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 // of a saved generation. The destination must be new; failed copies remain for
 // reconciliation and are never silently replaced.
 func MaterializeFilesystemSnapshot(ctx context.Context, generation, destination string, snapshot *FilesystemSnapshot) (*FilesystemSnapshot, error) {
+	if snapshot != nil && snapshot.SharedSource != nil {
+		return nil, ErrSharedSourceCopy
+	}
 	if !cleanAbsolute(generation) || !cleanAbsolute(destination) ||
 		destination == generation || strings.HasPrefix(destination, generation+"/") ||
 		strings.HasPrefix(generation, destination+"/") {
@@ -482,6 +524,11 @@ func admitFilesystemCopySource(ctx context.Context, root *os.File) error {
 // VerifyLiveFilesystemSnapshot requires the stopped worker-owned backing to
 // remain exactly at the pause point before restoring RAM into that runtime.
 func VerifyLiveFilesystemSnapshot(ctx context.Context, snapshot *FilesystemSnapshot) error {
+	if snapshot != nil {
+		if err := VerifySharedSource(snapshot.SharedSource); err != nil {
+			return err
+		}
+	}
 	if snapshot == nil || snapshot.Version != 1 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
 		return fmt.Errorf("live pause backing is absent or invalid")
 	}

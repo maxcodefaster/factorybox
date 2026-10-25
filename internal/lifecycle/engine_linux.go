@@ -42,6 +42,7 @@ type Config struct {
 	MinFreeBytes  uint64          `json:"min_free_bytes,omitempty"`
 	WriteReserve  uint64          `json:"write_reserve_bytes,omitempty"`
 	BoundedStore  *storefs.Active `json:"bounded_store,omitempty"`
+	FDStoreSocket string          `json:"fd_store_socket,omitempty"`
 }
 
 type Operation struct {
@@ -77,6 +78,7 @@ type Record struct {
 	Pause          *PauseOperation               `json:"pause,omitempty"`
 	PauseHistory   []PauseOperation              `json:"pause_history,omitempty"`
 	Base           *sysboxcapture.FilesystemTree `json:"base,omitempty"`
+	SharedSource   *sysboxcapture.SharedSource   `json:"shared_source,omitempty"`
 }
 
 type View struct {
@@ -407,6 +409,9 @@ func (e *Engine) Start(ctx context.Context, id, bundle string) (View, error) {
 	if record.InputBundle != bundle || record.InputSHA256 != sum(input) {
 		return View{Record: record}, fmt.Errorf("sandbox ID already belongs to a different start request")
 	}
+	if err := sysboxcapture.VerifySharedSource(record.SharedSource); err != nil {
+		return View{Record: record}, err
+	}
 	if record.Phase != "starting" && record.Phase != "running" {
 		return View{Record: record}, fmt.Errorf("cannot start a %s sandbox", record.Phase)
 	}
@@ -486,6 +491,10 @@ func (e *Engine) prepareRecordContext(ctx context.Context, id, bundle, object st
 	if err != nil {
 		return record, err
 	}
+	shared, err := e.admitSharedSource(spec)
+	if err != nil {
+		return record, err
+	}
 	if err := e.boundedBundle(bundle, root.Path, spec); err != nil {
 		return record, err
 	}
@@ -541,7 +550,7 @@ func (e *Engine) prepareRecordContext(ctx context.Context, id, bundle, object st
 		InputBundle: bundle, InputSHA256: sum(input), ConfigSHA256: sum(config),
 		Rootfs: root.Path, RootfsDevice: uint64(stat.Dev), RootfsInode: stat.Ino, RootfsMountID: rootIdentity.MountID,
 		CgroupParent: parent,
-		Start:        Operation{RequestedAt: now()}, Fork: origin, Base: base}
+		Start:        Operation{RequestedAt: now()}, Fork: origin, Base: base, SharedSource: shared}
 	if origin != nil {
 		record.Start.RequestedAt = origin.RequestedAt
 	}
@@ -662,6 +671,9 @@ func (e *Engine) Delete(ctx context.Context, id string) (View, error) {
 		return View{Record: record}, err
 	}
 	if err := e.retireForkOverlay(record); err != nil {
+		return View{Record: record}, err
+	}
+	if err := e.releaseAllSharedFiles(record); err != nil {
 		return View{Record: record}, err
 	}
 	record.Phase, record.Delete.CompletedAt, record.Delete.Error = "deleted", now(), ""
