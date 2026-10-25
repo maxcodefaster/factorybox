@@ -129,7 +129,7 @@ unten benannten neuen Erklärung vollständig bestanden und unabhängig geprüft
 | Anwendung bei vollem Speicher wiederherstellen | Alle vier vollständigen Factory-/Minimal-Fälle bei geplantem und hartem Worker-Verlust bestehen auf 6016, einschließlich Platzmangel und Epochenstilllegung. | Nachweise im endgültigen Abnahmeprofil verbinden. |
 | Ursprüngliche 8-GiB-Sicherung weiterbenutzen | Bestanden in `factorybox-enospc-original-rescue-e66b1b1a3bdb4cf39d49f6c67d6eb13d`: unverändertes schreibgeschütztes Original auf Loop0, unabhängiger Import und echte Wiederherstellung mit dem ursprünglichen CLI-/CRIU-Rezept. Vollständiger ursprünglicher Anwendungszustand und gespeicherter Agentenabbruch stimmen überein; eine neue Anwendungsänderung besteht ohne Werkzeug-Replay. Originalabbild unverändert, Aufräumen vollständig, insgesamt 93,33 Sekunden. Die tatsächlichen Dienstpfade des frischen Workers mussten dem gespeicherten Rezept entsprechen. | Nachweis ins Endprofil aufnehmen. Dieser forensische Weg qualifiziert weder das alte Paket als Rückfallversion noch einen Rezeptwechsel für alte Sicherungen. |
 | Alten Busy-Mount-Fehler erklären | Helferverzögerung und abgeschaltete GC-Auslöser der Originaldienste sind geprüft. Beide vollständigen ursprünglichen Prüfsequenzen mit je 29 Haupttests und 112 Untertests bestehen ohne EBUSY. Die Verzögerung belegt jedoch keinen tatsächlich gehaltenen Dateisystemverweis beim entscheidenden Aushängen. Die ursprünglichen Löschbelege und die auch in bestandenen Läufen auftretende Dienstwarnung sind gesondert geprüft. | Den tatsächlichen Besitzer am unveränderten Aushängeschritt beobachten und den Fehler Test oder Laufzeit zuordnen; nötige Korrektur belegen. Weitere identische erfolgreiche Verzögerungsläufe schließen diese Messlücke nicht. |
-| Echten externen Agenten fortsetzen | Ursprünglicher Anbieterfehler bleibt erhalten. Die lokale Modell-Fixture ist kein Anbieterbeleg. Die acht bestehenden echten Anbieterfälle sind für 6016 festgelegt und hinter den vorherigen Abnahmen eingereiht. | Beide nativen Gateway-Kontrollen sind unabhängig abgenommen. Noch alle acht vollständigen Anbieterfälle unabhängig abnehmen: normaler Ablauf, einmal verlorener abgeschlossener Modellaufruf, beide Worker-Verlustarten sowie Abbruch und unklare Werkzeugwirkung jeweils bei geplantem/hartem Verlust. Keine Inferenz vor `2026-10-24T23:59:59.953093Z`. |
+| Echten externen Agenten fortsetzen | Die erste echte Anfrage nach der ursprünglichen Wartefrist wird am 2026-10-25 erneut mit HTTP 429 / FreeUsageLimitError abgelehnt. Der vollständige Factory-/Theia-Fall schlägt vor dem tatsächlichen Werkzeugstart fehl; die Folge stoppt. Null von acht Anbieterfällen sind bestanden, die weiteren sieben wurden nicht gestartet. Fehler, vollständiger Store, kostenlose Modellzulassung und exaktes Aufräumen sind unabhängig gebunden. | Beide nativen Gateway-Kontrollen sind abgenommen. Alle acht vollständigen echten Anbieterfälle bleiben erforderlich, sobald das kostenlose Kontingent verfügbar ist. Die neue gespeicherte Untergrenze ist `2026-10-26T00:00:00.194689Z`; sie garantiert keine Anbieter-Verfügbarkeit. Kein Wechsel von Modell, Identität oder Kostenklasse und keine automatische Wiederholung des Fehlversuchs. |
 | Update, Drain und Rollback prüfen | Alle fünf Betriebsfälle sind auf 6016 bestanden und unabhängig geprüft, einschließlich aller acht Stop-Schutzfälle, Compose und tatsächlichem Update/Rückfall. Auch beide Verbraucher mit/ohne erzwungenen Loop-Wechsel beim Drain-Abbruch sowie beide ursprünglichen CLI-Worker-Verlustarten sind bestanden und unabhängig geprüft. Der Rezeptwechsel leert kontrolliert; falsches Rezept wird verweigert und die aktuelle Pause mit dem richtigen Paket wiederhergestellt. | Nachweise ins Endprofil aufnehmen. Die alten Pakete sind keine qualifizierten Rückfallversionen. |
 | Reguläre Wiederholungsserie | Alle 20 vorab festgelegten vollständigen Läufe auf 6016/829f sind bestanden und unabhängig geprüft, je zehn Minimal/Factory. Befehle, Reihenfolge, Originaltests, Eingaben, Ressourcen, Speicherfreigabe und vollständiges eigenes Aufräumen stimmen. Frühere Serien behalten null Läufe; Fehlerfälle zählen nicht rückwirkend mit. | Vollständigen Nachweis im endgültigen Abnahmeprofil verbinden. |
 
@@ -175,12 +175,16 @@ und keine verlorenen Probe-Ereignisse. Das erklärt den historischen Fehler
 weiterhin nicht; der geprüfte Nachweis liegt in
 `gc-without-soft-limit/native-closure.json`.
 
-Die Anbieterfolge liegt unter demselben Handoff in
-`current-external-acceptance/`. Sie wartet auf den vollständigen Abschluss der
-vorhergehenden Prüffolge und wahrt zusätzlich die gespeicherte Kontingentsperre.
-Jeder ursprüngliche Verbraucher prüft das ausdrücklich kostenlose Modell
-erneut. Ein fehlgeschlagener Lauf hält die Folge an; es gibt keinen Wechsel
-von Modell, Identität oder Kostenklasse. Die Einreihung ist kein Anbieter-Pass.
+Die ursprünglichen Anbieterpläne unter `current-external-acceptance/` bleiben
+erhalten. Die tatsächliche Fortsetzung `remaining-after-storage-and-pid/` ist
+inzwischen am ersten Anbieterfehler beendet. Der aktuelle Nachweis
+`provider-first-failure/failure-closure.json` bindet die eine tatsächlich
+zugestellte 429-Antwort, OpenCode 2.0.27, das erneut als kostenlos bestätigte
+`glm-5.3-flash-free`, unveränderte Eingaben und das vollständige eigene
+Aufräumen. Er bewahrt beide negativen Gesamtstände. Eine spätere Fortsetzung
+braucht eine neue vorab festgelegte Erklärung und muss die gespeicherte
+Wartefrist einhalten. Lokale Kontrollen und dieser Fehlernachweis sind keine
+bestandene echte Anbieterabnahme.
 
 Die erste weitere Speicherfolge besteht StoreFS, Basis-/Geräte-Recovery mit
 allen Retained-Kontrollen und öffentliche Basisaufnahme. Sie stoppt vor dem

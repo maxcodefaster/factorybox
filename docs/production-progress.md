@@ -10229,3 +10229,54 @@ Only the original provider supervisor remains live. No new build or native
 diagnostic consumes the reserved headroom before its unchanged eight-case
 queue. Root GOAL, selected source/component bytes, reference and imported
 overlays remain unchanged; the full release goal stays active and unqualified.
+
+## 2026-10-25: first current real-provider case fails the daily free quota
+
+The original supervisor 167818, birth 29566425, session 61324, leaves its exact
+UTC wait and completes the existing maintenance before starting
+`external-lifecycle` at 00:01:34.749618Z. The separate current Theia admission
+passes in `factorybox-theia-admission-d3ae8811386d40268667ab81879a927d`.
+The complete Factory consumer is
+`factorybox-consumer-worker-loss-fae39e592d9d4a2cb51cf05a9319fa9a`.
+
+Both actual catalog and pricing requests return 200 and approve the exact
+free model `glm-5.3-flash-free`. The one real inference request from
+`opencode/stable/2.0.27/factory` is delivered and returns 429 with
+`FreeUsageLimitError` and Retry-After 86222. There is no inference retry or
+model/identity/price substitution. The original native test fails after
+139.53 seconds because the actual 16-MiB held tool never starts. No lifecycle,
+RAM continuation, completed-tool ingestion or useful recovery assertion is
+claimed passed. The native and queue verdicts remain false, and the other
+seven real-provider cases do not start. Session 61324 is terminal with exit 1.
+
+Independent `provider-first-failure/failure-closure.json`, SHA-256
+`68607a26fa67b1c1ccecc29cfd72d32eda556d248a23c7c4d5f2235b472c30af`,
+rechecks selected CLI/CRIU/image bytes, exact resolved gateway input, current
+source and all 204 queue inputs, free-model discovery, actual request/response
+hashes, the original raw FAIL and the absence of exact owned containers and
+volumes. It records failure_verified=true and passed=false. Its computed next
+provider lower bound is `2026-10-26T00:00:00.194689Z`; no availability promise or
+automatic retry follows. The earlier failed provider proofs remain unchanged.
+
+The complete failed store has 34,360,786,944 decoded bytes, SHA-256
+`8161e690758c6743629e2a99b138401111df64a9162e52fc41676116aa1851c4`.
+Its native whole-stream verification and current 1,480,290,481-byte compressed
+representation are bound by the failure closure. All own cleanup and global
+sentinels pass. This new required failure evidence raises allocated artifact
+storage to 25.40 GiB, so the unchanged 8-GiB native-start reserve now refuses
+another build/run. Restore capacity through verified closed-evidence
+maintenance before executing the independent cleanup diagnostic; preserve
+this complete current failure and the original selected inputs.
+
+The focused follow-up is predeclared in `agent-exit-delay/plan-root-window.json`,
+SHA-256 `1f6170b50f979f9bf3a1e31c01ed1c236e51f622ee10e64faddbcc974e4c306e`.
+Its 260 inputs and runnable coordinator pass verification only, with no build
+or native start. One unselected original-component build uses a 2-second
+post-reply exit hold, off/on with the same qualified file/root-pwd observers
+and original post-failure-only diagnostic. Both original Proc pairs repeat
+twice with all adapters, 13 main/65 subtests, unchanged immediate unmount,
+360/420-second test/lifecycle and 600-second sealed-archive bounds. It neither
+pauses nor signals the provider. Timing alone and empty partial inventories
+cannot attribute a holder, and no failed native verdict can become a pass.
+The source remains staged until actual capacity and exact cleanup permit it.
+Production qualification remains false and the complete release goal active.
