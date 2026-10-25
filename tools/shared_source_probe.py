@@ -31,6 +31,7 @@ def main():
     parser.add_argument('--outbound-network', action='store_true', help='Verify owned IPv4 egress to a separate bounded HTTP container through every Pause/Resume')
     parser.add_argument('--consumer-inputs', help='Use the retained complete consumer rootfs instead of the small contract fixture')
     parser.add_argument('--docker-child', action='store_true', help='Run the workload in a real private Docker bridge network using the complete consumer rootfs')
+    parser.add_argument('--factory-preparation-repo', type=Path, help='Use the frozen Factory consumer preparer with its real rootfs; the workload remains this contract fixture')
     args = parser.parse_args()
     if args.diagnostic_criu_build and not args.diagnostic_runtime:
         raise ValueError('a CRIU override requires the explicitly unqualified diagnostic runtime')
@@ -38,6 +39,8 @@ def main():
         raise ValueError('the alias fixture requires the small explicitly owned rootfs')
     if args.docker_child and (not args.consumer_inputs or not args.outbound_network):
         raise ValueError('private Docker proof requires complete consumer inputs and the external network fixture')
+    if args.factory_preparation_repo and not args.docker_child:
+        raise ValueError('Factory preparation proof requires the complete private Docker contract fixture')
     worker_root, worker = build_worker.load(args.worker_build)
     native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     current = {directory + '/' + key: value for directory in ['internal', 'cmd/factorybox']
@@ -68,6 +71,12 @@ def main():
     result['rename_directory'] = args.rename_directory
     result['outbound_network'] = args.outbound_network
     result['docker_child'] = args.docker_child
+    factory_preparer = None
+    if args.factory_preparation_repo:
+        factory_preparer = artifact / 'factory-prepare.py'
+        original = args.factory_preparation_repo.resolve() / 'packages/runtime-kubernetes/src/factorybox/prepare.py'
+        shutil.copyfile(original, factory_preparer)
+        result['factory_preparer_sha256'] = reference.sha(factory_preparer)
     result['runtime_source_context'] = current
     result['actor_source_context'] = upstream_unit.context_manifest(source / 'tests/shared-source-actor')
     created = []
@@ -273,20 +282,46 @@ print(body.decode())
             result['alias_compiler'] = run(['exec', identity, 'cc', '--version'])
         for path, target in [(actor_binary, 'native-minimal-actor'), (setup, 'native-setup.sh')]:
             run(['cp', str(path), identity + ':/var/lib/sysbox/' + target], timeout=90)
-        run(['exec', '--env', 'FACTORYBOX_WORKER_EXAMPLE_NATIVE=1', identity, '/bin/bash', '/var/lib/sysbox/native-setup.sh',
-             consumer['rootfs_tar_sha256'] if consumer else '', result['actor_sha256'], '1' if args.alias_mount else ''], timeout=180)
+        if factory_preparer:
+            image = consumer['selected_images']['build-runtime-host']
+            seed = r'''import json,os,pathlib
+seed=pathlib.Path('/var/lib/sysbox/seed');seed.mkdir()
+os.rename('/var/lib/sysbox/native-rootfs.tar',seed/'rootfs.tar')
+(seed/'intent').write_text(pod+'\n'+owner+'\n'+image+'\n')
+(seed/'rootfs.sha256').write_text(rootfs_sha+'  rootfs.tar\n')
+project=pathlib.Path('/factory-source/project');project.mkdir();os.chown(project,101000,101000)
+assignment=pathlib.Path('/factory/assignment');assignment.mkdir(parents=True)
+for name in ['assignment.json','parent-token','child-token']:(assignment/name).write_text('owned contract fixture')
+ca=pathlib.Path('/factory/registry-ca');ca.mkdir(parents=True);(ca/'ca.crt').write_text('owned contract fixture')
+'''
+            run(['exec',identity,'python3','-c','pod='+repr(identity)+'\nowner='+repr(owner)+'\nimage='+repr(image)+'\nrootfs_sha='+repr(consumer['rootfs_tar_sha256'])+'\n'+seed])
+            status = result['status']
+            request = {'version':1,'storeID':owner,'epoch':status['epoch'],'podUID':identity,
+                       'runtimeHostImage':image,'sharedSource':True,'bootstrap':'exec /opt/factorybox-example-actor --docker-parent\n'}
+            code = factory_preparer.read_text()+'\n'
+            code = code[:code.index("if __name__ == '__main__':")]+ '\nprint(json.dumps(prepare(json.loads(sys.argv[1]))))\n'
+            result['factory_preparation'] = json.loads(run(['exec','--env','FACTORY_POD_UID='+identity,'--env','FACTORY_STORE_ID='+owner,
+                                                           identity,'python3','-c',code,json.dumps(request)],timeout=180))
+            bundle = result['factory_preparation']['bundle']
+            run(['cp',str(actor_binary),identity+':/var/lib/sysbox/native-minimal-actor'])
+            run(['exec',identity,'cp','/var/lib/sysbox/native-minimal-actor',bundle+'/rootfs/opt/factorybox-example-actor'])
+            run(['exec',identity,'chmod','0755',bundle+'/rootfs/opt/factorybox-example-actor'])
+        else:
+            run(['exec', '--env', 'FACTORYBOX_WORKER_EXAMPLE_NATIVE=1', identity, '/bin/bash', '/var/lib/sysbox/native-setup.sh',
+                 consumer['rootfs_tar_sha256'] if consumer else '', result['actor_sha256'], '1' if args.alias_mount else ''], timeout=180)
         if args.alias_mount:
             alias_binary = artifact / 'shared-source-alias'
             run(['cp', identity + ':/var/lib/sysbox/native-alias-built', str(alias_binary)])
             result['alias_binary_sha256'] = reference.sha(alias_binary)
-        bundle = '/var/lib/sysbox/fixed-store/data/store/input/bundle'
+        if not factory_preparer:
+            bundle = '/var/lib/sysbox/fixed-store/data/store/input/bundle'
         mount_helper = artifact / 'input-mounts.py'
         shutil.copyfile(reference.ROOT / 'examples/worker/bundle_mounts.py', mount_helper)
         mount_script = mount_helper.read_text()
         result['input_mounts'] = json.loads(run(['exec', identity, 'python3', '-c', mount_script, 'inspect', bundle]))
         configure = '''import json,os,pathlib
 bundle=pathlib.Path(bundle_path)
-project=pathlib.Path('/factory-source/project');project.mkdir()
+project=pathlib.Path('/factory-source/project');project.mkdir(exist_ok=True)
 for name,content in [('current.txt','before'),('held.txt','original-held---'*256)]:
  path=project/name;path.write_text(content);os.chown(path,101000,101000)
 os.chown(project,101000,101000)
@@ -306,8 +341,9 @@ spec['linux']['uidMappings']=[{'containerID':0,'hostID':100000,'size':65536}]
 spec['linux']['gidMappings']=[{'containerID':0,'hostID':100000,'size':65536}]
 for mount in spec['mounts']:
  if mount['destination']=='/sys/fs/cgroup':mount['options']=['nosuid','noexec','nodev','rw']
-spec['mounts'].append({'type':'bind','source':str(project),'destination':'/home/coder/project','options':['rbind','rw','rprivate','nosuid','nodev']})
-spec.setdefault('annotations',{})['io.factorybox.base']='example-base'
+if not any(mount['destination']=='/home/coder/project' for mount in spec['mounts']):
+ spec['mounts'].append({'type':'bind','source':str(project),'destination':'/home/coder/project','options':['rbind','rw','rprivate','nosuid','nodev']})
+spec.setdefault('annotations',{}).setdefault('io.factorybox.base','example-base')
 spec['annotations']['io.factorybox.shared-source']=json.dumps({'source':str(project),'destination':'/home/coder/project'})
 spec['annotations']['io.factorybox.checkpoint.irmap-scan-paths']=json.dumps(['/home/coder/project'])
 path.write_text(json.dumps(spec))
@@ -513,6 +549,8 @@ subprocess.run(arguments,check=True,timeout=45)
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(server_script)==result['network_server_sha256']
             if args.alias_mount and 'alias_binary_sha256' in result:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(alias_binary)==result['alias_binary_sha256']
+            if factory_preparer is not None:
+                result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(factory_preparer)==result['factory_preparer_sha256']
             result['passed'] = result['passed'] and result['cleanup']
             result['passed'] = result['passed'] and result['inputs_unchanged']
             (artifact / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
