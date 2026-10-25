@@ -24,7 +24,7 @@ bevor das Werkzeug startete. Damit sind null von acht echten Anbieterfällen
 bestanden. Die gespeicherte Frist erlaubt einen weiteren Versuch frühestens
 am 26. Oktober um 00:00:00.194689 UTC; das garantiert keine Verfügbarkeit.
 
-Der neueste Aufräumvergleich besteht in beiden Varianten mit jeweils 13
+Der Aufräumvergleich mit verzögertem Prozessende besteht in beiden Varianten mit jeweils 13
 Haupt- und 65 Untertests. In der zweiten Variante warten 28 echte Helfer nach
 ihrer Antwort mindestens 1,9 Sekunden länger bis zum beobachteten Prozessende.
 Alle acht ursprünglichen unmittelbaren Unmounts je Variante gelingen. Die
@@ -34,6 +34,20 @@ Verzögerungen sind durch diesen Versuch nicht begründet. Der unabhängige
 Nachweis liegt im Handoff unter `agent-exit-delay/root-window-json-closure.json`.
 Ein Fehler des ersten Auswerteprogramms bleibt als negativer Gesamtstand
 erhalten; seine JSON-Schlüsselkorrektur ändert keine nativen Testbedingungen.
+
+Eine zusätzliche Kernel-Kontrolle belegt inzwischen einen blinden Fleck:
+Ein gebundener Unix-Socket kann einen Mount halten, obwohl Datei- und
+Arbeitsverzeichnis-Beobachter keine passende Referenz zeigen. Der ergänzte
+Beobachter besteht alle fünf bisherigen und beide neuen Kernel-Kontrollen.
+Eine vollständige Wiederholung des ursprünglichen Testprogramms besteht mit
+17 Haupt- und 78 Untertests. Alle 17 direkt beobachteten Socket-Bindungen
+werden freigegeben; ihre Mount-Objekte unterscheiden sich von den 15
+ursprünglichen Aufräumzielen. Es gibt weiterhin keine Reproduktion oder
+Ursachenzuordnung. Der Nachweis liegt im Handoff unter
+`socket-path-reference/original-replay-closure.json`. Kopierte Pfadreferenzen
+akzeptierter Sockets werden durch die Bindungsbeobachtung nicht eigenständig
+erfasst. Weitere erfolgreiche Wiederholungen würden diesen offenen Punkt
+allein nicht schließen.
 
 Für die Abnahme verwenden wir den korrigierten Worker
 `6016296965364344a8ef9eede420dbc8`, unabhängig identisch nachgebaut als

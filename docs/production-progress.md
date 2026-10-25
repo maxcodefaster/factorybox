@@ -10345,3 +10345,82 @@ has no critical target-reference overlap witness. Empty partial observations
 do not exonerate the runtime or attribute original 882916. Its gate, all eight
 real-provider gates and final release qualification remain open. No additional
 provider request is made; the exact next permitted instant remains unchanged.
+
+## 2026-10-25: qualify a socket-path blind spot and observe one literal-binary workflow
+
+Read-only audit of earlier closed replays confirms that both full-suite
+`3e67ba7b2e3b416eb3436c2c2f21dece` and twenty-pair
+`3efc5930914a47f6b36f4f8a72ab00eb` actually use the original 17,393,920-byte
+test executable, SHA-256
+`4e516bc7ccc8f02c4d5c780c2b7d64b55ec335016abebc35e6286291158969db`.
+Their exact stdout inventories and frozen results reverify. The additional
+post-failure observer binary is therefore not the only previously tested
+variant, and another blind literal-binary repetition is not justified.
+
+The [upstream Unix-socket implementation](https://raw.githubusercontent.com/torvalds/linux/master/net/unix/af_unix.c)
+supplies a concrete separate reference class: a named socket keeps its own path
+beside the socket file's filesystem. This source is context, not proof of the
+exact running kernel. Native control
+`factorybox-socket-path-control-63bee8bce8fe47b9bec965ec12556039`
+demonstrates the actual local behavior on both tmpfs and overlay. The pathname
+is already unlinked, socket fdinfo identifies a different mount, root/cwd are
+outside the target, and there are no child mounts or propagation peers.
+Ordinary unmount returns EBUSY with actual target count 3. Closing exactly the
+socket makes the next immediate ordinary unmount succeed with count 2. The
+existing file and fs_struct observers both supply empty matching inventories
+at the actual busy decision, with zero errors/misses. No delay, retry or lazy
+unmount is used. Independent `socket-path-reference/closure.json`, SHA-256
+`60bdfd7d4ea11eb5fa30d6dd45ecdd9e372a2b29a922512b15514fe603c44a02`,
+binds those complete observations and both earlier literal-binary replays.
+
+Read-only parsing of actual BTF confirms socket.sk, unix_sock.sk/path and the
+unix_bind/unix_release_sock prototypes on boot c9c925c2 and BTF SHA-256
+`690b46604cd1de90df9a9506547725fb7a4b4fee8359526abe3eb0b322036f60`.
+Unselected build `factorybox-mount-socket-tracer-81af0820f2114b73a6c45d8215296a73`
+preserves the complete original busy-decision C as an unchanged prefix and
+adds four read-only bind/release probes. Source/ordered-patch hashes, compile
+and unchanged-module Go vet/build pass. Its loader checks actual kernel
+prototypes/layout, all ten miss counters and pending maps. These are partial
+observed bind-return/release-return intervals; release completion is an upper
+bound and pre-coverage/in-progress bindings remain outside coverage.
+
+`factorybox-mount-socket-control-a8d2487c5723484598184437b210c825`
+passes all five original busy controls unchanged and both identical socket
+controls. All 92 events decode with zero errors, ten zero miss counters and
+no pending observation. Both real held socket references appear on the exact
+busy target before release entry and disappear before successful unmount.
+Original five-case verification remains unchanged; its six-probe view is
+checked only after the complete ten-probe stream is independently verified.
+
+Three portable wrapper checks prove that the original native arguments and
+exit codes 0/7 remain intact and an observer exit 9 still fails the wrapper.
+Replay plan `3aa392d289578987791507407d37ca6e6debf26b4ed2b08bc6068246c1b59087`
+pins 277 inputs and declares one full original suite, with its exact raw test,
+CLI and components, unchanged immediate assertions and 360/420-second bounds.
+The private driver adds only readonly observer mounts and one full repetition;
+the production driver, tests, reference files, runtime and final package stay
+unchanged. No further exit delay is injected.
+
+Actual `factorybox-historical-admission-759fd6b384684b998523133ff51f8b59`
+passes all 17 original main/78 subtests without skips. The additional stream
+has 857 events, ten zero miss counters, zero kernel errors and no unfinished
+maps. It observes 17 direct named binds and all 17 release completions. None
+of those path mounts is one of the 15 original immediate cleanup targets.
+All 15 unmounts succeed. The independent original six-probe kernel stream
+agrees on each actual call, target, flags, result, decision and count sequence.
+The complete stopped archive is verified and remains reconstructable; own
+containers/volumes are absent and inputs/global settings remain unchanged.
+Closure SHA-256 is
+`f43c4f07678a3cdfb5f021b33eb07997579a2458c8000290ad01c1f9cb2638b6`.
+
+This demonstrates and fills a specific partial-observation blind spot; it does
+not reproduce or explain original 882916. Upstream accepted sockets can copy a
+path reference without another bind; those copies are not independently
+tracked here. No negative result is promoted into complete holder coverage or
+runtime exoneration. Do not repeat the same bind-only workflow just to obtain
+more passes. A further causal experiment needs an actual reference on an exact
+cleanup target or a real busy decision, not merely another calibrated class.
+All jobs are terminal. The last standard capacity check passes at
+25,536,741,376 allocated bytes with the unchanged eight-GiB start reserve.
+The eight real-provider gates remain unpassed with the same stored quota
+deadline, and the full original production goal stays active and unqualified.
