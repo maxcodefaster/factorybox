@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "The ordinary-execution tuple assertions run for ordinary builds, excluding either explicitly linked native candidate tag. Every existing assertion is unchanged. The new ARM64 candidate has its own complete exact-tuple and refusal tests and does not enable ordinary ARM64 execution.",
+  "files": {
+    "internal/platform/execution_reference_test.go": {
+      "before_sha256": "79cefdb09c3841049abee88da58d6be68a84a38194c1f1c9250072dff5312348",
+      "after_sha256": "9f1c80ada71e8af560266a91f1aa13e9f3304086fa88b94e8d267cac9cff9620"
+    }
+  }
+}

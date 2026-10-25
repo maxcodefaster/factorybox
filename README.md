@@ -328,8 +328,9 @@ push, installation or automatic runtime admission.
 ARM64 component and worker builds are supported, but the current runtime still
 rejects ARM64 execution. The owned timer reader runs natively on ARM64, using
 the iterator's referenced BTF layouts and an inline PID filter without kernel
-maps. Timer continuation and activation still need an ARM64 port and complete
-native lifecycle proofs. A successful build does not
+maps. The ARM64 timer CPU backend also passes native staged/native-wait
+register, stack and signal-mask handoff checks. Complete guarded lifecycle,
+recovery and consumer qualification remain required. A successful build does not
 remove that guard or qualify the target kernel.
 
 Run the timer-reader prerequisite against an exact native base for the target:
@@ -342,6 +343,18 @@ mise exec -- python3 tools/timerstate_native.py \
 It verifies the real relative deadline, PID/birth ownership, refusal of a wrong
 birth and removal of its temporary BPF program. It does not admit the platform,
 test RAM checkpoint/restore, or replace the required lifecycle/consumer suites.
+
+The separate CPU prerequisite executes the real ARM64 private code and confirms
+X1-X30, SP, NZCV, unchanged request/stack bytes, native deadline activation and
+original context on recapture:
+
+```sh
+mise exec -- python3 tools/timer_arm64_native.py --native-base-build "$base_build"
+```
+
+Explicit lifecycle candidates link only their selected architecture and the
+actual native Docker kernel. `--candidate-platform linux/arm64` is available to
+the native lifecycle runner; it does not change ordinary worker admission.
 
 Use the [worker integration example](examples/worker/README.md) for the exact
 Compose deployment, store ownership, readiness and administrative workflow.

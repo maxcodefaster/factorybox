@@ -153,7 +153,7 @@ func observeTimerNativeExits(pids []int) (_ []map[string]any, resultErr error) {
 			}
 			event["registers"] = registers
 			bytes := make([]byte, 16)
-			if n, err := unix.PtracePeekData(pid, uintptr(registers.Rip), bytes); err == nil {
+			if n, err := unix.PtracePeekData(pid, uintptr(registers.PC()), bytes); err == nil {
 				event["instruction_bytes"] = fmt.Sprintf("%x", bytes[:n])
 			}
 			signal := int(status.StopSignal())

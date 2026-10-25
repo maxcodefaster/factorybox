@@ -73,7 +73,9 @@ func (guard *captureGuard) admitCheckpointTimers() error {
 		if len(fields) == 0 {
 			return fmt.Errorf("empty frozen task syscall state")
 		}
-		if fields[0] != "35" && fields[0] != "230" && fields[0] != "219" {
+		if fields[0] != strconv.Itoa(unix.SYS_NANOSLEEP) &&
+			fields[0] != strconv.Itoa(unix.SYS_CLOCK_NANOSLEEP) &&
+			fields[0] != strconv.Itoa(unix.SYS_RESTART_SYSCALL) {
 			continue
 		}
 		start, err := strconv.ParseUint(birth, 10, 64)

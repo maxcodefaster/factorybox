@@ -32,6 +32,14 @@ ADAPTER_TESTS = (
 )
 
 
+def candidate_compile_options(platform, kernel):
+    architecture = build_config.architecture(platform)
+    if not isinstance(kernel, str) or not re.fullmatch(r"[A-Za-z0-9_.+-]+", kernel):
+        raise ValueError("unsupported candidate kernel release encoding")
+    return ["-tags=factorybox_candidate_" + architecture, "-ldflags=-X=" +
+            "factorybox/internal/platform.candidateKernel=" + kernel]
+
+
 def select_adapter_fixture(archive):
     """Keep all original adapter cases in their original unbounded fixture.
 
@@ -132,15 +140,15 @@ def main():
                         help="Exact frozen selected-base lock for a retained candidate; current CRIU recipe must still match")
     parser.add_argument("--native-base-build", help="Exact successful public-input native base build for checkpoint-based suites")
     parser.add_argument("--test", help="One exact native diagnostic test")
-    parser.add_argument("--candidate-platform", choices=["linux/amd64"],
+    parser.add_argument("--candidate-platform", choices=build_config.PLATFORMS,
                         help="Use a separate unqualified test build pinned to this Docker host's kernel")
     parser.add_argument("--ordinary-build", action="store_true",
-                        help="Use the delivered AMD64 platform check and ordinary compile flags")
+                        help="Use the delivered platform check and ordinary compile flags")
     options = parser.parse_args()
     if options.criu_base_lock and not options.retained_candidate:
         parser.error("--criu-base-lock requires --retained-candidate")
     if options.ordinary_build and not options.candidate_platform:
-        parser.error("--ordinary-build requires the explicit AMD64 target")
+        parser.error("--ordinary-build requires an explicit target")
     if options.test and not re.fullmatch(r"TestNative[A-Za-z0-9_]+", options.test):
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
@@ -164,10 +172,7 @@ def main():
     native_base.require_native_host(target, host)
     compile_options = []
     if options.candidate_platform and not options.ordinary_build:
-        if not re.fullmatch(r"[A-Za-z0-9_.+-]+", host["KernelVersion"]):
-            raise ValueError("unsupported candidate kernel release encoding")
-        compile_options = ["-tags=factorybox_candidate_amd64", "-ldflags=-X=" +
-                           "factorybox/internal/platform.candidateKernel=" + host["KernelVersion"]]
+        compile_options = candidate_compile_options(target, host["KernelVersion"])
     owner = uuid.uuid4().hex
     name = "factorybox-runtime-" + owner
     archive = reference.new_artifact(name)

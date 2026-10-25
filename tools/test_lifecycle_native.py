@@ -8,6 +8,18 @@ import lifecycle_native
 
 
 class LifecycleBuilderSelectionTests(unittest.TestCase):
+    def test_candidates_link_only_the_explicit_architecture_and_exact_kernel(self):
+        for platform in ["linux/arm64", "linux/amd64"]:
+            self.assertEqual(lifecycle_native.candidate_compile_options(platform, "7.0.14-test+native"), [
+                "-tags=factorybox_candidate_" + platform.split("/")[1],
+                "-ldflags=-X=factorybox/internal/platform.candidateKernel=7.0.14-test+native",
+            ])
+        for platform, kernel in [("darwin/arm64", "7.0"), ("linux/arm64", ""),
+                                 ("linux/amd64", "7.0 -X=foreign.symbol=enabled"),
+                                 ("linux/arm64", None)]:
+            with self.subTest(platform=platform, kernel=kernel), self.assertRaises(ValueError):
+                lifecycle_native.candidate_compile_options(platform, kernel)
+
     def test_supplied_components_do_not_require_or_rebuild_a_homogeneous_builder(self):
         composition = {"candidate_only": True, "base_sysbox_build": "pinned-base",
                        "per_component_build": {"sysbox-runc": "pinned-base", "sysbox-fs": "pinned-fs"}}

@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Use the architecture-defined PtraceRegs.PC accessor for the existing read-only native instruction observation. On AMD64 it returns exactly Rip; ARM64 returns Pc. No assertion, event, syscall, fixture invocation or vet setting changes.",
+  "files": {
+    "internal/lifecycle/timer_prepare_native_linux_test.go": {
+      "before_sha256": "b9c05b6fa9f941f9017ddf6b5f607f4322334c3b9ff52664c8ba204716cc7c51",
+      "after_sha256": "5ef8c726cf56433dd10ed82708be946243fa76aab596f59b58032716a700c978"
+    }
+  }
+}
