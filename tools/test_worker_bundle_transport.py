@@ -1,9 +1,11 @@
 import json
 import shutil
 import unittest
+from unittest.mock import patch
 
 import artifact_storage
 import build_worker
+import closed_worker_packages
 import reference
 import test_build_worker
 import worker_bundle_transport as retention
@@ -48,7 +50,6 @@ class ExactBundleTransport(unittest.TestCase):
         (self.fixture.bundle / 'components/criu').write_bytes(b'changed')
         with self.assertRaises(ValueError):
             build_worker.load(self.fixture.name)
-
     def test_other_tar_recipe_and_selected_input_keep_their_encoding(self):
         result = json.loads(self.result_bytes)
         result['selected'] = True
@@ -67,5 +68,72 @@ class ExactBundleTransport(unittest.TestCase):
         saved = pointer.with_name('saved.json')
         pointer.rename(saved)
         pointer.symlink_to(saved)
+        with self.assertRaises(ValueError):
+            build_worker.load(self.fixture.name)
+
+
+@unittest.skipUnless(shutil.which('zstd'), 'legacy retention needs the pinned encoder')
+class LegacyBundleTransport(unittest.TestCase):
+    def setUp(self):
+        fixture = test_build_worker.WorkerBuildInputs()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        self.fixture = fixture
+        self.package = fixture.artifact / retention.PACKAGE
+        with self.package.open('wb') as output:
+            raw = retention.transport(fixture.bundle, output)
+        self.raw = self.package.read_bytes()
+        self.result_path = fixture.artifact / 'result.json'
+        result = json.loads(self.result_path.read_text())
+        result.update(selected=False, package_bytes=raw['bytes'], package_sha256=raw['sha256'])
+        self.result_path.write_text(json.dumps(result))
+        fixture.docker.side_effect = lambda args, **kwargs: '' if args[0] == 'ps' else json.dumps([
+            {'Id': 'sha256:fixture', 'RootFS': {'Layers': ['sha256:layer']}}])
+
+    def encode(self):
+        closed_worker_packages.archive([self.fixture.name])
+        pointer = json.loads(self.package.with_name(retention.PACKAGE + '.retention.json').read_text())
+        self.verification = reference.ROOT / pointer['verification']
+        self.payload = self.verification.parent / 'package.tar.zst'
+
+    def retire(self):
+        return retention.retire_legacy(self.verification, {'path': 'fixture-proof', 'sha256': 'f' * 64})
+
+    def test_exact_legacy_bytes_and_original_loader_survive_shared_encoding_retirement(self):
+        self.encode()
+        original_result = self.result_path.read_bytes()
+        self.retire()
+        self.assertFalse(self.payload.exists())
+        directory, result = build_worker.load(self.fixture.name)
+        restored = directory / 'restored.tar'
+        with restored.open('xb') as output:
+            actual = retention.transport(self.fixture.bundle, output)
+        self.assertEqual(restored.read_bytes(), self.raw)
+        self.assertEqual(actual['sha256'], result['package_sha256'])
+        self.assertEqual(self.result_path.read_bytes(), original_result)
+        cli_output = directory / 'cli-restored.tar'
+        with patch('sys.argv', ['transport', '--restore-build', self.fixture.name, '--output', str(cli_output)]):
+            retention.main()
+        self.assertEqual(cli_output.read_bytes(), self.raw)
+        (self.fixture.bundle / 'components/criu').write_bytes(b'changed')
+        with self.assertRaises(ValueError):
+            build_worker.load(self.fixture.name)
+
+    def test_selected_legacy_owner_keeps_the_complete_encoding(self):
+        result = json.loads(self.result_path.read_text())
+        result['selected'] = True
+        self.result_path.write_text(json.dumps(result))
+        self.encode()
+        with self.assertRaisesRegex(ValueError, 'Keep selected'):
+            self.retire()
+        self.assertTrue(self.payload.exists())
+
+    def test_changed_legacy_receipt_is_refused(self):
+        self.encode()
+        self.retire()
+        pointer = self.payload.with_name(self.payload.name + '.bundle-retention.json')
+        saved = json.loads(pointer.read_text())
+        saved['whole_original_decode_verified'] = False
+        pointer.write_text(json.dumps(saved))
         with self.assertRaises(ValueError):
             build_worker.load(self.fixture.name)

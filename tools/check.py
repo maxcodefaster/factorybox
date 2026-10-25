@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -15,8 +16,16 @@ def main():
     artifact.mkdir()
     temporary = artifact / "tmp"
     temporary.mkdir(mode=0o700)
+    # Only the tiny fdstore IPC fixtures need a short socket pathname. Keep
+    # every larger fixture disk-backed in the artifact. A /proc alias cannot
+    # stand in for canonical paths in the source-identity regression tests.
+    socket_temporary = tempfile.TemporaryDirectory(prefix="fbx-", dir="/tmp")
+    packages = subprocess.check_output(
+        ["go", "list", "./cmd/...", "./internal/...", "./tests/..."],
+        cwd=reference.ROOT, text=True, timeout=30).split()
     commands = [
-        ["go", "test", "./cmd/...", "./internal/...", "./tests/..."],
+        ["go", "test", *[package for package in packages if package != "factorybox/internal/fdstore"]],
+        ["go", "test", "./internal/fdstore"],
         ["go", "test", "-tags=factorybox_worker_probe", "-run=^$", "./tests/devx-lifecycle"],
         [sys.executable, "-m", "unittest", "discover", "-s", "tools", "-p", "test_*.py"],
         [sys.executable, "tools/reference.py", "verify"],
@@ -30,7 +39,7 @@ def main():
             started = time.monotonic()
             with (artifact / f"{index}.stdout").open("wb") as out, (artifact / f"{index}.stderr").open("wb") as err:
                 completed = subprocess.run(command, cwd=reference.ROOT, stdout=out, stderr=err,
-                                           env=dict(os.environ, TMPDIR=str(temporary)), timeout=120)
+                                           env=dict(os.environ, TMPDIR=socket_temporary.name if command == ["go", "test", "./internal/fdstore"] else str(temporary)), timeout=120)
             observation = {"command": command, "exit_code": completed.returncode,
                            "seconds": time.monotonic() - started}
             result["checks"].append(observation)
@@ -39,6 +48,7 @@ def main():
         result["passed"] = True
         return 0
     finally:
+        socket_temporary.cleanup()
         (artifact / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps({"evidence": str(artifact), **result}), flush=True)
 

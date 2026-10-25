@@ -98,7 +98,11 @@ def retained_sha(package, expected):
     payload = verification.parent / encoded['file']
     if Path(encoded['file']).name != encoded['file'] or encoded['file'] != 'package.tar.zst':
         raise ValueError('retained package encoding path escapes its verification')
-    verify_encoding(payload, encoded, record['original'])
+    if payload.exists():
+        verify_encoding(payload, encoded, record['original'])
+    else:
+        from worker_bundle_transport import verify_legacy
+        verify_legacy(verification,record,payload,package.parent)
     return expected
 
 
