@@ -259,6 +259,11 @@ Cross-compilation does not qualify another machine.
 
 The repository pins Go and Python through mise. Run portable checks first:
 
+Portable checks use Go's host build constraints. Linux-only descriptor-store,
+source-actor and consumer checks run on Linux and are reported as unavailable
+on other hosts. Their native assertions remain unchanged; a passing macOS
+check does not qualify a Linux worker or enable ARM64 runtime execution.
+
 ```sh
 mise exec -- python3 tools/check.py
 mise exec -- python3 tools/sources.py prepare
@@ -269,11 +274,13 @@ Build the native base and Sysbox, then the selected CRIU composition and worker:
 
 ```sh
 mise exec -- python3 tools/build_native_base.py --platform linux/amd64
-mise exec -- python3 tools/build_sysbox.py --platform linux/amd64 --network host --bounded-build
+mise exec -- python3 tools/build_sysbox.py --platform linux/amd64 --network host \
+  --builder "$builder" --bounded-build
 mise exec -- python3 tests/criu-retained-candidate/build.py \
   --native-base-build "$base_build" --exit-hold --exit-hold-socket \
   --nested-overlay --nested-overlay-stable-paths --nested-overlay-shared-root
 mise exec -- python3 tools/build_worker.py \
+  --platform linux/amd64 \
   --native-base-build "$base_build" --sysbox-build "$sysbox_build" \
   --retained-candidate "$criu_build"
 ```
@@ -285,6 +292,43 @@ These commands build local containers and install no host runtime.
 Independent offline rebuilds reproduced all three Sysbox executables, CRIU,
 the complete worker package and image. They reuse verified toolchains and
 dependency inputs; future network/package availability is a separate concern.
+
+For a bounded Sysbox build, `$builder` must name a running, single-node Buildx
+`docker-container` builder. The build checks its actual container's memory
+and CPU quotas before compilation. Buildx does not support the previously
+used `build --resource` flags. Create a uniquely named builder without
+changing your default:
+
+```sh
+builder="factorybox-build-$(uuidgen | tr '[:upper:]' '[:lower:]')"
+docker --context orbstack buildx create --name "$builder" \
+  --driver docker-container \
+  --driver-opt 'image=moby/buildkit@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea,memory=3g,cpu-period=100000,cpu-quota=300000,network=host' \
+  --buildkitd-flags '--allow-insecure-entitlement network.host' orbstack
+docker --context orbstack buildx inspect --bootstrap "$builder"
+```
+
+The local worker pipeline accepts either `linux/arm64` or `linux/amd64`.
+Supply an exact successful native-base build for that same target. It builds
+Sysbox, the retained-context/nested-overlay CRIU composition, then the worker
+image and a losslessly compressed package:
+
+```sh
+mise exec -- python3 tools/build_worker_pipeline.py \
+  --platform linux/arm64 --native-base-build "$base_build" \
+  --builder "$builder" --bounded-build --network host
+```
+
+Use `--sysbox-build` and `--retained-candidate` to reuse exact verified completed
+inputs, never an inferred latest build. The worker checks the ELF architecture
+of every executable, component platform agreement and the final image platform.
+Its receipt records the image and Factorybox executable digest. There is no
+push, installation or automatic runtime admission.
+
+ARM64 component and worker builds are supported, but the current runtime still
+rejects ARM64 execution. Its timer reader, timer continuation and activation
+need an ARM64 port and native lifecycle proofs. A successful build does not
+remove that guard or qualify the target kernel.
 
 Use the [worker integration example](examples/worker/README.md) for the exact
 Compose deployment, store ownership, readiness and administrative workflow.

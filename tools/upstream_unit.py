@@ -65,8 +65,10 @@ def main():
     parser.add_argument("--network", choices=["default", "host"], default="default",
                         help="Builder dependency network only")
     parser.add_argument("--bounded-build", action="store_true",
-                        help="Require BuildKit RUN limits of 3 CPU and 3 GiB")
+                        help="Require a verified 3 CPU / 3 GiB builder")
+    parser.add_argument("--builder", help="Explicit existing Buildx builder")
     options = parser.parse_args()
+    builder = build_config.verify_builder(options, reference.DOCKER)
     if options.test and (options.suite != "runc-integration" or
                          not re.fullmatch(r"Test[A-Za-z0-9_]+", options.test)):
         parser.error("--test requires --suite runc-integration and one exact Test name")
@@ -88,6 +90,7 @@ def main():
               "passed": False, "cleanup": False, "production_qualified": False,
               "platform": target, "candidate_platform": bool(options.candidate_platform),
               "native_lifecycle_qualified": False,
+              "builder": builder,
               "host": {key: host[key] for key in ["OSType", "Architecture", "KernelVersion"]},
               "suite": options.suite,
               "test": options.test,

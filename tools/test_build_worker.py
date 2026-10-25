@@ -1,7 +1,10 @@
 import json
+import io
+import os
 import shutil
 from pathlib import Path
 import tempfile
+import tarfile
 import unittest
 from unittest.mock import patch
 
@@ -10,6 +13,14 @@ import reference
 import sources
 import upstream_unit
 import artifact_storage
+
+
+def elf(architecture, payload=b""):
+    header = bytearray(64)
+    header[:7] = b"\x7fELF\x02\x01\x01"
+    header[16:18] = (2).to_bytes(2, "little")
+    header[18:20] = {"amd64": 62, "arm64": 183}[architecture].to_bytes(2, "little")
+    return bytes(header) + payload
 
 
 class WorkerBuildInputs(unittest.TestCase):
@@ -26,11 +37,11 @@ class WorkerBuildInputs(unittest.TestCase):
         (self.artifact/"source-lock.json").write_text("frozen lock\n")
         (self.artifact/"image-context/Dockerfile").write_text("FROM pinned\n")
         (self.artifact/"factorybox-worker-linux-amd64.tar").write_bytes(b"frozen package")
-        (self.bundle/"factorybox").write_bytes(b"delivered CLI")
+        (self.bundle/"factorybox").write_bytes(elf("amd64", b"delivered CLI"))
         (self.bundle/"components").mkdir()
         binaries = {}
         for name in ["criu","sysbox-runc","sysbox-fs","sysbox-mgr"]:
-            path = self.bundle/"components"/name; path.write_bytes(name.encode())
+            path = self.bundle/"components"/name; path.write_bytes(elf("amd64", name.encode()))
             binaries[name] = reference.sha(path)
         (self.bundle/"components.json").write_text(json.dumps({"schema":1,"binary_sha256":binaries}))
         recipe = {"source_lock_sha256":reference.sha(self.artifact/"source-lock.json"),
@@ -45,7 +56,52 @@ class WorkerBuildInputs(unittest.TestCase):
         (self.artifact/"result.json").write_text(json.dumps(result))
         self.addCleanup(patch.stopall)
         patch.object(reference,"ROOT",self.root).start()
-        self.docker = patch.object(reference,"docker",return_value=json.dumps([{"Id":"sha256:fixture","RootFS":{"Layers":["sha256:layer"]}}])).start()
+        self.docker = patch.object(reference,"docker",return_value=json.dumps([{
+            "Id":"sha256:fixture", "Os":"linux", "Architecture":"amd64",
+            "RootFS":{"Layers":["sha256:layer"]}}])).start()
+
+    def test_arm64_package_and_image_use_the_same_explicit_platform(self):
+        result_file = self.artifact / "result.json"
+        result = json.loads(result_file.read_text())
+        result["platform"] = "linux/arm64"
+        (self.artifact / "factorybox-worker-linux-amd64.tar").rename(
+            self.artifact / "factorybox-worker-linux-arm64.tar")
+        for path in [self.bundle / "factorybox", *(self.bundle / "components").iterdir()]:
+            path.write_bytes(elf("arm64", path.name.encode()))
+        binaries = {p.name: reference.sha(p) for p in (self.bundle / "components").iterdir()}
+        (self.bundle / "components.json").write_text(json.dumps({"schema": 1, "binary_sha256": binaries}))
+        recipe_path = self.bundle / "build.json"
+        recipe = json.loads(recipe_path.read_text())
+        recipe.update(platform="linux/arm64", binary_sha256=binaries,
+                      factorybox_sha256=reference.sha(self.bundle / "factorybox"))
+        recipe_path.write_text(json.dumps(recipe))
+        result["bundle_sha256"] = {str(p.relative_to(self.bundle)): reference.sha(p)
+                                  for p in self.bundle.rglob("*") if p.is_file()}
+        result_file.write_text(json.dumps(result))
+        image = {"Id": "sha256:fixture", "Os": "linux", "Architecture": "arm64",
+                 "RootFS": {"Layers": ["sha256:layer"]}}
+        self.docker.return_value = json.dumps([image])
+        self.assertEqual(build_worker.load(self.name)[1]["platform"], "linux/arm64")
+        self.assertFalse(build_worker.load(self.name)[1].get("native_lifecycle_qualified", False))
+        image["Architecture"] = "amd64"
+        self.docker.return_value = json.dumps([image])
+        with self.assertRaisesRegex(ValueError, "image identity"):
+            build_worker.load(self.name)
+
+    def test_false_target_is_rejected_even_when_all_hashes_are_redeclared(self):
+        path = self.bundle / "components/criu"
+        path.write_bytes(elf("arm64"))
+        recipe = json.loads((self.bundle / "build.json").read_text())
+        recipe["binary_sha256"]["criu"] = reference.sha(path)
+        (self.bundle / "build.json").write_text(json.dumps(recipe))
+        (self.bundle / "components.json").write_text(json.dumps({
+            "schema": 1, "binary_sha256": recipe["binary_sha256"]}))
+        result = json.loads((self.artifact / "result.json").read_text())
+        result["bundle_sha256"] = {str(p.relative_to(self.bundle)): reference.sha(p)
+                                  for p in self.bundle.rglob("*") if p.is_file()}
+        (self.artifact / "result.json").write_text(json.dumps(result))
+        with self.assertRaisesRegex(ValueError, "executable does not match linux/amd64"):
+            build_worker.load(self.name)
 
     def test_completed_inputs_and_image(self):
         self.assertEqual(build_worker.load(self.name)[0],self.artifact)
@@ -150,6 +206,24 @@ class WorkerBuildInputs(unittest.TestCase):
         (self.bundle/"redirect").symlink_to(self.artifact/"source")
         with self.assertRaisesRegex(ValueError,"inventory"):
             build_worker.load(self.name)
+
+    def test_image_context_transport_is_deterministic_without_rewriting_source_metadata(self):
+        context = self.artifact / "image-context"
+        first = build_worker.image_context_bytes(context)
+        before = {}
+        for path in context.rglob("*"):
+            os.utime(path, (123456789, 123456789))
+            before[path] = path.stat().st_mtime_ns
+        self.assertEqual(build_worker.image_context_bytes(context), first)
+        self.assertEqual({path: path.stat().st_mtime_ns for path in before}, before)
+        with tarfile.open(fileobj=io.BytesIO(first)) as transport:
+            self.assertTrue(all(row.mtime == 0 and row.uid == 0 and row.gid == 0
+                                for row in transport.getmembers()))
+            self.assertEqual(transport.extractfile("bundle/factorybox").read(),
+                             (self.bundle / "factorybox").read_bytes())
+        (context / "redirect").symlink_to(self.artifact / "source")
+        with self.assertRaisesRegex(ValueError, "redirected"):
+            build_worker.image_context_bytes(context)
 
 
 if __name__ == "__main__":

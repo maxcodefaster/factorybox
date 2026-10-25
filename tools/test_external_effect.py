@@ -23,6 +23,23 @@ class CombinedFixtureTests(unittest.TestCase):
             external_cancel.prepare(artifact, result)
             self.assertIn("cancel-held-tool.cjs", (flow / "client.cjs").read_text())
             self.assertIn("cancellation", result["external_provider"])
+            receipts = json.loads((artifact / "external-cancel-reconstruction.json").read_text())
+            self.assertEqual(len(receipts), 3)
+            self.assertTrue(all(not row["historical_execution_reconstructed"] for row in receipts))
+
+    def test_cancellation_preimage_reconstruction_refuses_a_changed_patch_chain(self):
+        declaration = json.loads((reference.ROOT / "tests/compatibility/external-cancel-fixture.json").read_text())
+        for fault in ["before", "patch", "final", "followup"]:
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                altered = copy.deepcopy(declaration)
+                row = next(iter(altered["files"].values()))
+                if fault == "followup":
+                    altered["followups"][0]["before_sha256"] = "a" * 64
+                else:
+                    key = {"before": "before_sha256", "patch": "patch_sha256", "final": "after_sha256"}[fault]
+                    row[key] = "a" * 64
+                with self.assertRaises(ValueError):
+                    external_cancel.verify_fixture_chain(Path(directory), altered)
 
     def test_a_separate_socket_cannot_redirect_the_inference_peer(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -4,8 +4,45 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 
 import reference
+
+
+def verify_fixture_chain(artifact, value):
+    """Reconstruct exact preimages from tracked ordered patches, not lost archives."""
+    scratch = artifact / "external-cancel-reconstructed-inputs"
+    scratch.mkdir()
+    receipts = []
+    for name, row in value["files"].items():
+        path = reference.ROOT / name
+        followups = [item for item in value.get("followups", []) if item["file"] == name]
+        chain = [row, *followups]
+        expected = row["before_sha256"]
+        for item in chain:
+            if (item["before_sha256"] != expected or
+                    reference.sha(reference.ROOT / item["patch"]) != item["patch_sha256"]):
+                raise ValueError("external cancellation breaks its ordered fixture chain")
+            expected = item["after_sha256"]
+        if reference.sha(path) != expected:
+            raise ValueError("external cancellation fixture bytes differ: " + name)
+        target = scratch / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+        for item in reversed(chain):
+            subprocess.run(["git", "apply", "--reverse", "--unsafe-paths",
+                            "--directory=" + str(scratch.resolve()),
+                            str(reference.ROOT / item["patch"])],
+                           cwd=reference.ROOT, check=True, capture_output=True)
+            if reference.sha(target) != item["before_sha256"]:
+                raise ValueError("reconstructed cancellation preimage differs: " + name)
+            historical = reference.ROOT / "artifacts" / item["before_file"]
+            if historical.exists() and reference.sha(historical) != item["before_sha256"]:
+                raise ValueError("historical cancellation preimage changed: " + name)
+        receipts.append({"file": name, "before_sha256": reference.sha(target),
+                         "after_sha256": expected, "method": "reverse exact tracked patch chain",
+                         "historical_execution_reconstructed": False})
+    (artifact / "external-cancel-reconstruction.json").write_text(json.dumps(receipts, indent=2) + "\n")
 
 
 def prepare(artifact, result):
@@ -15,20 +52,7 @@ def prepare(artifact, result):
         raise ValueError("external cancellation changed its fixture contract")
     if any(row["file"] not in value["files"] for row in value.get("followups", [])):
         raise ValueError("external cancellation follow-up names an unknown fixture")
-    for name, row in value["files"].items():
-        final = row["after_sha256"]
-        for followup in value.get("followups", []):
-            if followup["file"] != name:
-                continue
-            if (followup["before_sha256"] != final or
-                    reference.sha(reference.ROOT / followup["patch"]) != followup["patch_sha256"] or
-                    reference.sha(reference.ROOT / "artifacts" / followup["before_file"]) != final):
-                raise ValueError("external cancellation follow-up breaks its ordered fixture chain")
-            final = followup["after_sha256"]
-        if (reference.sha(reference.ROOT / name) != final or
-                reference.sha(reference.ROOT / row["patch"]) != row["patch_sha256"] or
-                reference.sha(reference.ROOT / "artifacts" / row["before_file"]) != row["before_sha256"]):
-            raise ValueError("external cancellation fixture bytes differ: " + name)
+    verify_fixture_chain(artifact, value)
     shutil.copyfile(declaration, artifact / declaration.name)
     client = artifact / "opencode-flow/client.cjs"
     before = client.read_text()

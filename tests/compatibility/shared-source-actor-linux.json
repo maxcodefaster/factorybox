@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "file": "tests/shared-source-actor/main.go",
+  "before_sha256": "bc64467c72a739ab5b338c233b12e942254661c9301aec8fe685296826518f15",
+  "after_sha256": "9709945ec80d5097171dafbf0af1cbeefff7b9cf801ea3ef95c0f82fef5b649f",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Add only a Linux build constraint to the Linux inotify/Docker workload. Its entire original body and every native assertion remain unchanged. Non-Linux portable checks no longer attempt to compile Linux-only syscalls."
+}

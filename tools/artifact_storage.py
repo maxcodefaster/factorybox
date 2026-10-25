@@ -243,7 +243,8 @@ def compact(path, root, *, new_worker_package=False, compression_level=1):
         raise ValueError('unsupported bounded compression level')
     fresh_package = (new_worker_package and len(relative.parts) == 2 and
                      relative.parts[0].startswith('factorybox-build-worker-') and
-                     relative.parts[1] == 'factorybox-worker-linux-amd64.tar' and
+                     relative.parts[1] in {'factorybox-worker-linux-amd64.tar',
+                                           'factorybox-worker-linux-arm64.tar'} and
                      not (path.parent / 'result.json').exists() and
                      not (path.parent / 'result.json').is_symlink() and
                      (path.parent / 'image-context/bundle/build.json').is_file())

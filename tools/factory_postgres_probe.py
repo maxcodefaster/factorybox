@@ -49,7 +49,7 @@ def main():
         env=dict(os.environ,PATH=str(output)+':'+os.environ['PATH'],DATABASE_URL=url,
             FACTORY_TEST_POSTGRES=json.dumps({'owner':owner,'url':url}),
             FACTORY_FACTORYBOX_WORKER_IMAGE='registry.invalid/worker@sha256:'+'a'*64,
-            FACTORY_FACTORYBOX_EXECUTABLE_SHA256='b'*64,FACTORY_FACTORYBOX_NODE='owned-node',FACTORY_FACTORYBOX_KERNEL='6.12.0')
+            FACTORY_FACTORYBOX_EXECUTABLE_SHA256='b'*64,FACTORY_FACTORYBOX_ARCHITECTURE='amd64',FACTORY_FACTORYBOX_NODE='owned-node',FACTORY_FACTORYBOX_KERNEL='6.12.0')
         with (output/'controllers.log').open('w') as log:
             done=subprocess.run(['bun','--no-env-file','scripts/testing/factorybox-integration.ts'],
                 cwd=repo,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=360)

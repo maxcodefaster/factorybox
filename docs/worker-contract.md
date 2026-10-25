@@ -494,7 +494,7 @@ Every new build/native run uses the repository's artifact capacity guard.
 Rebuild the pilot CRIU composition with `tests/criu-retained-candidate/build.py`
 and the exact native-base build, passing `--exit-hold --exit-hold-socket
 --nested-overlay --nested-overlay-stable-paths --nested-overlay-shared-root`.
-Then use `tools/build_worker.py --native-base-build BASE --sysbox-build SYSBOX
+Then use `tools/build_worker.py --platform linux/amd64 --native-base-build BASE --sysbox-build SYSBOX
 --retained-candidate CRIU`; use the successful exact artifact names printed by
 each build. Repeat with `--compare WORKER_BUILD` for the independent package
 and image comparison. The source lock and ordered patch hashes must match the

@@ -272,6 +272,22 @@ class ArtifactStorageTests(unittest.TestCase):
             self.assertFalse(package.exists())
             self.assertEqual(receipt['original']['sha256'], hashlib.sha256(content).hexdigest())
 
+    @unittest.skipUnless(shutil.which('zstd'), 'compaction requires zstd')
+    def test_new_arm64_transport_has_the_same_complete_decompression_guard(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run = root / ('artifacts/factorybox-build-worker-' + 'a' * 32)
+            bundle = run / 'image-context/bundle'
+            bundle.mkdir(parents=True)
+            (bundle / 'build.json').write_text('{"platform":"linux/arm64"}')
+            package = run / 'factorybox-worker-linux-arm64.tar'
+            content = b'exact ARM64 transport\n' * 4096
+            package.write_bytes(content)
+            receipt = artifact_storage.compact(package, root, new_worker_package=True, compression_level=19)
+            self.assertEqual(artifact_storage.verify_compacted(package, receipt['original']), receipt['encoded'])
+            self.assertEqual(receipt['original']['sha256'], hashlib.sha256(content).hexdigest())
+            self.assertFalse(package.exists())
+
     def test_new_package_option_never_rewrites_completed_or_unrelated_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

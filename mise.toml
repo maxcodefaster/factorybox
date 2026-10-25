@@ -48,6 +48,9 @@ run = "python3 tools/build_native_base.py"
 [tasks."sysbox:build"]
 run = "python3 tools/build_sysbox.py"
 
+[tasks."worker:build"]
+run = "python3 tools/build_worker_pipeline.py"
+
 [tasks."reference:lifecycle"]
 run = "python3 tools/reference_lifecycle.py"
 

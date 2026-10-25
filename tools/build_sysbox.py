@@ -113,6 +113,7 @@ def main():
     }
     failure = None
     try:
+        result["bounded_builder"] = build_config.verify_builder(options, reference.DOCKER)
         for name in COMPONENTS + ["sysbox-fuse"]:
             sources.prepare(name, lock[name], offline=True)
         for name in COMPONENTS:

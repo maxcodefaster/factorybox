@@ -11,6 +11,17 @@ import uuid
 import reference
 
 
+def go_commands(packages):
+    commands = [
+        ["go", "test", *[package for package in packages if package != "factorybox/internal/fdstore"]],
+    ]
+    if "factorybox/internal/fdstore" in packages:
+        commands.append(["go", "test", "./internal/fdstore"])
+    if "factorybox/tests/devx-lifecycle" in packages:
+        commands.append(["go", "test", "-tags=factorybox_worker_probe", "-run=^$", "./tests/devx-lifecycle"])
+    return commands
+
+
 def main():
     artifact = reference.new_artifact("factorybox-checks-" + uuid.uuid4().hex)
     artifact.mkdir()
@@ -24,16 +35,17 @@ def main():
         ["go", "list", "./cmd/...", "./internal/...", "./tests/..."],
         cwd=reference.ROOT, text=True, timeout=30).split()
     commands = [
-        ["go", "test", *[package for package in packages if package != "factorybox/internal/fdstore"]],
-        ["go", "test", "./internal/fdstore"],
-        ["go", "test", "-tags=factorybox_worker_probe", "-run=^$", "./tests/devx-lifecycle"],
+        *go_commands(packages),
         [sys.executable, "-m", "unittest", "discover", "-s", "tools", "-p", "test_*.py"],
         [sys.executable, "tools/reference.py", "verify"],
         [sys.executable, "tools/verify_fixture_extensions.py"],
         ["git", "diff", "--check"],
     ]
     result = {"schema": 1, "passed": False, "native_qualified": False,
-              "production_qualified": False, "checks": [], "temporary_root": str(temporary)}
+              "production_qualified": False, "checks": [], "temporary_root": str(temporary),
+              "unavailable_linux_packages": [name for name in
+                  ["factorybox/internal/fdstore", "factorybox/tests/devx-lifecycle",
+                   "factorybox/tests/shared-source-actor"] if name not in packages]}
     try:
         for index, command in enumerate(commands):
             started = time.monotonic()

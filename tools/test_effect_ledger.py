@@ -7,7 +7,6 @@ import tempfile
 import threading
 import time
 import unittest
-import uuid
 
 import effect_ledger
 
@@ -25,7 +24,9 @@ class UnixHTTP(http.client.HTTPConnection):
 
 class OutsideEffectLedgerTests(unittest.TestCase):
     def test_lost_reply_preserves_effect_and_repeated_apply_is_detectable(self):
-        address = "\0factorybox-effect-" + uuid.uuid4().hex
+        socket_directory = tempfile.TemporaryDirectory(prefix="fbx-", dir="/tmp")
+        self.addCleanup(socket_directory.cleanup)
+        address = str(Path(socket_directory.name) / "effect.sock")
         operation = "a" * 64
         with tempfile.TemporaryDirectory() as directory, effect_ledger.Ledger(address, Path(directory) / "outside") as ledger:
             thread = threading.Thread(target=ledger.serve_forever, daemon=True)
@@ -63,7 +64,9 @@ class OutsideEffectLedgerTests(unittest.TestCase):
                 thread.join(timeout=2)
 
     def test_invalid_route_or_identity_cannot_commit_an_effect(self):
-        address = "\0factorybox-effect-" + uuid.uuid4().hex
+        socket_directory = tempfile.TemporaryDirectory(prefix="fbx-", dir="/tmp")
+        self.addCleanup(socket_directory.cleanup)
+        address = str(Path(socket_directory.name) / "effect.sock")
         with tempfile.TemporaryDirectory() as directory, effect_ledger.Ledger(address, Path(directory) / "outside") as ledger:
             thread = threading.Thread(target=ledger.serve_forever, daemon=True)
             thread.start()

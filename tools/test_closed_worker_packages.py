@@ -30,7 +30,8 @@ class LegacyTransportRetention(unittest.TestCase):
         self.result_bytes = self.result_path.read_bytes()
         self.expected = result['package_sha256']
         fixture.docker.side_effect = lambda args, **kwargs: '' if args[0] == 'ps' else json.dumps([
-            {'Id': 'sha256:fixture', 'RootFS': {'Layers': ['sha256:layer']}}])
+            {'Id': 'sha256:fixture', 'Os': 'linux', 'Architecture': 'amd64',
+             'RootFS': {'Layers': ['sha256:layer']}}])
 
     def encode(self):
         retention.archive([self.fixture.name])

@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Use owned short filesystem Unix sockets instead of Linux-only abstract addresses in the portable HTTP transport tests. The lost-response, exactly-once observation, refusal, tampering and no-retry assertions are unchanged. Native runtime sockets are unchanged.",
+  "files": {
+    "tools/test_effect_ledger.py": {
+      "before_sha256": "2f9f7775affac79b50ba382b25d123e57e1fef8cc4482d2b386dea237869eb0b",
+      "after_sha256": "d7233c411d498006244952964885be8f69277bc945c0f99497d306fdf37a96d7"
+    },
+    "tools/test_model_relay_transport.py": {
+      "before_sha256": "3f20bfa8da22f65687523895059e93ddbf5c7669b08a267cb144af7cecefbb5b",
+      "after_sha256": "8a9228b9952fbb025f9b50cb5404229e280a982642afeef4bb2d3bb4500e9fce"
+    }
+  }
+}

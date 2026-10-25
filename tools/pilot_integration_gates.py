@@ -53,10 +53,13 @@ def main():
     for name in ("worker-build", "consumer-inputs", "project-images", "minimal-project-images", "theia-image"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--suite", action="append", choices=SUITES)
+    parser.add_argument("--builder", help="Verified bounded Buildx builder for upstream suites")
     options = parser.parse_args()
     selected = options.suite or list(SUITES)
     if len(selected) != len(set(selected)):
         parser.error("duplicate suite")
+    if any(name in {"libcontainer", "runc-integration"} for name in selected) and not options.builder:
+        parser.error("--builder is required for the bounded upstream suites")
     _, worker = build_worker.load(options.worker_build)
     artifact = reference.new_artifact("factorybox-pilot-integration-gates-" + uuid.uuid4().hex)
     artifact.mkdir()
@@ -99,7 +102,8 @@ def main():
                     "--suite", "docker-interruption", "--docker-fault-process", process,
                     "--docker-fault-operation", operation, "--docker-fault-component", component]
         return [python, script("tools/upstream_unit.py"), "--sysbox-build", worker["sysbox_build"],
-                "--candidate-platform", "linux/amd64", "--bounded-build", "--network", "host", "--suite", name]
+                "--candidate-platform", "linux/amd64", "--bounded-build", "--builder", options.builder,
+                "--network", "host", "--suite", name]
 
     def check_core():
         manifest = {}

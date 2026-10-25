@@ -31,8 +31,11 @@ def file_sha(path):
         return hashlib.file_digest(file, "sha256").hexdigest()
 
 
-def build_fixture(archive, name, base, *, platform="linux/arm64", network="default", bounded_build=False):
-    options = argparse.Namespace(platform=platform, network=network, bounded_build=bounded_build)
+def build_fixture(archive, name, base, *, platform="linux/arm64", network="default", bounded_build=False,
+                  builder=None):
+    options = argparse.Namespace(platform=platform, network=network, bounded_build=bounded_build,
+                                 builder=builder)
+    build_config.verify_builder(options, reference.DOCKER)
     command = [
         *reference.DOCKER, "build", "--provenance=false", "--progress=plain",
         *build_config.arguments(options), "--tag", name,
@@ -208,6 +211,7 @@ def main():
     parser.add_argument("--candidate-platform", choices=["linux/amd64"])
     parser.add_argument("--network", choices=["default", "host"], default="default")
     parser.add_argument("--bounded-build", action="store_true")
+    parser.add_argument("--builder", help="Explicit existing Buildx builder")
     parser.add_argument("--systemd-network-profile", action="store_true",
                         help="Explicit networkless inner Docker for original systemd assertions")
     options = parser.parse_args()
@@ -295,7 +299,8 @@ def main():
     failure = None
     try:
         fixture = build_fixture(archive, name, image, platform=target,
-                                network=options.network, bounded_build=options.bounded_build)
+                                network=options.network, bounded_build=options.bounded_build,
+                                builder=options.builder)
         result["fixture_image"] = fixture
         command = [
             *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,

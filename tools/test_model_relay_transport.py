@@ -9,7 +9,6 @@ import threading
 import time
 import unittest
 from unittest.mock import Mock, patch
-import uuid
 
 import model_relay
 
@@ -37,7 +36,9 @@ class ExternalRelayDisconnect(unittest.TestCase):
         opener = Mock()
         opener.open.side_effect = response
         build_opener.return_value = opener
-        address = "\0factorybox-relay-disconnect-" + uuid.uuid4().hex
+        socket_directory = tempfile.TemporaryDirectory(prefix="fbx-", dir="/tmp")
+        self.addCleanup(socket_directory.cleanup)
+        address = str(Path(socket_directory.name) / "relay.sock")
         headers = {"Authorization": "Bearer public", "User-Agent": "opencode/synthetic-test",
                    "x-opencode-session": "synthetic-session", "x-opencode-client": "synthetic-client",
                    "Content-Type": "application/json"}

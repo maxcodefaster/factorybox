@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--candidate-platform", choices=["linux/amd64"])
     parser.add_argument("--network", choices=["default", "host"], default="default")
     parser.add_argument("--bounded-build", action="store_true")
+    parser.add_argument("--builder", help="Explicit existing Buildx builder")
     parser.add_argument("--acquisition-network", choices=["bridge", "host"], default="bridge",
                         help="Image acquisition only; host avoids requiring global IP forwarding")
     parser.add_argument("--from-worker-cache", action="store_true",
@@ -78,7 +79,8 @@ def main():
             result["cached_images_sha256"] = reference.sha(archive / "cached-images.tar")
             result["cached_image_command"] = save
         fixture = upstream_bats.build_fixture(archive, name, image, platform=target,
-                                             network=options.network, bounded_build=options.bounded_build)
+                                             network=options.network, bounded_build=options.bounded_build,
+                                             builder=options.builder)
         result["fixture_image"] = fixture
         command = [
             *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,

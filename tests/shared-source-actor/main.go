@@ -1,3 +1,5 @@
+//go:build linux
+
 // Test-only workload for canonical source edits while execution is paused.
 package main
 

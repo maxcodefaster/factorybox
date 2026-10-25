@@ -88,7 +88,8 @@ class LegacyBundleTransport(unittest.TestCase):
         result.update(selected=False, package_bytes=raw['bytes'], package_sha256=raw['sha256'])
         self.result_path.write_text(json.dumps(result))
         fixture.docker.side_effect = lambda args, **kwargs: '' if args[0] == 'ps' else json.dumps([
-            {'Id': 'sha256:fixture', 'RootFS': {'Layers': ['sha256:layer']}}])
+            {'Id': 'sha256:fixture', 'Os': 'linux', 'Architecture': 'amd64',
+             'RootFS': {'Layers': ['sha256:layer']}}])
 
     def encode(self):
         closed_worker_packages.archive([self.fixture.name])

@@ -14,7 +14,9 @@ import build_config
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    build_config.add_arguments(parser)
+    # The native-base image must be exported into the Docker daemon.
+    # Component compilation separately supports a bounded container builder.
+    build_config.add_arguments(parser, bounded_builder=False)
     options = parser.parse_args()
     owner = uuid.uuid4().hex
     name = "factorybox-build-native-base-" + owner

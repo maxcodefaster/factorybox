@@ -165,7 +165,7 @@ print(json.dumps(results))
             mounts = json.loads(run(['exec', identity, 'python3', '-c', helper, 'inspect', bundle]))
             request = {'version': 1, 'namespace': 'factorybox-native-' + owner[:12], 'podName': 'worker',
                        'storeID': owner, 'trustDomainID': owner, 'image': worker['image'],
-                       'executableSHA256': worker['bundle_sha256']['factorybox'], 'nodeName': 'native-owned-node',
+                       'executableSHA256': worker['bundle_sha256']['factorybox'], 'architecture': worker['platform'].split('/')[1], 'nodeName': 'native-owned-node',
                        'kernel': os.uname().release, 'boundedBytes': 8 << 30, 'claimGiB': 32}
             descriptor = artifact / 'factory-native-input.json'
             descriptor.write_text(json.dumps({'request': request, 'docker': reference.DOCKER, 'containerID': identity,
