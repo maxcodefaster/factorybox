@@ -2,7 +2,8 @@
 
 - Factorybox is a standalone Linux system-container runtime based on pinned Sysbox and CRIU.
   IDEs, Dev Containers and agent harnesses are consumers, not lifecycle dependencies.
-- Leave the Factory repositories and the historical runtime experiment unchanged.
+- Modify Open Software Factory only for the authorized Factorybox consumer integration.
+  Leave other Factory repositories and the historical runtime experiment unchanged.
 - Keep one implementation writer. Do not use subagents for this programme.
 - Use `mise exec --` and `apply_patch`. Keep generated evidence in `artifacts/`.
 - Preserve `tests/reference` byte for byte against its import manifest. Extract behavior with its

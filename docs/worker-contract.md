@@ -35,7 +35,9 @@ to another trust domain.
 
 The current image contains its pinned native base's build/test utilities.
 The reduced production image remains unqualified. This uses the host kernel;
-it does not provide VM isolation or imply Kubernetes support.
+it does not provide VM isolation. The optional HTTP probe and epoch-bound CLI
+support the [Kubernetes consumer admission lane](kubernetes-worker.md); that lane
+has not been qualified against a running Kubernetes cluster.
 
 ## Persistent and ephemeral state
 
@@ -61,6 +63,21 @@ hint: subsequently require the live `worker-status` verification above. An
 early exec task can occupy the private cgroup root while PID 1 delegates its
 controllers; the worker refuses that state. The supplied integration client
 performs this two-step check without a fixed startup delay.
+
+New worker builds also accept optional `--health-listen IP:PORT`. It serves only
+`GET /readyz`, with an empty 204 for the verified original live worker and 503
+when that verification fails. It starts inside PID 1 after delegation, without
+creating an exec task. It returns no status identities or administrative API.
+The default is disabled. Use an explicit numeric bind address and keep the
+health port within the administrative network.
+
+Remote consumers can pin lifecycle calls to the admitted worker by supplying
+both `--worker-store-id STORE_ID` and `--worker-epoch EPOCH` before the command,
+alongside `--worker-run-root /run/factorybox`. Both IDs must be 32 lowercase
+hexadecimal characters and match live `worker-status`. A mismatch fails before
+the lifecycle engine opens. This protects a delayed command from reaching a
+replacement epoch between orchestrator inspection and exec. It neither selects
+recovery inputs nor grants recovery after a reboot or cross-node move.
 
 The current production candidate adds a private `startup-failure.json` in its
 epoch when startup fails after a service was launched. It reads bounded procfs

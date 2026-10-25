@@ -38,6 +38,7 @@ type Config struct {
 	StoreID      string
 	BoundedRoot  string
 	BoundedBytes int64
+	HealthListen string
 }
 
 const (
@@ -492,6 +493,9 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	if len(config.StoreID) != 32 || strings.Trim(config.StoreID, "0123456789abcdef") != "" {
 		return fmt.Errorf("worker requires an explicit 32-character hexadecimal store ID")
 	}
+	if err := validateHealthListen(config.HealthListen); err != nil {
+		return err
+	}
 	info, err := platform.Current()
 	if err == nil {
 		err = info.CheckExecution()
@@ -675,6 +679,22 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	if _, err := Current(config.RunRoot); err != nil {
 		return err
 	}
+	// Start the probe inside PID 1 only after delegation and live verification.
+	// Kubernetes exec probes would create tasks in the initially empty root.
+	health, err := startHealth(config.HealthListen, func() error {
+		current, err := Current(config.RunRoot)
+		if err != nil {
+			return err
+		}
+		if !reflect.DeepEqual(current, status) {
+			return fmt.Errorf("worker readiness identity changed")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	defer health.Close()
 	if err := json.NewEncoder(os.Stdout).Encode(status); err != nil {
 		return err
 	}

@@ -11,16 +11,18 @@ Docker state and running agent tools, on infrastructure you operate without
 KVM. Factorybox currently requires a privileged worker container and shares
 the host kernel. It supplies no VM isolation boundary.
 
-The current AMD64 reference passed its local acceptance on 2026-10-22. Its
-profile binds 44 evidence gates, reproducible binaries and twenty complete
-comparison runs. This is a functional and performance reference; production
-qualification remains open. Start with the
-[acceptance report](docs/pilot-validation.md) and
-[supported worker contract](docs/worker-contract.md).
-The subsequent [production work](docs/production-progress.md) includes real
-external-agent checks, fresh-start optimization and the remaining release gates.
-Its next comparison stopped on a restore PID collision after fourteen passing
-lifecycles. That unresolved failure blocks release and performance selection.
+The selected AMD64 release candidate passes its complete twenty-run local
+series and operating/storage cases. Production qualification remains open,
+including actual-provider acceptance and historical cleanup attribution. Start
+with the [current release status](docs/first-release-status.md),
+[measured performance](docs/first-release-performance.md) and
+[supported worker contract](docs/worker-contract.md). The
+[earlier pilot report](docs/pilot-validation.md) is historical evidence.
+
+The first [Kubernetes consumer admission](docs/kubernetes-worker.md) adds native
+HTTP readiness and exact worker identity guards. Its real CLI transport proof
+passes. A running Kubernetes cluster and shared-source Workspace integration
+are not yet qualified.
 
 ## Why use Factorybox
 
@@ -87,7 +89,11 @@ flowchart LR
     ide[Optional separate Theia] --> sandbox
 ```
 
-## Measured performance
+## Historical pilot performance
+
+The current release's complete twenty-run measurements are in
+[first-release-performance.md](docs/first-release-performance.md). The values
+below describe the earlier pilot and its predecessor.
 
 Five observations per configuration and example, interleaved on one host.
 Times are medians in seconds. A useful fork starts from an already published

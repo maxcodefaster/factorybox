@@ -26,6 +26,7 @@ func runWorker(args []string) (bool, error) {
 		flags.StringVar(&config.BoundedRoot, "bounded-root", "", "experimental private directory owning a fixed-size store image")
 		flags.Int64Var(&config.BoundedBytes, "bounded-bytes", 0, "fixed image size in bytes; required with bounded-root")
 		flags.StringVar(&config.StoreID, "store-id", "", "required immutable 32-character hexadecimal persistent store identity")
+		flags.StringVar(&config.HealthListen, "health-listen", "", "optional numeric IP:port serving only live GET /readyz; no administrative API")
 		flags.StringVar(&config.Components, "components", "/opt/factorybox/components", "private pinned components directory")
 		flags.StringVar(&config.Manifest, "manifest", "/opt/factorybox/components.json", "exact pinned component manifest")
 	}

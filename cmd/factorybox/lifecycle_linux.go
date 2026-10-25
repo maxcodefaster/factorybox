@@ -36,7 +36,10 @@ func runLifecycle(args []string) error {
 	flags := flag.NewFlagSet("factorybox", flag.ContinueOnError)
 	var config lifecycle.Config
 	var workerRunRoot string
+	var expectedStore, expectedEpoch string
 	flags.StringVar(&workerRunRoot, "worker-run-root", "", "resolve controller and components from the validated live worker")
+	flags.StringVar(&expectedStore, "worker-store-id", "", "require this exact live worker store; paired with --worker-epoch")
+	flags.StringVar(&expectedEpoch, "worker-epoch", "", "require this exact live worker epoch; paired with --worker-store-id")
 	flags.StringVar(&config.Root, "root", "", "private worker state directory")
 	flags.StringVar(&config.Runtime, "runtime", "", "exact Sysbox executable")
 	flags.StringVar(&config.RuntimeSHA256, "runtime-sha256", "", "required executable SHA-256")
@@ -48,6 +51,11 @@ func runLifecycle(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if expectedStore != "" || expectedEpoch != "" {
+		if workerRunRoot == "" || !workerIdentityToken(expectedStore) || !workerIdentityToken(expectedEpoch) {
+			return fmt.Errorf("worker identity requires --worker-run-root and paired 32-character hexadecimal --worker-store-id/--worker-epoch")
+		}
+	}
 	if workerRunRoot != "" {
 		if config != (lifecycle.Config{}) {
 			return fmt.Errorf("--worker-run-root cannot be combined with explicit controller/component options")
@@ -55,6 +63,9 @@ func runLifecycle(args []string) error {
 		status, err := worker.Current(workerRunRoot)
 		if err != nil {
 			return err
+		}
+		if expectedStore != "" && (status.StoreID != expectedStore || status.Epoch != expectedEpoch) {
+			return fmt.Errorf("live worker store or epoch differs from the requested worker identity")
 		}
 		config = status.Lifecycle
 	}
@@ -333,4 +344,16 @@ func runLifecycle(args []string) error {
 		err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(view))
 	}
 	return err
+}
+
+func workerIdentityToken(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	for _, character := range value {
+		if !(character >= '0' && character <= '9' || character >= 'a' && character <= 'f') {
+			return false
+		}
+	}
+	return true
 }
