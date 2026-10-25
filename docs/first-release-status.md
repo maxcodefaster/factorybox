@@ -4,6 +4,10 @@ Stand: 25. Oktober 2026. Die Freigabe ist offen. Verbindlicher Umfang bleibt
 [GOAL.md](../GOAL.md), einschließlich aller dort genannten Grenzen.
 Der 24-Stunden-Dauerlauf und die 100er-Serie gehören zur späteren Etappe.
 
+Die [gemessenen Laufzeiten](first-release-performance.md) fassen die vollständige
+20er-Serie mit Vorbereitung, erster nutzbarer Arbeit und verbleibendem
+Worker-Speicher zusammen.
+
 Die reguläre Serie ist vollständig bestanden und unabhängig geprüft: zehn
 Minimal- und zehn Factory-Läufe, ohne Fehlschlag, Wiederholung oder verworfenen
 Versuch. Der ursprüngliche Ablauf ist beendet. Das vollständige Ergebnis steht
