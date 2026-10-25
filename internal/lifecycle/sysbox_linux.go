@@ -97,6 +97,36 @@ func (e *Engine) commandFiles(ctx context.Context, lock *os.File, files []*os.Fi
 	command.ExtraFiles = append([]*os.File{binary, lock}, files...)
 	command.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"HOME=/root", "LANG=C", "GOMAXPROCS=2"}
+	if len(args) > 0 && args[0] == "create" {
+		// A created init holds its stdio until start. Pipe-backed capture
+		// would keep os/exec waiting before networking can be configured.
+		// Guest stdio uses /dev/null; only the short-lived launcher's own
+		// structured diagnostics are read from an anonymous private file.
+		fd, err := unix.MemfdCreate("factorybox-create-log", unix.MFD_CLOEXEC)
+		if err != nil {
+			return nil, err
+		}
+		log := os.NewFile(uintptr(fd), "Sysbox create diagnostics")
+		defer log.Close()
+		logFD := 3 + len(command.ExtraFiles)
+		command.ExtraFiles = append(command.ExtraFiles, log)
+		command.Args = append(command.Args[:1], append([]string{"--root", e.config.Root + "/runtime", "--log", fmt.Sprintf("/proc/self/fd/%d", logFD)}, args...)...)
+		null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+		if err != nil {
+			return nil, err
+		}
+		defer null.Close()
+		command.Stdout, command.Stderr = null, null
+		runErr := command.Run()
+		if runErr != nil {
+			if _, err := log.Seek(0, io.SeekStart); err != nil {
+				return nil, errors.Join(runErr, err)
+			}
+			diagnostic, err := io.ReadAll(io.LimitReader(log, 64<<10))
+			return nil, fmt.Errorf("Sysbox create: %w: %s", errors.Join(runErr, err), diagnostic)
+		}
+		return nil, nil
+	}
 	var stdout, stderr boundedOutput
 	command.Stdout, command.Stderr = &stdout, &stderr
 	command.WaitDelay = 2 * time.Second

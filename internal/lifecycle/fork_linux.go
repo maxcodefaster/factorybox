@@ -225,6 +225,9 @@ func (e *Engine) newForkIntent(ctx context.Context, sourceID, snapshotID, target
 	if source.SharedSource != nil {
 		return intent, sysboxcapture.ErrSharedSourceCopy
 	}
+	if source.Network != nil {
+		return intent, fmt.Errorf("outbound network requires a separate independent copy contract")
+	}
 	generation, _ := checkpointPath(sourceID, snapshotID)
 	if _, err := e.readCheckpoint(generation, "checkpoint.json"); err != nil {
 		return intent, fmt.Errorf("fork requires an already published checkpoint: %w", err)

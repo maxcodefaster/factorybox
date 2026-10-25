@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"factorybox/internal/sandboxnetwork"
 )
 
 // IRMapScanPathsAnnotation supplies namespace-local fallback search roots for
@@ -20,6 +22,21 @@ const IRMapScanPathsAnnotation = "io.factorybox.checkpoint.irmap-scan-paths"
 // Its input is a JSON array in one OCI annotation, never arbitrary CRIU options.
 func CheckpointConfiguration(annotations map[string]string) ([]byte, error) {
 	configuration := "nested-ns\nsysbox-oom-floor\n"
+	requested, err := sandboxnetwork.Requested(annotations)
+	if err != nil {
+		return nil, err
+	}
+	if requested {
+		network, err := sandboxnetwork.Plan(annotations["io.factorybox.owner"])
+		if err != nil {
+			return nil, err
+		}
+		extra, err := network.CRIUConfiguration()
+		if err != nil {
+			return nil, err
+		}
+		configuration += extra
+	}
 	encoded, present := annotations[IRMapScanPathsAnnotation]
 	if !present {
 		return []byte(configuration), nil
@@ -52,7 +69,7 @@ func checkpointConfigurationFromLabels(labels []string) ([]byte, error) {
 	annotations := map[string]string{}
 	for _, label := range labels {
 		key, value, found := strings.Cut(label, "=")
-		if !found || key != IRMapScanPathsAnnotation {
+		if !found || (key != IRMapScanPathsAnnotation && key != sandboxnetwork.Annotation && key != "io.factorybox.owner") {
 			continue
 		}
 		if _, present := annotations[key]; present {

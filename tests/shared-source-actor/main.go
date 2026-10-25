@@ -18,7 +18,11 @@ import (
 )
 
 func main() {
-	output, err := os.OpenFile("/workspace/shared-source.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
+	logPath := "/workspace/shared-source.log"
+	if len(os.Args) == 2 && os.Args[1] == "--docker-parent" {
+		logPath = "/workspace/docker-parent.log"
+	}
+	output, err := os.OpenFile(logPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -37,6 +41,12 @@ func main() {
 	}
 	input.Close()
 	output.Close()
+	if len(os.Args) == 2 && os.Args[1] == "--docker-parent" {
+		if err := dockerParent(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	payload := make([]byte, 1<<20)
 	if _, err := rand.Read(payload); err != nil {
 		log.Fatal(err)
@@ -81,10 +91,26 @@ func main() {
 	var mutex sync.Mutex
 	counter := 0
 	requests := 0
+	networkClient := &http.Client{Timeout: 3 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		mutex.Lock()
 		defer mutex.Unlock()
 		requests++
+		networkValue := ""
+		if address := os.Getenv("FACTORYBOX_NETWORK_URL"); address != "" {
+			response, err := networkClient.Get(address)
+			if err != nil {
+				http.Error(w, err.Error(), 500)
+				return
+			}
+			body, err := io.ReadAll(io.LimitReader(response.Body, 256))
+			response.Body.Close()
+			if err != nil || response.StatusCode != 200 {
+				http.Error(w, "network response differs", 500)
+				return
+			}
+			networkValue = string(body)
+		}
 		if request.Method == http.MethodPost {
 			if err := os.WriteFile(project+"/runtime-write", []byte("runtime user 1000"), 0644); err != nil {
 				http.Error(w, err.Error(), 500)
@@ -138,7 +164,7 @@ func main() {
 			return
 		}
 		digest := sha256.Sum256(payload)
-		if err := json.NewEncoder(w).Encode(map[string]any{"counter": counter, "requests": requests, "cwd": cwd, "current": string(current),
+		if err := json.NewEncoder(w).Encode(map[string]any{"counter": counter, "requests": requests, "cwd": cwd, "current": string(current), "network": networkValue,
 			"held": string(old), "mapped": string(mapping[:16]), "watch_bytes": max(n, 0),
 			"ram_sha256": hex.EncodeToString(digest[:]), "ram_bytes": len(payload)}); err != nil {
 			log.Print(err)

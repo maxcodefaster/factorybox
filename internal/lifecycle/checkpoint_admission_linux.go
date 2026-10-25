@@ -61,6 +61,15 @@ func (e *Engine) admitCheckpointSource(ctx context.Context, guard *captureGuard,
 		}
 		if admissionErr == nil {
 			kind = "timers"
+			if record.Network != nil {
+				threads, err := captureGuardThreads(guard.config, guard.anchor)
+				if err != nil {
+					return "network", err
+				}
+				if err := record.Network.VerifySource(guard.config.PID, threads); err != nil {
+					return "network", err
+				}
+			}
 			admissionErr = guard.admitCheckpointTimers()
 		}
 		var pending *timerPendingCaughtSignal

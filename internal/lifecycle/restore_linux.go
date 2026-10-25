@@ -236,6 +236,11 @@ func (e *Engine) heldRestoreWorker(ctx context.Context, lock *os.File, target Re
 	if err != nil || events["frozen"] != 1 || events["populated"] != 1 {
 		return fmt.Errorf("restore detached without retaining its exact freeze: %v", err)
 	}
+	if target.Network != nil {
+		if err := target.Network.Configure(ctx, ready.PID, true); err != nil {
+			return err
+		}
+	}
 	if err := e.activateRestoredTimers(target, ready.PID); err != nil {
 		return err
 	}

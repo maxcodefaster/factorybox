@@ -98,6 +98,9 @@ func (e *Engine) Checkpoint(ctx context.Context, id, snapshot string) (_ Checkpo
 	if record.SharedSource != nil {
 		return Checkpoint{}, fmt.Errorf("shared source requires Pause; independent checkpoints need a separate source contract")
 	}
+	if record.Network != nil {
+		return Checkpoint{}, fmt.Errorf("outbound network capture requires Pause so the original peer is retired")
+	}
 	relative, err := checkpointPath(id, snapshot)
 	if err != nil {
 		return Checkpoint{}, err

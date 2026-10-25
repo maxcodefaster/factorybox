@@ -130,6 +130,14 @@ func (e *Engine) Pause(ctx context.Context, id, snapshot string) (View, error) {
 	if err != nil {
 		return View{Record: record, Runtime: state}, err
 	}
+	if record.Network != nil {
+		if err := e.requireEmptyCgroup(record); err != nil {
+			return View{Record: record, Runtime: state}, err
+		}
+		if err := record.Network.RetirePeer(); err != nil {
+			return View{Record: record, Runtime: state}, err
+		}
+	}
 	identity, err := json.Marshal(captured)
 	if err != nil {
 		return View{Record: record, Runtime: state}, err

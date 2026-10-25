@@ -25,7 +25,7 @@ require (
 	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/seccomp/libseccomp-golang v0.10.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/vishvananda/netlink v1.3.0 // indirect
-	github.com/vishvananda/netns v0.0.4 // indirect
+	github.com/vishvananda/netlink v1.3.0
+	github.com/vishvananda/netns v0.0.4
 	golang.org/x/net v0.35.0 // indirect
 )

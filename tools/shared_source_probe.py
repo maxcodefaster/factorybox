@@ -28,12 +28,16 @@ def main():
     parser.add_argument('--case', choices=['repeat', 'closed-file-edit', 'open-file-atomic-replacement'], default='repeat')
     parser.add_argument('--alias-mount', action='store_true', help='Exercise a private nested mount namespace at the Dev Container project path, not a Docker/Factory consumer qualification')
     parser.add_argument('--rename-directory', action='store_true', help='Keep cwd and an open directory FD in a subdirectory, then rename that directory while paused')
+    parser.add_argument('--outbound-network', action='store_true', help='Verify owned IPv4 egress to a separate bounded HTTP container through every Pause/Resume')
     parser.add_argument('--consumer-inputs', help='Use the retained complete consumer rootfs instead of the small contract fixture')
+    parser.add_argument('--docker-child', action='store_true', help='Run the workload in a real private Docker bridge network using the complete consumer rootfs')
     args = parser.parse_args()
     if args.diagnostic_criu_build and not args.diagnostic_runtime:
         raise ValueError('a CRIU override requires the explicitly unqualified diagnostic runtime')
     if args.alias_mount and args.consumer_inputs:
         raise ValueError('the alias fixture requires the small explicitly owned rootfs')
+    if args.docker_child and (not args.consumer_inputs or not args.outbound_network):
+        raise ValueError('private Docker proof requires complete consumer inputs and the external network fixture')
     worker_root, worker = build_worker.load(args.worker_build)
     native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     current = {directory + '/' + key: value for directory in ['internal', 'cmd/factorybox']
@@ -62,14 +66,19 @@ def main():
     result['case'] = args.case
     result['alias_mount'] = args.alias_mount
     result['rename_directory'] = args.rename_directory
+    result['outbound_network'] = args.outbound_network
+    result['docker_child'] = args.docker_child
     result['runtime_source_context'] = current
     result['actor_source_context'] = upstream_unit.context_manifest(source / 'tests/shared-source-actor')
     created = []
     attempted = False
     identity = None
+    server_identity = None
+    server_attempted = False
     live_pid = None
     deadline = time.monotonic() + 420
     before = consumer_worker_loss.sysctls()
+    before['net/ipv4/ip_forward'] = Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()
     result['global_sysctls_before'] = before
 
     def run(arguments, *, timeout=30, failure=False):
@@ -176,6 +185,17 @@ print(body.decode())
             subprocess.run(['go', 'build', '-trimpath', '-buildvcs=false', '-o', str(actor_binary), './tests/shared-source-actor'],
                            cwd=source, env=dict(os.environ, CGO_ENABLED='0'), check=True, timeout=120)
         result['actor_sha256'] = reference.sha(actor_binary)
+        if args.outbound_network:
+            server_script = artifact / 'network-server.py'
+            shutil.copyfile(reference.ROOT / 'tests/shared-source-network.py', server_script)
+            result['network_server_sha256'] = reference.sha(server_script)
+            server_attempted = True
+            server_identity = run(['run','--detach','--pull=never','--name',name+'-http','--label','com.factorybox.run='+owner,
+                '--cpus=.25','--memory=64m','--pids-limit=16','--network=none','--read-only','--cap-drop=ALL','--user','65534:65534',
+                '--mount',f'type=bind,source={server_script},target=/fixture.py,readonly','--entrypoint','python3',worker['native_base_image'],'/fixture.py',owner]).strip()
+            server = consumer_worker_loss.exact_worker(name+'-http',owner,server_identity)
+            result['network_server_id'] = server_identity
+            result['network_server_ip'] = '192.0.2.2'
         for volume in [name, name + '-source']:
             run(['volume', 'create', '--label', 'com.factorybox.run=' + owner, volume])
             created.append(volume)
@@ -201,6 +221,34 @@ print(body.decode())
             if time.monotonic() - started > 120:
                 raise TimeoutError('shared-source worker readiness timed out')
             time.sleep(.1)
+        if args.outbound_network:
+            host_network = os.stat('/proc/self/ns/net')
+            result['worker_network_namespace'] = json.loads(run(['exec',identity,'python3','-c',"import json,os;s=os.stat('/proc/self/ns/net');print(json.dumps({'device':s.st_dev,'inode':s.st_ino}))"]))
+            if result['worker_network_namespace'] == {'device':host_network.st_dev,'inode':host_network.st_ino}:
+                raise ValueError('network proof must not use the host namespace')
+            server = consumer_worker_loss.exact_worker(name+'-http',owner,server_identity)
+            if not server['State']['Running'] or server['HostConfig']['NetworkMode']!='none' or server['HostConfig']['Memory']!=64<<20:
+                raise ValueError('HTTP network endpoint differs from its private bounded request')
+            server_pid = server['State']['Pid']
+            worker_pid = exact()['State']['Pid']
+            server_ns = json.loads(run(['exec',server_identity,'python3','-c',"import json,os;s=os.stat('/proc/self/ns/net');print(json.dumps({'device':s.st_dev,'inode':s.st_ino}))"]))
+            result['server_network_namespace'] = server_ns
+            if (server_ns['device'],server_ns['inode']) in [(host_network.st_dev,host_network.st_ino),(result['worker_network_namespace']['device'],result['worker_network_namespace']['inode'])]:
+                raise ValueError('external endpoint does not have a separate private namespace')
+            def fixture_ip(pid,arguments):
+                current_server = consumer_worker_loss.exact_worker(name+'-http',owner,server_identity)
+                if current_server['State']['Pid']!=server_pid or exact()['State']['Pid']!=worker_pid:
+                    raise ValueError('owned network fixture process changed')
+                command = ['sudo','-n','nsenter','--net=/proc/'+str(pid)+'/ns/net','--','ip',*arguments]
+                done = subprocess.run(command,capture_output=True,text=True,timeout=10)
+                result['commands'].append({'arguments':command,'exit':done.returncode,'stdout':done.stdout,'stderr':done.stderr})
+                done.check_returncode()
+            fixture_ip(worker_pid,['link','add','name','proof-out','alias','fixture:'+owner,'type','veth','peer','name','proof-in','netns',str(server_pid)])
+            for pid,interface,address in [(worker_pid,'proof-out','192.0.2.1/30'),(server_pid,'proof-in','192.0.2.2/30')]:
+                fixture_ip(pid,['addr','add',address,'dev',interface])
+                fixture_ip(pid,['link','set',interface,'up'])
+            fixture_ip(worker_pid,['route','add','default','via','192.0.2.2','dev','proof-out'])
+            result['external_fixture_private_namespaces_verified'] = True
         result['status'] = json.loads(run(['exec', identity, '/opt/factorybox/factorybox', 'worker-status']))
         setup = artifact / 'setup.sh'
         if args.consumer_inputs:
@@ -278,20 +326,49 @@ path.write_text(json.dumps(spec))
 spec['process']['env'].append('FACTORYBOX_SHARED_SOURCE_SUBDIRECTORY=1')
 path.write_text(json.dumps(spec))
 '''
+        if args.outbound_network:
+            configure += "\nspec['annotations']['io.factorybox.outbound-ipv4']='true'\nspec['process']['env'].append("+repr('FACTORYBOX_NETWORK_URL=http://'+result['network_server_ip']+':18181/')+")\npath.write_text(json.dumps(spec))\n"
+        if args.docker_child:
+            configure += '''
+spec['process']['user']={'uid':0,'gid':0}
+spec['process']['args']=['/opt/factorybox-example-actor','--docker-parent']
+for name in ['bounding','effective','permitted']:
+ for capability in ['CAP_SYS_ADMIN','CAP_NET_ADMIN']:
+  if capability not in spec['process']['capabilities'][name]:spec['process']['capabilities'][name].append(capability)
+path.write_text(json.dumps(spec))
+'''
         run(['exec', identity, 'python3', '-c', 'bundle_path=' + repr(bundle) + '\n' + configure])
         ctl = ['exec', identity, '/opt/factorybox/factorybox', '--worker-run-root', '/run/factorybox',
                '--worker-store-id', owner, '--worker-epoch', status['epoch']]
         result['start'] = json.loads(run([*ctl, 'start', '--bundle', bundle, 'source'], timeout=90))
         live_pid = result['start']['runtime']['pid']
-        useful_deadline = time.monotonic() + 15
+        def docker_observation():
+            prefix = ['exec', identity, '/opt/factorybox/components/sysbox-runc', '--root',
+                      status['lifecycle']['root']+'/runtime', 'exec', result['start']['record']['runtime_id'],
+                      '/usr/local/bin/docker']
+            info = json.loads(run([*prefix, 'info', '--format', '{{json .}}']))
+            child = json.loads(run([*prefix, 'inspect', 'source-probe']))[0]
+            if not child['State']['Running'] or child['RestartCount'] != 0:
+                raise ValueError('private Docker child stopped or restarted')
+            return {'storage_driver': info['Driver'], 'server_version': info['ServerVersion'],
+                    'child_id': child['Id'], 'child_running': True, 'child_restart_count': child['RestartCount']}
+        useful_deadline = time.monotonic() + (60 if args.docker_child else 15)
         while True:
             try:
                 result['first_use'] = actor('POST')
+                if args.outbound_network and result['first_use']['network'] != owner:
+                    raise ValueError('first useful work did not reach its owned external endpoint')
                 break
             except ValueError:
+                if args.docker_child:
+                    state = json.loads(run([*ctl,'state','source']))
+                    if state.get('runtime',{}).get('status')=='stopped':
+                        raise ValueError('private Docker fixture stopped before first useful work; see its preserved private logs')
                 if time.monotonic() > useful_deadline:
                     raise
                 time.sleep(.1)
+        if args.docker_child:
+            result['docker_first_use'] = docker_observation()
         ownership = json.loads(run(['exec', identity, 'python3', '-c', "import json,os;stat=os.stat('/factory-source/project/runtime-write');print(json.dumps({'uid':stat.st_uid,'gid':stat.st_gid}))"]))
         result['runtime_source_owner'] = ownership
         if ownership != {'uid':101000,'gid':101000}:
@@ -328,9 +405,27 @@ for path in pathlib.Path('/proc/1/fd').iterdir():
  except OSError as error:result.append({'fd':path.name,'error':str(error)})
 print(json.dumps(result))
 ''']))
+            if args.outbound_network and len(result['phases'])==1:
+                peer = result['start']['record']['network']['peer']
+                run(['exec',identity,'ip','link','add',peer,'type','dummy'])
+                run(['exec',identity,'ip','link','set',peer,'alias','fixture:'+owner])
+                run([*ctl,'resume','--snapshot-id',phase['snapshot_id'],'source'],failure=True)
+                refused = json.loads(run([*ctl,'state','source']))
+                link = json.loads(run(['exec',identity,'ip','-j','-d','link','show','dev',peer]))
+                if (refused['record']['phase']!='paused' or refused['record']['pause'].get('resume') is not None or
+                        len(link)!=1 or link[0].get('ifalias')!='fixture:'+owner or link[0].get('linkinfo',{}).get('info_kind')!='dummy'):
+                    raise ValueError('foreign network peer refusal changed the pause or unrelated interface')
+                run(['exec',identity,'ip','link','delete',peer])
+                phase['foreign_peer_refused_before_resume_transition'] = True
             phase['resume'] = json.loads(run([*ctl, 'resume', '--snapshot-id', phase['snapshot_id'], 'source'], timeout=90))
             live_pid = phase['resume']['runtime']['pid']
             phase['after'] = actor()
+            if args.docker_child:
+                phase['docker_after'] = docker_observation()
+                if phase['docker_after'] != result['docker_first_use']:
+                    raise ValueError('Resume changed the private Docker daemon or child identity')
+            if args.outbound_network and phase['after']['network'] != owner:
+                raise ValueError('restored sandbox lost its owned outbound network')
             if any(phase['after'][key] != phase['before'][key] for key in ['counter', 'ram_sha256', 'held', 'mapped']) or phase['after']['cwd'] != phase['expected_cwd']:
                 raise ValueError('Resume lost private RAM or the original open file/mapping')
             if phase['after']['current'] != (content if filename == 'current.txt' else phase['before']['current']):
@@ -345,6 +440,13 @@ print(json.dumps(result))
         if not all(phase['queued_watch_preserved'] for phase in result['phases']):
             raise ValueError('Resume lost the source watch events queued during the pause')
         result['delete'] = json.loads(run([*ctl, 'delete', 'source'], timeout=60))
+        if args.outbound_network:
+            rules = run(['exec',identity,'iptables-save'])
+            links = json.loads(run(['exec',identity,'ip','-j','link','show']))
+            peer = result['start']['record']['network']['peer']
+            if 'factorybox:'+result['start']['record']['owner'] in rules or any(link['ifname']==peer for link in links):
+                raise ValueError('Delete left an owned network rule or peer')
+            result['network_cleanup_verified'] = True
         result['input_release'] = json.loads(run(['exec', identity, 'python3', '-c', mount_script, 'release', bundle, json.dumps(result['input_mounts'])]))
         run(['stop', '--timeout', '45', identity])
         result['final_state'] = exact()['State']
@@ -357,6 +459,9 @@ print(json.dumps(result))
         if identity:
             try:
                 exact()
+                if args.outbound_network:
+                    result['failed_worker_network'] = {'links':json.loads(run(['exec',identity,'ip','-j','-d','link','show'])),
+                        'routes':json.loads(run(['exec',identity,'ip','-j','route','show']))}
                 diagnostic = '''import json,os,pathlib,subprocess
 status=json.loads(subprocess.check_output(['/opt/factorybox/factorybox','worker-status']))
 root=status['lifecycle']['root']
@@ -384,10 +489,15 @@ subprocess.run(arguments,check=True,timeout=45)
         try:
             if attempted:
                 reference.owned_delete('container', name, owner)
+            if server_attempted:
+                if server_identity:
+                    consumer_worker_loss.exact_worker(name+'-http',owner,server_identity)
+                reference.owned_delete('container',name+'-http',owner)
             for volume in reversed(created):
                 reference.owned_delete('volume', volume, owner)
             result['cleanup'] = True
             result['global_sysctls_after'] = consumer_worker_loss.sysctls()
+            result['global_sysctls_after']['net/ipv4/ip_forward'] = Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()
             if result['global_sysctls_after'] != before:
                 result['passed'] = False
                 raise ValueError('global sysctls changed during shared-source proof')
@@ -399,6 +509,10 @@ subprocess.run(arguments,check=True,timeout=45)
                           for key, value in upstream_unit.context_manifest(source / directory).items()}
                 actual.update({file: {'sha256': reference.sha(source / file)} for file in ['go.mod', 'go.sum']})
                 result['inputs_unchanged'] = result['inputs_unchanged'] and actual == current and reference.sha(runtime_binary) == result['runtime_binary_sha256']
+            if args.outbound_network and 'network_server_sha256' in result:
+                result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(server_script)==result['network_server_sha256']
+            if args.alias_mount and 'alias_binary_sha256' in result:
+                result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(alias_binary)==result['alias_binary_sha256']
             result['passed'] = result['passed'] and result['cleanup']
             result['passed'] = result['passed'] and result['inputs_unchanged']
             (artifact / 'result.json').write_text(json.dumps(result, indent=2) + '\n')

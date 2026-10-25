@@ -118,8 +118,28 @@ writable bind is admitted. The Factory Source service uses UID/GID 101000;
 the demonstrated guest mapping is root 100000 with a 65536-ID range and
 application UID/GID 1000. This permits both services to use the same inodes.
 
-The complete Factory environment, network access, Runtime Attempt/Connector
-and PostgreSQL reserve integration also remain to be implemented and proved.
+The delivered worker `factorybox-build-worker-c53c97dcc88e4555a2dd5c2426076b18`
+includes the directory handling and an explicit `io.factorybox.outbound-ipv4`
+annotation. Its owned veth pair and three exact NAT/forwarding rules live in
+the admitted private worker network namespace. Pause retires the old peer;
+Resume stages the same owned pair before CRIU moves its guest end. A foreign
+peer blocks Resume before its state transition. Delete removes only its owned
+peer and rules. Network-enabled snapshots use same-worker Pause/Resume;
+independent Checkpoint, Fork and worker recovery are refused.
+
+`artifacts/factorybox-shared-source-fb72b4d423114a2cae942ef031c61a89/result.json`
+passes three cycles using that exact packaged CLI and CRIU, the complete frozen
+consumer rootfs and its normal private Docker daemon. The workload runs in a
+real Docker child with its default bridge and storage driver. Each Resume
+reaches a separate HTTP container, preserves the child's identity without a
+restart, and confirms that the original daemon still answers Docker API calls.
+The proof also covers directory rename, atomic editor replacement, RAM, open
+files, mappings, queued and future watches, the foreign-peer fence and exact
+cleanup. Host sysctls remain unchanged. The separate HTTP fixture does not
+qualify a Kubernetes CNI, cloud network or the complete Factory application.
+
+The complete Factory environment, Runtime Attempt/Connector and PostgreSQL
+reserve integration remain to be implemented and proved.
 Target-cluster admission and additional Linux profiles require their own native
 evidence. The existing
 [first-release gates](first-release-status.md) remain open and unchanged.

@@ -20,7 +20,9 @@ import (
 	"syscall"
 	"time"
 
+	"factorybox/internal/fdstore"
 	"factorybox/internal/platform"
+	"factorybox/internal/sandboxnetwork"
 	"factorybox/internal/storefs"
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
@@ -79,6 +81,7 @@ type Record struct {
 	PauseHistory   []PauseOperation              `json:"pause_history,omitempty"`
 	Base           *sysboxcapture.FilesystemTree `json:"base,omitempty"`
 	SharedSource   *sysboxcapture.SharedSource   `json:"shared_source,omitempty"`
+	Network        *sandboxnetwork.Config        `json:"network,omitempty"`
 }
 
 type View struct {
@@ -433,11 +436,26 @@ func (e *Engine) Start(ctx context.Context, id, bundle string) (View, error) {
 		if err := e.write(record); err != nil {
 			return View{Record: record}, err
 		}
-		_, runErr := e.command(ctx, lock, "run", "--detach", "--bundle",
-			filepath.Join(e.config.Root, object), record.RuntimeID)
+		arguments := []string{"run", "--detach", "--bundle", filepath.Join(e.config.Root, object), record.RuntimeID}
+		if record.Network != nil {
+			arguments = []string{"create", "--bundle", filepath.Join(e.config.Root, object), record.RuntimeID}
+		}
+		_, runErr := e.command(ctx, lock, arguments...)
 		if runErr != nil {
 			record.Start.Error = sandboxErrorSummary(runErr.Error())
 			return View{Record: record}, errors.Join(runErr, e.write(record))
+		}
+		state, err = e.state(ctx, record, lock)
+		if err != nil {
+			return View{Record: record}, err
+		}
+	}
+	if record.Network != nil && state != nil && state.Status == "created" {
+		if err := record.Network.Configure(ctx, state.PID, false); err != nil {
+			return View{Record: record, Runtime: state}, err
+		}
+		if _, err := e.command(ctx, lock, "start", record.RuntimeID); err != nil {
+			return View{Record: record, Runtime: state}, err
 		}
 		state, err = e.state(ctx, record, lock)
 		if err != nil {
@@ -531,6 +549,7 @@ func (e *Engine) prepareRecordContext(ctx context.Context, id, bundle, object st
 	if _, exists := annotations[ownerAnnotation]; exists {
 		return record, fmt.Errorf("reserved Factorybox ownership annotation")
 	}
+	annotations[ownerAnnotation] = owner
 	if _, err := sysboxcapture.CheckpointConfiguration(annotations); err != nil {
 		return record, err
 	}
@@ -538,7 +557,29 @@ func (e *Engine) prepareRecordContext(ctx context.Context, id, bundle, object st
 	if err != nil {
 		return record, err
 	}
-	annotations[ownerAnnotation] = owner
+	var network *sandboxnetwork.Config
+	requested, err := sandboxnetwork.Requested(annotations)
+	if err != nil {
+		return record, err
+	}
+	if requested {
+		if origin != nil {
+			return record, sandboxnetwork.ErrIndependentCopy
+		}
+		if e.config.FDStoreSocket == "" {
+			return record, fmt.Errorf("outbound networking requires the original worker epoch")
+		}
+		if err := fdstore.Ping(e.config.FDStoreSocket); err != nil {
+			return record, err
+		}
+		network, err = sandboxnetwork.Plan(owner)
+		if err != nil {
+			return record, err
+		}
+		if err := network.Admit(); err != nil {
+			return record, err
+		}
+	}
 	spec["root"], _ = json.Marshal(root)
 	spec["annotations"], _ = json.Marshal(annotations)
 	config, err := json.Marshal(spec)
@@ -550,7 +591,7 @@ func (e *Engine) prepareRecordContext(ctx context.Context, id, bundle, object st
 		InputBundle: bundle, InputSHA256: sum(input), ConfigSHA256: sum(config),
 		Rootfs: root.Path, RootfsDevice: uint64(stat.Dev), RootfsInode: stat.Ino, RootfsMountID: rootIdentity.MountID,
 		CgroupParent: parent,
-		Start:        Operation{RequestedAt: now()}, Fork: origin, Base: base, SharedSource: shared}
+		Start:        Operation{RequestedAt: now()}, Fork: origin, Base: base, SharedSource: shared, Network: network}
 	if origin != nil {
 		record.Start.RequestedAt = origin.RequestedAt
 	}
@@ -675,6 +716,11 @@ func (e *Engine) Delete(ctx context.Context, id string) (View, error) {
 	}
 	if err := e.releaseAllSharedFiles(record); err != nil {
 		return View{Record: record}, err
+	}
+	if record.Network != nil {
+		if err := record.Network.Delete(ctx); err != nil {
+			return View{Record: record}, err
+		}
 	}
 	record.Phase, record.Delete.CompletedAt, record.Delete.Error = "deleted", now(), ""
 	return View{Record: record}, e.write(record)
