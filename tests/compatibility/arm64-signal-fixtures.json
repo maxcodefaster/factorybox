@@ -31,9 +31,21 @@
   },
   "added_files": {
     "internal/lifecycle/timer_fixture_abi_native_linux_amd64_test.go": "582472e81c9e83328c42ac18cafd8d18ccb773e4d89e5152c674cfb02a10efdb",
-    "internal/lifecycle/timer_fixture_abi_native_linux_arm64_test.go": "afa9ea76261e25c5e86721388d78e72abf0189a52bc221896c61255e44955630",
+    "internal/lifecycle/timer_fixture_abi_native_linux_arm64_test.go": "094a316c0efc603c1436c0e425d5a3cdbd18e121144edf329ab45bf48c73ea73",
     "internal/lifecycle/timer_fixture_control_native_linux_arm64_test.go": "dbd2151e2ec8cd2245ee71e3d9059681f2358efcc6f1bd87d853cf008cae9d69",
-    "internal/lifecycle/timer_activation_native_linux_arm64_test.go": "2d104d9c91b82bbe7aad05bd9977ffd9d9a2ecbef55b8640a1a86875f8e1eba0"
+    "internal/lifecycle/timer_activation_native_linux_arm64_test.go": "2d104d9c91b82bbe7aad05bd9977ffd9d9a2ecbef55b8640a1a86875f8e1eba0",
+    "internal/lifecycle/timer_freezer_abi_native_linux_arm64_test.go": "c5b03047ed377d4a688d70ace1d4ef62095c3794635ec8fcfc1ab04e350a29b4"
+  },
+  "arm64_native_freezer_x8": {
+    "before_sha256": "afa9ea76261e25c5e86721388d78e72abf0189a52bc221896c61255e44955630",
+    "after_sha256": "094a316c0efc603c1436c0e425d5a3cdbd18e121144edf329ab45bf48c73ea73",
+    "native_control": "factorybox-checkpoint-retirement-33575a497f7043159a7b2d4a66b2ad98",
+    "control_result_sha256": "02b721c523e4dddad8d5ea754d590e6ccee99f97bce44812cdceb96569613567",
+    "control_proof_sha256": "2d92e38dc878a10e3eaf9abe8a2d78ba87069d065fd9d2b168df998bcf15ad1d",
+    "unchanged_raw_assembly_sha256": "ea2530a32a8607389760c6ec69c6a009ce0e2b3f417410d29aa0ead8916a116c",
+    "uncaptured_exact_x8": 115,
+    "after_required_native_freezer_exact_x8": 128,
+    "scope": "The unchanged shared natural-completion test performs a native freeze/probe/thaw before Factorybox capture. The independent control runs the unchanged raw assembly with only native cgroup freeze/thaw and a released read-only kernel reader, no ptrace, timer preparation or checkpoint. Linux changes X8 from clock_nanosleep=115 to restart_syscall=128 while returning zero on the original deadline with unchanged NZCV. Select exactly 128 for that already-restarted fixture, not a range or wildcard. All uncaptured and signal controls still require exactly 115. All X1-X30, SP, NZCV, raw return, request and original deadline checks remain, and every original AMD64 assertion/assembly remains byte-identical. No runtime patch, deadline, tolerance, required-case or vet relaxation."
   },
   "original_functions": {
     "TestNativeCheckpointRetirementTimerState": {

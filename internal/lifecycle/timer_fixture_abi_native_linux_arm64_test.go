@@ -7,10 +7,18 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
-func nativeRelativeTimerAssembly() string { return nativeARM64TimerAssembly(false, false, false) }
-func nativeTimerSignalAssembly() string   { return nativeARM64TimerAssembly(true, false, false) }
+func nativeRelativeTimerAssembly() string {
+	// The shared natural-completion test first performs a native freezer/probe/
+	// thaw before Factorybox capture. The independent freezer ABI control
+	// proves that Linux has already rewritten X8 to restart_syscall there.
+	// Check that exact admitted value; uncaptured and signal controls keep 115.
+	return nativeARM64TimerAssemblyWithX8(false, false, false, unix.SYS_RESTART_SYSCALL)
+}
+func nativeTimerSignalAssembly() string { return nativeARM64TimerAssembly(true, false, false) }
 func nativeTimerRemainderAssembly() string {
 	return nativeARM64TimerAssembly(true, true, false)
 }
@@ -32,8 +40,16 @@ func TestNativeTimerRemainderProtection(t *testing.T) {
 // A separate third page holds the kernel remainder, so the handler can protect
 // it without protecting the captured registers, counter or completion marker.
 func nativeARM64TimerAssembly(signal, remainder, protect bool) string {
+	return nativeARM64TimerAssemblyWithX8(signal, remainder, protect, unix.SYS_CLOCK_NANOSLEEP)
+}
+
+func nativeARM64TimerAssemblyWithX8(signal, remainder, protect bool, expectedX8 uint64) string {
 	if remainder && !signal || protect && !remainder {
 		panic("invalid native ARM64 timer fixture")
+	}
+	if expectedX8 != unix.SYS_CLOCK_NANOSLEEP &&
+		(expectedX8 != unix.SYS_RESTART_SYSCALL || signal || remainder || protect) {
+		panic("invalid exact native ARM64 return syscall register")
 	}
 	var code strings.Builder
 	code.WriteString(`.section .text
@@ -128,7 +144,7 @@ returned:
 		case register == 3:
 			code.WriteString("    mov x1, #0\n")
 		case register == 8:
-			code.WriteString("    mov x1, #115\n")
+			fmt.Fprintf(&code, "    mov x1, #%d\n", expectedX8)
 		default:
 			fmt.Fprintf(&code, "    mov x1, #%d\n", 0x1100+register)
 		}

@@ -395,6 +395,16 @@ On ARM64, `timer-admission-reader` also distinguishes a frozen live wait from
 computation or a completed restart, and exercises bounded settlement of an
 expired, unmodified source before capture.
 
+`timer-natural` isolates the original twelve-second source/fork completion
+case without removing it from the complete retirement suite. Its shared fixture
+first freezes and thaws the source for a read-only probe. The independent
+`timer-freezer-abi` ARM64 control confirms that Linux changes X8 from
+`clock_nanosleep` to `restart_syscall` at that native boundary, without Factorybox
+timer preparation or capture. The frozen natural fixture checks exactly that
+restart register; uncaptured and signal fixtures still check the original
+syscall register. The raw return, other registers, SP, NZCV and original deadline
+checks are unchanged.
+
 `stopped-memory` checks a real committed pause and rejects live or foreign
 cgroups. If a stopped child's anonymous-memory statistic is still batched, the
 runtime reads only its own identity-checked, bounded worker's statistics before

@@ -65,7 +65,7 @@ def main():
     parser.add_argument('--native-candidate', action='store_true',
                         help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory'], default='capacity')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
     parser.add_argument('--worker-metadata-minimal', action='store_true', help='Worker-metadata diagnostic only: four actual committed pauses and one prior public base instead of three pauses and 200 bases; retain all boundary/preservation assertions')
@@ -73,6 +73,8 @@ def main():
     if args.timer_probe and args.suite == 'capacity':
         parser.error('--timer-probe requires a retirement suite')
     prototype = args.suite == 'timer-restart-prototype'
+    natural_timer = args.suite == 'timer-natural'
+    freezer_abi = args.suite == 'timer-freezer-abi'
     reader_only = args.suite == 'timer-state-reader'
     admission_reader = args.suite == 'timer-admission-reader'
     exit_guard = args.suite == 'timer-exit-guard'
@@ -92,16 +94,18 @@ def main():
         parser.error('--worker-metadata-minimal requires worker-metadata')
     if args.timer_observe_exit and not prototype:
         parser.error('--timer-observe-exit requires timer-restart-prototype')
-    if args.suite == 'retirement' or prototype or reader_only:
+    if args.suite == 'retirement' or prototype or reader_only or natural_timer:
         args.timer_probe = True  # The complete required suite includes the timer regression.
     worker_path, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
     compile_options = worker_compile_options(worker, host, native_candidate=args.native_candidate)
     architecture = build_config.architecture(worker["platform"])
+    if freezer_abi and architecture != 'arm64':
+        parser.error('timer-freezer-abi is an independent native ARM64 kernel control')
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory
+    retirement = args.suite.startswith('retirement') or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -178,6 +182,10 @@ def main():
     if reader_only:
         result['scope'] = 'Read-only Go kernel timer component only, including bulk owned PIDs/non-leader TIDs, exact birth, namespace filtering, independent Python comparison and release of all temporary BPF objects. Existing delivered CLI core unchanged. Not timer integration or lifecycle qualification.'
         result['unlinked_component_only'] = 'internal/timerstate/'
+    if natural_timer:
+        result['scope'] = 'The original twelve-second read-only-request, NULL-remainder natural timer completion and exact deadline/ABI assertions in the delivered source and independent fork. This focused lane does not replace the complete eight-case retirement suite or qualify the platform.'
+    if freezer_abi:
+        result['scope'] = 'Independent ARM64 kernel ABI control: unmodified raw fixture, actual owned cgroup freeze/thaw and no Factorybox timer preparation or capture. Require the native X8 restart_syscall rewrite with return zero, unchanged NZCV and the original deadline. Not capture or platform qualification.'
     if admission_reader:
         result['scope'] = 'Read-only comparison of an exact frozen source kernel timer against checkpoint admission, preserving PID/birth and released BPF objects. No timer mutation, CRIU, source or platform qualification.'
     if exit_guard:
@@ -242,6 +250,10 @@ def main():
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerRestartPrototype$']
             if args.timer_observe_exit:
                 command += ['--env', 'FACTORYBOX_TIMER_OBSERVE_EXIT=1']
+        if natural_timer:
+            command += ['--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeCheckpointRetirementTimerState$']
+        if freezer_abi:
+            command += ['--env', 'FACTORYBOX_NATIVE_TIMER_FREEZER_ABI=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeArm64TimerFreezerABI$']
         if reader_only:
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_READER=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerReader$']
         if admission_reader:
@@ -298,8 +310,8 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        prefix = 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -330,6 +342,20 @@ def main():
                         proof['first']['after']['filesystem_available_bytes'] <= proof['first']['before']['filesystem_available_bytes']):
                     raise ValueError('native retirement lacks actual interruption and observed capacity recovery')
                 result['proof_sha256'][proof_name] = reference.sha(proof_path)
+        elif freezer_abi:
+            proof_path = output / 'timer-freezer-abi.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'no_timer_preparation_or_capture',
+                                                        'native_x8_rewrite', 'raw_return_zero', 'original_deadline']):
+                raise ValueError('independent native freezer ABI control incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif natural_timer:
+            proof_path = output / 'timer-state.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'read_only_request', 'null_remainder',
+                                                        'syscall_registers_preserved', 'source_and_fork_original_deadline']):
+                raise ValueError('natural source/fork timer completion proof incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
         elif stopped_memory:
             proof_path = output / 'stopped-memory.json'
             proof = json.loads(proof_path.read_text())
