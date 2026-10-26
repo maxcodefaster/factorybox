@@ -268,6 +268,12 @@ the file is already absent outside Sysbox. The unchanged upstream Systemd
 proc node, weaken the assertion or publish this profile as production-qualified.
 The release workflow retains that required gate.
 
+The [native revalidation task](https://github.com/maxcodefaster/factorybox/issues/1)
+records the AMD64 build-machine commands and the separate open ARM64 host check.
+Local images and `artifacts/` are not transferred by Git; rebuild exact native
+inputs on that machine and select its Docker context explicitly. A successful
+AMD64 rerun does not qualify ARM64 or authorize publication.
+
 The repository pins Go and Python through mise. Run portable checks first:
 
 Portable checks use Go's host build constraints. Linux-only descriptor-store,
