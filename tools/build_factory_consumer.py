@@ -21,7 +21,20 @@ INPUTS = [
     "deploy/runtime-host/Dockerfile",
     "deploy/language-tools/package.json",
     "deploy/language-tools/package-lock.json",
+    "deploy/opencode-server",
     "services/runtime-connector",
+]
+DIRECTORIES = {"deploy/opencode-server", "services/runtime-connector"}
+REQUIRED_RUNTIME_FILES = [
+    "services/runtime-connector/go.mod",
+    "services/runtime-connector/go.sum",
+    "deploy/opencode-server/package.json",
+    "deploy/opencode-server/bun.lock",
+    "deploy/opencode-server/server.mjs",
+    "deploy/opencode-server/retained-events.mjs",
+    "deploy/opencode-server/install-skills.mjs",
+    "deploy/opencode-server/config/AGENTS.md",
+    "deploy/opencode-server/config/opencode.json",
 ]
 TARGETS = {"runtime": "runtime-host", "hub": "bun-tool"}
 BUN = "/opt/factory/opencode/musl/bun"
@@ -33,8 +46,8 @@ def source_files(repo):
         ["git", "-C", str(repo), "ls-files", "--cached", "--others", "--exclude-standard",
          "-z", "--", *INPUTS]).decode().split("\0")
     selected = sorted(set(path for path in paths if path))
-    required = [path for path in INPUTS if path != "services/runtime-connector"]
-    required += ["services/runtime-connector/go.mod", "services/runtime-connector/go.sum"]
+    required = [path for path in INPUTS if path not in DIRECTORIES]
+    required += REQUIRED_RUNTIME_FILES
     if any(path not in selected for path in required):
         raise ValueError("Factory consumer source is missing an exact Dockerfile/toolchain input")
     for name in selected:
