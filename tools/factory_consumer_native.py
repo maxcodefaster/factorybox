@@ -122,6 +122,8 @@ def main():
     output = reference.new_artifact(name)
     output.mkdir(mode=0o755)
     shutil.copyfile(__file__, output/'runner.py')
+    namespace_observer = output/'namespace-observer.py'
+    shutil.copyfile(reference.ROOT/'tools/consumer_namespace_observer.py', namespace_observer)
     frozen = output/'factory';frozen.mkdir()
     for file in ['prepare.py','prepare_test.py','export-rootfs.sh','bootstrap.sh','reserve-bootstrap.sh']:
         shutil.copyfile(repo/'packages/runtime-kubernetes/src/factorybox'/file,frozen/file)
@@ -151,6 +153,7 @@ def main():
               'reserve':args.reserve,'reserve_images':[node] if args.reserve else None,
               'terminal_proof':args.terminal,
               'diagnostic_only':args.warmup_control,
+              'namespace_observer_sha256':reference.sha(namespace_observer),
               'git_proof':args.git or args.terminal,
               'fixture_registry_mirror':True,'registry_binary_sha256':reference.sha(mirror),
               'registry_source_sha256':source_hashes,'registry_reused_from':reused_mirror,
@@ -214,6 +217,11 @@ def main():
         script="import json,pathlib;root=pathlib.Path('/sys/fs/cgroup');print(json.dumps({'current':int((root/'memory.current').read_text()),'stat':dict((key,int(value)) for key,value in (line.split() for line in (root/'memory.stat').read_text().splitlines()))}))"
         return json.loads(run(['exec',worker_id,'python3','-c',script]))
 
+    def namespaces(stage):
+        own(name,worker_id)
+        observed=json.loads(run(['exec',worker_id,'python3','/tmp/factorybox-namespace-observer.py',str(live_pid)]))
+        result.setdefault('namespace_observations',{})[stage]=observed
+
     try:
         for volume in [name,name+'-source']:
             volumes.append(volume)
@@ -275,6 +283,7 @@ def main():
             raise ValueError('HTTP-ready worker has a different admitted identity')
         result['worker_identity'] = status
         phase('worker-http-ready')
+        run(['cp',str(namespace_observer),worker_id+':/tmp/factorybox-namespace-observer.py'])
         probe = '/var/lib/sysbox/native-fixture-prepare.py'
         run(['cp',str(frozen/'prepare.py'),worker_id+':'+probe])
         run(['exec',worker_id,'python3','-c',(frozen/'prepare_test.py').read_text(),probe])
@@ -371,6 +380,7 @@ def main():
                             "grep cgroup /proc/self/mountinfo; stat -f /sys/fs/cgroup; "
                             "ls -lai /sys/fs/cgroup; ls -lai /sys/fs/cgroup/docker")
             result['standby_cgroups_before']=run([*runc,'/bin/sh','-c',cgroup_probe],check=False)
+            namespaces('unused-before-pause')
             run([*runc,'/bin/sh','-ec',
                  'test ! -e /home/coder/.factory-reserve/activation.json; test ! -e /factory/assignment/parent-token; test ! -e /factory/assignment/child-token'])
             result['standby_pause_attempted']=True
@@ -392,6 +402,7 @@ def main():
                     not result['standby_resume']['record']['pause'].get('resume',{}).get('completed_at')):
                 raise ValueError('Standby activation did not resume its original native Sandbox')
             result['standby_cgroups_after']=run([*runc,'/bin/sh','-c',cgroup_probe],check=False)
+            namespaces('unused-after-resume')
             # A resumed empty daemon must be able to create and exec new
             # containers, not merely answer Docker info or retain old apps.
             probe_name='owned-standby-exec-'+owner
@@ -418,6 +429,7 @@ def main():
             result['standby_sealing_log']=run([*runc,'cat','/tmp/factorybox-standby-sealing.log'])
             run([*runc,'docker','rm','--force',probe_container])
             result['standby_docker_exec_passed']=True
+            namespaces('unused-after-nested-exec')
             phase('resumed-standby-new-container-exec')
             activation={'slotId':owner,'podUID':pod_uid,'assignment':assignment,'parentToken':owner+'-parent','childToken':owner+'-child'}
             activation_script="set -eu; umask 077; cat > /home/coder/.factory-reserve/activation.pending; chmod 0400 /home/coder/.factory-reserve/activation.pending; mv /home/coder/.factory-reserve/activation.pending /home/coder/.factory-reserve/activation.json"
@@ -456,6 +468,7 @@ def main():
         child_id=children['ID']
         snapshot=uuid.uuid4().hex
         endpoint('/pause','POST')
+        namespaces('assigned-before-pause')
         result['pause_attempted']=True
         result['pause']=json.loads(run([*cli,'pause','--snapshot-id',snapshot,sandbox],timeout=90))
         result['memory_paused']=memory()
@@ -537,7 +550,7 @@ def main():
         after=consumer_worker_loss.sysctls(docker_image=worker['native_base_image'],
             owner=owner, artifact=output, phase='after', factory_network=True)
         result['host_sysctls_unchanged']=after==before
-        result['inputs_unchanged']=all(reference.sha(frozen/file)==value for file,value in result['source_sha256'].items()) and reference.sha(hub)==result['hub_sha256'] and reference.sha(bun)==result['bun_sha256']
+        result['inputs_unchanged']=all(reference.sha(frozen/file)==value for file,value in result['source_sha256'].items()) and reference.sha(hub)==result['hub_sha256'] and reference.sha(bun)==result['bun_sha256'] and reference.sha(namespace_observer)==result['namespace_observer_sha256']
         result['passed']=result['passed'] and result['cleanup'] and result['host_sysctls_unchanged'] and result['inputs_unchanged']
         if args.warmup_control:
             result['diagnostic_control_passed']=result['passed']

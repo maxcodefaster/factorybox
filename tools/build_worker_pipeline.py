@@ -29,6 +29,8 @@ def commands(options, sysbox, criu):
                  "--nested-overlay-stable-paths", "--nested-overlay-shared-root"],
         "shared-fds": [*common, "tools/build_criu_shared_fds.py",
                        "--base-candidate", criu],
+        "namespace-access": [*common, "tools/build_criu_shared_fds.py",
+                             "--base-candidate", criu, "--namespace-access"],
         "worker": [*common, "tools/build_worker.py", "--platform", options.platform,
                    "--native-base-build", options.native_base_build,
                    "--sysbox-build", sysbox, "--retained-candidate", criu,
@@ -46,6 +48,15 @@ def shared_source_input(name, result):
             any(features.get(key) is not True for key in
                 ["shared_file_descriptions", "shared_source_directories"])):
         raise ValueError("supplied CRIU shared-source patch or feature receipt differs")
+    return name
+
+
+def namespace_access_input(name, result):
+    patches = result.get("candidate_patch_sha256", {})
+    if "namespace-access.patch" not in patches:
+        return None
+    if patches["namespace-access.patch"] != reference.sha(build_criu_shared_fds.NAMESPACE_PATCH):
+        raise ValueError("supplied CRIU namespace-validation patch differs")
     return name
 
 
@@ -92,7 +103,7 @@ def main():
             supplied = evidence.name
         if role == "sysbox":
             _, loaded = reference_lifecycle.component_build(supplied, "factorybox-build-sysbox-")
-        elif role in {"criu", "shared-fds"}:
+        elif role in {"criu", "shared-fds", "namespace-access"}:
             _, loaded, _, _ = criu_candidate.load(supplied)
         else:
             _, loaded = build_worker.load(supplied)
@@ -108,6 +119,10 @@ def main():
                                  shared_source_input(criu, loaded_criu))
         if shared_source_input(criu, loaded_criu) != criu:
             raise ValueError("worker pipeline requires the complete shared-source CRIU component")
+        criu, loaded_criu = step("namespace-access", commands(options, sysbox, criu)["namespace-access"],
+                                 namespace_access_input(criu, loaded_criu))
+        if namespace_access_input(criu, loaded_criu) != criu:
+            raise ValueError("worker pipeline requires the exact namespace-validation CRIU component")
         worker, built = step("worker", commands(options, sysbox, criu)["worker"])
         result["worker_build"] = worker
         result["image"] = built["image"]

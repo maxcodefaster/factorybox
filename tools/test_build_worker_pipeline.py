@@ -21,6 +21,9 @@ class WorkerPipelineTests(unittest.TestCase):
             self.assertIn("exact-criu", commands["worker"])
             self.assertEqual(commands["shared-fds"][1:],
                              ["tools/build_criu_shared_fds.py", "--base-candidate", "exact-criu"])
+            self.assertEqual(commands["namespace-access"][1:],
+                             ["tools/build_criu_shared_fds.py", "--base-candidate", "exact-criu",
+                              "--namespace-access"])
             self.assertIn("--bounded-build", commands["sysbox"])
             self.assertIn("owned-builder", commands["sysbox"])
             self.assertIn("--discard-compiler-scratch", commands["worker"])
@@ -53,3 +56,12 @@ class WorkerPipelineTests(unittest.TestCase):
                        '{"passed":true}', '[]']:
             with self.subTest(output=output), self.assertRaisesRegex(ValueError, "receipt"):
                 build_worker_pipeline.completed_output(output)
+
+    def test_only_the_exact_namespace_patch_can_reuse_a_completed_input(self):
+        digest = reference.sha(build_criu_shared_fds.NAMESPACE_PATCH)
+        self.assertEqual(build_worker_pipeline.namespace_access_input(
+            "exact", {"candidate_patch_sha256": {"namespace-access.patch": digest}}), "exact")
+        self.assertIsNone(build_worker_pipeline.namespace_access_input("old", {}))
+        with self.assertRaisesRegex(ValueError, "namespace-validation"):
+            build_worker_pipeline.namespace_access_input(
+                "changed", {"candidate_patch_sha256": {"namespace-access.patch": "0" * 64}})
