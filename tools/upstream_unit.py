@@ -159,7 +159,10 @@ def main():
         command = offline_builder_command(options, effective, build / "context", name, archive)
         result["builder_command"] = command
         with (archive / "builder.log").open("x") as log:
-            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=300)
+            # A cold bounded builder must acquire the pinned snapshot packages
+            # before compiling. This limit is separate from native lifecycle
+            # execution and must allow the observed slow snapshot downloads.
+            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=900)
         result["builder_image_config"] = (archive / "builder-id.txt").read_text().strip()
         metadata = json.loads((archive / "builder-metadata.json").read_text())
         image = name + "-offline@" + metadata["containerimage.digest"]
