@@ -52,17 +52,72 @@ def require_closed_source(run, source):
     return receipt_path
 
 
+def encoded_input(source, receipt, refresh):
+    """Resolve the original receipt directly, never form replacement chains."""
+    pointer = source.with_name(source.name + ".repacked.json")
+    previous = None
+    if source.exists():
+        if pointer.exists() or pointer.is_symlink():
+            raise ValueError("original and replacement both exist; reconcile that maintenance first")
+        if refresh:
+            raise ValueError("refresh requires an already committed replacement")
+        physical, encoding = source, receipt["encoded"]
+    else:
+        if not refresh:
+            raise ValueError("source already has a replacement; refresh must be explicit")
+        physical, encoding = reference.artifact_storage.verified_replacement(
+            source, receipt["encoded"], receipt["original"])
+        previous = pointer.read_bytes()
+    before = reference.artifact_storage.identity(physical)
+    if (receipt.get("whole_decompressed_payload_verified") is not True or
+            receipt["encoded"]["file"] != source.name or
+            encoding["bytes"] != before[2] or encoding["sha256"] != file_sha(physical)):
+        raise ValueError("compressed evidence differs from its verified receipt")
+    return physical, before, previous
+
+
+def commit_pointer(pointer, replacement, previous):
+    """Keep the previous complete pointer on a concurrent change or write failure."""
+    current = pointer.read_bytes() if pointer.exists() else None
+    if pointer.is_symlink() or current != previous:
+        raise ValueError("replacement pointer changed during repack")
+    temporary = pointer.with_name(pointer.name + ".partial-" + uuid.uuid4().hex)
+    try:
+        with temporary.open("x") as stream:
+            json.dump(replacement, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        current = pointer.read_bytes() if pointer.exists() else None
+        if pointer.is_symlink() or current != previous:
+            raise ValueError("replacement pointer changed before commit")
+        os.replace(temporary, pointer)
+        parent = os.open(pointer.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", help="One existing closed-run .tar.zst under artifacts")
+    parser.add_argument("source", help="Original closed-run .tar.zst path under artifacts")
+    parser.add_argument("--level", type=int, choices=[9, 19], default=9)
+    parser.add_argument("--refresh", action="store_true",
+                        help="Re-encode its verified replacement and retain one direct original pointer")
     options = parser.parse_args()
     supplied = Path(options.source).absolute()
     source = supplied.resolve()
     if supplied != source or source.is_symlink() or not source.is_relative_to(reference.ROOT/"artifacts") or not source.name.endswith(".tar.zst"):
         raise ValueError("requires one canonical repository evidence archive")
     run = reference.ROOT/"artifacts"/source.relative_to(reference.ROOT/"artifacts").parts[0]
-    if run.name.startswith(("factorybox-build-","factorybox-devx-inputs-","factorybox-devx-project-images-","factorybox-bats-images-")):
+    if run.name.startswith(("factorybox-build-","factorybox-devx-inputs-","factorybox-devx-project-images-","factorybox-bats-images-",
+                            "factorybox-docker-profile-input-")):
         raise ValueError("frozen build/consumer inputs cannot be repacked")
+    if run.name.startswith("factorybox-storage-repack-"):
+        raise ValueError("use the original archive receipt, not a replacement chain")
     closed_path = require_closed_source(run, source)
     receipt_path = source.with_name(source.name.removesuffix(".zst")+".encoding.json")
     receipt = json.loads(receipt_path.read_text())
@@ -71,14 +126,8 @@ def main():
         closed = json.loads(closed_path.read_text())
         if closed["failed_volume_archives"][run.name] != expected:
             raise ValueError("encoded source differs from its completed retention receipt")
-    before = reference.artifact_storage.identity(source)
-    if (receipt.get("whole_decompressed_payload_verified") is not True or
-            receipt["encoded"]["file"] != source.name or receipt["encoded"]["bytes"] != before[2] or
-            receipt["encoded"]["sha256"] != file_sha(source)):
-        raise ValueError("original compressed evidence differs from its verified receipt")
+    physical, before, previous = encoded_input(source, receipt, options.refresh)
     pointer = source.with_name(source.name+".repacked.json")
-    if pointer.exists() or pointer.is_symlink():
-        raise ValueError("source already has a replacement")
     # This maintenance operation creates no build or native workload. It must
     # remain possible when native-run headroom is exhausted. The encoder's
     # hard file-size limit still preserves the full 32-GiB/host-reserve limits.
@@ -86,23 +135,29 @@ def main():
     artifact = reference.ROOT/"artifacts"/("factorybox-storage-repack-"+uuid.uuid4().hex)
     artifact.mkdir()
     shutil.copyfile(__file__,artifact/"runner.py")
+    if previous is not None:
+        (artifact/"previous-pointer.json").write_bytes(previous)
     target = artifact/source.name
     result = {"schema":1,"operation":"lossless_closed_archive_repack","source":str(source),
               "closed_receipt":str(closed_path),"closed_receipt_sha256":reference.sha(closed_path),
-              "source_encoded_sha256":receipt["encoded"]["sha256"],"source_encoded_bytes":before[2],
+              "source_encoded_sha256":receipt["encoded"]["sha256"],"source_encoded_bytes":receipt["encoded"]["bytes"],
+              "physical_source":str(physical),"physical_source_sha256":file_sha(physical),
+              "physical_source_bytes":before[2],"compression_level":options.level,
               "raw_bytes":expected["bytes"],"raw_sha256":expected["sha256"],"new_archive":str(target),
               "passed":False,"cleanup":False,"source_removed":False,"whole_decoded_bytes_verified":False}
     print(json.dumps({"repacking":str(artifact)}),flush=True)
+    published = False
     try:
         maximum = min(reference.artifact_storage.ARTIFACT_LIMIT-reference.artifact_storage.allocated_bytes(reference.ROOT/"artifacts"),
                       shutil.disk_usage(reference.ROOT).free-reference.artifact_storage.FREE_RESERVE)-(1<<20)
+        maximum = min(maximum, before[2] - 1)
         def cap_encoder():
             soft,hard=resource.getrlimit(resource.RLIMIT_FSIZE)
             resource.setrlimit(resource.RLIMIT_FSIZE,(min(maximum,hard) if hard!=resource.RLIM_INFINITY else maximum,hard))
         digest,count=hashlib.sha256(),0
         with (artifact/"encode.log").open("xb") as log,target.open("xb") as output:
-            decoder=subprocess.Popen(["zstd","-q","-dc","--long=31","--",str(source)],stdout=subprocess.PIPE,stderr=log)
-            encoder=subprocess.Popen(["zstd","-q","-T1","-9","--long=31","--stdout"],stdin=subprocess.PIPE,stdout=output,stderr=log,preexec_fn=cap_encoder)
+            decoder=subprocess.Popen(["zstd","-q","-dc","--long=31","--",str(physical)],stdout=subprocess.PIPE,stderr=log)
+            encoder=subprocess.Popen(["zstd","-q","-T1","-"+str(options.level),"--long=31","--stdout"],stdin=subprocess.PIPE,stdout=output,stderr=log,preexec_fn=cap_encoder)
             try:
                 while data:=decoder.stdout.read(1<<20):
                     count+=len(data)
@@ -113,6 +168,7 @@ def main():
             finally:
                 for child in [decoder,encoder]:
                     if child.poll() is None:child.kill();child.wait()
+                decoder.stdout.close()
             output.flush();os.fsync(output.fileno())
         if count!=expected["bytes"] or digest.hexdigest()!=expected["sha256"]:
             raise ValueError("complete original decoded evidence differs")
@@ -124,8 +180,11 @@ def main():
                 digest.update(data)
             if decoder.wait(timeout=600) or count!=expected["bytes"] or digest.hexdigest()!=expected["sha256"]:
                 raise ValueError("complete replacement decompression differs")
-        if reference.artifact_storage.identity(source)!=before:
+        if reference.artifact_storage.identity(physical)!=before:
             raise ValueError("original evidence changed during repack")
+        if (reference.sha(closed_path) != result["closed_receipt_sha256"] or
+                json.loads(receipt_path.read_text()) != receipt):
+            raise ValueError("original closed result or encoding receipt changed during repack")
         result.update(encoded_sha256=file_sha(target),encoded_bytes=target.stat().st_size,whole_decoded_bytes_verified=True)
         if result["encoded_bytes"]>=before[2]:raise ValueError("replacement reclaims no storage; original retained")
         # Commit verified facts before removing any original. The pointer binds
@@ -141,22 +200,23 @@ def main():
                      "original_tar_bytes":expected["bytes"],"original_tar_sha256":expected["sha256"],
                      "replacement_archive":str(target),"replacement_encoded_sha256":result["encoded_sha256"],
                      "verified_result":str(artifact/"result.json"),"verified_result_sha256":reference.sha(artifact/"result.json")}
-        reference_lifecycle.write_json(pointer,replacement)
-        with pointer.open("rb") as committed:
-            os.fsync(committed.fileno())
-        parent=os.open(pointer.parent,os.O_RDONLY|os.O_DIRECTORY)
-        try:os.fsync(parent)
-        finally:os.close(parent)
+        commit_pointer(pointer, replacement, previous)
+        published = True
         # Check through the same resolver used by existing archive consumers.
         reference.artifact_storage.verified_replacement(source,receipt["encoded"],expected)
-        source.unlink()
-        parent=os.open(source.parent,os.O_RDONLY|os.O_DIRECTORY)
+        physical.unlink()
+        parent=os.open(physical.parent,os.O_RDONLY|os.O_DIRECTORY)
         try:os.fsync(parent)
         finally:os.close(parent)
         print(json.dumps({"evidence":str(artifact),"reclaimed_bytes":before[2]-target.stat().st_size,"verified_raw_bytes":count}),flush=True)
     except Exception as error:
-        result.update(error=str(error),passed=False,cleanup=False,source_removed=not source.exists())
-        reference_lifecycle.write_json(artifact/"result.json",result)
+        if published:
+            # Its verified result is now hash-pinned by the committed pointer.
+            # A cleanup failure must not invalidate reconstructable evidence.
+            reference_lifecycle.write_json(artifact/"cleanup-error.json",{"error":str(error),"physical_source_retained":physical.exists()})
+        else:
+            result.update(error=str(error),passed=False,cleanup=False,source_removed=not physical.exists())
+            reference_lifecycle.write_json(artifact/"result.json",result)
         raise
 
 
