@@ -4,6 +4,69 @@ import unittest
 import retire_superseded_failure as retention
 
 
+class NamespaceAccessSupersessionTests(unittest.TestCase):
+    def fixture(self):
+        identity = {"platform": "linux/arm64", "native_candidate": None,
+                    "consumer_build": "consumer", "consumer_image": "image", "hub_image": "hub",
+                    "hub_bun": "/native/bun", "source_sha256": {"prepare.py": "same"},
+                    "hub_sha256": "same", "registry_binary_sha256": "same", "registry_source_sha256": {},
+                    "reserve": True, "cleanup": True, "inputs_unchanged": True,
+                    "host_sysctls_unchanged": True, "standby_docker_exec_passed": True,
+                    "terminal_proof": False, "diagnostic_only": False}
+        old = {**identity, "passed": False, "error":
+               "Can't open 123/ns/net on procfs: Permission denied; "
+               "One or more namespaces doesn't belong to the target user namespace"}
+        pause = {"record": {"phase": "paused", "pause": {"completed_at": "complete",
+                 "after": {"anon": 0}, "snapshot": {"resident_bytes_after": 0}}}}
+        new = {**identity, "passed": True, "worker_build": "fixed-worker",
+               "before": {"nonce": "same-memory", "pid": 117, "count": 1},
+               "after": {"nonce": "same-memory", "pid": 117, "count": 2},
+               "child_after": {"State": {"Running": True}, "RestartCount": 0},
+               "standby_pause": copy.deepcopy(pause), "pause": copy.deepcopy(pause)}
+        core = {"internal/core.go": {"sha256": "same"}}
+        old_worker = {"platform": "linux/arm64", "native_candidate": None,
+                      "source_context": core, "criu_build": "old-criu",
+                      "bundle_sha256": {key: key for key in
+                          ["factorybox", "components/sysbox-runc", "components/sysbox-fs", "components/sysbox-mgr", "components/criu"]}}
+        new_worker = {**copy.deepcopy(old_worker), "image_id": "fixed-image", "criu_build": "new-criu"}
+        new_worker["bundle_sha256"]["components/criu"] = "fixed-criu"
+        native = {"passed": True, "cleanup": True, "inputs_unchanged": True,
+                  "suite": "standby-repeat", "worker_build": "fixed-worker",
+                  "worker_image_id": "fixed-image", "platform": "linux/arm64", "source_context": core}
+        proof = {"passed": True, "foreign_namespace_refused": True,
+                 "cases": [{"protected": False}, {"protected": True, "passed": True,
+                     "observations": [{"actor": {"dumpable": 0}}, {"actor": {"dumpable": 0}}]}]}
+        old_criu = {"candidate_patch_sha256": {"shared-fds.patch": "same"}}
+        new_criu = {"base_candidate": "old-criu", "candidate_patch_sha256": {
+            **old_criu["candidate_patch_sha256"], "namespace-access.patch":
+            retention.reference.sha(retention.reference.ROOT / "upstream/patches/criu-userns-validation-handles.patch")}}
+        return old, new, old_worker, new_worker, native, proof, old_criu, new_criu
+
+    def test_only_the_completed_namespace_correction_supersedes_its_original_failure(self):
+        values = self.fixture()
+        before = copy.deepcopy(values)
+        retention.verify_namespace_access_replacement(*values)
+        self.assertEqual(values, before)
+
+    def test_current_cgroup_failure_or_incomplete_native_proof_never_qualifies(self):
+        for index, change in [
+            (0, lambda r: r.update(error="restored original cgroup is not populated and frozen")),
+            (1, lambda r: r.update(passed=False)),
+            (1, lambda r: r["after"].update(nonce="cold-replacement")),
+            (1, lambda r: r["pause"]["record"]["pause"]["after"].update(anon=4096)),
+            (1, lambda r: r.update(source_sha256={"prepare.py": "another"})),
+            (3, lambda r: r["bundle_sha256"].update({"components/sysbox-runc": "changed"})),
+            (4, lambda r: r.update(worker_image_id="different")),
+            (5, lambda r: r.update(foreign_namespace_refused=False)),
+            (5, lambda r: r["cases"][1]["observations"][1]["actor"].update(dumpable=1)),
+            (7, lambda r: r["candidate_patch_sha256"].update({"another.patch": "unproved"})),
+        ]:
+            values = copy.deepcopy(self.fixture())
+            change(values[index])
+            with self.subTest(index=index), self.assertRaisesRegex(ValueError, "namespace supersession"):
+                retention.verify_namespace_access_replacement(*values)
+
+
 class FactoryConsumerAdmissionSupersessionTests(unittest.TestCase):
     def fixture(self):
         identity = {"platform": "linux/arm64", "native_candidate": {"kernel": "exact"},
