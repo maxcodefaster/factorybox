@@ -104,3 +104,24 @@ class BuildConfigurationTests(unittest.TestCase):
                 build_config.arguments(options)
             with self.assertRaises(ValueError):
                 build_config.verify_builder(options, docker)
+
+    def test_default_context_endpoint_uri_must_resolve_to_the_same_daemon(self):
+        options = argparse.Namespace(builder='owned-builder', bounded_build=True)
+        docker = ['sudo', '-n', 'docker', '--context', 'default']
+        backend = {'Name': 'owned-builder', 'Driver': 'docker-container',
+                   'Nodes': [{'Name': 'owned-builder0', 'Endpoint': 'unix:///var/run/docker.sock'}]}
+        container = {'Id': 'exact-container', 'Image': 'exact-image', 'State': {'Running': True},
+                     'HostConfig': {'Memory': 3 * 1024**3, 'CpuPeriod': 100000, 'CpuQuota': 300000}}
+        for endpoint in ['unix:///var/run/docker.sock', 'unix:///foreign.sock', 'tcp://foreign:2375']:
+            def inspect(command, **kwargs):
+                if 'context' in command:
+                    self.assertEqual(command, [*docker, 'context', 'inspect', 'default',
+                                              '--format', '{{json .Endpoints.docker.Host}}'])
+                    return json.dumps(endpoint)
+                return json.dumps([container] if 'inspect' in command else backend)
+            with self.subTest(endpoint=endpoint), patch.object(build_config.subprocess, 'check_output', side_effect=inspect):
+                if endpoint == backend['Nodes'][0]['Endpoint']:
+                    self.assertEqual(build_config.verify_builder(options, docker)['container_id'], 'exact-container')
+                else:
+                    with self.assertRaisesRegex(ValueError, 'one explicit'):
+                        build_config.verify_builder(options, docker)
