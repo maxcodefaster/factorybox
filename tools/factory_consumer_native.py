@@ -113,7 +113,37 @@ def require_paused_consumer(view, sandbox, runtime, snapshot):
         raise ValueError('Consumer Pause did not commit the original Sandbox and release its RAM')
 
 
-def repeated_consumer_cycles(count, result, previous, pause, resume, useful, inspect, phase):
+def retire_resumed_checkpoint(paused, resumed, sandbox, runtime, execute):
+    record = paused.get('record', {})
+    saved = record.get('pause', {})
+    snapshot = saved.get('snapshot_id')
+    owner, digest = record.get('owner'), saved.get('checkpoint_sha256')
+    if (not isinstance(snapshot, str) or not re.fullmatch(r'[a-f0-9]{32}', snapshot) or
+            not isinstance(owner, str) or not re.fullmatch(r'[a-f0-9]{32}', owner) or
+            not isinstance(digest, str) or not re.fullmatch(r'[a-f0-9]{64}', digest)):
+        raise ValueError('Checkpoint retirement requires its exact completed native identity')
+    require_paused_consumer(paused, sandbox, runtime, snapshot)
+    after = resumed.get('record', {})
+    continuation = after.get('pause', {})
+    if (after.get('id') != sandbox or after.get('runtime_id') != runtime or
+            after.get('owner') != owner or after.get('phase') != 'running' or
+            continuation.get('snapshot_id') != snapshot or
+            not continuation.get('resume', {}).get('completed_at') or
+            resumed.get('runtime', {}).get('status') != 'running'):
+        raise ValueError('Checkpoint retirement requires the original completed Resume')
+    request = {'source_id': sandbox, 'snapshot_id': snapshot,
+               'source_owner': owner, 'checkpoint_sha256': digest}
+    retired = execute(dict(request))
+    before_bytes = retired.get('before', {}).get('filesystem_available_bytes')
+    after_bytes = retired.get('after', {}).get('filesystem_available_bytes')
+    if (retired.get('version') != 1 or retired.get('request') != request or
+            not retired.get('completed_at') or type(before_bytes) is not int or
+            type(after_bytes) is not int or before_bytes < 0 or after_bytes <= before_bytes):
+        raise ValueError('Checkpoint retirement did not confirm exact ownership and returned capacity')
+    return retired
+
+
+def repeated_consumer_cycles(count, result, previous, pause, resume, useful, inspect, phase, retire=None):
     if type(count) is not int or count < 1:
         raise ValueError('Repeated consumer cycles require a positive count')
     sandbox = result['sandboxID']
@@ -140,6 +170,9 @@ def repeated_consumer_cycles(count, result, previous, pause, resume, useful, ins
         child = entry['child_after']
         if not child['State']['Running'] or child['RestartCount'] != 0:
             raise ValueError('Repeated Resume restarted the original Docker child')
+        if retire is not None:
+            entry['retirement_attempted'] = True
+            entry['retirement'] = retire(entry)
         entry['passed'] = True
         previous = after
         phase('assigned-sandbox-resume-cycle-'+str(cycle))
@@ -157,6 +190,8 @@ def main():
                         help='Read the original cgroup during assigned Resume; diagnostic only, no freeze or task changes')
     parser.add_argument('--resume-cycles', type=int, default=1,
                         help='Pause/Resume the same assigned stack this many times; multiple cycles are diagnostic only')
+    parser.add_argument('--retire-resumed-checkpoints', action='store_true',
+                        help='Diagnostic repeat only: explicitly retire each verified resumed checkpoint and require returned capacity')
     parser.add_argument('--warmup-control', action='store_true',
                         help='Diagnostic only: exercise and remove a stock container before standby Pause; cannot qualify a release')
     parser.add_argument('--terminal', action='store_true',
@@ -169,6 +204,8 @@ def main():
         parser.error('--warmup-control requires --reserve')
     if args.resume_cycles < 1 or args.warmup_control and args.resume_cycles != 1:
         parser.error('--resume-cycles must be positive and warmup-control requires one cycle')
+    if args.retire_resumed_checkpoints and args.resume_cycles < 2:
+        parser.error('--retire-resumed-checkpoints requires a diagnostic repeat')
     print(json.dumps({'stage':'verify-existing-inputs','worker_build':args.worker_build,
                       'consumer_build':args.consumer_build}),flush=True)
     worker_root, worker = build_worker.load(args.worker_build)
@@ -233,6 +270,7 @@ def main():
               'terminal_proof':args.terminal,
               'diagnostic_only':args.warmup_control or args.observe_resume_cgroup or args.resume_cycles != 1,
               'resume_cycles':args.resume_cycles,
+              'retire_resumed_checkpoints':args.retire_resumed_checkpoints,
               'namespace_observer_sha256':reference.sha(namespace_observer),
               'cgroup_observer_sha256':reference.sha(cgroup_observer),
               'observe_resume_cgroup':args.observe_resume_cgroup,
@@ -675,6 +713,20 @@ def main():
             raise ValueError('Dev Container restarted during Pause/Resume')
         result['docker_after']=json.loads(run([*runc,'docker','info','--format','{{json .}}']))
         if args.resume_cycles > 1:
+            def retire_checkpoint(paused, resumed):
+                def execute(request):
+                    return json.loads(run([
+                        *cli, 'retire-checkpoint', '--snapshot-id', request['snapshot_id'],
+                        '--source-owner', request['source_owner'],
+                        '--checkpoint-sha256', request['checkpoint_sha256'], request['source_id'],
+                    ], timeout=90))
+                return retire_resumed_checkpoint(
+                    paused, resumed, sandbox, result['start']['record']['runtime_id'], execute)
+
+            if args.retire_resumed_checkpoints:
+                result['initial_checkpoint_retirement_attempted'] = True
+                result['initial_checkpoint_retirement'] = retire_checkpoint(result['pause'], result['resume'])
+
             def pause_again(entry):
                 endpoint('/pause','POST')
                 return json.loads(run([*cli,'pause','--snapshot-id',entry['snapshot_id'],sandbox],timeout=90))
@@ -694,7 +746,9 @@ def main():
 
             result['repeat_after'] = repeated_consumer_cycles(
                 args.resume_cycles, result, after, pause_again, resume_again, useful_again,
-                lambda:json.loads(run([*runc,'docker','inspect',child_id]))[0], phase)
+                lambda:json.loads(run([*runc,'docker','inspect',child_id]))[0], phase,
+                retire=(lambda entry:retire_checkpoint(entry['pause'],entry['resume']))
+                if args.retire_resumed_checkpoints else None)
         if args.terminal:
             result['terminal_after']=endpoint('/terminal/after','POST')
             if result['terminal_after']!=result['terminal_before']:
