@@ -22,6 +22,56 @@ FACTORY_CAPABILITY_ERROR = "shared source requires live worker descriptor retent
 STANDBY_EXEC_ERROR = "Resumed standby cannot exec a new private Docker container"
 
 
+def verify_namespace_access_replacement(old, new, old_worker, new_worker, native, proof, old_criu, new_criu):
+    identical = ["platform", "native_candidate", "consumer_build", "consumer_image", "hub_image",
+                 "hub_bun", "source_sha256", "hub_sha256", "registry_binary_sha256", "registry_source_sha256"]
+    error = old.get("error", "")
+    if (old.get("passed") is not False or new.get("passed") is not True or
+            "/ns/net on procfs: Permission denied" not in error or
+            "One or more namespaces doesn't belong to the target user namespace" not in error or
+            any(row.get(key) is not True for row in [old, new] for key in
+                ["reserve", "cleanup", "inputs_unchanged", "host_sysctls_unchanged", "standby_docker_exec_passed"]) or
+            any(row.get("terminal_proof") is not False or row.get("diagnostic_only") is not False for row in [old, new]) or
+            any(key not in old or old[key] != new.get(key) for key in identical)):
+        raise ValueError("namespace supersession requires the exact resolved Factory capture failure")
+    first, after = new.get("before", {}), new.get("after", {})
+    if (not first.get("nonce") or after.get("nonce") != first["nonce"] or
+            not first.get("pid") or after.get("pid") != first["pid"] or
+            after.get("count", 0) <= first.get("count", 0) or
+            new.get("child_after", {}).get("RestartCount") != 0 or
+            new.get("child_after", {}).get("State", {}).get("Running") is not True):
+        raise ValueError("namespace supersession lacks complete app and Docker preservation")
+    for key in ["standby_pause", "pause"]:
+        paused = new.get(key, {}).get("record", {})
+        memory = paused.get("pause", {})
+        if (paused.get("phase") != "paused" or not memory.get("completed_at") or
+                memory.get("after", {}).get("anon") != 0 or memory.get("snapshot", {}).get("resident_bytes_after") != 0):
+            raise ValueError("namespace supersession lacks both memory-releasing pauses")
+    core = lambda row: {key: value for key, value in row["source_context"].items() if not key.endswith("_test.go")}
+    if (core(old_worker) != core(new_worker) or
+            any(old_worker.get(key) != new_worker.get(key) for key in ["platform", "native_candidate"]) or
+            any(old_worker["bundle_sha256"][key] != new_worker["bundle_sha256"][key] for key in
+                ["factorybox", "components/sysbox-runc", "components/sysbox-fs", "components/sysbox-mgr"]) or
+            old_worker["bundle_sha256"]["components/criu"] == new_worker["bundle_sha256"]["components/criu"] or
+            new_criu.get("base_candidate") != old_worker.get("criu_build") or
+            new_criu.get("candidate_patch_sha256") != {
+                **old_criu["candidate_patch_sha256"],
+                "namespace-access.patch": reference.sha(reference.ROOT / "upstream/patches/criu-userns-validation-handles.patch")}):
+        raise ValueError("namespace supersession is not the isolated ordered CRIU correction")
+    cases = proof.get("cases", [])
+    protected = [case for case in cases if case.get("protected") is True]
+    if (any(native.get(key) is not True for key in ["passed", "cleanup", "inputs_unchanged"]) or
+            native.get("suite") != "standby-repeat" or native.get("worker_build") != new.get("worker_build") or
+            native.get("platform") != new_worker.get("platform") or
+            native.get("worker_image_id") != new_worker.get("image_id") or core(native) != core(new_worker) or
+            proof.get("passed") is not True or proof.get("foreign_namespace_refused") is not True or
+            [case.get("protected") for case in cases] != [False, True] or
+            len(protected) != 1 or protected[0].get("passed") is not True or
+            len(protected[0].get("observations", [])) != 2 or
+            any(row.get("actor", {}).get("dumpable") != 0 for row in protected[0]["observations"])):
+        raise ValueError("namespace supersession lacks its matching protected-process regression")
+
+
 def verify_factory_consumer_replacement(old, new, old_worker, new_worker):
     identical = ["platform", "native_candidate", "consumer_build", "consumer_image", "hub_image",
                  "hub_bun", "source_sha256", "hub_sha256", "registry_binary_sha256"]
@@ -172,6 +222,8 @@ def main():
     parser.add_argument("--verify-only",action="store_true",help="Retain and verify diagnostics while keeping the complete source archive")
     parser.add_argument("--resolved-standby-exec", metavar="NATIVE_RUN",
                         help="Retire only an exact resolved standby exec failure, backed by a passing native regression and real Factory first work; retain and verify the later complete capture failure")
+    parser.add_argument("--resolved-namespace-access", metavar="NATIVE_RUN",
+                        help="Retire only the resolved namespace lookup failure after the complete same-input Factory reserve and protected-process regression pass")
     parser.add_argument("--factory-input-proof", metavar="FACTORY_RUN",
                         help="With resolved standby exec only: a complete passing Factory proof may qualify the isolated prepare.py/prepare_test.py input-ownership upgrade")
     args = parser.parse_args()
@@ -184,16 +236,40 @@ def main():
     source_result, replacement = (json.loads((path/"result.json").read_text()) for path in [run,proof])
     factory = any(name.startswith('factorybox-factory-consumer-') for name in [args.source_run, args.replacement_proof])
     replacement_scope = None
+    if args.resolved_standby_exec and args.resolved_namespace_access:
+        raise ValueError("select one exact resolved failure scope")
     if args.resolved_standby_exec and not factory:
         raise ValueError("scoped standby exec supersession requires Factory consumer runs")
+    if args.resolved_namespace_access and not factory:
+        raise ValueError("scoped namespace supersession requires Factory consumer runs")
     if args.factory_input_proof and not args.resolved_standby_exec:
         raise ValueError("Factory input upgrade proof requires scoped standby exec supersession")
     if factory:
         if not all(name.startswith('factorybox-factory-consumer-') for name in [args.source_run, args.replacement_proof]):
             raise ValueError('Factory consumer failure requires a complete actual Factory consumer replacement')
         import build_worker
-        old_worker, new_worker = [build_worker.load(row['worker_build'])[1] for row in [source_result, replacement]]
-        if args.resolved_standby_exec:
+        workers = [build_worker.load(row['worker_build']) for row in [source_result, replacement]]
+        old_worker, new_worker = [row[1] for row in workers]
+        if args.resolved_namespace_access:
+            import criu_candidate
+            if not re.fullmatch(r"factorybox-checkpoint-retirement-[0-9a-f]{32}", args.resolved_namespace_access):
+                raise ValueError("requires one exact namespace regression")
+            native_run = reference.ROOT / "artifacts" / args.resolved_namespace_access
+            native_path, native_proof = native_run / "result.json", native_run / "output/standby-repeat.json"
+            if any(path.resolve() != path for path in [native_path, native_proof]):
+                raise ValueError("namespace regression cannot be redirected")
+            native = json.loads(native_path.read_text())
+            if reference.sha(native_proof) != native.get("proof_sha256"):
+                raise ValueError("namespace regression changed")
+            components = [criu_candidate.load(row["criu_build"],
+                base_lock=path / "criu-base-source-lock.json" if (path / "criu-base-source-lock.json").is_file() else None)[1]
+                for path, row in workers]
+            verify_namespace_access_replacement(source_result, replacement, old_worker, new_worker,
+                native, json.loads(native_proof.read_text()), *components)
+            replacement_scope = {"passed": True, "scope": "resolved namespace lookup only",
+                                 "whole_consumer_passed": True, "native_result_sha256": reference.sha(native_path),
+                                 "native_proof_sha256": reference.sha(native_proof)}
+        elif args.resolved_standby_exec:
             if not re.fullmatch(r"factorybox-checkpoint-retirement-[0-9a-f]{32}", args.resolved_standby_exec):
                 raise ValueError("requires an exact native standby exec regression")
             native_run = reference.ROOT / "artifacts" / args.resolved_standby_exec
