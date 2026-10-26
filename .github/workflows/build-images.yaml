@@ -1,0 +1,159 @@
+name: Build worker images on demand
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Native Linux build target
+        type: choice
+        options: [both, amd64, arm64]
+        default: both
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  build:
+    name: Worker linux/${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(inputs.architecture == 'both' && '["amd64","arm64"]' || format('["{0}"]', inputs.architecture)) }}
+    # Repository variables may select a larger GitHub runner or one unique
+    # self-hosted label. The target and Docker daemon are checked before builds.
+    runs-on: ${{ matrix.arch == 'amd64' && (vars.FACTORYBOX_BUILD_RUNNER_AMD64 || 'ubuntu-24.04') || (vars.FACTORYBOX_BUILD_RUNNER_ARM64 || 'ubuntu-24.04-arm') }}
+    timeout-minutes: 180
+    env:
+      ARCH: ${{ matrix.arch }}
+      FACTORYBOX_DOCKER_CONTEXT: default
+      MISE_YES: '1'
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    defaults:
+      run:
+        working-directory: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+          clean: false
+          persist-credentials: false
+      - name: Reclaim unused Android SDK space on the disposable GitHub VM
+        if: runner.environment == 'github-hosted' && runner.arch == 'X64'
+        run: |
+          set -euo pipefail
+          if [[ "${ANDROID_HOME:-}" = /usr/local/lib/android/sdk && -d /usr/local/lib/android/sdk ]]; then
+            test "$(realpath /usr/local/lib/android/sdk)" = /usr/local/lib/android/sdk
+            du -sh /usr/local/lib/android/sdk
+            sudo rm -rf -- /usr/local/lib/android/sdk
+          fi
+          df -h .
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db
+        with:
+          version: 2026.10.19
+          working_directory: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+      - name: Isolate this job's Docker client
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="$RUNNER_TEMP/factorybox-build-docker-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          test ! -e "$DOCKER_CONFIG"
+          install -d -m 0700 "$DOCKER_CONFIG"
+          printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
+      - name: Check native tools, Docker and storage before compilation
+        run: |
+          set -euo pipefail
+          command -v zstd
+          docker --context default buildx version
+          mise exec -- python3 - <<'PY'
+          import json, os, sys
+          sys.path.insert(0, 'tools')
+          import artifact_storage, build_cli, native_base, reference
+          target = 'linux/' + os.environ['ARCH']
+          build_cli.require_native_target(target)
+          native_base.require_native_host(target, json.loads(reference.docker(['info', '--format', '{{json .}}'])))
+          print(artifact_storage.require_capacity(reference.ROOT))
+          PY
+          mise exec -- go mod download
+          mise exec -- python3 tools/sources.py prepare
+      - name: Create one owned bounded builder
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          builder="factorybox-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          printf '{"name":"%s","run":"%s","attempt":"%s","arch":"%s"}\n' \
+            "$builder" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$ARCH" > artifacts/ci-builder-intent.json
+          if docker --context default buildx inspect "$builder" > /dev/null 2>&1; then
+            echo 'Refusing an existing CI builder identity.'
+            exit 1
+          fi
+          docker --context default buildx create --name "$builder" --driver docker-container \
+            --driver-opt 'image=moby/buildkit@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea,memory=3g,cpu-period=100000,cpu-quota=300000,network=host' \
+            --buildkitd-flags '--allow-insecure-entitlement network.host' default
+          docker --context default buildx inspect --bootstrap "$builder"
+          mise exec -- python3 -c 'import argparse,json,sys;sys.path.insert(0,"tools");import build_config,reference;print(json.dumps(build_config.verify_builder(argparse.Namespace(builder=sys.argv[1],bounded_build=True),reference.DOCKER)))' \
+            "$builder" > artifacts/ci-builder-identity.json
+      - name: Build the native base and complete worker pipeline
+        run: |
+          set -euo pipefail
+          receipt() {
+            mise exec -- python3 -c 'import pathlib,sys;sys.path.insert(0,"tools");import build_worker_pipeline;print(pathlib.Path(build_worker_pipeline.completed_output(pathlib.Path(sys.argv[1]).read_text())).name)' "$1"
+          }
+          builder="factorybox-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          mise exec -- python3 tools/build_native_base.py --platform "linux/$ARCH" --network host \
+            > artifacts/ci-base.log 2>&1
+          base="$(receipt artifacts/ci-base.log)"
+          mise exec -- python3 tools/build_worker_pipeline.py --platform "linux/$ARCH" \
+            --native-base-build "$base" --builder "$builder" --bounded-build --network host \
+            > artifacts/ci-worker.log 2>&1
+          pipeline="$(receipt artifacts/ci-worker.log)"
+          worker="$(mise exec -- python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["worker_build"])' "artifacts/$pipeline/result.json")"
+          printf 'WORKER_BUILD=%s\n' "$worker" >> "$GITHUB_ENV"
+      - name: Export the exact worker image with verified compression
+        run: |
+          mise exec -- python3 - <<'PY'
+          import json, os, sys, uuid
+          sys.path.insert(0, 'tools')
+          import artifact_storage, build_worker, reference
+          _, worker = build_worker.load(os.environ['WORKER_BUILD'])
+          archive = reference.new_artifact('factorybox-ci-image-' + uuid.uuid4().hex)
+          archive.mkdir()
+          result = dict(schema=1, passed=False, worker_build=os.environ['WORKER_BUILD'],
+                        image_id=worker['image_id'], platform=worker['platform'],
+                        native_lifecycle_qualified=False, production_qualified=False)
+          try:
+              with (archive / 'export.log').open('xb') as log:
+                  result['encoding'] = artifact_storage.archive_stream(
+                      [*reference.DOCKER, 'image', 'save', worker['image_id']],
+                      archive / 'worker-image.tar', reference.ROOT, log,
+                      maximum=8 << 30, timeout=900, decoded_limit=32 << 30)
+              result['passed'] = True
+          finally:
+              (archive / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+              print(json.dumps(dict(evidence=str(archive), **result)), flush=True)
+          PY
+      - name: Remove only the exact owned builder
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -f artifacts/ci-builder-identity.json ]]; then
+            mise exec -- python3 -c 'import argparse,json,subprocess,sys;sys.path.insert(0,"tools");import build_config,reference;expected=json.load(open("artifacts/ci-builder-identity.json"));actual=build_config.verify_builder(argparse.Namespace(builder=expected["name"],bounded_build=True),reference.DOCKER);assert actual==expected,"CI builder identity changed";subprocess.run([*reference.DOCKER,"buildx","rm",expected["name"]],check=True)'
+          elif [[ -f artifacts/ci-builder-intent.json ]]; then
+            echo 'Builder creation was unconfirmed. Preserve it for ownership-checked inspection.'
+            exit 1
+          fi
+      - name: Retain the image, worker package and build receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: factorybox-worker-linux-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: |
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-*
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/**/result.json
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/**/intent.json
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/**/*.log
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/**/*.stdout
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/**/*.stderr
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-build-worker-*/factorybox-worker-linux-*.tar*
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-ci-image-*/worker-image.tar*
+          compression-level: 0
+          if-no-files-found: warn
+          retention-days: 7
