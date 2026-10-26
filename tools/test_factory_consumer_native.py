@@ -45,7 +45,8 @@ class RepeatedConsumerTests(unittest.TestCase):
         return consumer.repeated_consumer_cycles(
             4, self.result, self.previous, callbacks.get('pause', self.pause),
             callbacks.get('resume', self.resume), callbacks.get('useful', self.useful),
-            callbacks.get('inspect', self.inspect), lambda stage:self.calls.append(('phase', stage)))
+            callbacks.get('inspect', self.inspect), lambda stage:self.calls.append(('phase', stage)),
+            retire=callbacks.get('retire'))
 
     def test_reuses_the_original_stack_and_confirms_each_independent_snapshot(self):
         after = self.run_cycles()
@@ -120,6 +121,104 @@ class RepeatedConsumerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 consumer.repeated_consumer_cycles(
                     count, self.result, self.previous, self.pause, self.resume, self.useful, self.inspect, None)
+
+    def test_retirement_runs_only_after_original_app_and_child_preservation(self):
+        def retire(entry):
+            self.assertEqual(self.calls[-2:], [('useful', None), ('inspect', None)])
+            self.assertTrue(entry['retirement_attempted'])
+            self.calls.append(('retire', entry['snapshot_id']))
+            return {'completed_at': 'retired'}
+        self.run_cycles(retire=retire)
+        self.assertEqual([call[0] for call in self.calls],
+                         ['pause', 'resume', 'useful', 'inspect', 'retire', 'phase'] * 3)
+        self.assertTrue(all(entry['retirement']['completed_at']
+                            for entry in self.result['repeat_cycles']))
+        self.setUp()
+        def refused(_entry):
+            raise ValueError('checkpoint remains protected')
+        with self.assertRaisesRegex(ValueError, 'protected'):
+            self.run_cycles(retire=refused)
+        self.assertEqual(len(self.result['repeat_cycles']), 1)
+        self.assertTrue(self.result['repeat_cycles'][0]['retirement_attempted'])
+        self.assertNotIn('passed', self.result['repeat_cycles'][0])
+
+
+class ConsumerCheckpointRetirementTests(unittest.TestCase):
+    def setUp(self):
+        self.snapshot = 'a' * 32
+        self.pause = {'record': {
+            'id': 'original', 'runtime_id': 'original-runtime', 'owner': 'b' * 32,
+            'phase': 'paused', 'pause': {
+                'snapshot_id': self.snapshot, 'checkpoint_sha256': 'c' * 64,
+                'completed_at': 'committed', 'after': {'anon': 0},
+                'snapshot': {'file_backed': True, 'resident_bytes_after': 0},
+            },
+        }}
+        self.resume = copy.deepcopy(self.pause)
+        self.resume['record']['phase'] = 'running'
+        self.resume['record']['pause']['resume'] = {'completed_at': 'resumed'}
+        self.resume['runtime'] = {'status': 'running'}
+        self.calls = []
+
+    def execute(self, request):
+        self.calls.append(request)
+        return {'version': 1, 'request': request, 'completed_at': 'retired',
+                'before': {'filesystem_available_bytes': 1024},
+                'after': {'filesystem_available_bytes': 8192}}
+
+    def retire(self, execute=None):
+        return consumer.retire_resumed_checkpoint(
+            self.pause, self.resume, 'original', 'original-runtime', execute or self.execute)
+
+    def test_only_the_exact_verified_resumed_checkpoint_can_release_its_payload(self):
+        before = copy.deepcopy((self.pause, self.resume))
+        self.assertEqual(self.retire()['completed_at'], 'retired')
+        self.assertEqual(self.calls, [{
+            'source_id': 'original', 'snapshot_id': self.snapshot,
+            'source_owner': 'b' * 32, 'checkpoint_sha256': 'c' * 64,
+        }])
+        self.assertEqual((self.pause, self.resume), before)
+
+    def test_wrong_identity_unreleased_ram_or_incomplete_resume_refuses_before_mutation(self):
+        for changed in [
+            lambda: self.pause['record'].update(id='foreign'),
+            lambda: self.pause['record'].update(owner=''),
+            lambda: self.pause['record']['pause'].update(checkpoint_sha256='unknown'),
+            lambda: self.pause['record']['pause']['after'].update(anon=4096),
+            lambda: self.resume['record'].update(runtime_id='replacement'),
+            lambda: self.resume['record'].update(owner='different-owner'),
+            lambda: self.resume['record']['pause'].update(snapshot_id='d' * 32),
+            lambda: self.resume['record']['pause']['resume'].update(completed_at=''),
+            lambda: self.resume['runtime'].update(status='stopped'),
+        ]:
+            self.setUp()
+            changed()
+            with self.assertRaises(ValueError):
+                self.retire()
+            self.assertEqual(self.calls, [])
+
+    def test_lost_wrong_or_nonreclaiming_retirement_never_authorizes_another_cycle(self):
+        for changed in [
+            lambda value: value.update(completed_at=''),
+            lambda value: value['request'].update(source_owner='foreign'),
+            lambda value: value['after'].update(filesystem_available_bytes=1024),
+            lambda value: value['after'].update(filesystem_available_bytes=True),
+        ]:
+            self.setUp()
+            def execute(request):
+                result = self.execute(copy.deepcopy(request))
+                changed(result)
+                return result
+            with self.assertRaises(ValueError):
+                self.retire(execute)
+            self.assertEqual(len(self.calls), 1)
+        self.setUp()
+        def lost(request):
+            self.calls.append(request)
+            raise ValueError('lost native retirement response')
+        with self.assertRaisesRegex(ValueError, 'lost native'):
+            self.retire(lost)
+        self.assertEqual(len(self.calls), 1)
 
 
 class NativeFactoryConsumerInputTests(unittest.TestCase):
