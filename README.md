@@ -346,7 +346,41 @@ of every executable, component platform agreement and the final image platform.
 Its receipt records the image and Factorybox executable digest. There is no
 push, installation or automatic runtime admission.
 
-The [worker image workflow](.github/workflows/images.yaml) runs only when a
+The [Linux CI workflow](.github/workflows/ci.yaml) runs portable checks on each
+branch push and pull request. It uses GitHub's `ubuntu-24.04` AMD64 and
+`ubuntu-24.04-arm` ARM64 runners. Each job runs the Linux Go and Python suites,
+verifies the immutable reference, then compiles and executes the ordinary CLI
+on that architecture. Downloadable artifacts contain the executable, SHA-256,
+frozen Go inputs and test logs. On disposable GitHub-hosted X64 VMs, the job
+removes the unused preinstalled Android SDK to satisfy the unchanged disk
+reserve. Self-hosted runners never run that step. These jobs do not test Sysbox/CRIU lifecycle
+operations or admit GitHub's runner kernel as a supported runtime profile.
+
+Use Actions → **Build worker images on demand** for complete component and
+worker builds. Select AMD64, ARM64 or both. This separate manual workflow uses
+the native pipeline and a verified 3-CPU/3-GiB BuildKit container. It exports the
+exact image through a fully verified Zstandard stream and retains the compressed
+worker package, reconstruction receipts and build logs for seven days. Download
+`worker-image.tar.zst` from its artifact and load it with:
+
+```sh
+zstd -dc worker-image.tar.zst | docker load
+```
+
+The image is saved by its immutable image ID, recorded in the export's
+`result.json`. The workflow publishes no registry image and makes no lifecycle
+qualification claim. It needs native Linux Docker/Buildx, Zstandard and enough
+disk for the component build. The unchanged storage guard requires 8 GiB of
+artifact headroom and reserves 12 GiB of host free space. Standard GitHub runner
+disk capacity is not guaranteed to fit the full pipeline. Set repository Actions
+variables `FACTORYBOX_BUILD_RUNNER_AMD64` and `FACTORYBOX_BUILD_RUNNER_ARM64`
+to larger runner labels when needed. A self-hosted override must name a unique
+label for a trusted, matching Linux architecture. Each attempt uses its own
+checkout and refuses cleanup if builder ownership cannot be verified. There is
+no Docker pruning or host runtime installation. GitHub-hosted X64 builds use
+the same Android SDK space preparation as the portable CI.
+
+The [release publication workflow](.github/workflows/images.yaml) runs only when a
 GitHub release is published. It does not run on branch pushes, pull requests or
 manual dispatch. The canonical tag, such as `v0.1.0`, must name a commit contained
 in `main` and match the actual delivered CLI version. Native AMD64 and ARM64 jobs

@@ -1,0 +1,87 @@
+name: Linux checks and CLI builds
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: linux-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  check:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      MISE_YES: '1'
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+      ARCH: ${{ matrix.arch }}
+      # Keep tests on the runner's own architecture and ordinary build tags.
+      GOFLAGS: ''
+      GOEXPERIMENT: ''
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Reclaim unused Android SDK space on the disposable GitHub VM
+        if: runner.environment == 'github-hosted' && runner.arch == 'X64'
+        run: |
+          set -euo pipefail
+          if [[ "${ANDROID_HOME:-}" = /usr/local/lib/android/sdk && -d /usr/local/lib/android/sdk ]]; then
+            test "$(realpath /usr/local/lib/android/sdk)" = /usr/local/lib/android/sdk
+            du -sh /usr/local/lib/android/sdk
+            sudo rm -rf -- /usr/local/lib/android/sdk
+          fi
+          df -h .
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db
+        with:
+          version: 2026.10.19
+      - name: Check the native target and artifact capacity
+        run: |
+          mise exec -- python3 - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'tools')
+          import artifact_storage, build_cli, reference
+          build_cli.require_native_target('linux/' + os.environ['ARCH'])
+          print(artifact_storage.require_capacity(reference.ROOT))
+          PY
+      - name: Run Go, Python and immutable reference checks
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          mise exec -- python3 tools/check.py | tee artifacts/ci-checks.jsonl
+          mise exec -- python3 - <<'PY'
+          import json, pathlib
+          result = json.loads(pathlib.Path('artifacts/ci-checks.jsonl').read_text().splitlines()[-1])
+          assert result['passed'], 'portable checks failed'
+          assert not result['unavailable_linux_packages'], 'Linux test packages were not exercised'
+          PY
+      - name: Build and execute the native CLI
+        run: mise exec -- python3 tools/build_cli.py --platform "linux/$ARCH"
+      - name: Retain CLI binaries, frozen inputs and check logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: factorybox-linux-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: |
+            artifacts/ci-checks.jsonl
+            artifacts/factorybox-checks-*/result.json
+            artifacts/factorybox-checks-*/*.stdout
+            artifacts/factorybox-checks-*/*.stderr
+            artifacts/factorybox-build-cli-*/
+          if-no-files-found: warn
+          retention-days: 7
