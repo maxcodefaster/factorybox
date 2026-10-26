@@ -18,6 +18,8 @@ class ReleaseSourceTransportTests(unittest.TestCase):
             link = root / "alias"
             link.symlink_to("build.sh")
             entries = {}
+            (root / "empty").mkdir()
+            release_sources.add_entry(entries, "component/empty", root / "empty")
             release_sources.add_entry(entries, "component/build.sh", source)
             release_sources.add_entry(entries, "component/alias", link)
             output = io.BytesIO()
@@ -27,6 +29,7 @@ class ReleaseSourceTransportTests(unittest.TestCase):
                 self.assertEqual(archive.getmember("component/build.sh").mode, 0o755)
                 self.assertEqual(archive.getmember("component/alias").linkname, "build.sh")
                 self.assertEqual(archive.getmember("component/build.sh").mtime, 0)
+                self.assertTrue(archive.getmember("component/empty").isdir())
 
     def test_changed_source_and_redirected_input_cannot_be_distributed_under_old_hash(self):
         for redirect in [False, True]:
