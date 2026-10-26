@@ -37,6 +37,16 @@ jobs:
           path: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           clean: false
           persist-credentials: false
+      - name: Reclaim unused Android SDK space on the disposable GitHub VM
+        if: runner.environment == 'github-hosted' && runner.arch == 'X64'
+        run: |
+          set -euo pipefail
+          if [[ "${ANDROID_HOME:-}" = /usr/local/lib/android/sdk && -d /usr/local/lib/android/sdk ]]; then
+            test "$(realpath /usr/local/lib/android/sdk)" = /usr/local/lib/android/sdk
+            du -sh /usr/local/lib/android/sdk
+            sudo rm -rf -- /usr/local/lib/android/sdk
+          fi
+          df -h .
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db
         with:
           version: 2026.10.19

@@ -351,7 +351,9 @@ branch push and pull request. It uses GitHub's `ubuntu-24.04` AMD64 and
 `ubuntu-24.04-arm` ARM64 runners. Each job runs the Linux Go and Python suites,
 verifies the immutable reference, then compiles and executes the ordinary CLI
 on that architecture. Downloadable artifacts contain the executable, SHA-256,
-frozen Go inputs and test logs. These jobs do not test Sysbox/CRIU lifecycle
+frozen Go inputs and test logs. On disposable GitHub-hosted X64 VMs, the job
+removes the unused preinstalled Android SDK to satisfy the unchanged disk
+reserve. Self-hosted runners never run that step. These jobs do not test Sysbox/CRIU lifecycle
 operations or admit GitHub's runner kernel as a supported runtime profile.
 
 Use Actions → **Build worker images on demand** for complete component and
@@ -375,7 +377,8 @@ variables `FACTORYBOX_BUILD_RUNNER_AMD64` and `FACTORYBOX_BUILD_RUNNER_ARM64`
 to larger runner labels when needed. A self-hosted override must name a unique
 label for a trusted, matching Linux architecture. Each attempt uses its own
 checkout and refuses cleanup if builder ownership cannot be verified. There is
-no disk pruning or host runtime installation.
+no Docker pruning or host runtime installation. GitHub-hosted X64 builds use
+the same Android SDK space preparation as the portable CI.
 
 The [release publication workflow](.github/workflows/images.yaml) runs only when a
 GitHub release is published. It does not run on branch pushes, pull requests or
