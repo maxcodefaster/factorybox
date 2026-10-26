@@ -982,7 +982,8 @@
         "upstream/patches/sysbox-runc-restore-delegation-leaf.patch": "c739e8a7ee05f73b5ea16c5b45f231ab079b50851871a8d042647829a6145aad",
         "upstream/patches/sysbox-runc-factorybox-overlay-index.patch": "af6fce9e0cf5ffc4ebf97f5ed268c8a15a1b0bfbda8c5f8e4e10c9f9c637646c",
         "upstream/patches/sysbox-runc-factorybox-restore-hold.patch": "f2d68b2d577d8f7fe5b707bfc06aed49804fd3ec3ab0e1b5464791b8113b3243",
-        "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch": "b0cc2468b3f531317af079480c458bc4ea0d78661acb2d9c84d0273cf61bf5fe"
+        "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch": "b0cc2468b3f531317af079480c458bc4ea0d78661acb2d9c84d0273cf61bf5fe",
+        "upstream/patches/sysbox-runc-exec-delegation-leaf.patch": "d98068c8c4c9ec38ad220d44f1207ad93f77128b9047f136932b783f39fdd107"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -1015,7 +1016,8 @@
         "upstream/patches/sysbox-runc-restore-delegation-leaf.patch",
         "upstream/patches/sysbox-runc-factorybox-overlay-index.patch",
         "upstream/patches/sysbox-runc-factorybox-restore-hold.patch",
-        "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch"
+        "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch",
+        "upstream/patches/sysbox-runc-exec-delegation-leaf.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",

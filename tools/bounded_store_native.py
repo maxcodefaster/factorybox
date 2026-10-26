@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
@@ -18,6 +19,8 @@ import reference_lifecycle
 import upstream_bats
 import upstream_unit
 import worker_metadata_native
+import factory_consumer_native
+import consumer_stop_trace
 
 
 ADMISSION_UNIT_TESTS = [
@@ -26,6 +29,24 @@ ADMISSION_UNIT_TESTS = [
     'TestArm64TimerAdmissionReturnPathFailsClosed',
     'TestCaptureCompletionPendingFreezerIsExact',
 ]
+
+
+def freeze_exec_trace(name, worker, artifact):
+    if not re.fullmatch(r'factorybox-exec-trace-inputs-[0-9a-f]{32}', name):
+        raise ValueError('requires an exact exec trace acquisition')
+    source = reference.ROOT / 'artifacts' / name
+    trace = json.loads((source / 'result.json').read_text())
+    if (source.resolve() != source or (source / 'result.json').is_symlink() or
+            trace.get('passed') is not True or trace.get('cleanup') is not True or
+            any(trace.get(key) != worker.get(key) for key in
+                ['platform', 'native_base_build', 'base_packages_sha256']) or
+            trace.get('image') != worker['native_base_image']):
+        raise ValueError('exec trace acquisition differs from the exact worker base')
+    consumer_stop_trace.validate_root(source / 'rootfs', trace['files'])
+    shutil.copytree(source / 'rootfs', artifact / 'exec-trace', symlinks=True)
+    consumer_stop_trace.validate_root(artifact / 'exec-trace', trace['files'])
+    return {'artifact': name, 'result_sha256': reference.sha(source / 'result.json'),
+            'files': trace['files']}
 
 
 def worker_compile_options(worker, host, *, native_candidate=False):
@@ -65,7 +86,9 @@ def main():
     parser.add_argument('--native-candidate', action='store_true',
                         help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec'], default='capacity')
+    parser.add_argument('--nested-exec-consumer', help='Exact existing consumer image supplying nested runc for the standby-exec control')
+    parser.add_argument('--exec-trace-inputs', help='Optional exact owned diagnostic strace acquisition; standby-exec only')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
     parser.add_argument('--worker-metadata-minimal', action='store_true', help='Worker-metadata diagnostic only: four actual committed pauses and one prior public base instead of three pauses and 200 bases; retain all boundary/preservation assertions')
@@ -90,6 +113,12 @@ def main():
     record_metadata = args.suite == 'record-metadata'
     worker_metadata = args.suite == 'worker-metadata'
     stopped_memory = args.suite == 'stopped-memory'
+    standby_cgroup = args.suite == 'standby-cgroup'
+    standby_exec = args.suite == 'standby-exec'
+    if bool(args.nested_exec_consumer) != standby_exec:
+        parser.error('--nested-exec-consumer is required only for standby-exec')
+    if args.exec_trace_inputs and not standby_exec:
+        parser.error('--exec-trace-inputs requires standby-exec')
     if args.worker_metadata_minimal and not worker_metadata:
         parser.error('--worker-metadata-minimal requires worker-metadata')
     if args.timer_observe_exit and not prototype:
@@ -105,7 +134,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory
+    retirement = args.suite.startswith('retirement') or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -171,6 +200,10 @@ def main():
                        'after source deletion. Not worker replacement, broad consumer or production qualification.'}
     if retirement:
         result['scope'] = 'Delivered CLI recovery selections, released selection replay, committed-pause protection, live independent fork/resume after checkpoint retirement, foreign mount/successor refusal, actual SIGKILL during partial deletion, retry with unknown entry refusal, verified immutable base alias cleanup and a required read-only-request/NULL-remainder relative wait through source/fork with preserved syscall registers and original deadline. Not epoch retirement or production qualification.'
+    if standby_cgroup:
+        result['scope'] = 'Exact delivered worker with independent tiny writable-cgroup fixtures. Require exec in init.scope before and after real Pause/Resume and admission of new child cgroups from existing and empty delegation. Not Docker, Fork or platform qualification.'
+    if standby_exec:
+        result['scope'] = 'Exact delivered worker with the pinned consumer runc and tiny BusyBox rootfs. A new nested container exec must succeed before and after real Pause/Resume; no nested child survives the checkpoint. Optional tracing occurs only after an uninstrumented failure and cannot turn that failure into a pass. Not full consumer, Fork or platform qualification.'
     if args.suite == 'retirement-base-diagnostic':
         result['scope'] = 'Isolated retained-sleep and immutable-alias diagnostic only; does not qualify the full required retirement suite.'
     if args.timer_probe:
@@ -205,6 +238,8 @@ def main():
         result['prototype_inputs'] = prototype_inputs
     if restore_hold:
         result['scope'] = 'Pinned Sysbox private sealed restore/resume pre-detach hold, exact persisted cgroup and application counter through ACK, CRIU detach and explicit thaw. Actual socket disconnect and foreign ACK refuse. Raw backend protocol fixture; public lifecycle activation is covered by separate suites. Not production qualification.'
+    if standby_cgroup:
+        result['scope'] = 'Minimized empty delegated-cgroup standby Pause/Resume and creation of a new child through the exact delivered worker. No Docker, Factory image, fork, terminal or production qualification.'
     if timer_orphan:
         result['scope'] = 'Delivered CLI pause interrupted at the exact owned filesystem-copy boundary after actual timer preparation and process completion. Real controller/worker SIGKILL, exact worker reap, delayed original guard decision, pending SIGUSR1 and source held frozen/untraced without handler progress. Unresolved pause evidence retained until exact outer teardown. No automatic repair or production qualification.'
     if timer_guard_loss:
@@ -225,6 +260,20 @@ def main():
     deadline = started + 420
     print(json.dumps({'running': str(artifact)}), flush=True)
     try:
+        if args.exec_trace_inputs:
+            result['exec_trace'] = freeze_exec_trace(args.exec_trace_inputs, worker, artifact)
+        if standby_exec:
+            _, consumer = factory_consumer_native.load_consumer(args.nested_exec_consumer, worker['platform'])
+            input_name = name + '-input'
+            try:
+                reference.docker(['create', '--pull=never', '--name', input_name,
+                                  '--label', 'com.factorybox.run=' + owner, '--network=none',
+                                  '--entrypoint', '/bin/true', consumer['image']])
+                reference.docker(['cp', input_name + ':/usr/local/bin/runc', str(artifact / 'nested-runc')])
+                result['nested_exec_input'] = {'consumer_build': args.nested_exec_consumer,
+                    'image': consumer['image'], 'runc_sha256': reference.sha(artifact / 'nested-runc')}
+            finally:
+                reference.owned_delete('container', input_name, owner)
         binary = artifact / 'probe.test'
         with (artifact / 'build.log').open('x') as log:
             subprocess.run(['go', 'test', '-c', '-mod=readonly', '-trimpath', '-buildvcs=false', *compile_options,
@@ -285,6 +334,14 @@ def main():
             command += ['--env', 'FACTORYBOX_NATIVE_RECORD_METADATA=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeRecordMetadataResumeAdmission$']
         if stopped_memory:
             command += ['--env', 'FACTORYBOX_NATIVE_STOPPED_MEMORY=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeStoppedMemoryAccounting$']
+        if standby_cgroup:
+            command += ['--env', 'FACTORYBOX_NATIVE_STANDBY_CGROUP=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeStandbyCgroup$']
+        if standby_exec:
+            command += ['--env', 'FACTORYBOX_NATIVE_STANDBY_EXEC=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeStandbyExec$|^TestCaptureStopThreadGroup$',
+                        '--mount', f'type=bind,source={artifact / "nested-runc"},target=/nested-runc,readonly']
+            if args.exec_trace_inputs:
+                command += ['--env', 'FACTORYBOX_STANDBY_EXEC_TRACE=1',
+                            '--mount', f'type=bind,source={artifact / "exec-trace"},target=/exec-trace,readonly']
         if worker_metadata:
             command += ['--env', 'FACTORYBOX_NATIVE_WORKER_METADATA=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeWorkerMetadataBaseAdmission$']
             if args.worker_metadata_minimal:
@@ -310,8 +367,8 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        prefix = 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory or standby_cgroup or standby_exec else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -355,6 +412,21 @@ def main():
             if any(proof.get(key) is not True for key in ['passed', 'read_only_request', 'null_remainder',
                                                         'syscall_registers_preserved', 'source_and_fork_original_deadline']):
                 raise ValueError('natural source/fork timer completion proof incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif standby_exec:
+            proof_path = output / 'standby-exec.json'
+            proof = json.loads(proof_path.read_text())
+            if (proof.get('passed') is not True or
+                    'nested-exec-ready' not in proof.get('before', '') or
+                    proof.get('after') != 'nested-exec-ready\n'):
+                raise ValueError('resumed standby has no complete nested exec proof')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif standby_cgroup:
+            proof_path = output / 'standby-cgroup.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in
+                   ['passed', 'new_parent_after_resume', 'existing_empty_parent']):
+                raise ValueError('resumed standby has no complete new-child cgroup proof')
             result['proof_sha256'] = reference.sha(proof_path)
         elif stopped_memory:
             proof_path = output / 'stopped-memory.json'
@@ -562,6 +634,11 @@ def main():
             result['inputs_unchanged'] = (upstream_unit.context_manifest(source) == manifest and
                                           reference.sha(artifact / 'runner.py') == result['runner_sha256'] and
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])
+            if standby_exec and result.get('nested_exec_input'):
+                result['inputs_unchanged'] = (result['inputs_unchanged'] and
+                    reference.sha(artifact / 'nested-runc') == result['nested_exec_input']['runc_sha256'])
+            if result.get('exec_trace'):
+                consumer_stop_trace.validate_root(artifact / 'exec-trace', result['exec_trace']['files'])
             if args.timer_probe:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(artifact / 'timer-probe.py') == result['timer_probe_sha256']
             if worker_metadata:

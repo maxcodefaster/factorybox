@@ -161,7 +161,16 @@ def load(name):
             raise ValueError("worker SHM source patch differs from its frozen recipe")
     components = json.loads((bundle / "components.json").read_text())
     package = artifact / f'factorybox-worker-linux-{architecture}.tar'
-    if 'package_encoding' in result:
+    if result.get('image_only') is True:
+        import worker_bundle_transport
+        if ('package_encoding' in result or type(result.get('package_bytes')) is not int or
+                result['package_bytes'] <= 0 or package.exists()):
+            raise ValueError('image-only transport declaration differs')
+        raw = worker_bundle_transport.transport(bundle)
+        if raw != {'bytes': result['package_bytes'], 'sha256': result['package_sha256']}:
+            raise ValueError('image-only transport differs from its frozen runnable bundle')
+        package_sha256 = raw['sha256']
+    elif 'package_encoding' in result:
         if type(result.get('package_bytes')) is not int or result['package_bytes'] <= 0:
             raise ValueError('encoded worker package has no exact raw byte bound')
         if not (artifact / result['package_encoding']['file']).exists() and package.with_name(package.name+'.bundle-retention.json').is_file():
@@ -205,7 +214,9 @@ def main():
     parser.add_argument("--criu-base-lock", type=Path, help="Exact immutable selected-base lock for the retained CRIU build; current CRIU component must match in full")
     parser.add_argument("--compare", help="Require an identical package and image from a separate no-cache build")
     parser.add_argument("--discard-compiler-scratch", action="store_true", help="After a successful verified build, retain its generated compiler-cache inventory and remove only that new build's optional scratch cache")
-    parser.add_argument('--compress-package', action='store_true', help='Publish this new package as a completely verified lossless .tar.zst; completed builds stay unchanged')
+    transport_options = parser.add_mutually_exclusive_group()
+    transport_options.add_argument('--compress-package', action='store_true', help='Publish this new package as a completely verified lossless .tar.zst; completed builds stay unchanged')
+    transport_options.add_argument('--image-only', action='store_true', help='Build only the local image and frozen runnable bundle; verify the exact distribution transport hash without storing a redundant archive')
     parser.add_argument('--component-input-worker', help='Share byte-identical pinned components from one verified completed worker without changing the build recipe')
     parser.add_argument('--native-candidate', action='store_true',
                         help='Build an explicitly unqualified test worker pinned to the actual matching Docker host kernel; never enable ordinary platform admission')
@@ -353,21 +364,16 @@ def main():
         reference_lifecycle.write_json(bundle / "build.json", recipe)
         result["bundle_sha256"] = {str(p.relative_to(bundle)): reference.sha(p) for p in sorted(bundle.rglob("*")) if p.is_file()}
         package = artifact / f"factorybox-worker-linux-{architecture}.tar"
-        with tarfile.open(package, "w", format=tarfile.USTAR_FORMAT) as transport:
-            for path in sorted(bundle.rglob("*")):
-                relative = str(path.relative_to(bundle))
-                info = tarfile.TarInfo(relative)
-                info.mode, info.mtime = (0o700 if path.is_dir() else 0o600), 0
-                if path.is_dir():
-                    info.type = tarfile.DIRTYPE
-                    transport.addfile(info)
-                else:
-                    info.size = path.stat().st_size
-                    if relative == "factorybox" or relative.startswith("components/"):
-                        info.mode = 0o755
-                    with path.open("rb") as stream:
-                        transport.addfile(info, stream)
-        result["package_sha256"] = reference.sha(package)
+        import worker_bundle_transport
+        if options.image_only:
+            raw = worker_bundle_transport.transport(bundle)
+            result.update(image_only=True, package_bytes=raw['bytes'], package_sha256=raw['sha256'])
+        else:
+            with package.open("xb") as output:
+                raw = worker_bundle_transport.transport(bundle, output)
+            result["package_sha256"] = raw["sha256"]
+            if reference.sha(package) != raw["sha256"]:
+                raise ValueError('written worker transport differs from its complete stream')
         if options.compress_package:
             result['package_bytes'] = package.stat().st_size
             encoding = reference.artifact_storage.compact(package, reference.ROOT,
@@ -406,7 +412,7 @@ def main():
             cache = artifact / "go-cache"
             cache_manifest = upstream_unit.context_manifest(cache)
             reference_lifecycle.write_json(artifact / "compiler-scratch.json", {
-                "schema": 1, "scope": "Only this successful build's optional generated compiler scratch. Source, runnable bundle, package bytes and image remain available; a declared encoded transport has its full reconstruction receipt.",
+                "schema": 1, "scope": "Only this successful build's optional generated compiler scratch. Source, runnable bundle, exact reconstructable transport and image remain available; a declared encoded transport has its full reconstruction receipt.",
                 "cache_manifest": cache_manifest, "reconstruction": "Offline fresh compilation from preserved frozen sources with the exact pinned toolchain.",
                 "package_sha256": result["package_sha256"], "image_id": result["image_id"]})
             if upstream_unit.context_manifest(cache) != cache_manifest:

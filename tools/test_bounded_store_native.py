@@ -1,13 +1,45 @@
 import hashlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import bounded_store_native
 import build_worker
 
 
 class BoundedWorkerPlatformTests(unittest.TestCase):
+    def test_exec_trace_requires_the_exact_worker_base_and_unchanged_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            name = "factorybox-exec-trace-inputs-" + "a" * 32
+            source = root / "artifacts" / name
+            binary = source / "rootfs/usr/bin/strace"
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b"frozen diagnostic executable")
+            binary.chmod(0o755)
+            worker = {"platform": "linux/arm64", "native_base_build": "exact-base",
+                      "base_packages_sha256": "exact-packages", "native_base_image": "exact-image"}
+            receipt = {key: worker[key] for key in
+                       ["platform", "native_base_build", "base_packages_sha256"]}
+            receipt.update({"passed": True, "cleanup": True, "image": "exact-image",
+                "files": {"usr/bin/strace": {"sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+                                            "mode": 0o755}}})
+            (source / "result.json").write_text(json.dumps(receipt))
+            target = root / "run"
+            target.mkdir()
+            with patch.object(bounded_store_native.reference, "ROOT", root):
+                for key in worker:
+                    with self.subTest(changed=key), self.assertRaisesRegex(ValueError, "exact worker base"):
+                        bounded_store_native.freeze_exec_trace(name, {**worker, key: "changed"}, target)
+                frozen = bounded_store_native.freeze_exec_trace(name, worker, target)
+                self.assertEqual(frozen["files"], receipt["files"])
+                self.assertEqual((target / "exec-trace/usr/bin/strace").read_bytes(), binary.read_bytes())
+                binary.write_bytes(b"changed")
+                with self.assertRaisesRegex(ValueError, "diagnostic file identity differs"):
+                    bounded_store_native.freeze_exec_trace(name, worker, target)
+
     def test_detach_fixture_uses_the_exact_image_runtime_without_host_ownership(self):
         with tempfile.TemporaryDirectory() as directory:
             worker = Path(directory).resolve()

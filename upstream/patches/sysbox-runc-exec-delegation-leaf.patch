@@ -1,0 +1,43 @@
+diff --git a/libcontainer/cgroups/fs2/fs2.go b/libcontainer/cgroups/fs2/fs2.go
+--- a/libcontainer/cgroups/fs2/fs2.go
++++ b/libcontainer/cgroups/fs2/fs2.go
+@@ -364,7 +364,11 @@ func (m *manager) ApplyChildCgroup(pid int) error {
+ }
+ 
+ func (m *manager) GetChildCgroupPaths() map[string]string {
+-	return m.GetPaths()
++	// Exec must use the same delegated leaf as the original init. Joining
++	// the root works while its controllers are disabled, but then prevents
++	// Docker or systemd from enabling domain controllers for new children.
++	// Do not depend on EnterPid's EBUSY fallback to find this leaf.
++	return map[string]string{"": filepath.Join(m.dirPath, "init.scope")}
+ }
+ 
+ func (m *manager) GetType() cgroups.CgroupType {
+diff --git a/libcontainer/cgroups/fs2/factorybox_exec_leaf_test.go b/libcontainer/cgroups/fs2/factorybox_exec_leaf_test.go
+new file mode 100644
+--- /dev/null
++++ b/libcontainer/cgroups/fs2/factorybox_exec_leaf_test.go
+@@ -0,0 +1,22 @@
++//go:build linux
++
++package fs2
++
++import "testing"
++
++func TestFactoryboxExecUsesDelegatedInitLeaf(t *testing.T) {
++	for _, root := range []string{"/sys/fs/cgroup/fbx-owned", "/owned/nested/sandbox"} {
++		manager := &manager{dirPath: root}
++		paths := manager.GetChildCgroupPaths()
++		if len(paths) != 1 || paths[""] != root+"/init.scope" {
++			t.Fatalf("exec must not populate the delegation root: %#v", paths)
++		}
++		if manager.GetPaths()[""] != root {
++			t.Fatal("exec changed the resource manager's original root")
++		}
++		paths[""] = "/foreign"
++		if manager.GetChildCgroupPaths()[""] != root+"/init.scope" {
++			t.Fatal("returned paths alias mutable manager state")
++		}
++	}
++}

@@ -13,6 +13,7 @@ import reference
 import sources
 import upstream_unit
 import artifact_storage
+import worker_bundle_transport
 
 
 def elf(architecture, payload=b""):
@@ -87,6 +88,21 @@ class WorkerBuildInputs(unittest.TestCase):
         self.docker.return_value = json.dumps([image])
         with self.assertRaisesRegex(ValueError, "image identity"):
             build_worker.load(self.name)
+
+    def test_image_only_still_verifies_every_transport_byte_from_the_frozen_bundle(self):
+        result_path = self.artifact / "result.json"
+        result = json.loads(result_path.read_text())
+        raw = worker_bundle_transport.transport(self.bundle)
+        (self.artifact / "factorybox-worker-linux-amd64.tar").unlink()
+        result.update(image_only=True, package_bytes=raw["bytes"], package_sha256=raw["sha256"])
+        result_path.write_text(json.dumps(result))
+        self.assertEqual(build_worker.load(self.name)[0], self.artifact)
+        for changed in [{"package_bytes": raw["bytes"] + 1},
+                        {"package_sha256": "0" * 64}, {"package_encoding": {}}]:
+            with self.subTest(changed=changed):
+                result_path.write_text(json.dumps({**result, **changed}))
+                with self.assertRaisesRegex(ValueError, "image-only transport"):
+                    build_worker.load(self.name)
 
     def test_native_candidate_requires_matching_native_host_and_exact_kernel(self):
         for platform, architecture in [("linux/arm64", "aarch64"), ("linux/amd64", "x86_64")]:

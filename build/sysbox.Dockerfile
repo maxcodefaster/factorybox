@@ -37,6 +37,7 @@ RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/ro
     --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \
     go test -mod=readonly ./libsysbox/syscont \
       -run '^(TestCfgSeccomp|TestExperimentSeccompBlacklist)' -count=1 \
+    && go test -mod=readonly ./libcontainer/cgroups/fs2 -count=1 \
     && go test -mod=readonly -tags 'seccomp apparmor idmapped_mnt netgo osusergo' . \
       -run '^(TestExperiment(CopyPipeline|Lineage)|TestFactorybox(FsSnapshotScope|Restore|Resume))' -count=1 \
     && go test -mod=readonly -tags 'seccomp apparmor idmapped_mnt netgo osusergo' ./libcontainer \
