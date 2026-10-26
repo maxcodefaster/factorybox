@@ -84,7 +84,7 @@ The first release candidate targets one admitted **Linux AMD64** kernel and
 local-storage profile. Native acceptance covers lifecycle, upstream regression
 suites, planned and abrupt worker replacement, and the actual Factory consumer.
 ARM64 builds and portable CI are available; full ARM64 release qualification is
-[still open](https://github.com/maxcodefaster/factorybox/issues/1).
+[still open](https://github.com/maxcodefaster/factorybox/issues/5).
 
 Broader Kubernetes/provider qualification, cross-node migration and the 24-hour
 endurance run remain open. Measurements document their exact tested packages,

@@ -63,7 +63,8 @@ proc node, weaken the assertion or publish this profile as production-qualified.
 The release workflow retains that required gate.
 
 The [native revalidation task](https://github.com/maxcodefaster/factorybox/issues/1)
-records the AMD64 build-machine commands and the separate open ARM64 host check.
+records the completed AMD64 revalidation and its exact receipts. The remaining
+[ARM64 host check](https://github.com/maxcodefaster/factorybox/issues/5) stays open.
 Local images and `artifacts/` are not transferred by Git; rebuild exact native
 inputs on that machine and select its Docker context explicitly. A successful
 AMD64 rerun does not qualify ARM64 or authorize publication.
