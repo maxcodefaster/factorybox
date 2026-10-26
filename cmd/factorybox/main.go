@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"factorybox/internal/platform"
+	"factorybox/internal/version"
 )
 
 func main() {
@@ -17,7 +18,7 @@ func main() {
 		return
 	}
 	if os.Args[1] == "version" {
-		fmt.Println("factorybox v0.1.0")
+		fmt.Println("factorybox v" + version.String())
 		return
 	}
 	info, err := platform.Current()

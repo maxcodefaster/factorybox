@@ -79,7 +79,8 @@ def build_fixture(archive, name, base, *, platform="linux/arm64", network="defau
         "--metadata-file", str(archive / "builder.json"), str(archive / "context"),
     ]
     with (archive / "build.log").open("x") as log:
-        subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=300)
+        # Cold pinned package acquisition is preparation, not a lifecycle run.
+        subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=900)
     metadata = json.loads((archive / "builder.json").read_text())
     return name + "@" + metadata["containerimage.digest"]
 
