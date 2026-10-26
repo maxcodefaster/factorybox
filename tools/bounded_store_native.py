@@ -56,8 +56,7 @@ def detach_fixture_arguments(worker_path, worker):
     expected = worker["bundle_sha256"]["components/sysbox-runc"]
     if runtime.resolve() != runtime or reference.sha(runtime) != expected:
         raise ValueError("detach fixture differs from the exact delivered Sysbox runtime")
-    return ["--env", "FACTORYBOX_RUNTIME_SHA256=" + expected,
-            "--mount", f"type=bind,source={runtime},target=/out/sysbox-runc,readonly"]
+    return ["--env", "FACTORYBOX_RUNTIME_SHA256=" + expected]
 
 
 def main():
