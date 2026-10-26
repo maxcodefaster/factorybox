@@ -81,9 +81,20 @@ def verify_builder(options, docker):
     inspect = matches[0]
     context = docker[docker.index('--context') + 1]
     if (inspect['Driver'] != 'docker-container' or len(inspect['Nodes']) != 1 or
-            inspect['Nodes'][0]['Name'] != options.builder + '0' or
-            inspect['Nodes'][0]['Endpoint'] != context):
+            inspect['Nodes'][0]['Name'] != options.builder + '0'):
         raise ValueError('bounded build requires one explicit docker-container builder')
+    endpoint = inspect['Nodes'][0]['Endpoint']
+    if endpoint != context:
+        # Buildx normalizes the default context to its Docker endpoint URI.
+        # Resolve that exact context, rather than accepting an arbitrary URI
+        # or relaxing the single-daemon ownership check.
+        if not endpoint.startswith(('unix://', 'tcp://', 'ssh://', 'npipe://')):
+            raise ValueError('bounded build requires one explicit docker-container builder')
+        actual = json.loads(subprocess.check_output(
+            [*docker, 'context', 'inspect', context, '--format', '{{json .Endpoints.docker.Host}}'],
+            text=True, timeout=30))
+        if not isinstance(actual, str) or endpoint != actual:
+            raise ValueError('bounded build requires one explicit docker-container builder')
     container = json.loads(subprocess.check_output(
         [*docker, 'inspect', 'buildx_buildkit_' + options.builder + '0'], text=True, timeout=30))[0]
     config = container['HostConfig']
