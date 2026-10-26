@@ -88,7 +88,7 @@ def main():
     parser.add_argument('--native-candidate', action='store_true',
                         help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'resume-retirement', 'backing-retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
     parser.add_argument('--nested-exec-consumer', help='Exact existing consumer image supplying nested runc for the standby-exec control')
     parser.add_argument('--exec-trace-inputs', help='Optional exact owned diagnostic strace acquisition; standby-exec only')
     parser.add_argument('--peer-source', action='store_true',
@@ -129,6 +129,8 @@ def main():
     standby_exec = args.suite == 'standby-exec'
     standby_repeat = args.suite == 'standby-repeat'
     standby_peers = args.suite == 'standby-peers'
+    resume_retirement = args.suite == 'resume-retirement'
+    backing_retirement = args.suite == 'backing-retirement'
     if (args.peer_source or args.peer_network or args.peer_common_base or args.peer_release or args.peer_docker) and not standby_peers:
         parser.error('peer source/network/base/release controls require standby-peers')
     if args.peer_docker and not args.nested_exec_consumer:
@@ -153,7 +155,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
+    retirement = args.suite.startswith('retirement') or resume_retirement or backing_retirement or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -344,6 +346,13 @@ def main():
                    '--mount', f'type=volume,source={name},target=/var/lib/sysbox']
         if retirement:
             command += ['--env', 'FACTORYBOX_NATIVE_RETIREMENT=1', '--env', 'FACTORYBOX_NATIVE_BOUNDED_LOSS=1']
+        if resume_retirement:
+            command += ['--env', 'FACTORYBOX_NATIVE_RESUME_RETIREMENT=1',
+                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^Test(NativeResumeImageRetirement|ResumeImageRetirement.*)$']
+        if backing_retirement:
+            command += ['--env', 'FACTORYBOX_NATIVE_BACKING_RETIREMENT=1',
+                        '--env', 'FACTORYBOX_NATIVE_IMPORT_MOUNT_INTERRUPTION=1',
+                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^Test(NativeSandboxBackingRetirement|SandboxBackingRetirementAdmission)$']
         if args.suite == 'retirement-base-diagnostic':
             pattern = '^TestNativeCheckpointRetirementImmutableAlias$'
             if args.timer_probe:
@@ -440,12 +449,40 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeStandbyPeers' if standby_peers else 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        prefix = 'TestNativeSandboxBackingRetirement' if backing_retirement else 'TestNativeResumeImageRetirement' if resume_retirement else 'TestNativeStandbyPeers' if standby_peers else 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
         count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
-        if args.suite == 'retirement':
+        if backing_retirement:
+            proof_path = output / 'backing-retirement.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in
+                   ['passed', 'actual_capacity_returned', 'running_protected',
+                    'original_directory_protected', 'foreign_hardlink_preserved', 'foreign_mount_refused',
+                    'partial_unlink_interrupted', 'foreign_partial_entry_preserved', 'exact_partial_continuation',
+                    'exact_completion_replayed', 'foreign_successor_preserved', 'common_base_and_peer_preserved',
+                    'epoch_metadata_accepts_completed_retirement']):
+                raise ValueError('Sandbox backing retirement omitted its capacity or preservation proof')
+            if '--- PASS: TestSandboxBackingRetirementAdmission ' not in log:
+                raise ValueError('Sandbox backing retirement omitted admission regressions')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif resume_retirement:
+            proof_path = output / 'resume-retirement.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in
+                   ['passed', 'actual_capacity_returned', 'exact_completion_replayed',
+                    'active_resume_protected', 'new_pause_resumed', 'peer_preserved',
+                    'foreign_hardlink_preserved', 'foreign_successor_preserved',
+                    'partial_unlink_interrupted', 'foreign_partial_entry_preserved',
+                    'exact_partial_continuation', 'deleted_final_resume_retired']):
+                raise ValueError('Resume-image retirement omitted its capacity or preservation proof')
+            if any(marker not in log for marker in [
+                    '--- PASS: TestResumeImageRetirementEligibility ',
+                    '--- PASS: TestResumeImageRetirementRefusesActiveUncertainAndChangedOwnership ']):
+                raise ValueError('Resume-image retirement omitted its admission regressions')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif args.suite == 'retirement':
             if '--- PASS: TestNativeCheckpointRetirementWorkerExitGuard ' not in log:
                 raise ValueError('native retirement omitted the completed internal guard and all refusal cases')
             if '--- PASS: TestNativeCheckpointRetirementWorkerExitRecoveryFence ' not in log:

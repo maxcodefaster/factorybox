@@ -31,6 +31,7 @@ type retirementReserve struct {
 
 type checkpointRetirementIntent struct {
 	Version         int                            `json:"version"`
+	PayloadKind     string                         `json:"payload_kind,omitempty"`
 	Request         CheckpointRequest              `json:"request"`
 	Directory       KernelObject                   `json:"directory"`
 	InventorySHA256 string                         `json:"inventory_sha256"`
@@ -43,6 +44,7 @@ type checkpointRetirementIntent struct {
 
 type CheckpointRetirement struct {
 	Version      int               `json:"version"`
+	PayloadKind  string            `json:"payload_kind,omitempty"`
 	Request      CheckpointRequest `json:"request"`
 	IntentSHA256 string            `json:"intent_sha256"`
 	CompletedAt  string            `json:"completed_at"`
@@ -303,7 +305,7 @@ func (e *Engine) RetireCheckpoint(ctx context.Context, request CheckpointRequest
 	} else if err != nil {
 		return result, err
 	}
-	if intent.Version != 1 || intent.Request != request || intent.Directory != directory || !digest.MatchString(intent.InventorySHA256) || intent.StartedAt == "" {
+	if intent.Version != 1 || intent.PayloadKind != "" || intent.Request != request || intent.Directory != directory || !digest.MatchString(intent.InventorySHA256) || intent.StartedAt == "" {
 		return result, fmt.Errorf("retirement intent differs from its exact request or generation")
 	}
 	identity, err := json.Marshal(intent)
@@ -312,7 +314,7 @@ func (e *Engine) RetireCheckpoint(ctx context.Context, request CheckpointRequest
 	}
 	intentHash := sum(identity)
 	if err := e.readCheckpointJSON(relative+"/retirement-complete.json", &result); err == nil {
-		if result.Version != 1 || result.Request != request || result.IntentSHA256 != intentHash || result.CompletedAt == "" || !reflect.DeepEqual(result.Before, intent.Before) {
+		if result.Version != 1 || result.PayloadKind != "" || result.Request != request || result.IntentSHA256 != intentHash || result.CompletedAt == "" || !reflect.DeepEqual(result.Before, intent.Before) {
 			return result, fmt.Errorf("retirement completion differs from its original intent")
 		}
 		return result, e.retirementAbsent(intent)

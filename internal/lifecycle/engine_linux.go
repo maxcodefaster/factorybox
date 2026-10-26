@@ -66,6 +66,7 @@ type Record struct {
 	Phase          string                        `json:"phase"`
 	InputBundle    string                        `json:"input_bundle"`
 	InputSHA256    string                        `json:"input_sha256"`
+	InputDirectory *KernelObject                 `json:"input_directory,omitempty"`
 	ConfigSHA256   string                        `json:"config_sha256"`
 	Rootfs         string                        `json:"rootfs"`
 	RootfsDevice   uint64                        `json:"rootfs_device"`
@@ -586,9 +587,13 @@ func (e *Engine) prepareRecordContext(ctx context.Context, id, bundle, object st
 	if err != nil {
 		return record, err
 	}
+	inputDirectory, err := directoryIdentity(bundle)
+	if err != nil {
+		return record, err
+	}
 	record = Record{Version: 1, ID: id, Owner: owner, RuntimeID: "fbx-" + owner,
 		RuntimeSHA256: e.config.RuntimeSHA256, BootID: e.boot, Phase: "starting",
-		InputBundle: bundle, InputSHA256: sum(input), ConfigSHA256: sum(config),
+		InputBundle: bundle, InputSHA256: sum(input), InputDirectory: &inputDirectory, ConfigSHA256: sum(config),
 		Rootfs: root.Path, RootfsDevice: uint64(stat.Dev), RootfsInode: stat.Ino, RootfsMountID: rootIdentity.MountID,
 		CgroupParent: parent,
 		Start:        Operation{RequestedAt: now()}, Fork: origin, Base: base, SharedSource: shared, Network: network}
