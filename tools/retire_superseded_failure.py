@@ -19,6 +19,7 @@ import upstream_unit
 
 
 FACTORY_CAPABILITY_ERROR = "shared source requires live worker descriptor retention and its verified CRIU feature"
+STANDBY_EXEC_ERROR = "Resumed standby cannot exec a new private Docker container"
 
 
 def verify_factory_consumer_replacement(old, new, old_worker, new_worker):
@@ -57,6 +58,65 @@ def verify_factory_consumer_replacement(old, new, old_worker, new_worker):
         raise ValueError("Factory consumer replacement lacks complete live RAM, Source, Docker and released-memory proof")
 
 
+def verify_standby_exec_replacement(old, new, old_worker, new_worker, native, proof):
+    """Supersede only the resolved exec failure, never the later capture failure."""
+    identical = ["platform", "native_candidate", "consumer_build", "consumer_image",
+                 "hub_image", "hub_bun", "source_sha256", "hub_sha256",
+                 "registry_binary_sha256", "registry_source_sha256"]
+    required = ["cleanup", "inputs_unchanged", "host_sysctls_unchanged"]
+    failed_exec = old.get("standby_docker_exec", {})
+    if (old.get("passed") is not False or old.get("error") != STANDBY_EXEC_ERROR or
+            any(row.get("reserve") is not True or row.get("terminal_proof") is not False
+                for row in [old, new]) or
+            any(row.get(key) is not True for row in [old, new] for key in required) or
+            any(key not in old or old[key] != new.get(key) for key in identical) or
+            failed_exec.get("exit") != 128 or
+            "error copying bootstrap data to pipe: write init-p: broken pipe" not in failed_exec.get("stdout", "") or
+            new.get("diagnostic_only") is not False or
+            new.get("standby_docker_exec_passed") is not True or
+            new.get("standby_docker_exec", {}).get("exit") != 0 or
+            new.get("standby_docker_exec", {}).get("stdout") != "factorybox-standby-exec" or
+            new.get("hub_before", {}).get("connected") is not True or
+            not new.get("before", {}).get("nonce") or not new.get("before", {}).get("pid")):
+        raise ValueError("standby exec supersession lacks the same real resolved Factory failure")
+    if new.get("passed") is not True:
+        error = new.get("error", "")
+        if (new.get("passed") is not False or new.get("pause_attempted") is not True or
+                "/ns/net on procfs: Permission denied" not in error or
+                "One or more namespaces doesn't belong to the target user namespace" not in error):
+            raise ValueError("standby exec supersession cannot discard another unresolved failure")
+    paused = new.get("standby_pause", {}).get("record", {})
+    resumed = new.get("standby_resume", {}).get("record", {})
+    started = new.get("start", {}).get("record", {})
+    memory = paused.get("pause", {})
+    if (paused.get("phase") != "paused" or resumed.get("phase") != "running" or
+            any(not started.get(key) or paused.get(key) != started[key] or resumed.get(key) != started[key]
+                for key in ["id", "runtime_id"]) or
+            not memory.get("completed_at") or memory.get("after", {}).get("anon") != 0 or
+            memory.get("snapshot", {}).get("resident_bytes_after") != 0 or
+            any(not memory.get(key) or memory[key] != resumed.get("pause", {}).get(key)
+                for key in ["snapshot_id", "checkpoint_sha256"])):
+        raise ValueError("standby exec replacement lacks its exact RAM-releasing Pause/Resume")
+    core = lambda row: {key: value for key, value in row["source_context"].items()
+                        if not key.endswith("_test.go")}
+    before, after = core(old_worker), core(new_worker)
+    changed = {key for key in before.keys() | after.keys() if before.get(key) != after.get(key)}
+    if (changed != {"internal/lifecycle/capture_worker_linux.go", "internal/lifecycle/capture_stop_linux.go"} or
+            any(old_worker.get(key) != new_worker.get(key) for key in ["platform", "native_candidate"]) or
+            any(old_worker["bundle_sha256"][key] != new_worker["bundle_sha256"][key] for key in
+                ["components/criu", "components/sysbox-runc", "components/sysbox-fs", "components/sysbox-mgr"])):
+        raise ValueError("standby exec replacement is not the isolated frozen-source stop correction")
+    if (any(native.get(key) is not True for key in ["passed", "cleanup", "inputs_unchanged"]) or
+            native.get("suite") != "standby-exec" or native.get("worker_build") != new.get("worker_build") or
+            native.get("platform") != new_worker["platform"] or
+            native.get("worker_image_id") != new_worker["image_id"] or
+            native.get("nested_exec_input", {}).get("consumer_build") != new["consumer_build"] or
+            native.get("nested_exec_input", {}).get("image") != new["consumer_image"] or
+            core(native) != after or proof.get("passed") is not True or
+            "nested-exec-ready" not in proof.get("before", "") or proof.get("after") != "nested-exec-ready\n"):
+        raise ValueError("standby exec replacement lacks the matching passing native regression")
+
+
 def sync_json(path, value):
     with path.open("x") as stream:
         json.dump(value, stream, indent=2)
@@ -93,6 +153,8 @@ def main():
     parser.add_argument("--replacement-proof", required=True)
     parser.add_argument("--reason", required=True, help="Concrete supersession and remaining reconstruction limits")
     parser.add_argument("--verify-only",action="store_true",help="Retain and verify diagnostics while keeping the complete source archive")
+    parser.add_argument("--resolved-standby-exec", metavar="NATIVE_RUN",
+                        help="Retire only an exact resolved standby exec failure, backed by a passing native regression and real Factory first work; retain and verify the later complete capture failure")
     args = parser.parse_args()
     pattern = r"factorybox-(?:devx-lifecycle|consumer-worker-loss|checkpoint-retirement|bats|factory-consumer)-[0-9a-f]{32}"
     if not all(re.fullmatch(pattern, name) for name in [args.source_run, args.replacement_proof]):
@@ -102,23 +164,57 @@ def main():
         raise ValueError("native evidence cannot be redirected through symlinks")
     source_result, replacement = (json.loads((path/"result.json").read_text()) for path in [run,proof])
     factory = any(name.startswith('factorybox-factory-consumer-') for name in [args.source_run, args.replacement_proof])
+    replacement_scope = None
+    if args.resolved_standby_exec and not factory:
+        raise ValueError("scoped standby exec supersession requires Factory consumer runs")
     if factory:
         if not all(name.startswith('factorybox-factory-consumer-') for name in [args.source_run, args.replacement_proof]):
             raise ValueError('Factory consumer failure requires a complete actual Factory consumer replacement')
         import build_worker
-        import build_criu_shared_fds
-        import criu_candidate
         old_worker, new_worker = [build_worker.load(row['worker_build'])[1] for row in [source_result, replacement]]
-        verify_factory_consumer_replacement(source_result, replacement, old_worker, new_worker)
-        old_criu, new_criu = [criu_candidate.load(row['criu_build'])[1] for row in [old_worker, new_worker]]
-        if (new_criu.get('base_candidate') != old_worker['criu_build'] or
-                'shared-fds.patch' in old_criu.get('candidate_patch_sha256', {}) or
-                new_criu.get('candidate_patch_sha256') != {
-                    **old_criu['candidate_patch_sha256'],
-                    'shared-fds.patch': reference.sha(build_criu_shared_fds.PATCH)} or
-                any(new_criu.get('features', {}).get(key) is not True for key in
-                    ['shared_file_descriptions', 'shared_source_directories'])):
-            raise ValueError('Factory consumer supersession requires only the exact existing shared-description delta')
+        if args.resolved_standby_exec:
+            if not re.fullmatch(r"factorybox-checkpoint-retirement-[0-9a-f]{32}", args.resolved_standby_exec):
+                raise ValueError("requires an exact native standby exec regression")
+            native_run = reference.ROOT / "artifacts" / args.resolved_standby_exec
+            native_path, native_proof = native_run / "result.json", native_run / "output/standby-exec.json"
+            if any(path.resolve() != path for path in [native_path, native_proof]):
+                raise ValueError("native standby exec proof cannot be redirected")
+            native = json.loads(native_path.read_text())
+            if reference.sha(native_proof) != native.get("proof_sha256"):
+                raise ValueError("native standby exec proof changed")
+            verify_standby_exec_replacement(source_result, replacement, old_worker, new_worker,
+                                           native, json.loads(native_proof.read_text()))
+            retained = None
+            if replacement.get("passed") is False:
+                archive = proof / "failed-volume-0.tar"
+                encoding_path = proof / "failed-volume-0.tar.encoding.json"
+                if encoding_path.resolve() != encoding_path:
+                    raise ValueError("current unresolved capture archive cannot be redirected")
+                encoding = json.loads(encoding_path.read_text())
+                if replacement.get("failed_volume_archives", {}).get(proof.name) != encoding["original"]:
+                    raise ValueError("current unresolved capture lacks its complete exact archive")
+                reference.artifact_storage.verify_compacted(archive, encoding["original"])
+                retained = {"run": proof.name, "archive": str(archive),
+                            "encoding_receipt_sha256": reference.sha(encoding_path),
+                            "whole_original_decode_verified": True}
+            replacement_scope = {"passed": True, "scope": "resolved standby exec only, not full consumer acceptance",
+                                 "whole_consumer_passed": replacement["passed"],
+                                 "native_result_sha256": reference.sha(native_path),
+                                 "native_proof_sha256": reference.sha(native_proof),
+                                 "unresolved_capture_preserved": retained}
+        else:
+            import build_criu_shared_fds
+            import criu_candidate
+            verify_factory_consumer_replacement(source_result, replacement, old_worker, new_worker)
+            old_criu, new_criu = [criu_candidate.load(row['criu_build'])[1] for row in [old_worker, new_worker]]
+            if (new_criu.get('base_candidate') != old_worker['criu_build'] or
+                    'shared-fds.patch' in old_criu.get('candidate_patch_sha256', {}) or
+                    new_criu.get('candidate_patch_sha256') != {
+                        **old_criu['candidate_patch_sha256'],
+                        'shared-fds.patch': reference.sha(build_criu_shared_fds.PATCH)} or
+                    any(new_criu.get('features', {}).get(key) is not True for key in
+                        ['shared_file_descriptions', 'shared_source_directories'])):
+                raise ValueError('Factory consumer supersession requires only the exact existing shared-description delta')
         for path, record in [(run, source_result), (proof, replacement)]:
             if (any(reference.sha(path/'factory'/name) != digest for name, digest in record['source_sha256'].items()) or
                     reference.sha(path/'hub.js') != record['hub_sha256'] or
@@ -152,7 +248,9 @@ def main():
             raise ValueError('corrected metadata fixture proof is incomplete or changed')
     if any(path.is_symlink() for path in [run/"result.json",proof/"result.json",run/"failed-volume-0.tar.encoding.json"]):
         raise ValueError("native evidence receipts must not be symlinks")
-    if source_result.get("passed") is not False or source_result.get("cleanup") is not True or replacement.get("passed") is not True or replacement.get("cleanup") is not True:
+    if (source_result.get("passed") is not False or source_result.get("cleanup") is not True or
+            replacement.get("cleanup") is not True or
+            replacement.get("passed") is not True and replacement_scope is None):
         raise ValueError("requires a closed failure and a complete passing replacement proof")
     old = run/"failed-volume-0.tar.zst"
     pointer = old.with_name(old.name+".retired.json")
@@ -187,6 +285,8 @@ def main():
             "source_encoded_sha256":encoded["sha256"],"original":original,"reason":args.reason,
             "source_encoding_receipt_sha256":reference.sha(run/"failed-volume-0.tar.encoding.json"),
             "complete_archive_reconstructable_after_retirement":False,"passed":False,"retired":False}
+    if replacement_scope is not None:
+        result["replacement_scope"] = replacement_scope
     reference_lifecycle.write_json(artifact/"result.json",result)
     print(json.dumps({"retiring":str(artifact)}),flush=True)
     class Hashed:
