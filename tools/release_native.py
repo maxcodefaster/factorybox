@@ -15,6 +15,7 @@ import build_worker
 import native_base
 import reference
 import reference_lifecycle
+import upstream_bats
 
 
 RUNTIME_SUITES = [
@@ -31,9 +32,11 @@ def native_commands(options, worker, bats_images):
     bounded = ["--builder", options.builder, "--bounded-build", "--network", "host"]
     base = ["--native-base-build", worker["native_base_build"]]
     sysbox = ["--sysbox-build", worker["sysbox_build"]]
+    criu_base = (["--criu-base-lock", str(reference.ROOT / "artifacts" / options.worker_build / "criu-base-source-lock.json")]
+                 if "criu_base_source_lock_sha256" in worker else [])
     commands = [
         ("criu-core", [python, "tools/criu_core.py", *base,
-                       "--retained-candidate", worker["criu_build"], *upstream_target]),
+                       "--retained-candidate", worker["criu_build"], *criu_base, *upstream_target]),
         ("sysbox-unit", [python, "tools/upstream_unit.py", *sysbox, "--suite", "all",
                          *upstream_target, *bounded]),
         ("sysbox-integration", [python, "tools/upstream_unit.py", *sysbox,
@@ -113,6 +116,7 @@ def main():
     parser.add_argument("--project-images", required=True)
     parser.add_argument("--factory-repo", type=Path, required=True)
     parser.add_argument("--builder", required=True)
+    parser.add_argument("--bats-images", help="Reuse an exact verified pinned image archive; all native tests still run")
     options = parser.parse_args()
     _, worker = build_worker.load(options.worker_build)
     if worker["platform"] != options.platform or worker.get("native_candidate") is not None:
@@ -175,10 +179,16 @@ def main():
         reference.owned_delete("container", helper, owner)
         attempted = False
         target = ["--candidate-platform", "linux/amd64"] if options.platform == "linux/amd64" else []
-        images = stage("bats-images", [sys.executable, "tools/bats_images.py",
-            "--native-base-build", worker["native_base_build"], *target,
-            "--builder", options.builder, "--bounded-build", "--network", "host",
-            "--acquisition-network", "host"])
+        if options.bats_images:
+            upstream_bats.image_archive(options.bats_images, worker["native_base_build"], platform=options.platform)
+            images = options.bats_images
+            result["reused_bats_images"] = {"build": images,
+                "result_sha256": reference.sha(reference.ROOT / "artifacts" / images / "result.json")}
+        else:
+            images = stage("bats-images", [sys.executable, "tools/bats_images.py",
+                "--native-base-build", worker["native_base_build"], *target,
+                "--builder", options.builder, "--bounded-build", "--network", "host",
+                "--acquisition-network", "host"])
         for role, command in native_commands(options, worker, images):
             stage(role, command)
         if (build_worker.load(options.worker_build)[1] != worker or
