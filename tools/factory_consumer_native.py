@@ -68,6 +68,10 @@ def main():
     parser.add_argument('--factory-repo', type=Path, required=True)
     parser.add_argument('--project-images', required=True)
     parser.add_argument('--reserve', action='store_true')
+    parser.add_argument('--terminal', action='store_true',
+                        help='Require actual idle-PTY state across native Pause/Resume and mapped-user Git on shared Source')
+    parser.add_argument('--git', action='store_true',
+                        help='Require mapped-user Git without adding a terminal to the native restore')
     parser.add_argument('--native-candidate', action='store_true')
     args = parser.parse_args()
     worker_root, worker = build_worker.load(args.worker_build)
@@ -124,6 +128,8 @@ def main():
               'platform':platform,'native_candidate':worker.get('native_candidate'),
               'worker_build':args.worker_build,'consumer_build':args.consumer_build,'consumer_image':consumer['image'],
               'reserve':args.reserve,'reserve_images':[node] if args.reserve else None,
+              'terminal_proof':args.terminal,
+              'git_proof':args.git or args.terminal,
               'fixture_registry_mirror':True,'registry_binary_sha256':reference.sha(mirror),
               'registry_source_sha256':source_hashes,'registry_reused_from':reused_mirror,
               'native_profile_only':True,'kubernetes_qualified':False,'production_qualified':False,
@@ -249,7 +255,7 @@ def main():
             'runArgs':['--cap-drop=ALL','--security-opt=no-new-privileges']}))
         (project/'editor.txt').write_text('before')
         (project/'app.cjs').write_text("const fs=require('fs'),http=require('http'),crypto=require('crypto');const nonce=crypto.randomUUID();let count=0;http.createServer((req,res)=>{fs.writeFileSync('/workspace/project/runtime-write',nonce);res.setHeader('content-type','application/json');res.end(JSON.stringify({nonce,pid:process.pid,count:++count,editor:fs.readFileSync('/workspace/project/editor.txt','utf8')}))}).listen(3000,'0.0.0.0');\n")
-        subprocess.run(['git','init',str(project)],check=True,capture_output=True,timeout=10)
+        subprocess.run(['git','init','--initial-branch=main',str(project)],check=True,capture_output=True,timeout=10)
         for command in [['config','user.name','Native fixture'],['config','user.email','native@factory.invalid'],
                         ['config','factory.repositoryIdentity',owner],['remote','add','origin','file:///factory/native-repo'],
                         ['add','.'],['commit','-m','Owned native consumer fixture']]:
@@ -262,6 +268,8 @@ def main():
             'controlUrl':'ws://192.0.2.2:18181/internal/runtime-connect','connectorStateDir':'/home/coder/connector-state',
             'channels':[{'name':'app','kind':'app','target':'http://127.0.0.1:3000','healthPath':'/'}],
             'processes':[{'name':'app','command':['node','/workspace/project/app.cjs']}]}
+        if args.terminal:
+            assignment['channels'].append({'name':'ide','kind':'ide'})
         inputs = {'assignment.json':json.dumps(assignment),'parent-token':owner+'-parent','child-token':owner+'-child',
                   'slot.json':json.dumps({'version':1,'id':owner,'role':'staging','images':[node],
                     'expiresAt':(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=15)).isoformat()})}
@@ -310,6 +318,14 @@ def main():
         result['first_useful_seconds']=time.monotonic()-started;result['before']=first
         result['memory_running']=memory()
         result['hub_before']=endpoint()
+        if args.terminal:
+            result['terminal_before']=endpoint('/terminal/before','POST')
+            result['idle_prompt']=wait(lambda:endpoint('/idle'),lambda v:v.get('eligible') is False,
+                                      'Factory must block automatic Pause while a PTY remains open',15)
+        if (args.git or args.terminal) and not args.reserve:
+            result['git_before']=endpoint('/git-status')
+            if result['git_before']['head']!=revision or result['git_before']['branch']!='main':
+                raise ValueError('Actual personal Git did not read its mapped canonical Source')
         result['docker_before']=json.loads(run([*runc,'docker','info','--format','{{json .}}']))
         children=json.loads(run([*runc,'docker','ps','--format','json']).splitlines()[0]);result['child_before']=children
         child_id=children['ID']
@@ -335,6 +351,16 @@ def main():
         if not child['State']['Running'] or child['RestartCount']!=0:
             raise ValueError('Dev Container restarted during Pause/Resume')
         result['docker_after']=json.loads(run([*runc,'docker','info','--format','{{json .}}']))
+        if args.terminal:
+            result['terminal_after']=endpoint('/terminal/after','POST')
+            if result['terminal_after']!=result['terminal_before']:
+                raise ValueError('Native Resume replaced the existing terminal shell or its private RAM')
+            result['idle_prompt_after']=wait(lambda:endpoint('/idle'),lambda v:v.get('eligible') is False,
+                                            'The resumed open terminal must still block automatic Pause',15)
+        if (args.git or args.terminal) and not args.reserve:
+            result['git_after']=endpoint('/git-commit','POST')
+            if result['git_after']['head']==revision or result['git_after']['files']:
+                raise ValueError('Actual mapped-user personal Git commit did not retain its exact outcome')
         result['delete']=json.loads(run([*cli,'delete','runtime'],timeout=60));live_pid=None
         result['release']=json.loads(run(['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text(),'release'],body=json.dumps(request),timeout=60))
         run(['stop','--timeout','45',worker_id],timeout=50)

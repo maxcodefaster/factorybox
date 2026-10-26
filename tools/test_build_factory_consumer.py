@@ -28,15 +28,20 @@ class FactoryConsumerBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary).resolve()
             subprocess.run(["git", "init", "-q", str(repo)], check=True)
-            required = [path for path in build.INPUTS if path != "services/runtime-connector"]
+            required = [path for path in build.INPUTS if path not in build.DIRECTORIES]
             required += ["services/runtime-connector/go.mod", "services/runtime-connector/go.sum",
-                         "services/runtime-connector/main.go"]
+                         "services/runtime-connector/main.go",
+                         "deploy/opencode-server/package.json", "deploy/opencode-server/bun.lock",
+                         "deploy/opencode-server/server.mjs", "deploy/opencode-server/retained-events.mjs",
+                         "deploy/opencode-server/install-skills.mjs",
+                         "deploy/opencode-server/config/AGENTS.md", "deploy/opencode-server/config/opencode.json"]
             for name in required:
                 path = repo / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("exact owned input\n")
             (repo / ".gitignore").write_text(".env\n**/.env\n")
             (repo / "services/runtime-connector/.env").write_text("must-not-enter-image")
+            (repo / "deploy/opencode-server/.env").write_text("must-not-enter-image")
             (repo / "unrelated.txt").write_text("not a consumer input")
             selected = build.source_files(repo)
             self.assertEqual(selected, sorted(required))
