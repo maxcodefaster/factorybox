@@ -153,7 +153,8 @@ def main():
     try:
         # The public inventory has no machine-local paths.
         public = {name: {k: v for k, v in row.items() if k != "path"} for name, row in entries.items()}
-        reference_lifecycle.write_json(artifact / "sources.json", {**result, "members": public})
+        inventory = {key: value for key, value in result.items() if key != "passed"}
+        reference_lifecycle.write_json(artifact / "sources.json", {**inventory, "members": public})
         add_entry(entries, "sources.json", artifact / "sources.json")
         reference_lifecycle.write_json(artifact / "inputs.json", entries)
         package = artifact / ("factorybox-" + worker["version"] + "-" + worker["platform"].replace("/", "-") + "-sources.tar")
@@ -162,6 +163,9 @@ def main():
                 [sys.executable, str(artifact / "runner.py"), "--emit", str(artifact / "inputs.json")],
                 package, reference.ROOT, log, maximum=1 << 30, timeout=600, decoded_limit=4 << 30)
         result.update(passed=True, archive_encoding=encoded, source_inventory_sha256=reference.sha(artifact / "sources.json"))
+    except Exception as error:
+        result["error"] = str(error)
+        raise
     finally:
         reference_lifecycle.write_json(artifact / "result.json", result)
         print(json.dumps({"evidence": str(artifact), "passed": result["passed"]}), flush=True)
