@@ -9,7 +9,7 @@ func TestOrdinaryExecutionRequiresReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, info := range []Info{
-		{"linux", "arm64", 4096, ReferenceKernel},
+		{"linux", "arm64", 4096, "unqualified"},
 		{"linux", "amd64", 4096, ReferenceKernel},
 		{"linux", "arm64", 4096, ExecutionKernel},
 		{"darwin", "amd64", 4096, ExecutionKernel},

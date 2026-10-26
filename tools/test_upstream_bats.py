@@ -260,7 +260,7 @@ class BatsEvidenceTests(unittest.TestCase):
 
     def test_image_archive_rejects_changed_payload_and_failed_acquisition(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = pathlib.Path(temporary)
+            root = pathlib.Path(temporary).resolve()
             name = "factorybox-bats-images-" + "a" * 32
             archive = root / "artifacts" / name
             (archive / "output").mkdir(parents=True)
@@ -270,6 +270,9 @@ class BatsEvidenceTests(unittest.TestCase):
             pins.write_text(json.dumps({"images": [{"alias": "original:latest", "image": "original@sha256:" + "b" * 64}]}))
             dockerfile = root / "build/upstream-bats.Dockerfile"
             dockerfile.write_text("FROM pinned\n")
+            (archive / "context").mkdir()
+            (archive / "pins.json").write_bytes(pins.read_bytes())
+            (archive / "context/Dockerfile").write_bytes(dockerfile.read_bytes())
             rows = [{"alias": "original:latest", "image": "original@sha256:" + "b" * 64,
                      "id": "sha256:" + "c" * 64}]
             image_json = archive / "output/images.json"
@@ -292,6 +295,10 @@ class BatsEvidenceTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     upstream_bats.image_archive(name, "exact-base")
                 payload.write_bytes(b"original archive payload")
+                (archive / "pins.json").write_text("changed frozen input")
+                with self.assertRaises(ValueError):
+                    upstream_bats.image_archive(name, "exact-base")
+                (archive / "pins.json").write_bytes(pins.read_bytes())
                 result["passed"] = False
                 receipt.write_text(json.dumps(result))
                 with self.assertRaises(ValueError):

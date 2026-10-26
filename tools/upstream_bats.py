@@ -26,21 +26,56 @@ SUITES = {
 SYSTEMD_SKIPS = {"systemd ubuntu bionic", "systemd archlinux"}
 
 
+def bounded_fixture_recipe(archive, base, record):
+    prefix_path = ROOT / "build/native-base.Dockerfile"
+    prefix = prefix_path.read_bytes()
+    template = (archive / "context/Dockerfile").read_bytes()
+    header = b"ARG NATIVE_BASE_IMAGE\nFROM ${NATIVE_BASE_IMAGE}\n"
+    if (not isinstance(record, dict) or record.get("image") != base or
+            record.get("dockerfile_sha256") != reference.sha(prefix_path) or
+            not re.fullmatch(r"[0-9a-f]{64}", record.get("packages_sha256", "")) or
+            not template.startswith(header) or template.count(header) != 1 or
+            template != (ROOT / "build/upstream-bats.Dockerfile").read_bytes()):
+        raise ValueError("bounded fixture requires the exact verified native-base recipe and package inventory")
+    # A docker-container builder cannot resolve a base held only by Docker's
+    # daemon. Reconstruct its unchanged public, pinned recipe and require the
+    # complete original package inventory before adding Bats-only utilities.
+    package_check = ("\nRUN echo '" + record["packages_sha256"] +
+                     "  /opt/factorybox-native-packages.tsv' | sha256sum -c -\n").encode()
+    recipe = prefix + package_check + template[len(header):]
+    path = archive / "fixture.Dockerfile"
+    with path.open("xb") as output:
+        output.write(recipe)
+    declaration = {"schema": 1, "operation": "inline_verified_native_base_recipe",
+                   "input_base_image": base, "base_recipe_sha256": record["dockerfile_sha256"],
+                   "expected_base_packages_sha256": record["packages_sha256"],
+                   "fixture_template_sha256": reference.sha(archive / "context/Dockerfile"),
+                   "effective_dockerfile_sha256": reference.sha(path),
+                   "scope": "Rebuilt pinned native-base recipe with exact package inventory; "
+                            "not a claim of byte-identical rebuilt base layers. No upstream test edits."}
+    with (archive / "fixture-recipe.json").open("x") as output:
+        json.dump(declaration, output, indent=2)
+        output.write("\n")
+    return path
+
+
 def file_sha(path):
     with path.open("rb") as file:
         return hashlib.file_digest(file, "sha256").hexdigest()
 
 
 def build_fixture(archive, name, base, *, platform="linux/arm64", network="default", bounded_build=False,
-                  builder=None):
+                  builder=None, base_record=None):
     options = argparse.Namespace(platform=platform, network=network, bounded_build=bounded_build,
                                  builder=builder)
     build_config.verify_builder(options, reference.DOCKER)
+    recipe = bounded_fixture_recipe(archive, base, base_record) if builder else archive / "context/Dockerfile"
     command = [
         *reference.DOCKER, "build", "--provenance=false", "--progress=plain",
         *build_config.arguments(options), "--tag", name,
-        "--build-arg", "NATIVE_BASE_IMAGE=" + base,
-        "--output", "type=image,compression=uncompressed",
+        *(["--load"] if builder else
+          ["--build-arg", "NATIVE_BASE_IMAGE=" + base, "--output", "type=image,compression=uncompressed"]),
+        "--file", str(recipe),
         "--metadata-file", str(archive / "builder.json"), str(archive / "context"),
     ]
     with (archive / "build.log").open("x") as log:
@@ -69,6 +104,10 @@ def image_archive(name, native_build, *, platform="linux/arm64"):
             reference.sha(archive / "output/images.json") != result["images_json_sha256"] or
             file_sha(archive / "output/images.tar") != result["images_tar_sha256"]):
         raise ValueError("upstream image archive identity, inputs or contents changed")
+    for filename, expected in result["inputs_sha256"].items():
+        path = archive / filename
+        if path.is_symlink() or path.resolve() != path or reference.sha(path) != expected:
+            raise ValueError("upstream image archive has changed frozen build inputs")
     rows = json.loads((archive / "output/images.json").read_text())
     if (rows != result["images"] or
             [{"alias": r["alias"], "image": r["image"]} for r in rows] != json.loads(pins.read_text())["images"] or
@@ -300,7 +339,10 @@ def main():
     try:
         fixture = build_fixture(archive, name, image, platform=target,
                                 network=options.network, bounded_build=options.bounded_build,
-                                builder=options.builder)
+                                builder=options.builder, base_record=base)
+        if options.builder:
+            for filename in ["fixture.Dockerfile", "fixture-recipe.json"]:
+                result["inputs_sha256"][filename] = reference.sha(archive / filename)
         result["fixture_image"] = fixture
         command = [
             *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,

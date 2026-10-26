@@ -18,6 +18,22 @@ import native_base
 ROOT = reference.ROOT
 
 
+def compose_offline_unit_dockerfile(prefix, template):
+    header = b"ARG BUILDER_IMAGE\nFROM ${BUILDER_IMAGE}\n"
+    if (template.count(header) != 1 or template.count(b"FROM ${BUILDER_IMAGE}\n") != 1 or
+            prefix.count(b" AS build\n") != 1 or b" AS offline\n" in prefix):
+        raise ValueError("offline unit recipe must retain the exact in-file build stage")
+    return prefix + b"\n" + template.replace(header, b"FROM build AS offline\n", 1)
+
+
+def offline_builder_command(options, dockerfile, context, name, archive):
+    return [*reference.DOCKER, "build", "--provenance=false", "--progress=plain",
+            *build_config.arguments(options), "--target", "offline", "--load",
+            "--tag", name + "-offline", "--iidfile", str(archive / "builder-id.txt"),
+            "--metadata-file", str(archive / "builder-metadata.json"),
+            "-f", str(dockerfile), str(context)]
+
+
 def context_manifest(directory):
     entries = {}
     for path in directory.rglob("*"):
@@ -130,40 +146,26 @@ def main():
         if reference.sha(rootfs) != busybox["sha256"]:
             raise ValueError("upstream Busybox test rootfs differs")
         result["busybox_rootfs_sha256"] = busybox["sha256"]
-        command = [*reference.DOCKER, "build", "--provenance=false", "--progress=plain",
-                   *build_config.arguments(options), "--target", "build",
-                   "--output", "type=image,compression=uncompressed",
-                   "--tag", name, "--iidfile", str(archive / "builder-id.txt"),
-                   "--metadata-file", str(archive / "builder-metadata.json"),
-                   "-f", str(dockerfile), str(build / "context")]
-        result["builder_command"] = command
-        with (archive / "builder.log").open("x") as log:
-            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
-        result["builder_image_config"] = (archive / "builder-id.txt").read_text().strip()
-        metadata = json.loads((archive / "builder-metadata.json").read_text())
-        image = name + "@" + metadata["containerimage.digest"]
-        result["builder_image_manifest"] = image
-        inspected = json.loads(reference.docker(["image", "inspect", image]))[0]
-        native_base.verify_image({"image": image, "image_config": result["builder_image_config"],
-                                  "platform": target}, inspected)
-        # Cache mounts used by the component build are not part of its image.
-        # Materialize verified Go dependencies before entering the offline test
-        # container, using a separate recipe and leaving the component recipe intact.
+        # Keep the original component recipe byte-for-byte as a prefix. The
+        # dependency stage uses FROM build instead of a daemon-only image name
+        # that an isolated docker-container builder cannot resolve.
         dependency_recipe = ROOT / "build/upstream-unit.Dockerfile"
         shutil.copyfile(dependency_recipe, archive / "upstream-unit.Dockerfile")
         result["dependency_recipe_sha256"] = reference.sha(archive / "upstream-unit.Dockerfile")
-        command = [*reference.DOCKER, "build", "--provenance=false", "--progress=plain",
-                   *build_config.arguments(options), "--build-arg", "BUILDER_IMAGE=" + image,
-                   "--output", "type=image,compression=uncompressed", "--tag", name + "-offline",
-                   "--metadata-file", str(archive / "offline-metadata.json"),
-                   "-f", str(archive / "upstream-unit.Dockerfile"), str(build / "context")]
-        result["dependency_command"] = command
-        with (archive / "dependencies.log").open("x") as log:
-            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=180)
-        metadata = json.loads((archive / "offline-metadata.json").read_text())
+        effective = archive / "offline.Dockerfile"
+        effective.write_bytes(compose_offline_unit_dockerfile(
+            dockerfile.read_bytes(), (archive / "upstream-unit.Dockerfile").read_bytes()))
+        result["effective_dockerfile_sha256"] = reference.sha(effective)
+        command = offline_builder_command(options, effective, build / "context", name, archive)
+        result["builder_command"] = command
+        with (archive / "builder.log").open("x") as log:
+            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=300)
+        result["builder_image_config"] = (archive / "builder-id.txt").read_text().strip()
+        metadata = json.loads((archive / "builder-metadata.json").read_text())
         image = name + "-offline@" + metadata["containerimage.digest"]
+        result["builder_image_manifest"] = image
         inspected = json.loads(reference.docker(["image", "inspect", image]))[0]
-        native_base.verify_image({"image": image, "image_config": inspected["Id"],
+        native_base.verify_image({"image": image, "image_config": result["builder_image_config"],
                                   "platform": target}, inspected)
         result["offline_image"] = image
         command = [*reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,
@@ -269,7 +271,9 @@ def main():
             result["passed"] = result["passed"] and result["selected_test_passed"]
         result["inputs_unchanged"] = (
             reference.sha(archive / "upstream-unit.sh") == result["test_script_sha256"] and
-            reference.sha(archive / "private-cgroup-delegation.sh") == result["delegation_setup_sha256"])
+            reference.sha(archive / "private-cgroup-delegation.sh") == result["delegation_setup_sha256"] and
+            reference.sha(effective) == result["effective_dockerfile_sha256"] and
+            reference.sha(archive / "upstream-unit.Dockerfile") == result["dependency_recipe_sha256"])
         result["passed"] = result["passed"] and result["inputs_unchanged"]
         if not result["passed"]:
             raise ValueError("upstream unit suites failed or did not all finish")

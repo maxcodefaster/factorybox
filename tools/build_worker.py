@@ -68,6 +68,22 @@ def image_context_bytes(context):
     return output.getvalue()
 
 
+def copy_original_license(root, bundle):
+    original = Path(root) / "LICENSE"
+    if not original.exists() and not original.is_symlink():
+        return None
+    if (original.is_symlink() or original.resolve() != original or
+            not original.is_file() or original.stat().st_size == 0):
+        raise ValueError("original-code license must be an explicit nonempty regular LICENSE file")
+    digest = reference.sha(original)
+    target = Path(bundle) / "licenses/factorybox/LICENSE"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(original, target)
+    if reference.sha(target) != digest or reference.sha(original) != digest:
+        raise ValueError("original-code license changed during the frozen build")
+    return digest
+
+
 def load(name):
     if not name.startswith("factorybox-build-worker-") or Path(name).name != name:
         raise ValueError("expected one exact completed worker build")
@@ -96,6 +112,12 @@ def load(name):
     if upstream_unit.context_manifest(artifact / "source") != result["source_context"]:
         raise ValueError("completed worker source context changed")
     recipe = json.loads((bundle / "build.json").read_text())
+    if "original_license_sha256" in result:
+        expected = result["original_license_sha256"]
+        if (not isinstance(expected, str) or len(expected) != 64 or
+                recipe.get("original_license_sha256") != expected or
+                result["bundle_sha256"].get("licenses/factorybox/LICENSE") != expected):
+            raise ValueError("worker original-code license differs from its frozen recipe")
     verify_native_candidate(result, recipe)
     if recipe.get("platform", result["platform"]) != result["platform"]:
         raise ValueError("worker recipe has a different target platform")
@@ -255,6 +277,7 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(original, target)
         shutil.copyfile(reference.ROOT / "upstream/licenses.json", bundle / "licenses.json")
+        original_license = copy_original_license(reference.ROOT, bundle)
         reference_lifecycle.write_json(bundle / "components.json", {"schema": 1, "binary_sha256": expected})
         recipe = {"schema": 1, "platform": options.platform, "selected": False, "production_qualified": False,
                   "source_lock_sha256": result["source_lock_sha256"], "go_source_sha256": sources.tree_sha(source),
@@ -264,6 +287,9 @@ def main():
                   "criu_source_lock_sha256": criu["source_lock_sha256"],
                   "criu_patch_sha256": criu["candidate_patch_sha256"],
                   "base_image": base_image, "base_packages_sha256": base["packages_sha256"]}
+        if original_license is not None:
+            result["original_license_sha256"] = original_license
+            recipe["original_license_sha256"] = original_license
         if candidate is not None:
             recipe["native_candidate"] = candidate
         verify_native_candidate(result, recipe)

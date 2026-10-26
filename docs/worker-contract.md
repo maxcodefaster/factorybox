@@ -17,11 +17,18 @@ Go runtime.
 
 ## Platform and deployment
 
-The current native target is Linux AMD64, kernel `7.2.8-9-omarchy`, 4096-byte
-pages and cgroup v2, using the tested same-host Docker/local-volume storage
-path. `factorybox doctor` checks the platform tuple; it does not establish
-component or lifecycle qualification. Cross-compilation, another filesystem
-or a successful image build does not qualify another host.
+Ordinary worker execution recognizes Linux AMD64 with kernel
+`7.2.8-9-omarchy` and the separate local ARM64 profile with kernel
+`7.0.14-orbstack-00380-ga7e0a2dc9535`. Both use 4096-byte pages, cgroup v2 and
+the tested same-host Docker/local-volume storage path. The ARM64 profile does
+not promote a new production candidate or rewrite the historical AMD64 pilot.
+`factorybox doctor` checks the platform tuple; it does not establish component
+or lifecycle qualification. Cross-compilation, another filesystem, a different
+ARM64 kernel/page size or a successful image build does not qualify another host.
+The local ARM64 tuple has complete Factory/worker functional evidence, but its
+missing host `/proc/kcore` still fails the unchanged upstream Systemd proc-exposure
+assertion. That required failure blocks release/production qualification; tuple
+admission and `doctor` must not be interpreted as overriding it.
 
 The image runs `factorybox worker` as root PID 1 in a private cgroup namespace,
 with at most 3 CPUs and 3 GiB memory. It needs privileged container access to
@@ -498,7 +505,15 @@ Then use `tools/build_worker.py --platform linux/amd64 --native-base-build BASE 
 --retained-candidate CRIU`; use the successful exact artifact names printed by
 each build. Repeat with `--compare WORKER_BUILD` for the independent package
 and image comparison. The source lock and ordered patch hashes must match the
-pilot profile; another platform still needs native qualification.
+pilot profile; another execution tuple still needs native qualification.
+
+For the local ARM64 profile, use `--platform linux/arm64` and exact completed
+ARM64 component inputs. The current Factory consumer also requires the ordered
+shared-description CRIU delta. `tools/build_worker_pipeline.py` assembles that
+complete composition without Candidate admission flags. The
+[Factory consumer evidence](factory-consumer.md#native-arm64-local-execution)
+records the ordinary delivered image and its exact local scope. An ordinary
+build still does not publish, install or qualify an arbitrary ARM64 host.
 
 `tools/verify_pilot_profile.py` rechecks the selected 44 local evidence results,
 the full matched observations, unchanged runtime source, exact executed Docker

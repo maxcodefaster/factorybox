@@ -80,7 +80,10 @@ def main():
             result["cached_image_command"] = save
         fixture = upstream_bats.build_fixture(archive, name, image, platform=target,
                                              network=options.network, bounded_build=options.bounded_build,
-                                             builder=options.builder)
+                                             builder=options.builder, base_record=base)
+        if options.builder:
+            for filename in ["fixture.Dockerfile", "fixture-recipe.json"]:
+                result["inputs_sha256"][filename] = reference.sha(archive / filename)
         result["fixture_image"] = fixture
         command = [
             *reference.DOCKER, "run", "--pull=never", "--platform=" + target, "--name", name,

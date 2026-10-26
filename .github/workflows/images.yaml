@@ -1,0 +1,224 @@
+name: Publish native worker images
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: worker-images-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release source and distribution license
+        id: version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          test "$RELEASE_TAG" = "v$version"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.-]+)?$ ]]
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          git merge-base --is-ancestor HEAD origin/main
+          if [[ ! -s LICENSE ]]; then
+            echo 'Original-code distribution licensing is unresolved. Do not publish worker images.'
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+  native:
+    needs: release
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]
+    env:
+      RELEASE: ${{ needs.release.outputs.version }}
+      ARCH: ${{ matrix.arch }}
+      IMAGE_ROOT: ghcr.io/${{ github.repository }}
+      FACTORYBOX_DOCKER_CONTEXT: default
+      MISE_YES: "1"
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    defaults:
+      run:
+        working-directory: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+          clean: false
+          persist-credentials: false
+      - name: Check out the exact tested Factory consumer
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: maxcodefaster/open-software-factory
+          ref: c8ae26464a7705e59317e47e9f5f0cdf37128963
+          token: ${{ secrets.FACTORY_CONSUMER_READ_TOKEN || github.token }}
+          path: consumer-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+          clean: false
+          persist-credentials: false
+      - name: Prepare pinned tools and an isolated Docker client
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="$RUNNER_TEMP/factorybox-docker-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
+          test ! -e "$DOCKER_CONFIG"
+          install -d -m 0700 "$DOCKER_CONFIG"
+          mise install
+          mise exec -- go mod download
+          mise exec -- python3 -c 'import json,os,sys;sys.path.insert(0,"tools");import native_base,reference;native_base.require_native_host("linux/"+os.environ["ARCH"],json.loads(reference.docker(["info","--format","{{json .}}"])))'
+          factory="$GITHUB_WORKSPACE/consumer-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          (cd "$factory" && mise install bun && mise exec -- bun install --frozen-lockfile)
+          mise exec -- python3 tools/check.py
+          mise exec -- python3 tools/sources.py prepare
+      - name: Create one owned bounded builder
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          builder="factorybox-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          printf '{"name":"%s","run":"%s","attempt":"%s","arch":"%s"}\n' \
+            "$builder" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$ARCH" > artifacts/ci-builder-intent.json
+          if docker buildx inspect "$builder" > /dev/null 2>&1; then
+            echo 'Refusing an existing CI builder identity.'
+            exit 1
+          fi
+          docker buildx create --name "$builder" --driver docker-container \
+            --driver-opt 'image=moby/buildkit@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea,memory=3g,cpu-period=100000,cpu-quota=300000,network=host' \
+            --buildkitd-flags '--allow-insecure-entitlement network.host' default
+          docker buildx inspect --bootstrap "$builder"
+          mise exec -- python3 -c 'import argparse,json,sys;sys.path.insert(0,"tools");import build_config,reference;print(json.dumps(build_config.verify_builder(argparse.Namespace(builder=sys.argv[1],bounded_build=True),reference.DOCKER)))' \
+            "$builder" > artifacts/ci-builder-identity.json
+      - name: Build exact native components and consumer images
+        run: |
+          set -euo pipefail
+          receipt() {
+            mise exec -- python3 -c 'import pathlib,sys;sys.path.insert(0,"tools");import build_worker_pipeline;print(pathlib.Path(build_worker_pipeline.completed_output(pathlib.Path(sys.argv[1]).read_text())).name)' "$1"
+          }
+          builder="factorybox-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          factory="$GITHUB_WORKSPACE/consumer-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          mise exec -- python3 tools/build_native_base.py --platform "linux/$ARCH" --network host \
+            > artifacts/ci-base.log 2>&1
+          base="$(receipt artifacts/ci-base.log)"
+          mise exec -- python3 tools/build_worker_pipeline.py --platform "linux/$ARCH" \
+            --native-base-build "$base" --builder "$builder" --bounded-build --network host \
+            > artifacts/ci-worker.log 2>&1
+          pipeline="$(receipt artifacts/ci-worker.log)"
+          worker="$(mise exec -- python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["worker_build"])' "artifacts/$pipeline/result.json")"
+          mise exec -- python3 tools/build_factory_consumer.py --platform "linux/$ARCH" \
+            --factory-repo "$factory" --builder "$builder" --bounded-build --network host \
+            > artifacts/ci-consumer.log 2>&1
+          consumer="$(receipt artifacts/ci-consumer.log)"
+          mise exec -- python3 tools/devx_project_images.py --platform "linux/$ARCH" --example minimal \
+            > artifacts/ci-project-images.log 2>&1
+          projects="$(receipt artifacts/ci-project-images.log)"
+          printf 'WORKER_BUILD=%s\nCONSUMER_BUILD=%s\nPROJECT_IMAGES=%s\n' \
+            "$worker" "$consumer" "$projects" >> "$GITHUB_ENV"
+      - name: Qualify the actual ordinary native image
+        id: qualify
+        run: |
+          set -euo pipefail
+          builder="factorybox-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          factory="$GITHUB_WORKSPACE/consumer-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          mise exec -- python3 tools/release_native.py --platform "linux/$ARCH" --version "$RELEASE" \
+            --worker-build "$WORKER_BUILD" --consumer-build "$CONSUMER_BUILD" \
+            --project-images "$PROJECT_IMAGES" --factory-repo "$factory" --builder "$builder" \
+            > artifacts/ci-native-gates.log 2>&1
+          gate="$(mise exec -- python3 -c 'import pathlib,sys;sys.path.insert(0,"tools");import release_native;print(release_native.completed_receipt(pathlib.Path(sys.argv[1]))[0].name)' artifacts/ci-native-gates.log)"
+          cp "artifacts/$gate/result.json" artifacts/ci-native-result.json
+          image="$(mise exec -- python3 -c 'import json;print(json.load(open("artifacts/ci-native-result.json"))["image"])')"
+          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
+      - name: Remove only the exact owned builder
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -f artifacts/ci-builder-identity.json ]]; then
+            mise exec -- python3 -c 'import argparse,json,subprocess,sys;sys.path.insert(0,"tools");import build_config,reference;expected=json.load(open("artifacts/ci-builder-identity.json"));actual=build_config.verify_builder(argparse.Namespace(builder=expected["name"],bounded_build=True),reference.DOCKER);assert actual==expected,"CI builder identity changed";subprocess.run([*reference.DOCKER,"buildx","rm",expected["name"]],check=True)'
+          elif [[ -f artifacts/ci-builder-intent.json ]]; then
+            echo 'Builder creation was unconfirmed. Preserve it for ownership-checked inspection.'
+            exit 1
+          fi
+      - name: Publish the verified architecture image without overwriting a version
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          QUALIFIED_IMAGE: ${{ steps.qualify.outputs.image }}
+        run: |
+          set -euo pipefail
+          IMAGE_ROOT="${IMAGE_ROOT,,}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for image in "$IMAGE_ROOT/worker:$RELEASE" "$IMAGE_ROOT/worker:$RELEASE-$ARCH"; do
+            if docker buildx imagetools inspect "$image" > artifacts/ci-registry.stdout 2> artifacts/ci-registry.stderr; then
+              echo "Image already exists: $image. Choose a new release version."
+              exit 1
+            elif ! grep -Eiq '(: not found|manifest unknown)' artifacts/ci-registry.stderr; then
+              cat artifacts/ci-registry.stderr
+              echo 'Registry absence was not confirmed. Publication refused.'
+              exit 1
+            fi
+          done
+          test "$(docker image inspect "$QUALIFIED_IMAGE" --format '{{.Architecture}}')" = "$ARCH"
+          docker tag "$QUALIFIED_IMAGE" "$IMAGE_ROOT/worker:$RELEASE-$ARCH"
+          docker push "$IMAGE_ROOT/worker:$RELEASE-$ARCH"
+      - name: Remove this job's registry credential
+        if: always()
+        run: |
+          if [[ -d "$DOCKER_CONFIG" ]]; then docker logout ghcr.io; fi
+      - name: Retain gate receipts and build logs, never RAM dumps
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: worker-native-${{ matrix.arch }}-${{ github.run_attempt }}
+          path: |
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-native-result.json
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-builder-identity.json
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-*.log
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-native-*/*.stdout
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-native-*/*.stderr
+          if-no-files-found: warn
+  manifest:
+    needs: [release, native]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      RELEASE: ${{ needs.release.outputs.version }}
+      IMAGE_ROOT: ghcr.io/${{ github.repository }}
+    steps:
+      - name: Publish the combined worker manifest only after both native jobs
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="$RUNNER_TEMP/factorybox-manifest-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
+          test ! -e "$DOCKER_CONFIG"
+          install -d -m 0700 "$DOCKER_CONFIG"
+          IMAGE_ROOT="${IMAGE_ROOT,,}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          image="$IMAGE_ROOT/worker:$RELEASE"
+          if docker buildx imagetools inspect "$image" > /dev/null 2> "$RUNNER_TEMP/factorybox-manifest.stderr"; then
+            echo 'This worker version already exists. Choose a new release version.'
+            exit 1
+          elif ! grep -Eiq '(: not found|manifest unknown)' "$RUNNER_TEMP/factorybox-manifest.stderr"; then
+            cat "$RUNNER_TEMP/factorybox-manifest.stderr"
+            exit 1
+          fi
+          docker buildx imagetools create --tag "$image" "$image-amd64" "$image-arm64"
+      - name: Remove this job's registry credential
+        if: always()
+        run: |
+          if [[ -d "$DOCKER_CONFIG" ]]; then docker logout ghcr.io; fi

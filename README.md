@@ -252,10 +252,20 @@ and failed approaches.
 
 ## Build and integrate
 
-Only the evidenced Linux AMD64 tuple is qualified for this pilot: kernel
-`7.2.8-9-omarchy`, 4096-byte pages, cgroup v2 and the tested Docker/local-volume
-path. `factorybox doctor` checks the tuple; it does not replace native tests.
-Cross-compilation does not qualify another machine.
+Ordinary execution admits two explicit local Linux tuples: AMD64 with kernel
+`7.2.8-9-omarchy`, and ARM64 with kernel `7.0.14-orbstack-00380-ga7e0a2dc9535`.
+Both require 4096-byte pages, cgroup v2 and the tested Docker/local-volume path.
+`factorybox doctor` checks the tuple; it does not replace native tests or qualify
+a new image. The historical AMD64 pilot remains unchanged. Cross-compilation
+does not qualify another machine, kernel, page size or storage backend.
+
+The local ARM64 Factory/worker functional lanes pass, but full release
+qualification on this OrbStack kernel remains blocked. Its host `/proc/kcore`
+does not exist; the unchanged upstream Systemd `/proc exposure` case requires
+that read to fail with `Permission denied`, not `No such file`. That case is
+neither passed nor skipped. Do not synthesize a host proc node, weaken the
+assertion or publish this profile as production-qualified. The release workflow
+retains that required gate.
 
 The repository pins Go and Python through mise. Run portable checks first:
 
@@ -329,13 +339,58 @@ of every executable, component platform agreement and the final image platform.
 Its receipt records the image and Factorybox executable digest. There is no
 push, installation or automatic runtime admission.
 
-ARM64 component and worker builds are supported, but the current runtime still
-rejects ARM64 execution. The owned timer reader runs natively on ARM64, using
+The [worker image workflow](.github/workflows/images.yaml) runs only when a
+GitHub release is published. It does not run on branch pushes, pull requests or
+manual dispatch. The canonical tag, such as `v0.1.0`, must name a commit contained
+in `main` and match the actual delivered CLI version. Native AMD64 and ARM64 jobs
+publish `ghcr.io/<owner>/<repository>/worker:<version>-<architecture>`. Only after
+both jobs pass does the workflow publish the combined `<version>` manifest.
+An existing version is refused rather than overwritten; an uncertain registry
+lookup also refuses publication. There is no moving `latest` tag.
+
+Each architecture needs a dedicated self-hosted Linux runner labelled
+`factorybox-native-amd64` or `factorybox-native-arm64`, with mise, Docker/Buildx
+and the exact admitted native Docker kernel, cgroups and privileges. The
+workflow installs no host Sysbox runtime, VM, kernel or emulator. It builds a uniquely
+named 3-CPU/3-GiB BuildKit container without changing the operator's selected
+builder. Cleanup requires its recorded immutable identity. Checkout directories
+and Docker client credentials are separate for each run and attempt.
+
+The jobs build the exact component pipeline, the pinned Factory consumer and
+its offline project-image archive. `tools/release_native.py` refuses Candidate
+workers, foreign architectures and a mismatched CLI version. It runs the original
+CRIU core and Sysbox unit/integration/lifecycle/systemd gates, all fourteen delivered-worker
+suites, planned and abrupt worker replacement, and both actual Factory consumer
+lanes. The original upstream skip sets stay explicit. Qualification failure
+prevents publication. Uploaded workflow artifacts contain gate receipts and
+build/gate logs, not RAM images or private test stores. The separate endurance, security and
+production-release gates below remain open; these jobs do not grant production
+qualification or activate Factory.
+
+Cold isolated builders use in-file stages instead of Docker-daemon-only parent
+tags and explicitly load their outputs. The Bats-only fixture reconstructs the
+unchanged pinned native-base recipe and checks its full original package
+inventory before adding test utilities. Its declaration distinguishes that
+recipe rebuild from a byte-identical base-image rebuild. Runtime worker images
+still use their exact supplied native-base image digest. Upstream assertions
+and the bounded builder ceiling are unchanged.
+
+Original-code licensing is still unresolved. Publication therefore requires a
+reviewed, nonempty root `LICENSE`; the worker build copies that exact text into
+the package and records its SHA-256. The release gate verifies it is in the tested
+image. No license is selected automatically. The workflow pins the Factory
+checkout to the exact reviewed consumer commit. If that repository is private,
+configure `FACTORY_CONSUMER_READ_TOKEN` with read access to it; public checkouts
+can use the normal workflow token.
+
+ARM64 component and ordinary worker builds now use the admitted local ARM64
+tuple above. Other ARM64 kernels and page sizes remain rejected. The owned
+timer reader runs natively on ARM64, using
 the iterator's referenced BTF layouts and an inline PID filter without kernel
 maps. The ARM64 timer CPU backend also passes native staged/native-wait
 register, stack and signal-mask handoff checks. Complete guarded lifecycle,
-recovery and consumer qualification remain required. A successful build does not
-remove that guard or qualify the target kernel.
+recovery and consumer checks remain required for each delivered release image.
+A successful build alone grants no additional platform or production qualification.
 
 Run the timer-reader prerequisite against an exact native base for the target:
 
