@@ -33,6 +33,8 @@ def add_entry(entries, name, path):
             elif part != ".":
                 parts.append(part)
         entries[name] = {"path": str(path), "symlink": str(target)}
+    elif path.is_dir() and path.resolve() == path:
+        entries[name] = {"path": str(path), "directory": True}
     elif path.is_file() and path.resolve() == path:
         entries[name] = {"path": str(path), "sha256": sha(path),
                          "bytes": path.stat().st_size, "executable": bool(path.stat().st_mode & 0o111)}
@@ -44,6 +46,8 @@ def add_tree(entries, prefix, tree):
     for path in sorted(tree.rglob("*")):
         if path.is_symlink() or path.is_file():
             add_entry(entries, prefix + "/" + str(path.relative_to(tree)), path)
+        elif path.is_dir():
+            add_entry(entries, prefix + "/" + str(path.relative_to(tree)), path)
 
 
 def emit(entries, output):
@@ -52,7 +56,12 @@ def emit(entries, output):
             path = Path(entry["path"])
             info = tarfile.TarInfo(name)
             info.uid = info.gid = info.mtime = 0
-            if "symlink" in entry:
+            if entry.get("directory"):
+                if path.is_symlink() or path.resolve() != path or not path.is_dir():
+                    raise ValueError("source archive directory changed")
+                info.type, info.mode = tarfile.DIRTYPE, 0o755
+                archive.addfile(info)
+            elif "symlink" in entry:
                 if not path.is_symlink() or str(path.readlink()) != entry["symlink"]:
                     raise ValueError("source archive link changed")
                 info.type, info.linkname, info.mode = tarfile.SYMTYPE, entry["symlink"], 0o777
