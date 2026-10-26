@@ -129,7 +129,15 @@ func timerDetachedCaptureReturned(config captureGuardConfig, anchors captureGuar
 			return fmt.Errorf("detached timer source has invalid freezer state: %v: %v", events, err)
 		}
 		if frozen == 1 {
-			return captureGuardCaptureReturned(config, anchors)
+			err := captureGuardCaptureReturned(config, anchors)
+			var pending *captureFreezerPending
+			if err == nil || !errors.As(err, &pending) {
+				return err
+			}
+			// A later detached thread can withdraw the aggregate frozen
+			// acknowledgement between the two real reads. Retry only that
+			// exact transition under the unchanged deadline. Every retry
+			// revalidates identity and the still-set original freeze request.
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("detached timer source freezer did not settle")

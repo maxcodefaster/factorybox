@@ -24,6 +24,7 @@ ADMISSION_UNIT_TESTS = [
     'TestTimerAdmissionSyscall',
     'TestArm64TimerAdmissionContextRefusesAbsentAndUnrelatedState',
     'TestArm64TimerAdmissionReturnPathFailsClosed',
+    'TestCaptureCompletionPendingFreezerIsExact',
 ]
 
 

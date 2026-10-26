@@ -361,13 +361,31 @@ func captureGuardRead(fd int, timeoutMS int) ([]byte, error) {
 	}
 }
 
+type captureFreezerPending struct{}
+
+func (*captureFreezerPending) Error() string {
+	return "capture completion requires the original frozen source: freezer acknowledgement pending"
+}
+
+func captureCompletionFrozenState(events map[string]uint64, readErr error) error {
+	frozen, hasFrozen := events["frozen"]
+	populated, hasPopulated := events["populated"]
+	if readErr != nil || !hasFrozen || !hasPopulated || populated != 1 || frozen > 1 {
+		return fmt.Errorf("capture completion requires the original frozen source: events=%v: %v", events, readErr)
+	}
+	if frozen == 0 {
+		return &captureFreezerPending{}
+	}
+	return nil
+}
+
 func captureGuardCaptureReturned(config captureGuardConfig, anchor captureGuardAnchors) error {
 	if err := captureGuardValidate(config, anchor); err != nil {
 		return err
 	}
 	events, err := captureGuardEvents(anchor.group)
-	if err != nil || events["frozen"] != 1 || events["populated"] != 1 {
-		return fmt.Errorf("capture completion requires the original frozen source: %v", err)
+	if err := captureCompletionFrozenState(events, err); err != nil {
+		return err
 	}
 	threads, err := captureGuardThreads(config, anchor)
 	if err != nil || threads[config.PID] != config.Start {
