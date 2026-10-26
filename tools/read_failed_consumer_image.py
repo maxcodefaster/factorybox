@@ -14,22 +14,44 @@ import uuid
 import reference
 
 
+def failure_image_bytes(name, result, proof=None):
+    if result.get('passed') is not False or result.get('cleanup') is not True:
+        raise ValueError('Requires a closed failure')
+    if re.fullmatch('factorybox-factory-consumer-[a-f0-9]{32}', name):
+        pause = result.get('pause', {})
+        size = 8 << 30
+    elif re.fullmatch('factorybox-checkpoint-retirement-[a-f0-9]{32}', name):
+        if result.get('suite') != 'standby-peers' or not isinstance(proof, dict):
+            raise ValueError('Requires the exact shared-worker peer proof')
+        pause = proof.get('original_pause', {})
+        command = result.get('command', [])
+        if (not isinstance(command, list) or command.count('--bounded-bytes') != 1 or
+                command[-1:] != [str(1 << 30)] or command[-2:-1] != ['--bounded-bytes']):
+            raise ValueError('Peer failure differs from its one-GiB bounded store')
+        size = 1 << 30
+    else:
+        raise ValueError('Expected one exact consumer or shared-worker peer failure')
+    if not pause.get('record', {}).get('pause', {}).get('completed_at'):
+        raise ValueError('Requires a closed failure after completed Pause')
+    return size
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('run')
     args=parser.parse_args()
-    if not re.fullmatch('factorybox-factory-consumer-[a-f0-9]{32}',args.run):raise ValueError('Expected one exact consumer failure')
+    if not re.fullmatch('factorybox-(factory-consumer|checkpoint-retirement)-[a-f0-9]{32}',args.run):raise ValueError('Expected one exact consumer or peer failure')
     run=reference.ROOT/'artifacts'/args.run
     original=json.loads((run/'result.json').read_text())
-    if original.get('passed') is not False or original.get('cleanup') is not True or not original.get('pause',{}).get('record',{}).get('pause',{}).get('completed_at'):
-        raise ValueError('Requires a closed failure after completed Pause')
+    proof = json.loads((run/'output/standby-peers.json').read_text()) if original.get('suite') == 'standby-peers' else None
+    image_bytes = failure_image_bytes(args.run, original, proof)
     raw=run/'failed-volume-0.tar'
     encoding=json.loads((run/'failed-volume-0.tar.encoding.json').read_text())
     payload=raw.with_name(raw.name+'.zst')
     if not payload.exists():payload,_=reference.artifact_storage.verified_replacement(payload,encoding['encoded'],encoding['original'])
     if payload.is_symlink():raise ValueError('Failure archive is redirected')
+    output=reference.new_artifact('factorybox-consumer-restore-read-'+uuid.uuid4().hex);output.mkdir()
     capacity=reference.artifact_storage.require_capacity(reference.ROOT,run_reserve=0)
-    output=reference.ROOT/'artifacts'/('factorybox-consumer-restore-read-'+uuid.uuid4().hex);output.mkdir()
     shutil.copyfile(__file__,output/'runner.py')
     result={'passed':False,'source':args.run,'source_result_sha256':reference.sha(run/'result.json'),
             'purpose':'Read the exact CRIU restore diagnostics for the retained failed Resume; no native execution or filesystem mount',
@@ -46,7 +68,7 @@ def main():
             with tarfile.open(fileobj=reader,mode='r|') as tar:
                 for member in tar:
                     if member.name!='./fixed-store/store.img':continue
-                    if not member.isfile() or member.size!=8<<30:raise ValueError('Failure image differs from its bounded store size')
+                    if not member.isfile() or member.size!=image_bytes:raise ValueError('Failure image differs from its bounded store size')
                     digest=hashlib.sha256();count=0
                     with tar.extractfile(member) as source,(output/'store.img').open('xb') as destination:
                         while data:=source.read(1024**2):

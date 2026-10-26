@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Exercise the exact delivered worker with its opt-in fixed filesystem."""
 import argparse
+import io
 import json
 import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
+import tarfile
 import time
 import uuid
 
@@ -86,9 +88,19 @@ def main():
     parser.add_argument('--native-candidate', action='store_true',
                         help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
     parser.add_argument('--nested-exec-consumer', help='Exact existing consumer image supplying nested runc for the standby-exec control')
     parser.add_argument('--exec-trace-inputs', help='Optional exact owned diagnostic strace acquisition; standby-exec only')
+    parser.add_argument('--peer-source', action='store_true',
+                        help='standby-peers only: independent canonical source binds and retained file descriptions')
+    parser.add_argument('--peer-network', action='store_true',
+                        help='standby-peers only: owned outbound network with a private test uplink; no external traffic')
+    parser.add_argument('--peer-common-base', action='store_true',
+                        help='standby-peers only: import one exact immutable base and bind it independently into both Sandboxes')
+    parser.add_argument('--peer-release', action='store_true',
+                        help='standby-peers only: release the deleted peer private overlay and base alias before original Pause')
+    parser.add_argument('--peer-docker', action='store_true',
+                        help='standby-peers only: run the pinned consumer Docker daemon and a tiny offline child, not the full Factory stack')
     parser.add_argument('--timer-probe', action='store_true', help='Read one frozen owned task restart block through an unpinned temporary BPF iterator; diagnostic only')
     parser.add_argument('--timer-observe-exit', action='store_true', help='Prototype only: seize without interrupt and record natural signal/exit trace events')
     parser.add_argument('--worker-metadata-minimal', action='store_true', help='Worker-metadata diagnostic only: four actual committed pauses and one prior public base instead of three pauses and 200 bases; retain all boundary/preservation assertions')
@@ -116,8 +128,14 @@ def main():
     standby_cgroup = args.suite == 'standby-cgroup'
     standby_exec = args.suite == 'standby-exec'
     standby_repeat = args.suite == 'standby-repeat'
-    if bool(args.nested_exec_consumer) != standby_exec:
-        parser.error('--nested-exec-consumer is required only for standby-exec')
+    standby_peers = args.suite == 'standby-peers'
+    if (args.peer_source or args.peer_network or args.peer_common_base or args.peer_release or args.peer_docker) and not standby_peers:
+        parser.error('peer source/network/base/release controls require standby-peers')
+    if args.peer_docker and not args.nested_exec_consumer:
+        parser.error('--peer-docker requires --nested-exec-consumer')
+    if (standby_exec and not args.nested_exec_consumer or
+            args.nested_exec_consumer and not (standby_exec or standby_peers)):
+        parser.error('--nested-exec-consumer is required for standby-exec and optional for standby-peers')
     if args.exec_trace_inputs and not standby_exec:
         parser.error('--exec-trace-inputs requires standby-exec')
     if args.worker_metadata_minimal and not worker_metadata:
@@ -135,7 +153,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat
+    retirement = args.suite.startswith('retirement') or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -193,7 +211,8 @@ def main():
               'runner_sha256': reference.sha(artifact / 'runner.py'), 'setup_sha256': reference.sha(artifact / 'setup.sh'),
               'rootfs_sha256': busybox['sha256'],
               'global_sysctls_before': consumer_worker_loss.sysctls(
-                  docker_image=worker['native_base_image'], owner=owner, artifact=artifact, phase='before'),
+                  docker_image=worker['native_base_image'], owner=owner, artifact=artifact, phase='before',
+                  factory_network=args.peer_network),
               'scope': 'Exact delivered bounded worker, 512-MiB fixed filesystem, full RAM/filesystem checkpoint/fork, '
                        'pause/resume, actual guest ENOSPC, distinct host/internal admission, external writable bind '
                        'refusal, preserved prior checkpoint, actual retained restore/useful work after reclaim, fresh public '
@@ -207,6 +226,19 @@ def main():
         result['scope'] = 'Exact delivered worker with the pinned consumer runc and tiny BusyBox rootfs. A new nested container exec must succeed before and after real Pause/Resume; no nested child survives the checkpoint. Optional tracing occurs only after an uninstrumented failure and cannot turn that failure into a pass. Not full consumer, Fork or platform qualification.'
     if standby_repeat:
         result['scope'] = 'Two public Pause/Resume cycles each for inspectable and non-dumpable Go init processes, with preserved RAM, inspection policy and zero paused anonymous/resident snapshot memory. A preopened parent-owned namespace handle must remain inaccessible from a child user namespace. No Docker, network, Source, role assignment, full consumer or platform qualification.'
+    if standby_peers:
+        result['scope'] = 'Two small Go Sandboxes with the Factory explicit UID/GID mapping share one worker. Restore and delete the peer, then require the original to Pause/Resume with preserved memory. No Docker, Source, network or platform qualification.'
+        result['peer_source'] = args.peer_source
+        result['peer_network'] = args.peer_network
+        result['peer_common_base'] = args.peer_common_base
+        result['peer_release'] = args.peer_release
+        result['peer_docker'] = args.peer_docker
+        if args.peer_source:
+            result['scope'] = 'Two small Go Sandboxes retain independent external canonical source binds and file descriptions on one worker with the explicit Factory UID/GID mapping. Restore/delete the peer before original Pause/Resume. No Docker, outbound network or platform qualification.'
+        if args.peer_network:
+            result['scope'] = 'Shared-worker peer lifecycle with selected pinned inner-runc/source controls and owned outbound networking. A labelled private worker veth pair supplies only a test uplink; no external traffic. Not Docker, full consumer or platform qualification.'
+        if args.peer_docker:
+            result['scope'] = 'Shared-worker peer lifecycle with the exact consumer Docker/containerd/runc binaries and a tiny offline BusyBox child. Selected source/network/base/release controls remain explicit. No Factory Connector, Dev Container, full consumer or platform qualification.'
     if args.suite == 'retirement-base-diagnostic':
         result['scope'] = 'Isolated retained-sleep and immutable-alias diagnostic only; does not qualify the full required retirement suite.'
     if args.timer_probe:
@@ -265,7 +297,7 @@ def main():
     try:
         if args.exec_trace_inputs:
             result['exec_trace'] = freeze_exec_trace(args.exec_trace_inputs, worker, artifact)
-        if standby_exec:
+        if standby_exec or standby_peers and args.nested_exec_consumer:
             _, consumer = factory_consumer_native.load_consumer(args.nested_exec_consumer, worker['platform'])
             input_name = name + '-input'
             try:
@@ -275,6 +307,26 @@ def main():
                 reference.docker(['cp', input_name + ':/usr/local/bin/runc', str(artifact / 'nested-runc')])
                 result['nested_exec_input'] = {'consumer_build': args.nested_exec_consumer,
                     'image': consumer['image'], 'runc_sha256': reference.sha(artifact / 'nested-runc')}
+                if args.peer_docker:
+                    binaries = artifact / 'docker-input'
+                    binaries.mkdir()
+                    alias = subprocess.run([*reference.DOCKER, 'cp', input_name + ':/var/run', '-'],
+                                           check=True, capture_output=True, timeout=30).stdout
+                    if len(alias) > 65536:
+                        raise ValueError('consumer /var/run alias archive exceeds bound')
+                    with tarfile.open(fileobj=io.BytesIO(alias)) as archive:
+                        links = archive.getmembers()
+                        if len(links) != 1 or not links[0].issym() or links[0].linkname not in ['/run', '../run']:
+                            raise ValueError('tiny Docker control must match the exact consumer /var/run alias')
+                        var_run_link = links[0].linkname
+                    # This exact consumer uses dockerd's embedded containerd;
+                    # there is no separate containerd executable in its image.
+                    for executable in ['docker', 'dockerd', 'containerd-shim-runc-v2', 'ctr', 'runc']:
+                        reference.docker(['cp', input_name + ':/usr/local/bin/' + executable, str(binaries / executable)])
+                    result['docker_input'] = {
+                        'consumer_build': args.nested_exec_consumer, 'image': consumer['image'],
+                        'var_run_link': var_run_link,
+                        'files': upstream_unit.context_manifest(binaries)}
             finally:
                 reference.owned_delete('container', input_name, owner)
         binary = artifact / 'probe.test'
@@ -341,6 +393,22 @@ def main():
             command += ['--env', 'FACTORYBOX_NATIVE_STANDBY_CGROUP=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeStandbyCgroup$']
         if standby_repeat:
             command += ['--env', 'FACTORYBOX_NATIVE_STANDBY_REPEAT=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeStandbyRepeat$']
+        if standby_peers:
+            command += ['--env', 'FACTORYBOX_NATIVE_STANDBY_PEERS=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeStandbyPeers$']
+            if args.nested_exec_consumer:
+                command += ['--env', 'FACTORYBOX_STANDBY_PEERS_NESTED=1',
+                            '--mount', f'type=bind,source={artifact / "nested-runc"},target=/nested-runc,readonly']
+            if args.peer_source:
+                command += ['--env', 'FACTORYBOX_STANDBY_PEERS_SOURCE=1']
+            if args.peer_network:
+                command += ['--env', 'FACTORYBOX_STANDBY_PEERS_NETWORK=1']
+            if args.peer_common_base:
+                command += ['--env', 'FACTORYBOX_STANDBY_PEERS_COMMON_BASE=1']
+            if args.peer_release:
+                command += ['--env', 'FACTORYBOX_STANDBY_PEERS_RELEASE=1']
+            if args.peer_docker:
+                command += ['--env', 'FACTORYBOX_STANDBY_PEERS_DOCKER=1',
+                            '--mount', f'type=bind,source={artifact / "docker-input"},target=/docker-input,readonly']
         if standby_exec:
             command += ['--env', 'FACTORYBOX_NATIVE_STANDBY_EXEC=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeStandbyExec$|^TestCaptureStopThreadGroup$',
                         '--mount', f'type=bind,source={artifact / "nested-runc"},target=/nested-runc,readonly']
@@ -372,8 +440,8 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
-        count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory or standby_cgroup or standby_exec or standby_repeat else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        prefix = 'TestNativeStandbyPeers' if standby_peers else 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -417,6 +485,16 @@ def main():
             if any(proof.get(key) is not True for key in ['passed', 'read_only_request', 'null_remainder',
                                                         'syscall_registers_preserved', 'source_and_fork_original_deadline']):
                 raise ValueError('natural source/fork timer completion proof incomplete')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif standby_peers:
+            proof_path = output / 'standby-peers.json'
+            proof = json.loads(proof_path.read_text())
+            if (proof.get('passed') is not True or
+                    proof.get('common_base') != args.peer_common_base or
+                    proof.get('release_peer_inputs') != args.peer_release or
+                    proof.get('docker') != args.peer_docker or
+                    args.peer_release and proof.get('peer_inputs_released') is not True):
+                raise ValueError('peer retirement did not preserve the original Sandbox')
             result['proof_sha256'] = reference.sha(proof_path)
         elif standby_repeat:
             proof_path = output / 'standby-repeat.json'
@@ -644,13 +722,17 @@ def main():
             result['cleanup'] = not preserve
         finally:
             result['global_sysctls_after'] = consumer_worker_loss.sysctls(
-                docker_image=worker['native_base_image'], owner=owner, artifact=artifact, phase='after')
+                docker_image=worker['native_base_image'], owner=owner, artifact=artifact, phase='after',
+                factory_network=args.peer_network)
             result['inputs_unchanged'] = (upstream_unit.context_manifest(source) == manifest and
                                           reference.sha(artifact / 'runner.py') == result['runner_sha256'] and
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])
-            if standby_exec and result.get('nested_exec_input'):
+            if (standby_exec or standby_peers) and result.get('nested_exec_input'):
                 result['inputs_unchanged'] = (result['inputs_unchanged'] and
                     reference.sha(artifact / 'nested-runc') == result['nested_exec_input']['runc_sha256'])
+            if result.get('docker_input'):
+                result['inputs_unchanged'] = (result['inputs_unchanged'] and
+                    upstream_unit.context_manifest(artifact / 'docker-input') == result['docker_input']['files'])
             if result.get('exec_trace'):
                 consumer_stop_trace.validate_root(artifact / 'exec-trace', result['exec_trace']['files'])
             if args.timer_probe:
