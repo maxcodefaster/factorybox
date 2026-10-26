@@ -8,7 +8,7 @@ import build_worker
 
 
 class BoundedWorkerPlatformTests(unittest.TestCase):
-    def test_detach_fixture_binds_only_the_exact_delivered_read_only_runtime(self):
+    def test_detach_fixture_uses_the_exact_image_runtime_without_host_ownership(self):
         with tempfile.TemporaryDirectory() as directory:
             worker = Path(directory).resolve()
             runtime = worker / "image-context/bundle/components/sysbox-runc"
@@ -17,8 +17,7 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
             expected = hashlib.sha256(runtime.read_bytes()).hexdigest()
             receipt = {"bundle_sha256": {"components/sysbox-runc": expected}}
             self.assertEqual(bounded_store_native.detach_fixture_arguments(worker, receipt), [
-                "--env", "FACTORYBOX_RUNTIME_SHA256=" + expected,
-                "--mount", f"type=bind,source={runtime},target=/out/sysbox-runc,readonly"])
+                "--env", "FACTORYBOX_RUNTIME_SHA256=" + expected])
             runtime.write_bytes(b"changed fixture runtime")
             with self.assertRaisesRegex(ValueError, "exact delivered"):
                 bounded_store_native.detach_fixture_arguments(worker, receipt)
