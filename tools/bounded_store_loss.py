@@ -8,14 +8,23 @@ import subprocess
 import time
 import uuid
 
+import bounded_store_native
+import build_config
 import build_worker
 import consumer_loop_holder
 import consumer_worker_loss
-import native_base
 import reference
 import reference_lifecycle
 import upstream_bats
 import upstream_unit
+
+
+def probe_build(worker, host, candidate, binary):
+    options = bounded_store_native.worker_compile_options(worker, host, native_candidate=candidate)
+    return (['go', 'test', '-c', '-mod=readonly', '-trimpath', '-buildvcs=false',
+             *options, '-o', str(binary), './internal/lifecycle'],
+            dict(os.environ, GOOS='linux', GOARCH=build_config.architecture(worker['platform']),
+                 CGO_ENABLED='0'))
 
 
 def verify_initial_import_pressure(output, paused, recovered):
@@ -76,6 +85,8 @@ def verify_mounted_import_recovery(output, paused, recovered):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
+    parser.add_argument('--native-candidate', action='store_true',
+                        help='Use only the delivered candidate on its exact native Docker kernel')
     parser.add_argument('--loss', choices=['planned', 'abrupt'], required=True)
     parser.add_argument('--retained-selection', action='store_true',
                         help='release exact old recovery selections through the replacement before all original recovery assertions')
@@ -96,7 +107,9 @@ def main():
         raise ValueError('choose full epoch retirement or the internal fence fixture')
     args.retained_selection = args.retained_selection or args.retirement_fence or args.epoch_retirement
     _, worker = build_worker.load(args.worker_build)
-    native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
+    host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
+    bounded_store_native.worker_compile_options(worker, host, native_candidate=args.native_candidate)
+    architecture = build_config.architecture(worker['platform'])
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
@@ -120,13 +133,14 @@ def main():
     core = lambda rows: {k: v for k, v in rows.items() if not k.endswith('_test.go')}
     if core(manifest) != core(worker['source_context']):
         raise ValueError('native core differs from delivered image')
-    busybox = json.loads((reference.ROOT / 'upstream/test-inputs.json').read_text())['busybox-amd64']
+    busybox = json.loads((reference.ROOT / 'upstream/test-inputs.json').read_text())['busybox-' + architecture]
     rootfs = reference.ROOT / '.cache/downloads' / busybox['archive']
     if reference.sha(rootfs) != busybox['sha256']:
         raise ValueError('native rootfs changed')
     output = artifact / 'output'
     output.mkdir()
     result = {'schema': 1, 'owner': owner, 'passed': False, 'cleanup': False, 'production_qualified': False,
+              'platform': worker['platform'], 'native_candidate': worker.get('native_candidate'),
               'worker_build': args.worker_build, 'worker_image_id': worker['image_id'], 'source_context': manifest,
               'loss': args.loss, 'retained_selection': args.retained_selection,
               'retirement_fence': args.retirement_fence,
@@ -135,7 +149,9 @@ def main():
               'mounted_import_interruption': args.mounted_import_interruption,
               'runner_sha256': reference.sha(artifact / 'runner.py'),
               'setup_sha256': reference.sha(artifact / 'setup.sh'), 'rootfs_sha256': busybox['sha256'],
-              'global_sysctls_before': consumer_worker_loss.sysctls(), 'workers': [],
+              'global_sysctls_before': consumer_worker_loss.sysctls(
+                  docker_image=worker['native_base_image'], owner=owner, artifact=artifact, phase='before'),
+              'workers': [],
               'scope': 'Actual same-host/same-boot bounded worker replacement after a committed 32-MiB anonymous '
                        'RAM pause. All lifecycle actions use the delivered CLI. Exact image preservation, new epoch, '
                        'negative hash, exact recovery replay, independent descendants and fork of resumed descendant. '
@@ -149,11 +165,12 @@ def main():
     print(json.dumps({'running': str(artifact)}), flush=True)
     try:
         binary = artifact / 'probe.test'
+        compile_command, compile_environment = probe_build(worker, host, args.native_candidate, binary)
+        result['compile_command'] = compile_command
         with (artifact / 'build.log').open('x') as log:
-            subprocess.run(['go', 'test', '-c', '-mod=readonly', '-trimpath', '-buildvcs=false',
-                            '-tags=factorybox_worker_probe', '-o', str(binary), './internal/lifecycle'],
-                           cwd=source, env=dict(os.environ, GOOS='linux', GOARCH='amd64', CGO_ENABLED='0'),
+            subprocess.run(compile_command, cwd=source, env=compile_environment,
                            stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
+        build_config.require_elf(binary, worker['platform'])
         result['test_binary_sha256'] = reference.sha(binary)
         volume = True
         reference.docker(['volume', 'create', '--label', 'com.factorybox.run=' + owner, name])
@@ -181,7 +198,7 @@ def main():
                 command += ['--mount', f'type=bind,source={path},target={target}' + (',readonly' if readonly else '')]
             command += [worker['image'], '--store-id', owner, '--bounded-root', '/var/lib/sysbox/fixed-store', '--bounded-bytes', str(1 << 30)]
             row['command'] = command
-            row['id'] = reference.docker(command)
+            row['id'] = reference.docker(command, timeout=max(.1, min(65, deadline-time.monotonic())))
             row['startup'] = consumer_worker_loss.ready(row['name'], owner, row['id'], deadline)
             return row
 
@@ -393,7 +410,8 @@ def main():
                 reference.owned_delete('volume', name, owner)
             result['cleanup'] = not preserve
         finally:
-            result['global_sysctls_after'] = consumer_worker_loss.sysctls()
+            result['global_sysctls_after'] = consumer_worker_loss.sysctls(
+                docker_image=worker['native_base_image'], owner=owner, artifact=artifact, phase='after')
             result['inputs_unchanged'] = (upstream_unit.context_manifest(source) == manifest and
                                           reference.sha(artifact / 'runner.py') == result['runner_sha256'] and
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])

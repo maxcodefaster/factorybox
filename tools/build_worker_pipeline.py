@@ -8,6 +8,7 @@ import sys
 import uuid
 
 import build_config
+import build_criu_shared_fds
 import build_worker
 import criu_candidate
 import native_base
@@ -26,11 +27,26 @@ def commands(options, sysbox, criu):
                  "--native-base-build", options.native_base_build,
                  "--exit-hold", "--exit-hold-socket", "--nested-overlay",
                  "--nested-overlay-stable-paths", "--nested-overlay-shared-root"],
+        "shared-fds": [*common, "tools/build_criu_shared_fds.py",
+                       "--base-candidate", criu],
         "worker": [*common, "tools/build_worker.py", "--platform", options.platform,
                    "--native-base-build", options.native_base_build,
                    "--sysbox-build", sysbox, "--retained-candidate", criu,
                    "--discard-compiler-scratch", "--compress-package"],
     }
+
+
+def shared_source_input(name, result):
+    patches = result.get("candidate_patch_sha256", {})
+    if "shared-fds.patch" not in patches:
+        return None
+    features = result.get("features", {})
+    if (patches["shared-fds.patch"] != reference.sha(build_criu_shared_fds.PATCH) or
+            features.get("schema") != 1 or
+            any(features.get(key) is not True for key in
+                ["shared_file_descriptions", "shared_source_directories"])):
+        raise ValueError("supplied CRIU shared-source patch or feature receipt differs")
+    return name
 
 
 def completed_output(stdout):
@@ -76,7 +92,7 @@ def main():
             supplied = evidence.name
         if role == "sysbox":
             _, loaded = reference_lifecycle.component_build(supplied, "factorybox-build-sysbox-")
-        elif role == "criu":
+        elif role in {"criu", "shared-fds"}:
             _, loaded, _, _ = criu_candidate.load(supplied)
         else:
             _, loaded = build_worker.load(supplied)
@@ -87,7 +103,11 @@ def main():
     print(json.dumps({"building": str(archive)}), flush=True)
     try:
         sysbox, _ = step("sysbox", commands(options, "", "")["sysbox"], options.sysbox_build)
-        criu, _ = step("criu", commands(options, "", "")["criu"], options.retained_candidate)
+        criu, loaded_criu = step("criu", commands(options, "", "")["criu"], options.retained_candidate)
+        criu, loaded_criu = step("shared-fds", commands(options, sysbox, criu)["shared-fds"],
+                                 shared_source_input(criu, loaded_criu))
+        if shared_source_input(criu, loaded_criu) != criu:
+            raise ValueError("worker pipeline requires the complete shared-source CRIU component")
         worker, built = step("worker", commands(options, sysbox, criu)["worker"])
         result["worker_build"] = worker
         result["image"] = built["image"]

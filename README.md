@@ -310,8 +310,9 @@ docker --context orbstack buildx inspect --bootstrap "$builder"
 
 The local worker pipeline accepts either `linux/arm64` or `linux/amd64`.
 Supply an exact successful native-base build for that same target. It builds
-Sysbox, the retained-context/nested-overlay CRIU composition, then the worker
-image and a losslessly compressed package:
+Sysbox, the retained-context/nested-overlay CRIU composition, the ordered
+shared-description patch required by Factory's canonical Source, then the
+worker image and a losslessly compressed package:
 
 ```sh
 mise exec -- python3 tools/build_worker_pipeline.py \
@@ -320,7 +321,10 @@ mise exec -- python3 tools/build_worker_pipeline.py \
 ```
 
 Use `--sysbox-build` and `--retained-candidate` to reuse exact verified completed
-inputs, never an inferred latest build. The worker checks the ELF architecture
+inputs, never an inferred latest build. A retained CRIU input without the
+shared-description patch receives that ordered delta in a new build. An input
+that already has the exact patch and both required feature receipts is reused.
+The worker checks the ELF architecture
 of every executable, component platform agreement and the final image platform.
 Its receipt records the image and Factorybox executable digest. There is no
 push, installation or automatic runtime admission.
@@ -385,6 +389,35 @@ normal/SIGKILL tracer exit and 256 real detach completions under owned CPU
 pressure. Every original assertion and refusal control remains in those
 fixtures. Their ARM64 passes do not replace the remaining interrupted-timer,
 recovery or Factory consumer qualification.
+
+Build Factory's actual runtime consumer and the separate native Linux Bun proof
+image from one exact Factory checkout:
+
+```sh
+mise exec -- python3 tools/build_factory_consumer.py \
+  --platform linux/arm64 --factory-repo /path/to/open-software-factory \
+  --builder "$builder" --bounded-build --network host
+```
+
+The build freezes the Dockerfile, Connector sources and tool pins. It checks the
+delivered ELF architecture, image digests and Bun version. It does not install
+Factory or publish an image. On macOS the proof bundles JavaScript locally but
+executes it with the native Linux Bun image, never a mounted macOS executable.
+
+Run `tools/factory_consumer_native.py` with the exact `--worker-build`,
+`--consumer-build`, `--project-images` and `--factory-repo`, then separately with
+`--reserve`. An unqualified candidate also requires `--native-candidate` and its
+exact native kernel. Start, real Parent/Child Connector readiness, preserved app
+RAM, unchanged Docker child and canonical Source edits during Pause must all
+pass. A successful Start alone is not Pause/Resume qualification.
+
+`tools/bounded_store_loss.py --worker-build "$worker_build" --loss planned`
+and the separate `--loss abrupt` lane exercise whole-worker replacement with
+the original 32-MiB RAM, hash-refusal, recovery-replay and independent-descendant
+assertions on either native architecture. Candidate workers require the same
+explicit `--native-candidate` guard. This proof uses private test source, not
+Factory's mutable shared Source, and does not establish recovery of shared
+descriptors after their worker exits.
 
 The `timer-signal`, `timer-admission-signal`, `timer-remainder` and
 `timer-remainder-protection` suites use native ABI fixtures for either
