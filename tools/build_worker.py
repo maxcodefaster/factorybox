@@ -6,6 +6,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -84,6 +85,28 @@ def copy_original_license(root, bundle):
     return digest
 
 
+def source_version(source):
+    version = (Path(source) / "internal/version/VERSION").read_text().strip()
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?", version):
+        raise ValueError("worker source version must be a canonical release version")
+    return version
+
+
+def copy_distribution_notices(root, bundle):
+    hashes = {}
+    for name in ["NOTICE", "LICENSING.md"]:
+        source = Path(root) / name
+        if source.is_symlink() or not source.is_file() or not source.stat().st_size:
+            raise ValueError("distribution notice must be a nonempty regular file: " + name)
+        target = Path(bundle) / "licenses/factorybox" / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        hashes[name] = reference.sha(source)
+        if reference.sha(target) != hashes[name]:
+            raise ValueError("distribution notice changed during build: " + name)
+    return hashes
+
+
 def load(name):
     if not name.startswith("factorybox-build-worker-") or Path(name).name != name:
         raise ValueError("expected one exact completed worker build")
@@ -112,6 +135,13 @@ def load(name):
     if upstream_unit.context_manifest(artifact / "source") != result["source_context"]:
         raise ValueError("completed worker source context changed")
     recipe = json.loads((bundle / "build.json").read_text())
+    if "version" in result:
+        if (result["version"] != source_version(artifact / "source") or
+                recipe.get("version") != result["version"] or
+                any(result["bundle_sha256"].get("licenses/factorybox/" + name) != digest
+                    for name, digest in result["distribution_notices_sha256"].items()) or
+                recipe.get("distribution_notices_sha256") != result["distribution_notices_sha256"]):
+            raise ValueError("worker version or distribution notices differ from frozen inputs")
     if "original_license_sha256" in result:
         expected = result["original_license_sha256"]
         if (not isinstance(expected, str) or len(expected) != 64 or
@@ -160,6 +190,8 @@ def load(name):
     if (inspected["Id"] != result["image_id"] or inspected["RootFS"]["Layers"] != result["layers"] or
             inspected.get("Os") != "linux" or inspected.get("Architecture") != architecture):
         raise ValueError("completed worker image identity changed")
+    if "version" in result and (inspected["Config"].get("Labels") or {}).get("org.opencontainers.image.version") != result["version"]:
+        raise ValueError("worker image version differs from the executable source")
     return artifact, result
 
 
@@ -278,8 +310,12 @@ def main():
             shutil.copyfile(original, target)
         shutil.copyfile(reference.ROOT / "upstream/licenses.json", bundle / "licenses.json")
         original_license = copy_original_license(reference.ROOT, bundle)
+        distribution_notices = copy_distribution_notices(reference.ROOT, bundle)
+        release_version = source_version(source)
+        result.update(version=release_version, distribution_notices_sha256=distribution_notices)
         reference_lifecycle.write_json(bundle / "components.json", {"schema": 1, "binary_sha256": expected})
         recipe = {"schema": 1, "platform": options.platform, "selected": False, "production_qualified": False,
+                  "version": release_version, "distribution_notices_sha256": distribution_notices,
                   "source_lock_sha256": result["source_lock_sha256"], "go_source_sha256": sources.tree_sha(source),
                   "go_version": version, "go_toolchain_sha256": result["go_toolchain_sha256"],
                   "factorybox_sha256": reference.sha(bundle / "factorybox"), "binary_sha256": expected,
@@ -342,7 +378,8 @@ def main():
         image_name = "factorybox-worker-" + owner
         command = [*reference.DOCKER, "build", "--provenance=false", "--progress=plain", "--network=none",
                    "--no-cache", "--platform=" + options.platform, "--build-arg", "NATIVE_BASE=" + base_image,
-                   "--build-arg", "SOURCE_DATE_EPOCH=0", "--tag", image_name,
+                   "--build-arg", "SOURCE_DATE_EPOCH=0", "--build-arg", "FACTORYBOX_VERSION=" + release_version,
+                   "--tag", image_name,
                    "--output", "type=image,compression=uncompressed",
                    "--metadata-file", str(artifact / "image-metadata.json"), "-"]
         # Docker's image exporter unpacks into its local image store and cannot

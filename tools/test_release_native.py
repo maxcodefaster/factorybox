@@ -14,17 +14,21 @@ class NativeReleaseQualificationTests(unittest.TestCase):
         workflow = (reference.ROOT / ".github/workflows/images.yaml").read_text()
         self.assertEqual(workflow.split("on:", 1)[1].split("permissions:", 1)[0],
                          "\n  release:\n    types: [published]\n")
-        for required in ["arch: [amd64, arm64]", 'runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]',
+        for required in ["arch: [amd64]", 'runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]',
                          '[[ ! -s LICENSE ]]', "git merge-base --is-ancestor HEAD origin/main",
                          "tools/release_native.py", "release_native.completed_receipt",
                          "QUALIFIED_IMAGE: ${{ steps.qualify.outputs.image }}",
                          "needs: [release, native]", "Registry absence was not confirmed",
                          "ci-builder-identity.json", "actual==expected",
+                         'test "$version" = "$(cat internal/version/VERSION)"',
+                         "tools/release_sources.py", 'gh release upload "v$RELEASE"',
                          "c8ae26464a7705e59317e47e9f5f0cdf37128963"]:
             self.assertIn(required, workflow)
         for forbidden in ["workflow_dispatch", "pull_request:", "push:", "setup-qemu", "--native-candidate",
-                          ":latest", "cancel-in-progress: true", "contents: write", "docker system prune"]:
+                          ":latest", "cancel-in-progress: true", "docker system prune"]:
             self.assertNotIn(forbidden, workflow)
+        self.assertLess(workflow.index("tools/release_sources.py"), workflow.index("docker push"))
+        self.assertNotIn('"$image-arm64"', workflow)
 
     def test_both_targets_require_all_original_native_gates_without_candidate_admission_or_push(self):
         worker = {"native_base_build": "exact-base", "sysbox_build": "exact-sysbox",

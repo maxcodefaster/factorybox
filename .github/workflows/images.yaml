@@ -35,16 +35,19 @@ jobs:
             echo 'Original-code distribution licensing is unresolved. Do not publish worker images.'
             exit 1
           fi
+          test "$version" = "$(cat internal/version/VERSION)"
+          test -s NOTICE && test -s LICENSING.md
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
   native:
     needs: release
     permissions:
-      contents: read
+      contents: write
       packages: write
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        # ARM64 remains blocked by the original systemd /proc exposure gate.
+        arch: [amd64]
     runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]
     env:
       RELEASE: ${{ needs.release.outputs.version }}
@@ -122,7 +125,7 @@ jobs:
             --factory-repo "$factory" --builder "$builder" --bounded-build --network host \
             > artifacts/ci-consumer.log 2>&1
           consumer="$(receipt artifacts/ci-consumer.log)"
-          mise exec -- python3 tools/devx_project_images.py --platform "linux/$ARCH" --example minimal \
+          mise exec -- python3 tools/devx_project_images.py --platform "linux/$ARCH" --example factory \
             > artifacts/ci-project-images.log 2>&1
           projects="$(receipt artifacts/ci-project-images.log)"
           printf 'WORKER_BUILD=%s\nCONSUMER_BUILD=%s\nPROJECT_IMAGES=%s\n' \
@@ -141,6 +144,21 @@ jobs:
           cp "artifacts/$gate/result.json" artifacts/ci-native-result.json
           image="$(mise exec -- python3 -c 'import json;print(json.load(open("artifacts/ci-native-result.json"))["image"])')"
           printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
+      - name: Attach matching sources and worker package before image distribution
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mise exec -- python3 tools/release_sources.py --worker-build "$WORKER_BUILD" \
+            > artifacts/ci-release-sources.log 2>&1
+          sources="$(mise exec -- python3 -c 'import pathlib,sys;sys.path.insert(0,"tools");import build_worker_pipeline;print(pathlib.Path(build_worker_pipeline.completed_output(pathlib.Path(sys.argv[1]).read_text())).name)' artifacts/ci-release-sources.log)"
+          cp "artifacts/$WORKER_BUILD/image-context/bundle/factorybox" "artifacts/$sources/factorybox-linux-$ARCH"
+          cp "artifacts/$WORKER_BUILD/factorybox-worker-linux-$ARCH.tar.zst" "artifacts/$sources/"
+          cp artifacts/ci-native-result.json "artifacts/$sources/native-result.json"
+          (cd "artifacts/$sources" && sha256sum factorybox-* sources.json result.json native-result.json > SHA256SUMS)
+          gh release upload "v$RELEASE" "artifacts/$sources/"*.tar.zst \
+            "artifacts/$sources/factorybox-linux-$ARCH" "artifacts/$sources/SHA256SUMS" \
+            "artifacts/$sources/sources.json" "artifacts/$sources/result.json" "artifacts/$sources/native-result.json"
       - name: Remove only the exact owned builder
         if: always()
         run: |
@@ -198,7 +216,7 @@ jobs:
       RELEASE: ${{ needs.release.outputs.version }}
       IMAGE_ROOT: ghcr.io/${{ github.repository }}
     steps:
-      - name: Publish the combined worker manifest only after both native jobs
+      - name: Publish the AMD64 worker manifest only after native qualification
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -217,7 +235,7 @@ jobs:
             cat "$RUNNER_TEMP/factorybox-manifest.stderr"
             exit 1
           fi
-          docker buildx imagetools create --tag "$image" "$image-amd64" "$image-arm64"
+          docker buildx imagetools create --tag "$image" "$image-amd64"
       - name: Remove this job's registry credential
         if: always()
         run: |

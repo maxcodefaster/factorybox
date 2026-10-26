@@ -382,15 +382,17 @@ the same Android SDK space preparation as the portable CI.
 
 The [release publication workflow](.github/workflows/images.yaml) runs only when a
 GitHub release is published. It does not run on branch pushes, pull requests or
-manual dispatch. The canonical tag, such as `v0.1.0`, must name a commit contained
-in `main` and match the actual delivered CLI version. Native AMD64 and ARM64 jobs
-publish `ghcr.io/<owner>/<repository>/worker:<version>-<architecture>`. Only after
-both jobs pass does the workflow publish the combined `<version>` manifest.
+manual dispatch. The canonical tag, initially `v0.1.0-rc.1`, must name a commit contained
+in `main` and match `internal/version/VERSION`, the delivered CLI and image label.
+The first candidate includes AMD64 only. Its native job publishes
+`ghcr.io/<owner>/<repository>/worker:<version>-amd64`; after that job passes, the
+workflow creates the AMD64 `<version>` manifest. ARM64 remains excluded until
+the original systemd `/proc exposure` gate passes on its release host.
 An existing version is refused rather than overwritten; an uncertain registry
 lookup also refuses publication. There is no moving `latest` tag.
 
-Each architecture needs a dedicated self-hosted Linux runner labelled
-`factorybox-native-amd64` or `factorybox-native-arm64`, with mise, Docker/Buildx
+The candidate needs a dedicated self-hosted Linux runner labelled
+`factorybox-native-amd64`, with mise, Docker/Buildx, Zstandard, GitHub CLI
 and the exact admitted native Docker kernel, cgroups and privileges. The
 workflow installs no host Sysbox runtime, VM, kernel or emulator. It builds a uniquely
 named 3-CPU/3-GiB BuildKit container without changing the operator's selected
@@ -416,10 +418,15 @@ recipe rebuild from a byte-identical base-image rebuild. Runtime worker images
 still use their exact supplied native-base image digest. Upstream assertions
 and the bounded builder ceiling are unchanged.
 
-Original-code licensing is still unresolved. Publication therefore requires a
-reviewed, nonempty root `LICENSE`; the worker build copies that exact text into
-the package and records its SHA-256. The release gate verifies it is in the tested
-image. No license is selected automatically. The workflow pins the Factory
+Original Factorybox code uses Apache-2.0. The worker package includes the exact
+root `LICENSE`, `NOTICE`, `LICENSING.md` and pinned upstream notices, with their
+hashes. CRIU keeps its GPL-2.0-only terms and its library keeps its original
+terms. Before pushing the image, the workflow attaches the matching component
+source archive, CLI, worker package, checksums and native gate receipt to the
+release. `tools/release_sources.py` binds the exact prepared sources, patches,
+original upstream archives and build recipes to the tested worker result.
+See [LICENSING.md](LICENSING.md) for the separate operating-system package obligations.
+The workflow pins the Factory
 checkout to the exact reviewed consumer commit. If that repository is private,
 configure `FACTORY_CONSUMER_READ_TOKEN` with read access to it; public checkouts
 can use the normal workflow token.
