@@ -261,11 +261,12 @@ does not qualify another machine, kernel, page size or storage backend.
 
 The local ARM64 Factory/worker functional lanes pass, but full release
 qualification on this OrbStack kernel remains blocked. Its host `/proc/kcore`
-does not exist; the unchanged upstream Systemd `/proc exposure` case requires
-that read to fail with `Permission denied`, not `No such file`. That case is
-neither passed nor skipped. Do not synthesize a host proc node, weaken the
-assertion or publish this profile as production-qualified. The release workflow
-retains that required gate.
+does not exist. Read-only observation of the Docker host's actual procfs confirms
+the file is already absent outside Sysbox. The unchanged upstream Systemd
+`/proc exposure` case requires that read to fail with `Permission denied`, not
+`No such file`. That case is neither passed nor skipped. Do not synthesize a host
+proc node, weaken the assertion or publish this profile as production-qualified.
+The release workflow retains that required gate.
 
 The repository pins Go and Python through mise. Run portable checks first:
 
