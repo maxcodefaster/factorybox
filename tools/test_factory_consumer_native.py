@@ -12,6 +12,37 @@ import upstream_unit
 
 
 class NativeFactoryConsumerInputTests(unittest.TestCase):
+    def test_readiness_uses_http_from_a_separate_owned_cgroup_before_any_worker_exec(self):
+        calls = []
+        def verify():
+            calls.append('verified')
+        def run(arguments, **options):
+            self.assertEqual(calls, ['verified'])
+            self.assertEqual(arguments[:6],
+                             ['exec', 'owned-helper', 'nsenter', '--net=/proc/123/ns/net', '--', 'python3'])
+            self.assertNotIn('owned-worker', arguments)
+            self.assertIn('/readyz', arguments[-1])
+            self.assertEqual(options, {'check': False, 'timeout': 5})
+            calls.append('http')
+            return '204\n'
+        self.assertTrue(consumer.worker_http_ready(run, 'owned-worker', 'owned-helper', 123, verify))
+        self.assertEqual(calls, ['verified', 'http'])
+
+    def test_readiness_rejects_nonready_responses_and_identity_changes_without_worker_exec(self):
+        for response in ['200\n', '503\n', '', '204 extra\n']:
+            self.assertFalse(consumer.worker_http_ready(
+                lambda *args, **kwargs: response, 'worker', 'helper', 123, lambda: None))
+        def refused():
+            raise RuntimeError('original worker exited')
+        with patch('factory_consumer_native.reference.docker') as command:
+            with self.assertRaisesRegex(RuntimeError, 'exited'):
+                consumer.worker_http_ready(command, 'worker', 'helper', 123, refused)
+            command.assert_not_called()
+            for pid, helper in [(0, 'helper'), (123, 'worker')]:
+                with self.assertRaisesRegex(ValueError, 'separate owned'):
+                    consumer.worker_http_ready(command, 'worker', helper, pid, lambda: None)
+            command.assert_not_called()
+
     def test_timed_out_container_create_retains_exact_cleanup_intent(self):
         containers = []
         command = ['run', '--name', 'owned-directory', '--label',

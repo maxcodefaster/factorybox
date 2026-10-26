@@ -61,6 +61,20 @@ def run_owned_container(run, containers, name, arguments, **options):
     return run(['run', '--name', name, *arguments], **options)
 
 
+def worker_http_ready(run, worker_id, helper_id, worker_pid, verify):
+    if type(worker_pid) is not int or worker_pid <= 1 or helper_id == worker_id:
+        raise ValueError('Worker readiness requires a separate owned native network helper')
+    verify()
+    # Enter only the worker's network namespace. The probe remains in the
+    # helper's cgroup, so it cannot race PID 1's initial cgroup delegation.
+    probe = ("import urllib.request;"
+             "client=urllib.request.build_opener(urllib.request.ProxyHandler({}));"
+             "print(client.open('http://127.0.0.1:8081/readyz',timeout=2).status)")
+    response = run(['exec', helper_id, 'nsenter', '--net=/proc/'+str(worker_pid)+'/ns/net',
+                    '--', 'python3', '-c', probe], check=False, timeout=5)
+    return response.strip() == '204'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
@@ -68,12 +82,18 @@ def main():
     parser.add_argument('--factory-repo', type=Path, required=True)
     parser.add_argument('--project-images', required=True)
     parser.add_argument('--reserve', action='store_true')
+    parser.add_argument('--warmup-control', action='store_true',
+                        help='Diagnostic only: exercise and remove a stock container before standby Pause; cannot qualify a release')
     parser.add_argument('--terminal', action='store_true',
                         help='Require actual idle-PTY state across native Pause/Resume and mapped-user Git on shared Source')
     parser.add_argument('--git', action='store_true',
                         help='Require mapped-user Git without adding a terminal to the native restore')
     parser.add_argument('--native-candidate', action='store_true')
     args = parser.parse_args()
+    if args.warmup_control and not args.reserve:
+        parser.error('--warmup-control requires --reserve')
+    print(json.dumps({'stage':'verify-existing-inputs','worker_build':args.worker_build,
+                      'consumer_build':args.consumer_build}),flush=True)
     worker_root, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
     require_native_worker(worker, host, args.native_candidate)
@@ -96,13 +116,14 @@ def main():
         raise ValueError('Requires the retained exact Node project image')
     owner = uuid.uuid4().hex
     attempt = str(uuid.uuid4())
+    sandbox = 'runtime-' + attempt.replace('-', '')
     pod_uid = str(uuid.uuid4())
     name = 'factorybox-factory-consumer-'+owner
     output = reference.new_artifact(name)
     output.mkdir(mode=0o755)
     shutil.copyfile(__file__, output/'runner.py')
     frozen = output/'factory';frozen.mkdir()
-    for file in ['prepare.py','export-rootfs.sh','bootstrap.sh','reserve-bootstrap.sh']:
+    for file in ['prepare.py','prepare_test.py','export-rootfs.sh','bootstrap.sh','reserve-bootstrap.sh']:
         shutil.copyfile(repo/'packages/runtime-kubernetes/src/factorybox'/file,frozen/file)
     hub = output/'hub.js'
     subprocess.run(['mise','exec','--','bun','build','scripts/runtime/factorybox-consumer-hub.ts',
@@ -124,11 +145,12 @@ def main():
                        cwd=mirror_source,env=dict(os.environ,GOOS='linux',GOARCH=architecture,CGO_ENABLED='0'),check=True,capture_output=True,timeout=90)
     build_config.require_elf(mirror, platform)
     pins=output/'project-images.json';pins.write_text(json.dumps(images['images']))
-    result = {'schema':1,'owner':owner,'attemptID':attempt,'podUID':pod_uid,'passed':False,'cleanup':False,
+    result = {'schema':1,'owner':owner,'attemptID':attempt,'sandboxID':sandbox,'podUID':pod_uid,'passed':False,'cleanup':False,
               'platform':platform,'native_candidate':worker.get('native_candidate'),
               'worker_build':args.worker_build,'consumer_build':args.consumer_build,'consumer_image':consumer['image'],
               'reserve':args.reserve,'reserve_images':[node] if args.reserve else None,
               'terminal_proof':args.terminal,
+              'diagnostic_only':args.warmup_control,
               'git_proof':args.git or args.terminal,
               'fixture_registry_mirror':True,'registry_binary_sha256':reference.sha(mirror),
               'registry_source_sha256':source_hashes,'registry_reused_from':reused_mirror,
@@ -136,6 +158,12 @@ def main():
               'source_sha256':{p.name:reference.sha(p) for p in frozen.iterdir()},
               'hub_sha256':reference.sha(hub),'bun_sha256':reference.sha(bun),
               'hub_image':consumer['hub_image'],'hub_bun':consumer['hub_bun'],'commands':[]}
+    phase_started=time.monotonic()
+    def phase(stage):
+        observation={'stage':stage,'elapsed_seconds':round(time.monotonic()-phase_started,3)}
+        result.setdefault('stages',[]).append(observation)
+        print(json.dumps({'evidence':str(output),**observation}),flush=True)
+    phase('prepare-owned-fixture')
     before = consumer_worker_loss.sysctls(docker_image=worker['native_base_image'],
         owner=owner, artifact=output, phase='before', factory_network=True)
     result['host_sysctls_before'] = before
@@ -205,6 +233,7 @@ def main():
              '--env','FACTORY_RUNTIME_IMAGE='+consumer['image'],'--entrypoint','/bin/sh',consumer['image'],
              '-ec',(frozen/'export-rootfs.sh').read_text()],timeout=90)
         result['export_seconds'] = time.monotonic()-started
+        phase('consumer-image-exported')
         for label in [exporter,helper]:
             reference.owned_delete('container',label,owner);containers.remove(label)
         server_name = name+'-hub'
@@ -221,9 +250,6 @@ def main():
              '--mount',f'type=volume,source={name}-source,target=/factory-source',worker['image'],
              '--store-id',owner,'--bounded-root','/var/lib/sysbox/fixed-store','--bounded-bytes',str(8<<30),
              '--health-listen','127.0.0.1:8081'],timeout=65).strip()
-        status = wait(lambda:json.loads(run(['exec',worker_id,'/opt/factorybox/factorybox','worker-status'],check=False)),
-                      lambda v:v.get('ready_at') and v.get('store_id')==owner,'Worker readiness',120)
-        result['worker_identity'] = status
         w = own(name,worker_id);s = own(server_name,server_id)
         if w['HostConfig']['Memory']!=3<<30 or w['HostConfig']['NanoCpus']!=3_000_000_000 or w['HostConfig']['NetworkMode']!='none' or s['HostConfig']['NetworkMode']!='none':
             raise ValueError('Native fixture resource bounds changed')
@@ -236,6 +262,23 @@ def main():
         network = own(network_name,network_id)
         if network['HostConfig']['PidMode']!='host' or network['HostConfig']['NetworkMode']!='none':
             raise ValueError('Owned native network helper changed its namespace bounds')
+        def verify_health():
+            current = own(name,worker_id)
+            if not current['State']['Running'] or current['State']['Pid']!=wp:
+                raise RuntimeError('Original worker exited or changed before HTTP readiness')
+            own(network_name,network_id)
+        wait(lambda:worker_http_ready(run,worker_id,network_id,wp,verify_health),
+             lambda ready:ready is True,'Worker HTTP readiness',120)
+        result['worker_http_readiness']=True
+        status=json.loads(run(['exec',worker_id,'/opt/factorybox/factorybox','worker-status']))
+        if not status.get('ready_at') or status.get('store_id')!=owner:
+            raise ValueError('HTTP-ready worker has a different admitted identity')
+        result['worker_identity'] = status
+        phase('worker-http-ready')
+        probe = '/var/lib/sysbox/native-fixture-prepare.py'
+        run(['cp',str(frozen/'prepare.py'),worker_id+':'+probe])
+        run(['exec',worker_id,'python3','-c',(frozen/'prepare_test.py').read_text(),probe])
+        result['preparation_ownership_controls_passed'] = True
         def ip(pid, arguments):
             if own(name,worker_id)['State']['Pid']!=wp or own(server_name,server_id)['State']['Pid']!=sp:
                 raise ValueError('Owned fixture process changed')
@@ -278,13 +321,14 @@ def main():
         if not args.reserve:
             run(['cp',str(project),worker_id+':/factory-source/project'])
             run(['exec',worker_id,'chown','-R','101000:101000','/factory-source/project'])
-        request = {'version':1,'storeID':owner,'epoch':status['epoch'],'podUID':pod_uid,
+        request = {'version':2,'sandboxID':sandbox,'storeID':owner,'epoch':status['epoch'],'podUID':pod_uid,
                    'runtimeHostImage':consumer['image'],'sharedSource':not args.reserve,'reserveSeed':args.reserve,
                    'bootstrap':'/factory/native-registry --archive=/factory/project-images.tar --pins=/factory/project-images.json >/var/log/native-registry.log 2>&1 &\nexec /bin/sh /factory/native-bootstrap.sh\n'}
         result['request'] = request
         started=time.monotonic()
         prepared = json.loads(run(['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text()],body=json.dumps(request),timeout=180))
         result['preparation'] = prepared;result['preparation_seconds']=time.monotonic()-started
+        phase('sandbox-input-prepared')
         for file,target in [(mirror,'native-registry'),(projects/'images.tar','project-images.tar'),
                             (pins,'project-images.json'),(frozen/('reserve-bootstrap.sh' if args.reserve else 'bootstrap.sh'),'native-bootstrap.sh')]:
             staged='/var/lib/sysbox/native-fixture-'+target
@@ -298,8 +342,9 @@ def main():
         cli=['exec',worker_id,'/opt/factorybox/factorybox','--worker-run-root','/run/factorybox',
              '--worker-store-id',owner,'--worker-epoch',status['epoch']]
         started=time.monotonic()
-        native=json.loads(run([*cli,'start','--bundle',prepared['bundle'],'runtime'],timeout=90))
+        native=json.loads(run([*cli,'start','--bundle',prepared['bundle'],sandbox],timeout=90))
         result['start']=native;live_pid=native['runtime']['pid']
+        phase('sandbox-started')
         runc=['exec',worker_id,'/opt/factorybox/components/sysbox-runc','--root',status['lifecycle']['root']+'/runtime','exec',native['record']['runtime_id']]
         wait(lambda:run([*runc,'docker','info','--format','{{json .}}'],check=False),lambda v:v.startswith('{'),'Private Docker startup')
         if before.get('net/mptcp/enabled') is not None:
@@ -309,6 +354,71 @@ def main():
         if args.reserve:
             ready=wait(lambda:run([*runc,'cat','/home/coder/.factory-reserve/ready'],check=False),lambda v:v==owner,'Actual reserve readiness')
             result['reserve_ready']=ready
+            if args.warmup_control:
+                control=run([*runc,'docker','run','--detach','--pull=never',
+                             '--name','owned-before-pause-'+owner,node,'sleep','300']).strip()
+                if not re.fullmatch('[a-f0-9]{64}',control):
+                    raise ValueError('Before-Pause Docker control did not return its owned container')
+                output_before=run([*runc,'docker','exec',control,'/bin/sh','-c',
+                                   'printf factorybox-before-pause'],check=False)
+                result['diagnostic_before_exec']=result['commands'][-1].copy()
+                if result['diagnostic_before_exec']['exit'] or output_before!='factorybox-before-pause':
+                    raise ValueError('The same private Docker exec already fails before Pause')
+                run([*runc,'docker','rm','--force',control])
+                phase('diagnostic-before-pause-exec-passed')
+            cgroup_probe = ("readlink /proc/1/ns/cgroup; readlink /proc/self/ns/cgroup; "
+                            "cat /proc/1/cgroup /proc/self/cgroup; "
+                            "grep cgroup /proc/self/mountinfo; stat -f /sys/fs/cgroup; "
+                            "ls -lai /sys/fs/cgroup; ls -lai /sys/fs/cgroup/docker")
+            result['standby_cgroups_before']=run([*runc,'/bin/sh','-c',cgroup_probe],check=False)
+            run([*runc,'/bin/sh','-ec',
+                 'test ! -e /home/coder/.factory-reserve/activation.json; test ! -e /factory/assignment/parent-token; test ! -e /factory/assignment/child-token'])
+            result['standby_pause_attempted']=True
+            result['standby_pause']=json.loads(run([*cli,'pause','--snapshot-id',owner,sandbox],timeout=90))
+            pause=result['standby_pause']['record']['pause']
+            if (result['standby_pause']['record']['phase']!='paused' or
+                    pause['snapshot_id']!=owner or not pause.get('completed_at') or
+                    pause.get('after',{}).get('anon')!=0 or
+                    pause.get('snapshot',{}).get('resident_bytes_after')!=0):
+                raise ValueError('Unused standby did not release its anonymous RAM and resident snapshot pages')
+            result['standby_memory_paused']=memory()
+            phase('unused-standby-paused')
+            resumed_at=time.monotonic()
+            result['standby_resume']=json.loads(run([*cli,'resume','--snapshot-id',owner,sandbox],timeout=90))
+            live_pid=result['standby_resume']['runtime']['pid']
+            result['standby_resume_seconds']=time.monotonic()-resumed_at
+            phase('unused-standby-resumed')
+            if (result['standby_resume']['record']['runtime_id']!=native['record']['runtime_id'] or
+                    not result['standby_resume']['record']['pause'].get('resume',{}).get('completed_at')):
+                raise ValueError('Standby activation did not resume its original native Sandbox')
+            result['standby_cgroups_after']=run([*runc,'/bin/sh','-c',cgroup_probe],check=False)
+            # A resumed empty daemon must be able to create and exec new
+            # containers, not merely answer Docker info or retain old apps.
+            probe_name='owned-standby-exec-'+owner
+            probe_container=run([*runc,'docker','run','--detach','--pull=never',
+                                 '--name',probe_name,node,'sleep','300']).strip()
+            if not re.fullmatch('[a-f0-9]{64}',probe_container):
+                raise ValueError('Standby probe did not create its exact private Docker container')
+            probe_output=run([*runc,'docker','exec',probe_container,'/bin/sh','-c',
+                              'printf factorybox-standby-exec'],check=False)
+            result['standby_docker_exec']=result['commands'][-1].copy()
+            if result['standby_docker_exec']['exit'] or probe_output!='factorybox-standby-exec':
+                result['standby_cgroups_after_failure']=run([*runc,'/bin/sh','-c',cgroup_probe],check=False)
+                result['standby_probe_container']=run([*runc,'docker','inspect',probe_container],check=False)
+                result['standby_direct_runc']=run(
+                    [*runc,'runc','--root','/run/docker/runtime-runc/moby','--log',
+                     '/tmp/factorybox-standby-runc.log','--debug','exec',probe_container,'/bin/true'],
+                    check=False)
+                result['standby_direct_runc_command']=result['commands'][-1].copy()
+                result['standby_direct_runc_log']=run(
+                    [*runc,'cat','/tmp/factorybox-standby-runc.log'],check=False)
+                raise ValueError('Resumed standby cannot exec a new private Docker container')
+            run([*runc,'runc','--root','/run/docker/runtime-runc/moby','--log',
+                 '/tmp/factorybox-standby-sealing.log','--debug','exec',probe_container,'/bin/true'])
+            result['standby_sealing_log']=run([*runc,'cat','/tmp/factorybox-standby-sealing.log'])
+            run([*runc,'docker','rm','--force',probe_container])
+            result['standby_docker_exec_passed']=True
+            phase('resumed-standby-new-container-exec')
             activation={'slotId':owner,'podUID':pod_uid,'assignment':assignment,'parentToken':owner+'-parent','childToken':owner+'-child'}
             activation_script="set -eu; umask 077; cat > /home/coder/.factory-reserve/activation.pending; chmod 0400 /home/coder/.factory-reserve/activation.pending; mv /home/coder/.factory-reserve/activation.pending /home/coder/.factory-reserve/activation.json"
             # No second native Start: the original reserve process becomes the Parent.
@@ -317,7 +427,22 @@ def main():
         first=wait(lambda:endpoint('/app'),lambda v:bool(v.get('nonce')),'First app response')
         result['first_useful_seconds']=time.monotonic()-started;result['before']=first
         result['memory_running']=memory()
+        phase('first-app-response')
         result['hub_before']=endpoint()
+        if not args.reserve:
+            sibling = {**request, 'sandboxID': 'runtime-' + uuid.uuid4().hex}
+            result['sibling_preparation']=json.loads(run(
+                ['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text()],
+                body=json.dumps(sibling),timeout=180))
+            if result['sibling_preparation']['bundle'] == prepared['bundle']:
+                raise ValueError('Two Sandbox preparations share mutable input backing')
+            result['sibling_release']=json.loads(run(
+                ['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text(),
+                 'release','--never-started'],body=json.dumps(sibling),timeout=60))
+            retained=json.loads(run([*cli,'state',sandbox]))
+            if retained['record']['id']!=sandbox or retained['record']['phase']!='running':
+                raise ValueError('Releasing an unused sibling changed the active Sandbox')
+            result['sibling_isolation']=True
         if args.terminal:
             result['terminal_before']=endpoint('/terminal/before','POST')
             result['idle_prompt']=wait(lambda:endpoint('/idle'),lambda v:v.get('eligible') is False,
@@ -332,18 +457,20 @@ def main():
         snapshot=uuid.uuid4().hex
         endpoint('/pause','POST')
         result['pause_attempted']=True
-        result['pause']=json.loads(run([*cli,'pause','--snapshot-id',snapshot,'runtime'],timeout=90))
+        result['pause']=json.loads(run([*cli,'pause','--snapshot-id',snapshot,sandbox],timeout=90))
         result['memory_paused']=memory()
+        phase('assigned-sandbox-paused')
         if args.reserve:
             # Isolated source is private. Its preservation is checked through app RAM and child identity.
             pass
         else:
             run(['exec',worker_id,'python3','-c',"import os,pathlib;p=pathlib.Path('/factory-source/project/.editor-save');p.write_text('during-pause');os.chown(p,101000,101000);p.replace('/factory-source/project/editor.txt')"])
         endpoint('/resume','POST')
-        result['resume']=json.loads(run([*cli,'resume','--snapshot-id',snapshot,'runtime'],timeout=90));live_pid=result['resume']['runtime']['pid']
+        result['resume']=json.loads(run([*cli,'resume','--snapshot-id',snapshot,sandbox],timeout=90));live_pid=result['resume']['runtime']['pid']
         wait(endpoint,lambda v:v['connected'],'Same authenticated Connectors after Resume',45)
         after=wait(lambda:endpoint('/app'),lambda v:bool(v.get('nonce')),'App after Resume')
         result['after']=after;result['hub_after']=endpoint()
+        phase('assigned-sandbox-resumed')
         result['memory_resumed']=memory()
         if after['nonce']!=first['nonce'] or after['pid']!=first['pid'] or after['count']<=first['count'] or after['editor']!=('before' if args.reserve else 'during-pause'):
             raise ValueError('Resume restarted application memory or lost canonical source edits')
@@ -361,7 +488,7 @@ def main():
             result['git_after']=endpoint('/git-commit','POST')
             if result['git_after']['head']==revision or result['git_after']['files']:
                 raise ValueError('Actual mapped-user personal Git commit did not retain its exact outcome')
-        result['delete']=json.loads(run([*cli,'delete','runtime'],timeout=60));live_pid=None
+        result['delete']=json.loads(run([*cli,'delete',sandbox],timeout=60));live_pid=None
         result['release']=json.loads(run(['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text(),'release'],body=json.dumps(request),timeout=60))
         run(['stop','--timeout','45',worker_id],timeout=50)
         result['final_worker_state']=own(name,worker_id)['State']
@@ -381,8 +508,9 @@ def main():
         # Cleanup has its own bounded window and verifies every immutable owner.
         deadline=time.monotonic()+120
         (output/'before-cleanup.json').write_text(json.dumps(result,indent=2)+'\n')
-        print(json.dumps({'evidence':str(output),'workload_passed':result['passed'],'error':result.get('error')}),flush=True)
-        if result.get('pause_attempted') and not result['passed']:
+        print(json.dumps({'evidence':str(output),'workload_passed':result['passed'],
+                          'diagnostic_only':args.warmup_control,'error':result.get('error')}),flush=True)
+        if (result.get('pause_attempted') or result.get('standby_pause_attempted')) and not result['passed']:
             try:
                 upstream_bats.archive_failure(output,name,owner,[name,name+'-source'],worker['native_base_image'],result,timeout=180,compressed=True)
             except Exception as error:
@@ -411,9 +539,16 @@ def main():
         result['host_sysctls_unchanged']=after==before
         result['inputs_unchanged']=all(reference.sha(frozen/file)==value for file,value in result['source_sha256'].items()) and reference.sha(hub)==result['hub_sha256'] and reference.sha(bun)==result['bun_sha256']
         result['passed']=result['passed'] and result['cleanup'] and result['host_sysctls_unchanged'] and result['inputs_unchanged']
+        if args.warmup_control:
+            result['diagnostic_control_passed']=result['passed']
+            result['passed']=False
         (output/'result.json').write_text(json.dumps(result,indent=2)+'\n')
-        print(json.dumps({'evidence':str(output),'passed':result['passed'],'cleanup':result['cleanup'],'error':result.get('error')}),flush=True)
-    if not result['passed']:raise RuntimeError('Native Factory consumer acceptance failed: '+str(output))
+        print(json.dumps({'evidence':str(output),'passed':result['passed'],'cleanup':result['cleanup'],
+                          'diagnostic_only':args.warmup_control,
+                          'diagnostic_control_passed':result.get('diagnostic_control_passed'),
+                          'error':result.get('error')}),flush=True)
+    if not (result.get('diagnostic_control_passed') if args.warmup_control else result['passed']):
+        raise RuntimeError('Native Factory consumer acceptance failed: '+str(output))
 
 
 if __name__=='__main__':main()

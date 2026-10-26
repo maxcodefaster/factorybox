@@ -22,7 +22,7 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                          "ci-builder-identity.json", "actual==expected",
                          'test "$version" = "$(cat internal/version/VERSION)"',
                          "tools/release_sources.py", 'gh release upload "v$RELEASE"',
-                         "c8ae26464a7705e59317e47e9f5f0cdf37128963"]:
+                         "d11b1ec7b83bcd3ff2df0d7a03e0907de9d4eb78"]:
             self.assertIn(required, workflow)
         for forbidden in ["workflow_dispatch", "pull_request:", "push:", "setup-qemu", "--native-candidate",
                           ":latest", "cancel-in-progress: true", "docker system prune"]:

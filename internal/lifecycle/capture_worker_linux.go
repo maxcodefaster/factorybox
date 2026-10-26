@@ -187,17 +187,11 @@ func captureStopSource(config captureGuardConfig, anchors captureGuardAnchors, c
 	}
 	if err := captureGuardWrite(anchors.evidence, "capture-stop-intent.json", map[string]any{
 		"token": config.Token, "source_pid": config.PID, "source_start": config.Start,
-		"capture": captured,
+		"capture": captured, "stop_method": "frozen-owned-process-pidfds",
 	}); err != nil {
 		return err
 	}
-	fd, err := unix.Openat(int(anchors.group.Fd()), "cgroup.kill", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return err
-	}
-	file := os.NewFile(uintptr(fd), "original captured source cgroup.kill")
-	_, writeErr := file.WriteString("1")
-	if err := errors.Join(writeErr, file.Close()); err != nil {
+	if err := captureKillFrozenSource(config, anchors); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(3 * time.Second)

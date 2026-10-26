@@ -69,7 +69,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: maxcodefaster/open-software-factory
-          ref: c8ae26464a7705e59317e47e9f5f0cdf37128963
+          ref: d11b1ec7b83bcd3ff2df0d7a03e0907de9d4eb78
           token: ${{ secrets.FACTORY_CONSUMER_READ_TOKEN || github.token }}
           path: consumer-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           clean: false
