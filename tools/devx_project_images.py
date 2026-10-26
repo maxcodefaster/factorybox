@@ -18,7 +18,10 @@ ROOT = reference.ROOT
 def example_images(example):
     if example == "factory":
         recipe = ROOT / "examples/factory/.devcontainer/compose.yaml"
-        images = list(dict.fromkeys(re.findall(r"^\s+image:\s+(\S+)\s*$", recipe.read_text(), re.MULTILINE)))
+        declared = re.findall(r"^\s+image:\s+(\S+)\s*$", recipe.read_text(), re.MULTILINE)
+        if len(declared) != 2:
+            raise ValueError("Factory example requires exact image pins for both services")
+        images = list(dict.fromkeys(declared))
     elif example == "minimal":
         recipe = ROOT / "examples/minimal/.devcontainer/devcontainer.json"
         images = [json.loads(recipe.read_text())["image"]]
@@ -53,8 +56,6 @@ def main():
     parser.add_argument("--example", choices=["factory", "minimal"], default="factory")
     options = parser.parse_args()
     compose, images = example_images(options.example)
-    if options.example == "factory" and len(images) != 2:
-        raise ValueError("Factory example requires both exact service images")
     owner = uuid.uuid4().hex
     archive = reference.new_artifact("factorybox-devx-project-images-" + owner)
     archive.mkdir()

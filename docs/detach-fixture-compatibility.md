@@ -31,3 +31,21 @@ The original failing run is
 The unchanged native regression passes with the corrected preparation in
 `factorybox-checkpoint-retirement-a92ea814bea043f8be982be5aac678ca`.
 Both outcomes and reconstruction receipts remain under `artifacts/`.
+
+## Factory project image selection
+
+The Factory native fixture requires its pinned Node project image. The release
+workflow incorrectly selected the minimal Alpine example. It now selects the
+Factory example. Both of that example's services use the same exact Node digest,
+so the image archive correctly contains one unique image. Input preparation
+still requires an image declaration for each of the two services.
+
+| File | Before SHA-256 | After SHA-256 |
+| --- | --- | --- |
+| `tools/devx_project_images.py` | `fdd5c2599fbb22f0e00b17dfe52570685e23138c7d774887e79750b503eaeaba` | `18b42dd4372f6edc783622755a92177dc591f9a8743bb61bd9d9a62f5e569d98` |
+| `.github/workflows/images.yaml` | `fad0327d825798b7224b10e7844ef0e3fed9fd2f42a29ddc478a6014ab03c514` | `4d5656c6d627fa44a76aae76039cc0cb37eb3da7afbd5466bbc3c5cdad729d6b` |
+| `tools/test_minimal_images.py` | `3edb4ef327ad21b4ee330a5ea250afa8b33b321fc3822f09c6e1c41789655a98` | `cd267ecf64fcb949a3c52b05242486a88ef18ad224ea9c8ae9846a95203ef426` |
+
+The consumer's assertions in `tools/factory_consumer_native.py` remain unchanged
+at `1892bfa8afaf40124f7236d1c19980e8e505593cc39b07e0f00d6c7df33632b3`.
+All existing project-image tests remain, with an added shared-image regression.

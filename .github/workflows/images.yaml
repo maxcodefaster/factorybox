@@ -125,7 +125,7 @@ jobs:
             --factory-repo "$factory" --builder "$builder" --bounded-build --network host \
             > artifacts/ci-consumer.log 2>&1
           consumer="$(receipt artifacts/ci-consumer.log)"
-          mise exec -- python3 tools/devx_project_images.py --platform "linux/$ARCH" --example minimal \
+          mise exec -- python3 tools/devx_project_images.py --platform "linux/$ARCH" --example factory \
             > artifacts/ci-project-images.log 2>&1
           projects="$(receipt artifacts/ci-project-images.log)"
           printf 'WORKER_BUILD=%s\nCONSUMER_BUILD=%s\nPROJECT_IMAGES=%s\n' \

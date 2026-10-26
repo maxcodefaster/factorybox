@@ -9,6 +9,20 @@ import devx_project_images
 
 
 class MinimalImageTests(unittest.TestCase):
+    def test_two_factory_services_may_share_one_exact_image_archive(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            recipe = root / "examples/factory/.devcontainer/compose.yaml"
+            recipe.parent.mkdir(parents=True)
+            image = "docker.io/library/node:24@sha256:" + "a" * 64
+            recipe.write_text("services:\n  workspace:\n    image: " + image +
+                              "\n  dependency:\n    image: " + image + "\n")
+            with patch.object(devx_project_images, "ROOT", root):
+                self.assertEqual(devx_project_images.example_images("factory"), (recipe, [image]))
+                recipe.write_text("services:\n  workspace:\n    image: " + image + "\n")
+                with self.assertRaisesRegex(ValueError, "both services"):
+                    devx_project_images.example_images("factory")
+
     def test_minimal_archive_cannot_substitute_for_factory_or_changed_example(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
