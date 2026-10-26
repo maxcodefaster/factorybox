@@ -11,6 +11,38 @@ import share_closed_sources as sharing
 
 
 class ClosedGoSourceSharingTests(unittest.TestCase):
+    def test_criu_timestamp_adoption_is_scoped_to_verified_completed_source_copies(self):
+        for adopt in [False, True]:
+            with self.subTest(adopt=adopt), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                artifacts = root / 'artifacts'
+                artifacts.mkdir()
+                copies, receipts = [], {}
+                for index in [1, 2]:
+                    run = artifacts / ('factorybox-build-criu-retained-' + str(index) * 32)
+                    source = run / 'context'
+                    source.mkdir(parents=True)
+                    for name in ['exact.c', 'exact.h', 'exact.S', 'other.txt']:
+                        target = source / name
+                        target.write_text('exact immutable ' + name)
+                        os.utime(target, ns=(index * 1000000000, index * 1000000000))
+                    copies.append(source)
+                    receipt = run / 'result.json'
+                    receipt.write_text(json.dumps({
+                        'passed': True, 'cleanup': True, 'context_sha256': sharing.sources.tree_sha(source),
+                    }))
+                    receipts[receipt] = receipt.read_bytes()
+                with patch.object(sharing.reference, 'ROOT', root), \
+                     patch.object(sharing.reference, 'docker', return_value=''), \
+                     patch('sys.argv', ['share_closed_sources.py', *(['--adopt-criu-mtime'] if adopt else [])]), \
+                     contextlib.redirect_stdout(io.StringIO()):
+                    sharing.main()
+                for name in ['exact.c', 'exact.h', 'exact.S']:
+                    self.assertEqual((copies[0] / name).samefile(copies[1] / name), adopt)
+                self.assertFalse((copies[0] / 'other.txt').samefile(copies[1] / 'other.txt'))
+                for receipt, before in receipts.items():
+                    self.assertEqual(receipt.read_bytes(), before)
+
     def test_timestamp_adoption_is_explicit_and_preserves_native_source_receipts(self):
         for adopt in [False, True]:
             with self.subTest(adopt=adopt), tempfile.TemporaryDirectory() as temporary:

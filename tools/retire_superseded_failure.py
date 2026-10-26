@@ -58,10 +58,10 @@ def verify_factory_consumer_replacement(old, new, old_worker, new_worker):
         raise ValueError("Factory consumer replacement lacks complete live RAM, Source, Docker and released-memory proof")
 
 
-def verify_standby_exec_replacement(old, new, old_worker, new_worker, native, proof):
+def verify_standby_exec_replacement(old, new, old_worker, new_worker, native, proof, input_proof=None):
     """Supersede only the resolved exec failure, never the later capture failure."""
     identical = ["platform", "native_candidate", "consumer_build", "consumer_image",
-                 "hub_image", "hub_bun", "source_sha256", "hub_sha256",
+                 "hub_image", "hub_bun", "hub_sha256",
                  "registry_binary_sha256", "registry_source_sha256"]
     required = ["cleanup", "inputs_unchanged", "host_sysctls_unchanged"]
     failed_exec = old.get("standby_docker_exec", {})
@@ -79,6 +79,23 @@ def verify_standby_exec_replacement(old, new, old_worker, new_worker, native, pr
             new.get("hub_before", {}).get("connected") is not True or
             not new.get("before", {}).get("nonce") or not new.get("before", {}).get("pid")):
         raise ValueError("standby exec supersession lacks the same real resolved Factory failure")
+    if old.get("source_sha256") != new.get("source_sha256"):
+        before, after = old.get("source_sha256", {}), new.get("source_sha256", {})
+        changed = {key for key in before.keys() | after.keys() if before.get(key) != after.get(key)}
+        first, resumed = (input_proof or {}).get("before", {}), (input_proof or {}).get("after", {})
+        memory = (input_proof or {}).get("pause", {}).get("record", {}).get("pause", {})
+        if (changed != {"prepare.py", "prepare_test.py"} or input_proof is None or
+                any(input_proof.get(key) is not True for key in
+                    ["passed", "cleanup", "inputs_unchanged", "host_sysctls_unchanged",
+                     "sibling_isolation", "preparation_ownership_controls_passed"]) or
+                input_proof.get("source_sha256") != after or
+                any(input_proof.get(key) != new.get(key) for key in identical) or
+                not first.get("nonce") or first.get("nonce") != resumed.get("nonce") or
+                not first.get("pid") or first.get("pid") != resumed.get("pid") or
+                resumed.get("count", 0) <= first.get("count", 0) or
+                not memory.get("completed_at") or memory.get("after", {}).get("anon") != 0 or
+                memory.get("snapshot", {}).get("resident_bytes_after") != 0):
+            raise ValueError("standby exec input upgrade lacks its separate complete isolation and RAM proof")
     if new.get("passed") is not True:
         error = new.get("error", "")
         if (new.get("passed") is not False or new.get("pause_attempted") is not True or
@@ -155,6 +172,8 @@ def main():
     parser.add_argument("--verify-only",action="store_true",help="Retain and verify diagnostics while keeping the complete source archive")
     parser.add_argument("--resolved-standby-exec", metavar="NATIVE_RUN",
                         help="Retire only an exact resolved standby exec failure, backed by a passing native regression and real Factory first work; retain and verify the later complete capture failure")
+    parser.add_argument("--factory-input-proof", metavar="FACTORY_RUN",
+                        help="With resolved standby exec only: a complete passing Factory proof may qualify the isolated prepare.py/prepare_test.py input-ownership upgrade")
     args = parser.parse_args()
     pattern = r"factorybox-(?:devx-lifecycle|consumer-worker-loss|checkpoint-retirement|bats|factory-consumer)-[0-9a-f]{32}"
     if not all(re.fullmatch(pattern, name) for name in [args.source_run, args.replacement_proof]):
@@ -167,6 +186,8 @@ def main():
     replacement_scope = None
     if args.resolved_standby_exec and not factory:
         raise ValueError("scoped standby exec supersession requires Factory consumer runs")
+    if args.factory_input_proof and not args.resolved_standby_exec:
+        raise ValueError("Factory input upgrade proof requires scoped standby exec supersession")
     if factory:
         if not all(name.startswith('factorybox-factory-consumer-') for name in [args.source_run, args.replacement_proof]):
             raise ValueError('Factory consumer failure requires a complete actual Factory consumer replacement')
@@ -182,8 +203,21 @@ def main():
             native = json.loads(native_path.read_text())
             if reference.sha(native_proof) != native.get("proof_sha256"):
                 raise ValueError("native standby exec proof changed")
+            input_run = input_record = None
+            if args.factory_input_proof:
+                if not re.fullmatch(r"factorybox-factory-consumer-[0-9a-f]{32}", args.factory_input_proof):
+                    raise ValueError("requires an exact passing Factory input-isolation proof")
+                input_run = reference.ROOT / "artifacts" / args.factory_input_proof
+                if input_run.resolve() != input_run or (input_run / "result.json").is_symlink():
+                    raise ValueError("Factory input proof cannot be redirected")
+                input_record = json.loads((input_run / "result.json").read_text())
+                for file, digest in input_record.get("source_sha256", {}).items():
+                    if reference.sha(input_run / "factory" / file) != digest:
+                        raise ValueError("Factory input proof source changed")
+                if reference.sha(input_run / "hub.js") != input_record.get("hub_sha256"):
+                    raise ValueError("Factory input proof Hub changed")
             verify_standby_exec_replacement(source_result, replacement, old_worker, new_worker,
-                                           native, json.loads(native_proof.read_text()))
+                                           native, json.loads(native_proof.read_text()), input_record)
             retained = None
             if replacement.get("passed") is False:
                 archive = proof / "failed-volume-0.tar"
@@ -202,6 +236,9 @@ def main():
                                  "native_result_sha256": reference.sha(native_path),
                                  "native_proof_sha256": reference.sha(native_proof),
                                  "unresolved_capture_preserved": retained}
+            if input_run:
+                replacement_scope["separate_input_upgrade_proof"] = {
+                    "run": input_run.name, "result_sha256": reference.sha(input_run / "result.json")}
         else:
             import build_criu_shared_fds
             import criu_candidate
