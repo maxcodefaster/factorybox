@@ -73,6 +73,37 @@ class FactoryConsumerAdmissionSupersessionTests(unittest.TestCase):
 
 
 class ResolvedStandbyExecSupersessionTests(unittest.TestCase):
+    def test_separate_passing_input_isolation_proof_does_not_qualify_the_failed_consumer(self):
+        values = list(self.fixture())
+        old, new = values[:2]
+        old["source_sha256"] = {"prepare.py": "old", "prepare_test.py": "old-test"}
+        new["source_sha256"] = {"prepare.py": "same", "prepare_test.py": "new-test"}
+        first = {"nonce": "original-memory", "pid": 117, "count": 1}
+        input_proof = {
+            **copy.deepcopy(new), "passed": True, "sibling_isolation": True,
+            "preparation_ownership_controls_passed": True,
+            "before": first, "after": {**first, "count": 2},
+            "pause": {"record": {"pause": copy.deepcopy(new["standby_pause"]["record"]["pause"])}},
+        }
+        with self.assertRaisesRegex(ValueError, "separate complete"):
+            retention.verify_standby_exec_replacement(*values)
+        retention.verify_standby_exec_replacement(*values, input_proof)
+        self.assertFalse(new["passed"])
+        for change in [
+            lambda r: r.update(passed=False),
+            lambda r: r.update(sibling_isolation=False),
+            lambda r: r.update(source_sha256={"prepare.py": "different"}),
+            lambda r: r["after"].update(nonce="cold-replacement"),
+            lambda r: r["pause"]["record"]["pause"]["after"].update(anon=4096),
+        ]:
+            refused = copy.deepcopy(input_proof)
+            change(refused)
+            with self.assertRaisesRegex(ValueError, "separate complete"):
+                retention.verify_standby_exec_replacement(*values, refused)
+        old["source_sha256"]["bootstrap.sh"] = "unqualified-change"
+        with self.assertRaisesRegex(ValueError, "separate complete"):
+            retention.verify_standby_exec_replacement(*values, input_proof)
+
     def fixture(self):
         identity = {"platform": "linux/arm64", "native_candidate": None,
                     "consumer_build": "consumer", "consumer_image": "image",

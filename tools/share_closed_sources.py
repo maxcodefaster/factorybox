@@ -33,6 +33,8 @@ def main():
                         help='Also verify and share the combined runtime/actor source manifests of closed shared-source probes')
     parser.add_argument('--adopt-go-mtime', action='store_true',
                         help='Allow identical closed Go sources to adopt the canonical copy timestamp, retaining both timestamps in the receipt; never changes bytes, modes, owners or imported root sources')
+    parser.add_argument('--adopt-criu-mtime', action='store_true',
+                        help='Also allow identical C/header/assembly files in completed verified CRIU source copies to share a recorded canonical timestamp; never imported root sources or build products')
     args = parser.parse_args()
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('source sharing requires all Factorybox containers to be stopped')
@@ -88,7 +90,9 @@ def main():
             if info.st_uid != os.getuid():
                 continue
             digest = reference.sha(path)
-            canonical_mtime = args.adopt_go_mtime and kind == 'manifest' and path.suffix == '.go'
+            adopt_go = args.adopt_go_mtime and kind == 'manifest' and path.suffix == '.go'
+            adopt_criu = args.adopt_criu_mtime and kind == 'criu' and path.suffix in {'.c', '.h', '.S'}
+            canonical_mtime = adopt_go or adopt_criu
             key = (str(path.relative_to(tree)), digest, info.st_size, info.st_mode,
                    info.st_uid, info.st_gid, None if canonical_mtime else info.st_mtime_ns)
             source = groups.setdefault(key, path)
@@ -98,12 +102,13 @@ def main():
                             'identity': list(reference.artifact_storage.identity(path)),
                             'mode': info.st_mode, 'uid': info.st_uid, 'gid': info.st_gid,
                             'mtime_ns': info.st_mtime_ns, 'shared_mtime_ns': source.stat().st_mtime_ns,
-                            'adopt_go_mtime': canonical_mtime,
+                            'adopt_go_mtime': adopt_go, 'adopt_criu_mtime': adopt_criu,
                             'allocated_bytes': info.st_blocks * 512})
     plan = {'schema': 1, 'operation': 'share_identical_closed_verified_source_inputs',
             'include_closed_failed_native_inputs': args.include_closed_failed_native_inputs,
             'include_closed_shared_source_probes': args.include_closed_shared_source_probes,
             'adopt_go_mtime': args.adopt_go_mtime,
+            'adopt_criu_mtime': args.adopt_criu_mtime,
             'runner_sha256': reference.sha(artifact / 'runner.py'), 'trees': trees, 'actions': actions}
     save(artifact / 'plan.json', plan)
     completed, reclaimed = 0, 0
@@ -114,7 +119,8 @@ def main():
             # Relinking another name of a shared old inode changes its ctime,
             # not its bytes, inode, size or mtime. Never ignore those identities.
             identity = list(reference.artifact_storage.identity(target))
-            matches = identity[:4] == row['identity'][:4] if row['adopt_go_mtime'] else identity == row['identity']
+            adopting = row['adopt_go_mtime'] or row['adopt_criu_mtime']
+            matches = identity[:4] == row['identity'][:4] if adopting else identity == row['identity']
             if (not matches or
                     reference.sha(target) != row['sha256'] or reference.sha(source) != row['sha256'] or
                     (info.st_mode, info.st_uid, info.st_gid, info.st_mtime_ns) !=
@@ -145,7 +151,7 @@ def main():
         save(artifact / 'result.json', {'schema': 1, 'passed': True, 'plan_sha256': reference.sha(artifact / 'plan.json'),
                                       'files_shared': completed, 'trees_verified': len(trees),
                                       'reclaimed_allocated_bytes': reclaimed,
-                                      'scope': 'Only byte-, mode- and owner-identical immutable source files. Timestamps must match unless explicitly adopting a canonical timestamp for closed Go sources, with both timestamps retained. Failed native source inputs require explicit opt-in, confirmed cleanup and unchanged inputs. Every original source manifest and result is reverified. No dump, failure result/log, active run, failed build, build product, cache, imported root reference or historical experiment is changed.'})
+                                      'scope': 'Only byte-, mode- and owner-identical immutable source files. Timestamps must match unless explicitly adopting a canonical timestamp for closed Go sources or completed CRIU C/header/assembly copies, with both timestamps retained. Failed native source inputs require explicit opt-in, confirmed cleanup and unchanged inputs. Every original source manifest and result is reverified. No dump, failure result/log, active run, failed build, build product, cache, imported root reference or historical experiment is changed.'})
     except Exception as error:
         save(artifact / 'result.json', {'schema': 1, 'passed': False, 'error': str(error), 'completed': completed})
         raise
