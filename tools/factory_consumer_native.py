@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import select
 import subprocess
 import time
 import uuid
@@ -75,6 +76,76 @@ def worker_http_ready(run, worker_id, helper_id, worker_pid, verify):
     return response.strip() == '204'
 
 
+def preparation_assignment(files, reserve):
+    names = ['slot.json'] if reserve else ['assignment.json', 'parent-token', 'child-token']
+    return {name: files[name] for name in names}
+
+
+def preparation_identity(request):
+    return {name: value for name, value in request.items() if name != 'assignment'}
+
+
+def consumer_sandbox_id(slot_id, attempt_id, reserve):
+    # The used slot retains its original Sandbox. Assignment changes only
+    # Factory's attempt and role, never the immutable native identity.
+    execution_id = slot_id if reserve else attempt_id
+    return 'runtime-' + execution_id.replace('-', '')
+
+
+def settle_lane_result(result):
+    passed = all(result.get(key) is True for key in
+                 ['passed', 'cleanup', 'host_sysctls_unchanged', 'inputs_unchanged'])
+    result['passed'] = passed
+    if result['diagnostic_only']:
+        result['diagnostic_control_passed'] = passed
+        result['passed'] = False
+    return passed
+
+
+def require_paused_consumer(view, sandbox, runtime, snapshot):
+    record = view.get('record', {})
+    pause = record.get('pause', {})
+    memory = pause.get('snapshot', {})
+    if (record.get('id') != sandbox or record.get('runtime_id') != runtime or
+            record.get('phase') != 'paused' or pause.get('snapshot_id') != snapshot or
+            not pause.get('completed_at') or pause.get('after', {}).get('anon') != 0 or
+            memory.get('file_backed') is not True or memory.get('resident_bytes_after') != 0):
+        raise ValueError('Consumer Pause did not commit the original Sandbox and release its RAM')
+
+
+def repeated_consumer_cycles(count, result, previous, pause, resume, useful, inspect, phase):
+    if type(count) is not int or count < 1:
+        raise ValueError('Repeated consumer cycles require a positive count')
+    sandbox = result['sandboxID']
+    runtime = result['start']['record']['runtime_id']
+    for cycle in range(2, count+1):
+        entry = {'cycle': cycle, 'snapshot_id': uuid.uuid4().hex, 'pause_attempted': True}
+        result.setdefault('repeat_cycles', []).append(entry)
+        entry['pause'] = pause(entry)
+        require_paused_consumer(entry['pause'], sandbox, runtime, entry['snapshot_id'])
+        entry['resume_attempted'] = True
+        entry['resume'] = resume(entry)
+        record = entry['resume'].get('record', {})
+        if (record.get('id') != sandbox or record.get('runtime_id') != runtime or
+                record.get('phase') != 'running' or
+                record.get('pause', {}).get('snapshot_id') != entry['snapshot_id'] or
+                not record.get('pause', {}).get('resume', {}).get('completed_at')):
+            raise ValueError('Repeated Resume replaced its original Sandbox or lacks exact completion')
+        entry['after'] = useful()
+        after = entry['after']
+        if (after['nonce'] != previous['nonce'] or after['pid'] != previous['pid'] or
+                after['count'] <= previous['count'] or after['editor'] != previous['editor']):
+            raise ValueError('Repeated Resume restarted app memory or changed canonical Source')
+        entry['child_after'] = inspect()
+        child = entry['child_after']
+        if not child['State']['Running'] or child['RestartCount'] != 0:
+            raise ValueError('Repeated Resume restarted the original Docker child')
+        entry['passed'] = True
+        previous = after
+        phase('assigned-sandbox-resume-cycle-'+str(cycle))
+    return previous
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
@@ -82,6 +153,10 @@ def main():
     parser.add_argument('--factory-repo', type=Path, required=True)
     parser.add_argument('--project-images', required=True)
     parser.add_argument('--reserve', action='store_true')
+    parser.add_argument('--observe-resume-cgroup', action='store_true',
+                        help='Read the original cgroup during assigned Resume; diagnostic only, no freeze or task changes')
+    parser.add_argument('--resume-cycles', type=int, default=1,
+                        help='Pause/Resume the same assigned stack this many times; multiple cycles are diagnostic only')
     parser.add_argument('--warmup-control', action='store_true',
                         help='Diagnostic only: exercise and remove a stock container before standby Pause; cannot qualify a release')
     parser.add_argument('--terminal', action='store_true',
@@ -92,6 +167,8 @@ def main():
     args = parser.parse_args()
     if args.warmup_control and not args.reserve:
         parser.error('--warmup-control requires --reserve')
+    if args.resume_cycles < 1 or args.warmup_control and args.resume_cycles != 1:
+        parser.error('--resume-cycles must be positive and warmup-control requires one cycle')
     print(json.dumps({'stage':'verify-existing-inputs','worker_build':args.worker_build,
                       'consumer_build':args.consumer_build}),flush=True)
     worker_root, worker = build_worker.load(args.worker_build)
@@ -116,7 +193,7 @@ def main():
         raise ValueError('Requires the retained exact Node project image')
     owner = uuid.uuid4().hex
     attempt = str(uuid.uuid4())
-    sandbox = 'runtime-' + attempt.replace('-', '')
+    sandbox = consumer_sandbox_id(owner, attempt, args.reserve)
     pod_uid = str(uuid.uuid4())
     name = 'factorybox-factory-consumer-'+owner
     output = reference.new_artifact(name)
@@ -124,6 +201,8 @@ def main():
     shutil.copyfile(__file__, output/'runner.py')
     namespace_observer = output/'namespace-observer.py'
     shutil.copyfile(reference.ROOT/'tools/consumer_namespace_observer.py', namespace_observer)
+    cgroup_observer = output/'cgroup-observer.py'
+    shutil.copyfile(reference.ROOT/'tools/consumer_cgroup_observer.py', cgroup_observer)
     frozen = output/'factory';frozen.mkdir()
     for file in ['prepare.py','prepare_test.py','export-rootfs.sh','bootstrap.sh','reserve-bootstrap.sh']:
         shutil.copyfile(repo/'packages/runtime-kubernetes/src/factorybox'/file,frozen/file)
@@ -152,8 +231,11 @@ def main():
               'worker_build':args.worker_build,'consumer_build':args.consumer_build,'consumer_image':consumer['image'],
               'reserve':args.reserve,'reserve_images':[node] if args.reserve else None,
               'terminal_proof':args.terminal,
-              'diagnostic_only':args.warmup_control,
+              'diagnostic_only':args.warmup_control or args.observe_resume_cgroup or args.resume_cycles != 1,
+              'resume_cycles':args.resume_cycles,
               'namespace_observer_sha256':reference.sha(namespace_observer),
+              'cgroup_observer_sha256':reference.sha(cgroup_observer),
+              'observe_resume_cgroup':args.observe_resume_cgroup,
               'git_proof':args.git or args.terminal,
               'fixture_registry_mirror':True,'registry_binary_sha256':reference.sha(mirror),
               'registry_source_sha256':source_hashes,'registry_reused_from':reused_mirror,
@@ -222,6 +304,50 @@ def main():
         observed=json.loads(run(['exec',worker_id,'python3','/tmp/factorybox-namespace-observer.py',str(live_pid)]))
         result.setdefault('namespace_observations',{})[stage]=observed
 
+    def resume_assigned(paused, snapshot, evidence, label):
+        observer = None
+        if args.observe_resume_cgroup:
+            observer_id = uuid.uuid4().hex
+            observation_path = '/tmp/factorybox-cgroup-'+observer_id+'.json'
+            observed_request = {'runtime_id':paused['record']['runtime_id'],
+                                'cgroup':paused['record']['cgroup'],'observer_id':observer_id}
+            evidence['cgroup_observer_file'] = label+'.json'
+            own(name, worker_id)
+            observer = subprocess.Popen([*reference.DOCKER,'exec','-i',worker_id,'python3',
+                                         '/tmp/factorybox-cgroup-observer.py'],
+                                        stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            observer.stdin.write(json.dumps(observed_request)+'\n');observer.stdin.close();observer.stdin=None
+            readable, _, _ = select.select([observer.stdout], [], [], 10)
+            if not readable or json.loads(observer.stdout.readline()) != {'ready':True,'observer_id':observer_id}:
+                observer.kill();observer.communicate(timeout=5)
+                raise ValueError('Original cgroup observer did not confirm its exact read-only identity')
+        try:
+            resumed = json.loads(run([*cli,'resume','--snapshot-id',snapshot,sandbox],timeout=90))
+        except Exception as error:
+            evidence['resume_error'] = str(error)
+            raise
+        finally:
+            if observer is not None:
+                try:
+                    own(name, worker_id)
+                    run(['exec',worker_id,'touch',observation_path.removesuffix('.json')+'.stop'],timeout=5)
+                    observer_out, observer_err = observer.communicate(timeout=10)
+                    evidence['cgroup_observer_exit'] = observer.returncode
+                    evidence['cgroup_observer_stderr'] = observer_err
+                    evidence['cgroup_observer_completion'] = observer_out
+                    run(['cp',worker_id+':'+observation_path,str(output/(label+'.json'))],timeout=10)
+                    observed = json.loads((output/(label+'.json')).read_text())
+                    if (observer.returncode != 0 or observed.get('complete') is not True or
+                            observed.get('read_only') is not True or observed.get('request') != observed_request):
+                        raise ValueError('Original cgroup observation is incomplete or has a foreign identity')
+                except Exception as diagnostic:
+                    evidence['cgroup_observer_error'] = str(diagnostic)
+                    if observer.poll() is None:
+                        observer.kill();observer.communicate(timeout=5)
+        if evidence.get('cgroup_observer_error'):
+            raise ValueError(evidence['cgroup_observer_error'])
+        return resumed
+
     try:
         for volume in [name,name+'-source']:
             volumes.append(volume)
@@ -284,6 +410,8 @@ def main():
         result['worker_identity'] = status
         phase('worker-http-ready')
         run(['cp',str(namespace_observer),worker_id+':/tmp/factorybox-namespace-observer.py'])
+        if args.observe_resume_cgroup:
+            run(['cp',str(cgroup_observer),worker_id+':/tmp/factorybox-cgroup-observer.py'])
         probe = '/var/lib/sysbox/native-fixture-prepare.py'
         run(['cp',str(frozen/'prepare.py'),worker_id+':'+probe])
         run(['exec',worker_id,'python3','-c',(frozen/'prepare_test.py').read_text(),probe])
@@ -325,13 +453,19 @@ def main():
         inputs = {'assignment.json':json.dumps(assignment),'parent-token':owner+'-parent','child-token':owner+'-child',
                   'slot.json':json.dumps({'version':1,'id':owner,'role':'staging','images':[node],
                     'expiresAt':(datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(minutes=15)).isoformat()})}
-        script = "import pathlib,json;root=pathlib.Path('/factory/assignment');root.mkdir(parents=True);[(root/name).write_text(body) for name,body in json.loads(__import__('sys').argv[1]).items()];ca=pathlib.Path('/factory/registry-ca');ca.mkdir(parents=True);(ca/'ca.crt').write_bytes(pathlib.Path('/etc/ssl/certs/ca-certificates.crt').read_bytes())"
-        run(['exec',worker_id,'python3','-c',script,json.dumps(inputs)])
+        script = "import pathlib;ca=pathlib.Path('/factory/registry-ca');ca.mkdir(parents=True);(ca/'ca.crt').write_bytes(pathlib.Path('/etc/ssl/certs/ca-certificates.crt').read_bytes())"
+        run(['exec',worker_id,'python3','-c',script])
+        run(['exec',worker_id,'test','!','-e','/factory/assignment'])
+        result['no_ambient_assignment']=True
+        source_project='/factory-source/workspaces/'+owner+'/home/project'
         if not args.reserve:
-            run(['cp',str(project),worker_id+':/factory-source/project'])
-            run(['exec',worker_id,'chown','-R','101000:101000','/factory-source/project'])
-        request = {'version':2,'sandboxID':sandbox,'storeID':owner,'epoch':status['epoch'],'podUID':pod_uid,
+            run(['exec',worker_id,'mkdir','-p',str(Path(source_project).parent)])
+            run(['cp',str(project),worker_id+':'+source_project])
+            run(['exec',worker_id,'chown','-R','101000:101000',source_project])
+        request = {'version':3,'sandboxID':sandbox,'storeID':owner,'epoch':status['epoch'],'podUID':pod_uid,
                    'runtimeHostImage':consumer['image'],'sharedSource':not args.reserve,'reserveSeed':args.reserve,
+                   'sourceWorkspaceID':owner if not args.reserve else None,
+                   'assignment':preparation_assignment(inputs,args.reserve),
                    'bootstrap':'/factory/native-registry --archive=/factory/project-images.tar --pins=/factory/project-images.json >/var/log/native-registry.log 2>&1 &\nexec /bin/sh /factory/native-bootstrap.sh\n'}
         result['request'] = request
         started=time.monotonic()
@@ -442,19 +576,64 @@ def main():
         phase('first-app-response')
         result['hub_before']=endpoint()
         if not args.reserve:
-            sibling = {**request, 'sandboxID': 'runtime-' + uuid.uuid4().hex}
+            sibling_attempt=str(uuid.uuid4())
+            sibling_source=uuid.uuid4().hex
+            sibling_project='/factory-source/workspaces/'+sibling_source+'/home/project'
+            run(['exec',worker_id,'mkdir','-p',sibling_project])
+            run(['exec',worker_id,'python3','-c',
+                 "import pathlib,sys;p=pathlib.Path(sys.argv[1]);(p/'sibling-only').write_text('before-sibling-pause')",
+                 sibling_project])
+            run(['exec',worker_id,'chown','-R','101000:101000',sibling_project])
+            sibling = {**request, 'sandboxID': 'runtime-' + sibling_attempt.replace('-',''),
+                'sourceWorkspaceID':sibling_source,'bootstrap':'exec /bin/sleep 300\n',
+                'assignment':{'assignment.json':json.dumps({'version':1,'runtimeAttemptId':sibling_attempt,'generation':1}),
+                              'parent-token':sibling_source+'-parent','child-token':sibling_source+'-child'}}
             result['sibling_preparation']=json.loads(run(
                 ['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text()],
                 body=json.dumps(sibling),timeout=180))
             if result['sibling_preparation']['bundle'] == prepared['bundle']:
                 raise ValueError('Two Sandbox preparations share mutable input backing')
+            # This tiny sibling is an administrative source/assignment control,
+            # not a second Docker/Connector qualification lane.
+            result['sibling_start']=json.loads(run([*cli,'start','--bundle',
+                result['sibling_preparation']['bundle'],sibling['sandboxID']],timeout=60))
+            sibling_runc=[*runc[:-1],result['sibling_start']['record']['runtime_id']]
+            source_check="test ! -e /home/coder/project/editor.txt; cat /home/coder/project/sibling-only; printf '\\n'; cat /factory/assignment/parent-token"
+            expected_sibling='before-sibling-pause\n'+sibling_source+'-parent'
+            if run([*sibling_runc,'/bin/sh','-ec',source_check]).strip()!=expected_sibling:
+                raise ValueError('Sibling acquired another Workspace source or assignment')
+            sibling_snapshot=uuid.uuid4().hex
+            result['sibling_pause_attempted']=True
+            result['sibling_pause']=json.loads(run([*cli,'pause','--snapshot-id',
+                sibling_snapshot,sibling['sandboxID']],timeout=90))
+            paused=result['sibling_pause']['record']['pause']
+            if (not paused.get('completed_at') or paused.get('after',{}).get('anon')!=0 or
+                    paused.get('snapshot',{}).get('resident_bytes_after')!=0):
+                raise ValueError('Sibling Pause did not release its own memory')
+            while_sibling_paused=endpoint('/app')
+            if (while_sibling_paused['nonce']!=first['nonce'] or
+                    while_sibling_paused['count']<=first['count'] or while_sibling_paused['editor']!='before'):
+                raise ValueError('Sibling Pause changed or froze the original app')
+            run(['exec',worker_id,'python3','-c',
+                 "import pathlib,os,sys;p=pathlib.Path(sys.argv[1]);f=p/'.edit';f.write_text('during-sibling-pause');os.chown(f,101000,101000);f.replace(p/'sibling-only')",
+                 sibling_project])
+            result['sibling_resume']=json.loads(run([*cli,'resume','--snapshot-id',
+                sibling_snapshot,sibling['sandboxID']],timeout=90))
+            if run([*sibling_runc,'/bin/sh','-ec',source_check]).strip()!='during-sibling-pause\n'+sibling_source+'-parent':
+                raise ValueError('Sibling Resume replaced current canonical source or assignment')
+            if run([*runc,'cat','/factory/assignment/parent-token']).strip()!=owner+'-parent':
+                raise ValueError('Sibling preparation replaced the original assignment')
+            result['sibling_delete']=json.loads(run([*cli,'delete',sibling['sandboxID']],timeout=60))
             result['sibling_release']=json.loads(run(
                 ['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text(),
-                 'release','--never-started'],body=json.dumps(sibling),timeout=60))
+                 'release'],body=json.dumps(preparation_identity(sibling)),timeout=60))
+            run(['exec',worker_id,'test','-f',sibling_project+'/sibling-only'])
             retained=json.loads(run([*cli,'state',sandbox]))
             if retained['record']['id']!=sandbox or retained['record']['phase']!='running':
-                raise ValueError('Releasing an unused sibling changed the active Sandbox')
+                raise ValueError('Releasing a sibling changed the active Sandbox')
             result['sibling_isolation']=True
+            result['sibling_source_isolation']=True
+            phase('two-sandbox-source-and-assignment-isolation')
         if args.terminal:
             result['terminal_before']=endpoint('/terminal/before','POST')
             result['idle_prompt']=wait(lambda:endpoint('/idle'),lambda v:v.get('eligible') is False,
@@ -471,15 +650,19 @@ def main():
         namespaces('assigned-before-pause')
         result['pause_attempted']=True
         result['pause']=json.loads(run([*cli,'pause','--snapshot-id',snapshot,sandbox],timeout=90))
+        require_paused_consumer(result['pause'], sandbox, result['start']['record']['runtime_id'], snapshot)
         result['memory_paused']=memory()
         phase('assigned-sandbox-paused')
         if args.reserve:
             # Isolated source is private. Its preservation is checked through app RAM and child identity.
             pass
         else:
-            run(['exec',worker_id,'python3','-c',"import os,pathlib;p=pathlib.Path('/factory-source/project/.editor-save');p.write_text('during-pause');os.chown(p,101000,101000);p.replace('/factory-source/project/editor.txt')"])
+            run(['exec',worker_id,'python3','-c',
+                 "import os,pathlib,sys;root=pathlib.Path(sys.argv[1]);p=root/'.editor-save';p.write_text('during-pause');os.chown(p,101000,101000);p.replace(root/'editor.txt')",
+                 source_project])
         endpoint('/resume','POST')
-        result['resume']=json.loads(run([*cli,'resume','--snapshot-id',snapshot,sandbox],timeout=90));live_pid=result['resume']['runtime']['pid']
+        result['resume']=resume_assigned(result['pause'],snapshot,result,'cgroup-observation')
+        live_pid=result['resume']['runtime']['pid']
         wait(endpoint,lambda v:v['connected'],'Same authenticated Connectors after Resume',45)
         after=wait(lambda:endpoint('/app'),lambda v:bool(v.get('nonce')),'App after Resume')
         result['after']=after;result['hub_after']=endpoint()
@@ -491,6 +674,27 @@ def main():
         if not child['State']['Running'] or child['RestartCount']!=0:
             raise ValueError('Dev Container restarted during Pause/Resume')
         result['docker_after']=json.loads(run([*runc,'docker','info','--format','{{json .}}']))
+        if args.resume_cycles > 1:
+            def pause_again(entry):
+                endpoint('/pause','POST')
+                return json.loads(run([*cli,'pause','--snapshot-id',entry['snapshot_id'],sandbox],timeout=90))
+
+            def resume_again(entry):
+                nonlocal live_pid
+                endpoint('/resume','POST')
+                resumed = resume_assigned(entry['pause'],entry['snapshot_id'],entry,
+                                          'cgroup-observation-cycle-'+str(entry['cycle']))
+                live_pid=resumed['runtime']['pid']
+                return resumed
+
+            def useful_again():
+                wait(endpoint,lambda value:value['connected'],'Same Connectors after repeated Resume',45)
+                return wait(lambda:endpoint('/app'),lambda value:bool(value.get('nonce')),
+                            'Original App after repeated Resume')
+
+            result['repeat_after'] = repeated_consumer_cycles(
+                args.resume_cycles, result, after, pause_again, resume_again, useful_again,
+                lambda:json.loads(run([*runc,'docker','inspect',child_id]))[0], phase)
         if args.terminal:
             result['terminal_after']=endpoint('/terminal/after','POST')
             if result['terminal_after']!=result['terminal_before']:
@@ -502,7 +706,7 @@ def main():
             if result['git_after']['head']==revision or result['git_after']['files']:
                 raise ValueError('Actual mapped-user personal Git commit did not retain its exact outcome')
         result['delete']=json.loads(run([*cli,'delete',sandbox],timeout=60));live_pid=None
-        result['release']=json.loads(run(['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text(),'release'],body=json.dumps(request),timeout=60))
+        result['release']=json.loads(run(['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text(),'release'],body=json.dumps(preparation_identity(request)),timeout=60))
         run(['stop','--timeout','45',worker_id],timeout=50)
         result['final_worker_state']=own(name,worker_id)['State']
         if result['final_worker_state']['ExitCode']!=0:raise ValueError('Worker did not shut down cleanly')
@@ -522,8 +726,8 @@ def main():
         deadline=time.monotonic()+120
         (output/'before-cleanup.json').write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps({'evidence':str(output),'workload_passed':result['passed'],
-                          'diagnostic_only':args.warmup_control,'error':result.get('error')}),flush=True)
-        if (result.get('pause_attempted') or result.get('standby_pause_attempted')) and not result['passed']:
+                          'diagnostic_only':result['diagnostic_only'],'error':result.get('error')}),flush=True)
+        if (result.get('pause_attempted') or result.get('standby_pause_attempted') or result.get('sibling_pause_attempted')) and not result['passed']:
             try:
                 upstream_bats.archive_failure(output,name,owner,[name,name+'-source'],worker['native_base_image'],result,timeout=180,compressed=True)
             except Exception as error:
@@ -550,17 +754,14 @@ def main():
         after=consumer_worker_loss.sysctls(docker_image=worker['native_base_image'],
             owner=owner, artifact=output, phase='after', factory_network=True)
         result['host_sysctls_unchanged']=after==before
-        result['inputs_unchanged']=all(reference.sha(frozen/file)==value for file,value in result['source_sha256'].items()) and reference.sha(hub)==result['hub_sha256'] and reference.sha(bun)==result['bun_sha256'] and reference.sha(namespace_observer)==result['namespace_observer_sha256']
-        result['passed']=result['passed'] and result['cleanup'] and result['host_sysctls_unchanged'] and result['inputs_unchanged']
-        if args.warmup_control:
-            result['diagnostic_control_passed']=result['passed']
-            result['passed']=False
+        result['inputs_unchanged']=all(reference.sha(frozen/file)==value for file,value in result['source_sha256'].items()) and reference.sha(hub)==result['hub_sha256'] and reference.sha(bun)==result['bun_sha256'] and reference.sha(namespace_observer)==result['namespace_observer_sha256'] and reference.sha(cgroup_observer)==result['cgroup_observer_sha256']
+        lane_passed = settle_lane_result(result)
         (output/'result.json').write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps({'evidence':str(output),'passed':result['passed'],'cleanup':result['cleanup'],
-                          'diagnostic_only':args.warmup_control,
+                          'diagnostic_only':result['diagnostic_only'],
                           'diagnostic_control_passed':result.get('diagnostic_control_passed'),
                           'error':result.get('error')}),flush=True)
-    if not (result.get('diagnostic_control_passed') if args.warmup_control else result['passed']):
+    if not lane_passed:
         raise RuntimeError('Native Factory consumer acceptance failed: '+str(output))
 
 
