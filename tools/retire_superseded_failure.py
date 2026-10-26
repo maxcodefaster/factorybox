@@ -18,6 +18,45 @@ import reference_lifecycle
 import upstream_unit
 
 
+FACTORY_CAPABILITY_ERROR = "shared source requires live worker descriptor retention and its verified CRIU feature"
+
+
+def verify_factory_consumer_replacement(old, new, old_worker, new_worker):
+    identical = ["platform", "native_candidate", "consumer_build", "consumer_image", "hub_image",
+                 "hub_bun", "source_sha256", "hub_sha256", "registry_binary_sha256"]
+    required = ["cleanup", "inputs_unchanged", "host_sysctls_unchanged"]
+    refusal = [row for row in old.get("commands", []) if "pause" in row.get("arguments", [])]
+    if (old.get("passed") is not False or new.get("passed") is not True or
+            old.get("reserve") is not False or new.get("reserve") is not False or
+            old.get("error") != "Native Factory consumer command failed: " + FACTORY_CAPABILITY_ERROR + "\n" or
+            old.get("pause") is not None or old.get("resume") is not None or
+            len(refusal) != 1 or refusal[0].get("exit") != 1 or
+            refusal[0].get("stderr", "").strip() != FACTORY_CAPABILITY_ERROR or
+            any(any(row.get(key) is not True for key in required) for row in [old, new]) or
+            any(old.get(key) is None or old[key] != new.get(key) for key in identical)):
+        raise ValueError("Factory consumer supersession requires the exact closed precapture capability refusal")
+    core = lambda row: {key: value for key, value in row["source_context"].items()
+                        if not key.endswith("_test.go")}
+    components = ["factorybox", "components/sysbox-runc", "components/sysbox-fs", "components/sysbox-mgr"]
+    if (core(old_worker) != core(new_worker) or
+            any(old_worker.get(key) != new_worker.get(key) for key in ["platform", "native_candidate"]) or
+            any(old_worker["bundle_sha256"][key] != new_worker["bundle_sha256"][key] for key in components) or
+            old_worker["bundle_sha256"]["components/criu"] == new_worker["bundle_sha256"]["components/criu"]):
+        raise ValueError("Factory consumer replacement must preserve runtime/Sysbox and change only CRIU")
+    before, after = new.get("before", {}), new.get("after", {})
+    pause = new.get("pause", {}).get("record", {})
+    memory = pause.get("pause", {})
+    child = new.get("child_after", {})
+    if (not before.get("nonce") or before.get("nonce") != after.get("nonce") or
+            not before.get("pid") or before["pid"] != after.get("pid") or
+            type(after.get("count")) is not int or after["count"] <= before.get("count", 0) or
+            after.get("editor") != "during-pause" or pause.get("phase") != "paused" or
+            not memory.get("completed_at") or memory.get("after", {}).get("anon") != 0 or
+            memory.get("snapshot", {}).get("resident_bytes_after") != 0 or
+            child.get("State", {}).get("Running") is not True or child.get("RestartCount") != 0):
+        raise ValueError("Factory consumer replacement lacks complete live RAM, Source, Docker and released-memory proof")
+
+
 def sync_json(path, value):
     with path.open("x") as stream:
         json.dump(value, stream, indent=2)
@@ -55,13 +94,36 @@ def main():
     parser.add_argument("--reason", required=True, help="Concrete supersession and remaining reconstruction limits")
     parser.add_argument("--verify-only",action="store_true",help="Retain and verify diagnostics while keeping the complete source archive")
     args = parser.parse_args()
-    pattern = r"factorybox-(?:devx-lifecycle|consumer-worker-loss|checkpoint-retirement|bats)-[0-9a-f]{32}"
+    pattern = r"factorybox-(?:devx-lifecycle|consumer-worker-loss|checkpoint-retirement|bats|factory-consumer)-[0-9a-f]{32}"
     if not all(re.fullmatch(pattern, name) for name in [args.source_run, args.replacement_proof]):
         raise ValueError("requires exact native consumer failure/proof IDs")
     run, proof = (reference.ROOT/"artifacts"/name for name in [args.source_run, args.replacement_proof])
     if run.resolve()!=run or proof.resolve()!=proof:
         raise ValueError("native evidence cannot be redirected through symlinks")
     source_result, replacement = (json.loads((path/"result.json").read_text()) for path in [run,proof])
+    factory = any(name.startswith('factorybox-factory-consumer-') for name in [args.source_run, args.replacement_proof])
+    if factory:
+        if not all(name.startswith('factorybox-factory-consumer-') for name in [args.source_run, args.replacement_proof]):
+            raise ValueError('Factory consumer failure requires a complete actual Factory consumer replacement')
+        import build_worker
+        import build_criu_shared_fds
+        import criu_candidate
+        old_worker, new_worker = [build_worker.load(row['worker_build'])[1] for row in [source_result, replacement]]
+        verify_factory_consumer_replacement(source_result, replacement, old_worker, new_worker)
+        old_criu, new_criu = [criu_candidate.load(row['criu_build'])[1] for row in [old_worker, new_worker]]
+        if (new_criu.get('base_candidate') != old_worker['criu_build'] or
+                'shared-fds.patch' in old_criu.get('candidate_patch_sha256', {}) or
+                new_criu.get('candidate_patch_sha256') != {
+                    **old_criu['candidate_patch_sha256'],
+                    'shared-fds.patch': reference.sha(build_criu_shared_fds.PATCH)} or
+                any(new_criu.get('features', {}).get(key) is not True for key in
+                    ['shared_file_descriptions', 'shared_source_directories'])):
+            raise ValueError('Factory consumer supersession requires only the exact existing shared-description delta')
+        for path, record in [(run, source_result), (proof, replacement)]:
+            if (any(reference.sha(path/'factory'/name) != digest for name, digest in record['source_sha256'].items()) or
+                    reference.sha(path/'hub.js') != record['hub_sha256'] or
+                    reference.sha(path/'project-images.json') != reference.sha(run/'project-images.json')):
+                raise ValueError('Factory consumer frozen bootstrap, Hub or project-image pins changed')
     bats = any(name.startswith('factorybox-bats-') for name in [args.source_run, args.replacement_proof])
     if bats:
         if not all(name.startswith('factorybox-bats-') for name in [args.source_run, args.replacement_proof]):
@@ -101,7 +163,7 @@ def main():
     native_originals=[row for row in source_result.get("failed_volume_archives",{}).values() if row.get("file")==original["file"]]
     if native_originals!=[original]:
         raise ValueError("encoding receipt differs from the original native failure result")
-    for path,record in ([] if bats else [(run,source_result),(proof,replacement)]):
+    for path,record in ([] if bats or factory else [(run,source_result),(proof,replacement)]):
         context=path/("source" if (path/"source").is_dir() else "context")
         if upstream_unit.context_manifest(context)!=record["source_context"]:
             raise ValueError("frozen native source context changed")
