@@ -73,11 +73,13 @@ func runLifecycle(args []string) error {
 		return fmt.Errorf("usage: factorybox version|doctor, or --root PATH --runtime PATH --runtime-sha256 SHA prepare-base|start|state|checkpoint|fork|pause|resume|delete")
 	}
 	command, remaining := flags.Arg(0), flags.Args()[1:]
+	checkpointRetirement := command == "retire-checkpoint" || command == "retire-resume"
 	bundle := ""
 	snapshot := ""
 	source := ""
 	var recovery lifecycle.RecoveryRequest
 	var checkpointRequest lifecycle.CheckpointRequest
+	var backingRequest lifecycle.SandboxBackingRequest
 	var selectionID string
 	var retainedRoot string
 	var epochRequest lifecycle.EpochRetirementRequest
@@ -147,6 +149,17 @@ func runLifecycle(args []string) error {
 		if err := errors.Join(decodeErr, file.Close()); err != nil {
 			return err
 		}
+	} else if command == "retire-sandbox" {
+		operation := flag.NewFlagSet(command, flag.ContinueOnError)
+		operation.StringVar(&backingRequest.SandboxOwner, "sandbox-owner", "", "exact deleted Sandbox owner")
+		operation.StringVar(&backingRequest.InputSHA256, "input-sha256", "", "exact original OCI input SHA-256")
+		if err := operation.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = operation.Args()
+		if backingRequest.SandboxOwner == "" || backingRequest.InputSHA256 == "" {
+			return fmt.Errorf("retire-sandbox requires exact Sandbox owner and input hash")
+		}
 	} else if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
 		start.StringVar(&bundle, "bundle", "", "administrator-prepared OCI bundle")
@@ -157,12 +170,12 @@ func runLifecycle(args []string) error {
 		if bundle == "" {
 			return fmt.Errorf("start requires --bundle")
 		}
-	} else if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" || command == "release-recovery-selection" || command == "inspect-recovery-checkpoint" {
+	} else if checkpointRetirement || command == "select-checkpoint" || command == "release-checkpoint" || command == "release-recovery-selection" || command == "inspect-recovery-checkpoint" {
 		operation := flag.NewFlagSet(command, flag.ContinueOnError)
 		operation.StringVar(&checkpointRequest.SnapshotID, "snapshot-id", "", "exact published checkpoint ID")
 		operation.StringVar(&checkpointRequest.SourceOwner, "source-owner", "", "exact saved source owner")
 		operation.StringVar(&checkpointRequest.CheckpointSHA256, "checkpoint-sha256", "", "exact complete published checkpoint SHA-256")
-		if command != "retire-checkpoint" && command != "inspect-recovery-checkpoint" {
+		if !checkpointRetirement && command != "inspect-recovery-checkpoint" {
 			operation.StringVar(&selectionID, "selection-id", "", "immutable recovery selection ID")
 		}
 		if command == "release-recovery-selection" || command == "inspect-recovery-checkpoint" {
@@ -172,7 +185,7 @@ func runLifecycle(args []string) error {
 			return err
 		}
 		remaining = operation.Args()
-		if checkpointRequest.SnapshotID == "" || checkpointRequest.SourceOwner == "" || checkpointRequest.CheckpointSHA256 == "" || command != "retire-checkpoint" && command != "inspect-recovery-checkpoint" && selectionID == "" {
+		if checkpointRequest.SnapshotID == "" || checkpointRequest.SourceOwner == "" || checkpointRequest.CheckpointSHA256 == "" || !checkpointRetirement && command != "inspect-recovery-checkpoint" && selectionID == "" {
 			return fmt.Errorf("%s requires exact checkpoint, owner, hash and any selection identity", command)
 		}
 		if (command == "release-recovery-selection" || command == "inspect-recovery-checkpoint") && (workerRunRoot == "" || retainedRoot == "") {
@@ -237,6 +250,14 @@ func runLifecycle(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if command == "retire-sandbox" {
+		backingRequest.SandboxID = remaining[0]
+		result, err := engine.RetireDeletedBacking(ctx, backingRequest)
+		if result.Version != 0 {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
 	if inspectImport {
 		result, err := engine.InspectRecoveryImport(ctx, retainedRoot, importTarget)
 		if result.Version != 0 {
@@ -277,7 +298,7 @@ func runLifecycle(args []string) error {
 		}
 		return err
 	}
-	if command == "retire-checkpoint" || command == "select-checkpoint" || command == "release-checkpoint" || command == "release-recovery-selection" || command == "inspect-recovery-checkpoint" {
+	if checkpointRetirement || command == "select-checkpoint" || command == "release-checkpoint" || command == "release-recovery-selection" || command == "inspect-recovery-checkpoint" {
 		checkpointRequest.SourceID = remaining[0]
 		if command == "inspect-recovery-checkpoint" {
 			result, err := engine.InspectRetainedCheckpoint(ctx, lifecycle.RetainedCheckpointRequest{
@@ -287,8 +308,14 @@ func runLifecycle(args []string) error {
 			}
 			return err
 		}
-		if command == "retire-checkpoint" {
-			result, err := engine.RetireCheckpoint(ctx, checkpointRequest)
+		if checkpointRetirement {
+			var result lifecycle.CheckpointRetirement
+			var err error
+			if command == "retire-resume" {
+				result, err = engine.RetireResumeImages(ctx, checkpointRequest)
+			} else {
+				result, err = engine.RetireCheckpoint(ctx, checkpointRequest)
+			}
 			if result.Version != 0 {
 				err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
 			}

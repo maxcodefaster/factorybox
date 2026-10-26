@@ -253,6 +253,10 @@ timer-activation-worker-intent.json timer-mutator-ready.json timer-prepare-compl
 }
 
 func (b *epochInventoryBuilder) retired(record Record, relative string) (bool, error) {
+	return b.retiredPayload(record, relative, "")
+}
+
+func (b *epochInventoryBuilder) retiredPayload(record Record, relative, kind string) (bool, error) {
 	var intent checkpointRetirementIntent
 	if err := b.engine.readCheckpointJSON(relative+"/retirement-intent.json", &intent); errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -260,11 +264,18 @@ func (b *epochInventoryBuilder) retired(record Record, relative string) (bool, e
 		return false, err
 	}
 	directory, err := directoryIdentity(b.engine.config.Root + "/" + relative)
-	if err != nil || intent.Version != 1 || intent.Directory.Inode != directory.Inode ||
+	if err != nil || intent.Version != 1 || intent.PayloadKind != kind || intent.Directory.Inode != directory.Inode ||
 		intent.Directory.Device != b.previous.BlockDevice || intent.Directory.MountID != b.previous.Mount.MountID {
 		return false, fmt.Errorf("retired epoch checkpoint original directory identity differs: %v", err)
 	}
 	_, _, expected, err := b.engine.checkpointRequest(intent.Request)
+	if kind == resumeImagePayload {
+		expected = "objects/" + record.ID + "/resumes/" + intent.Request.SnapshotID
+		if !resumeRetirementPath(relative, record.ID, intent.Request.SnapshotID) ||
+			!reflect.DeepEqual(intent.Payloads, []string{relative + "/images"}) || len(intent.Aliases) != 0 {
+			return false, fmt.Errorf("retired epoch Resume images have an unexpected inventory")
+		}
+	}
 	if err != nil || expected != relative || intent.Request.SourceOwner != record.Owner {
 		return false, fmt.Errorf("retired epoch checkpoint request differs: %v", err)
 	}
@@ -273,7 +284,7 @@ func (b *epochInventoryBuilder) retired(record Record, relative string) (bool, e
 	if err := b.engine.readCheckpointJSON(relative+"/retirement-complete.json", &complete); err != nil {
 		return false, err
 	}
-	if complete.Version != 1 || complete.Request != intent.Request || complete.IntentSHA256 != sum(data) || complete.CompletedAt == "" || !reflect.DeepEqual(complete.Before, intent.Before) {
+	if complete.Version != 1 || complete.PayloadKind != kind || complete.Request != intent.Request || complete.IntentSHA256 != sum(data) || complete.CompletedAt == "" || !reflect.DeepEqual(complete.Before, intent.Before) {
 		return false, fmt.Errorf("epoch checkpoint retirement lacks its exact completion")
 	}
 	if err := b.engine.retirementAbsent(intent); err != nil {
@@ -445,12 +456,18 @@ func (b *epochInventoryBuilder) resumes(record Record) error {
 		if err := b.engine.readCheckpointJSON(relative+"/resume-prepared.json", &prepared); err != nil {
 			return err
 		}
-		actual, err := b.engine.checkpointFiles(b.ctx, relative)
-		if err != nil || !checkpointPreparationIntact(prepared, actual) {
-			return fmt.Errorf("epoch resume images differ: %v", err)
-		}
-		if err := b.payload(b.engine.config.Root + "/" + relative + "/images"); err != nil {
+		retired, err := b.retiredPayload(record, relative, resumeImagePayload)
+		if err != nil {
 			return err
+		}
+		if !retired {
+			actual, err := b.engine.checkpointFiles(b.ctx, relative)
+			if err != nil || !checkpointPreparationIntact(prepared, actual) {
+				return fmt.Errorf("epoch resume images differ: %v", err)
+			}
+			if err := b.payload(b.engine.config.Root + "/" + relative + "/images"); err != nil {
+				return err
+			}
 		}
 		for _, name := range []string{"resume-intent.json", "resume-prepared.json", "resume-held.json", "resume-result.json", "filesystem.json", "source-state.json", "sysbox-state.json", "criu.conf"} {
 			b.file(relative + "/" + name)
@@ -464,7 +481,67 @@ func (b *epochInventoryBuilder) resumes(record Record) error {
 	return nil
 }
 
-func (b *epochInventoryBuilder) fork(record Record) error {
+func (b *epochInventoryBuilder) retiredSandboxBacking(record Record) (bool, error) {
+	relative := "objects/" + record.ID + "/backing-retirement"
+	var intent sandboxBackingIntent
+	if err := b.engine.readCheckpointJSON(relative+"/retirement-intent.json", &intent); errors.Is(err, os.ErrNotExist) {
+		if _, err := b.engine.root.Lstat(relative); !errors.Is(err, os.ErrNotExist) {
+			return false, fmt.Errorf("unfinished Sandbox backing retirement blocks epoch retirement")
+		}
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	if err := sandboxBackingRecord(record, intent.Request); err != nil {
+		return false, err
+	}
+	directory, err := directoryIdentity(b.engine.config.Root + "/" + relative)
+	if err != nil || intent.Version != 1 || intent.Directory.Inode != directory.Inode ||
+		intent.Directory.Device != b.previous.BlockDevice || intent.Directory.MountID != b.previous.Mount.MountID ||
+		intent.Bundle != *record.InputDirectory || intent.StartedAt == "" {
+		return false, fmt.Errorf("retired Sandbox backing original directory differs: %v", err)
+	}
+	bundle, err := directoryIdentity(record.InputBundle)
+	if err != nil || bundle.Inode != intent.Bundle.Inode || bundle.Device != b.engine.config.BoundedStore.BlockDevice ||
+		bundle.MountID != b.engine.config.BoundedStore.Mount.MountID {
+		return false, fmt.Errorf("retired Sandbox bundle anchor changed: %v", err)
+	}
+	data, _ := json.Marshal(intent)
+	var complete SandboxBackingRetirement
+	if err := b.engine.readCheckpointJSON(relative+"/retirement-complete.json", &complete); err != nil {
+		return false, err
+	}
+	if complete.Version != 1 || complete.PayloadKind != "sandbox-backing" || complete.Request != intent.Request ||
+		complete.IntentSHA256 != sum(data) || complete.CompletedAt == "" || !reflect.DeepEqual(complete.Before, intent.Before) {
+		return false, fmt.Errorf("retired Sandbox backing lacks its exact completed inventory")
+	}
+	plan, err := b.engine.readRetirementInventory(relative, intent.InventorySHA256)
+	if err != nil || len(plan.Paths) == 0 || !reflect.DeepEqual(plan.Paths, intent.Payloads) {
+		return false, fmt.Errorf("retired Sandbox backing inventory changed: %v", err)
+	}
+	storePath := filepath.Dir(b.engine.config.ManagerRoot)
+	store, err := directoryIdentity(storePath)
+	if err != nil || store.Inode != intent.Store.Inode || store.Device != b.engine.config.BoundedStore.BlockDevice ||
+		store.MountID != b.engine.config.BoundedStore.Mount.MountID {
+		return false, fmt.Errorf("retired Sandbox backing store anchor changed: %v", err)
+	}
+	for _, path := range intent.Payloads {
+		absolute := filepath.Join(storePath, path)
+		if filepath.IsAbs(path) || !withinStore(storePath, absolute) ||
+			!below(absolute, record.InputBundle) && absolute != filepath.Dir(record.InputBundle)+"/images" {
+			return false, fmt.Errorf("retired Sandbox backing escaped its exact input")
+		}
+		if _, err := os.Lstat(absolute); !errors.Is(err, os.ErrNotExist) {
+			return false, fmt.Errorf("retired Sandbox backing has a successor: %s: %v", path, err)
+		}
+	}
+	for _, name := range []string{"retirement-intent.json", "retirement-complete.json", "retirement-payload.json.gz", ".retirement-reserve"} {
+		b.file(relative + "/" + name)
+	}
+	return true, nil
+}
+
+func (b *epochInventoryBuilder) fork(record Record, backingRetired bool) error {
 	operation := "forks/" + record.ID
 	intent, err := b.engine.readForkIntent(operation, record.Fork.SourceID, record.Fork.CheckpointID, record.ID)
 	if err != nil {
@@ -490,9 +567,11 @@ func (b *epochInventoryBuilder) fork(record Record) error {
 		return fmt.Errorf("epoch fork bundle configuration differs from its exact original intent: %v", err)
 	}
 	b.file(materialized + "/filesystem/config.json")
-	actual, err := b.engine.checkpointFiles(b.ctx, materialized)
-	if err != nil || !checkpointPreparationIntact(prepared.Files, actual) {
-		return fmt.Errorf("epoch fork private images changed: %v", err)
+	if !backingRetired {
+		actual, err := b.engine.checkpointFiles(b.ctx, materialized)
+		if err != nil || !checkpointPreparationIntact(prepared.Files, actual) {
+			return fmt.Errorf("epoch fork private images changed: %v", err)
+		}
 	}
 	var filesystem sysboxcapture.FilesystemSnapshot
 	if err := b.engine.readCheckpointJSON(materialized+"/filesystem.json", &filesystem); err != nil {
@@ -507,7 +586,7 @@ func (b *epochInventoryBuilder) fork(record Record) error {
 			return fmt.Errorf("epoch fork filesystem escaped its exact private preparation")
 		}
 		seen[tree.Name] = true
-		if tree.Name == "lower" {
+		if tree.Name == "lower" && (!backingRetired || tree.Immutable != nil) {
 			if err := sysboxcapture.VerifyRetainedFilesystemTree(b.ctx, tree, b.translate); err != nil {
 				return err
 			}
@@ -515,8 +594,14 @@ func (b *epochInventoryBuilder) fork(record Record) error {
 		if tree.Immutable != nil && tree.Name != "lower" {
 			return fmt.Errorf("epoch fork has an unexpected immutable tree")
 		}
-		if err := b.payload(tree.Saved); err != nil {
-			return err
+		if !backingRetired {
+			if err := b.payload(tree.Saved); err != nil {
+				return err
+			}
+		} else if tree.Immutable != nil {
+			b.keep(strings.TrimPrefix(tree.Saved, b.engine.config.Root+"/"), unix.S_IFDIR|0700)
+		} else if strings.HasPrefix(tree.Name, "volumes/") {
+			b.keep(materialized+"/filesystem/volumes", unix.S_IFDIR|0700)
 		}
 	}
 	if !seen["lower"] || !seen["upper"] {
@@ -534,11 +619,18 @@ func (b *epochInventoryBuilder) fork(record Record) error {
 		return fmt.Errorf("epoch fork overlay has a foreign or changed uncovered mountpoint: %v", err)
 	}
 	for _, name := range []string{"rootfs", "work", "restore-work"} {
+		if backingRetired && name != "rootfs" {
+			continue
+		}
 		if err := privateDirectory(record.InputBundle + "/" + name); err != nil {
 			return err
 		}
-		if err := b.payload(record.InputBundle + "/" + name); err != nil {
-			return err
+		if !backingRetired {
+			if err := b.payload(record.InputBundle + "/" + name); err != nil {
+				return err
+			}
+		} else {
+			b.keep(strings.TrimPrefix(record.InputBundle, b.engine.config.Root+"/")+"/"+name, unix.S_IFDIR|0700)
 		}
 	}
 	pauses := append([]PauseOperation(nil), record.PauseHistory...)
@@ -546,7 +638,7 @@ func (b *epochInventoryBuilder) fork(record Record) error {
 		pauses = append(pauses, *record.Pause)
 	}
 	for _, pause := range pauses {
-		if pause.Resume == nil {
+		if pause.Resume == nil || backingRetired {
 			continue
 		}
 		// The pinned FactoryboxResumeRoot creates exactly this private
@@ -559,8 +651,10 @@ func (b *epochInventoryBuilder) fork(record Record) error {
 			return err
 		}
 	}
-	if err := b.payload(b.engine.config.Root + "/" + materialized + "/images"); err != nil {
-		return err
+	if !backingRetired {
+		if err := b.payload(b.engine.config.Root + "/" + materialized + "/images"); err != nil {
+			return err
+		}
 	}
 	for _, name := range []string{"intent.json", "preparation.json", "overlay-origin.json"} {
 		b.file(operation + "/" + name)
@@ -713,6 +807,10 @@ func (e *Engine) inventoryEpochPayloads(ctx context.Context) (epochPayloadInvent
 		}
 	}
 	for _, record := range b.records {
+		backingRetired, err := b.retiredSandboxBacking(record)
+		if err != nil {
+			return result, err
+		}
 		if err := b.captures(record); err != nil {
 			return result, err
 		}
@@ -720,7 +818,7 @@ func (e *Engine) inventoryEpochPayloads(ctx context.Context) (epochPayloadInvent
 			return result, err
 		}
 		if record.Fork != nil {
-			if err := b.fork(record); err != nil {
+			if err := b.fork(record, backingRetired); err != nil {
 				return result, err
 			}
 		}

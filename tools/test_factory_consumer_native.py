@@ -221,6 +221,76 @@ class ConsumerCheckpointRetirementTests(unittest.TestCase):
         self.assertEqual(len(self.calls), 1)
 
 
+class ResumeImageRetirementTests(unittest.TestCase):
+    def setUp(self):
+        self.snapshot = 'a' * 32
+        self.previous = {'record': {'id': 'original', 'runtime_id': 'runtime', 'owner': 'b' * 32,
+            'phase': 'running', 'pause': {'snapshot_id': self.snapshot,
+                'checkpoint_sha256': 'c' * 64, 'completed_at': 'paused',
+                'resume': {'completed_at': 'resumed'}}}, 'runtime': {'status': 'running'}}
+        self.latest = copy.deepcopy(self.previous)
+        self.latest['record']['phase'] = 'paused'
+        self.latest['record']['pause'] = {'snapshot_id': 'd' * 32, 'checkpoint_sha256': 'e' * 64,
+            'completed_at': 'new-pause',
+            'after': {'anon': 0}, 'snapshot': {'file_backed': True, 'resident_bytes_after': 0}}
+        self.latest.pop('runtime')
+        self.calls = []
+
+    def execute(self, request):
+        self.calls.append(request)
+        return {'version': 1, 'payload_kind': 'resume-images', 'request': request,
+            'completed_at': 'retired', 'before': {'filesystem_available_bytes': 10},
+            'after': {'filesystem_available_bytes': 100}}
+
+    def retire(self, execute=None):
+        return consumer.retire_obsolete_resume_images(
+            self.latest, self.previous, 'original', 'runtime', execute or self.execute)
+
+    def test_later_complete_pause_authorizes_only_its_preceding_completed_resume(self):
+        before = copy.deepcopy((self.latest, self.previous))
+        self.assertEqual(self.retire()['payload_kind'], 'resume-images')
+        self.assertEqual(self.calls[0]['snapshot_id'], self.snapshot)
+        self.assertEqual((self.latest, self.previous), before)
+
+    def test_active_incomplete_or_foreign_resume_never_reaches_the_mutation(self):
+        for change in [
+                lambda: self.latest['record']['pause'].update(snapshot_id=self.snapshot),
+                lambda: self.latest['record'].update(id='foreign'),
+                lambda: self.latest['record'].update(owner='e' * 32),
+                lambda: self.latest['record']['pause'].update(completed_at=''),
+                lambda: self.latest['record']['pause'].update(checkpoint_sha256='unknown'),
+                lambda: self.latest['record']['pause']['after'].update(anon=1),
+                lambda: self.previous['record']['pause']['resume'].update(completed_at=''),
+                lambda: self.previous['record']['pause'].update(checkpoint_sha256='unknown')]:
+            self.setUp()
+            change()
+            with self.assertRaises(ValueError):
+                self.retire()
+            self.assertEqual(self.calls, [])
+
+    def test_confirmed_delete_can_retire_the_last_resume(self):
+        self.latest = copy.deepcopy(self.previous)
+        self.latest.pop('runtime')
+        self.latest['record'].update(phase='deleted', delete={'completed_at': 'deleted'})
+        self.assertEqual(self.retire()['completed_at'], 'retired')
+
+    def test_wrong_or_nonreclaiming_output_stops_the_sequence(self):
+        for change in [
+                lambda value: value.update(payload_kind='checkpoint'),
+                lambda value: value.update(completed_at=''),
+                lambda value: value['request'].update(snapshot_id='e' * 32),
+                lambda value: value['after'].update(filesystem_available_bytes=10),
+                lambda value: value['after'].update(filesystem_available_bytes=True)]:
+            self.setUp()
+            def execute(request):
+                value = self.execute(copy.deepcopy(request))
+                change(value)
+                return value
+            with self.assertRaises(ValueError):
+                self.retire(execute)
+            self.assertEqual(len(self.calls), 1)
+
+
 class NativeFactoryConsumerInputTests(unittest.TestCase):
     def test_reserve_retains_its_slot_sandbox_when_an_attempt_is_assigned(self):
         slot = 'a' * 32

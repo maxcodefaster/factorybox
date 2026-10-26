@@ -143,6 +143,45 @@ def retire_resumed_checkpoint(paused, resumed, sandbox, runtime, execute):
     return retired
 
 
+def retire_obsolete_resume_images(latest, previous, sandbox, runtime, execute):
+    before = previous.get('record', {})
+    pause = before.get('pause', {})
+    snapshot, owner, digest = pause.get('snapshot_id'), before.get('owner'), pause.get('checkpoint_sha256')
+    if (before.get('id') != sandbox or before.get('runtime_id') != runtime or
+            before.get('phase') != 'running' or previous.get('runtime', {}).get('status') != 'running' or
+            not pause.get('completed_at') or not pause.get('resume', {}).get('completed_at') or
+            not isinstance(snapshot, str) or not re.fullmatch('[a-f0-9]{32}', snapshot) or
+            not isinstance(owner, str) or not re.fullmatch('[a-f0-9]{32}', owner) or
+            not isinstance(digest, str) or not re.fullmatch('[a-f0-9]{64}', digest)):
+        raise ValueError('Resume-image retirement requires the exact original completed Resume')
+    after = latest.get('record', {})
+    if (after.get('id') != sandbox or after.get('runtime_id') != runtime or after.get('owner') != owner):
+        raise ValueError('Resume-image retirement has a different latest Sandbox identity')
+    if after.get('phase') == 'deleted':
+        if not after.get('delete', {}).get('completed_at') or latest.get('runtime'):
+            raise ValueError('Resume-image retirement requires confirmed Delete')
+    else:
+        current = after.get('pause', {}).get('snapshot_id')
+        current_digest = after.get('pause', {}).get('checkpoint_sha256')
+        if (not isinstance(current, str) or not re.fullmatch('[a-f0-9]{32}', current) or
+                not isinstance(current_digest, str) or not re.fullmatch('[a-f0-9]{64}', current_digest)):
+            raise ValueError('Resume-image retirement requires a complete later checkpoint identity')
+        if current == snapshot:
+            raise ValueError('The active Resume images remain protected')
+        require_paused_consumer(latest, sandbox, runtime, current)
+    request = {'source_id': sandbox, 'snapshot_id': snapshot,
+               'source_owner': owner, 'checkpoint_sha256': digest}
+    retired = execute(dict(request))
+    before_bytes = retired.get('before', {}).get('filesystem_available_bytes')
+    after_bytes = retired.get('after', {}).get('filesystem_available_bytes')
+    if (retired.get('version') != 1 or retired.get('payload_kind') != 'resume-images' or
+            retired.get('request') != request or not retired.get('completed_at') or
+            type(before_bytes) is not int or type(after_bytes) is not int or
+            before_bytes < 0 or after_bytes <= before_bytes):
+        raise ValueError('Resume-image retirement did not return exact owned capacity')
+    return retired
+
+
 def repeated_consumer_cycles(count, result, previous, pause, resume, useful, inspect, phase, retire=None):
     if type(count) is not int or count < 1:
         raise ValueError('Repeated consumer cycles require a positive count')
@@ -192,6 +231,10 @@ def main():
                         help='Pause/Resume the same assigned stack this many times; multiple cycles are diagnostic only')
     parser.add_argument('--retire-resumed-checkpoints', action='store_true',
                         help='Diagnostic repeat only: explicitly retire each verified resumed checkpoint and require returned capacity')
+    parser.add_argument('--retire-resume-images', action='store_true',
+                        help='With diagnostic checkpoint retirement: retire superseded private Resume images and verify only the current generation remains')
+    parser.add_argument('--retire-deleted-backing', action='store_true',
+                        help='After confirmed Delete and exact private mount release, retire private Sandbox filesystem backing')
     parser.add_argument('--warmup-control', action='store_true',
                         help='Diagnostic only: exercise and remove a stock container before standby Pause; cannot qualify a release')
     parser.add_argument('--terminal', action='store_true',
@@ -206,6 +249,8 @@ def main():
         parser.error('--resume-cycles must be positive and warmup-control requires one cycle')
     if args.retire_resumed_checkpoints and args.resume_cycles < 2:
         parser.error('--retire-resumed-checkpoints requires a diagnostic repeat')
+    if args.retire_resume_images and not args.retire_resumed_checkpoints:
+        parser.error('--retire-resume-images requires --retire-resumed-checkpoints')
     print(json.dumps({'stage':'verify-existing-inputs','worker_build':args.worker_build,
                       'consumer_build':args.consumer_build}),flush=True)
     worker_root, worker = build_worker.load(args.worker_build)
@@ -271,6 +316,8 @@ def main():
               'diagnostic_only':args.warmup_control or args.observe_resume_cgroup or args.resume_cycles != 1,
               'resume_cycles':args.resume_cycles,
               'retire_resumed_checkpoints':args.retire_resumed_checkpoints,
+              'retire_resume_images':args.retire_resume_images,
+              'retire_deleted_backing':args.retire_deleted_backing,
               'namespace_observer_sha256':reference.sha(namespace_observer),
               'cgroup_observer_sha256':reference.sha(cgroup_observer),
               'observe_resume_cgroup':args.observe_resume_cgroup,
@@ -522,6 +569,49 @@ def main():
             run(['exec',worker_id,'cp','-a','/var/lib/sysbox/native-project',prepared['bundle']+'/rootfs/factory/native-repo'])
         cli=['exec',worker_id,'/opt/factorybox/factorybox','--worker-run-root','/run/factorybox',
              '--worker-store-id',owner,'--worker-epoch',status['epoch']]
+        def retire_request(action, request):
+            return json.loads(run([
+                *cli, action, '--snapshot-id', request['snapshot_id'],
+                '--source-owner', request['source_owner'],
+                '--checkpoint-sha256', request['checkpoint_sha256'], request['source_id'],
+            ], timeout=90))
+
+        def retire_checkpoint(paused, resumed):
+            return retire_resumed_checkpoint(
+                paused, resumed, sandbox, result['start']['record']['runtime_id'],
+                lambda request:retire_request('retire-checkpoint', request))
+
+        def retire_resume(latest, previous):
+            return retire_obsolete_resume_images(
+                latest, previous, sandbox, result['start']['record']['runtime_id'],
+                lambda request:retire_request('retire-resume', request))
+
+        def inspect_rolling_backing(snapshot):
+            script = """import json,pathlib,re,sys
+request=json.load(sys.stdin)
+root=pathlib.Path(request['root'])/'objects'/request['sandbox']
+def generations(kind):
+ parent=root/kind
+ if not parent.exists(): return []
+ result=[]
+ for directory in parent.iterdir():
+  if directory.is_symlink() or not directory.is_dir() or not re.fullmatch('[a-f0-9]{32}',directory.name):
+   raise ValueError('Unexpected private generation')
+  images=directory/'images'
+  if images.is_symlink(): raise ValueError('Redirected private images')
+  if images.exists():
+   if not images.is_dir(): raise ValueError('Invalid private images')
+   result.append(directory.name)
+ return sorted(result)
+print(json.dumps({'resumes':generations('resumes'),'captures':generations('captures')}))
+"""
+            inventory = json.loads(run(['exec', '-i', worker_id, 'python3', '-c', script],
+                body=json.dumps({'root':status['lifecycle']['root'], 'sandbox':sandbox}), timeout=15))
+            if inventory != {'resumes':[snapshot], 'captures':[]}:
+                raise ValueError('Obsolete private RAM generations remain after rolling retirement')
+            return {'snapshot_id':snapshot, 'inventory':inventory,
+                    'capacity':json.loads(run([*cli, 'capacity'], timeout=15))}
+
         started=time.monotonic()
         native=json.loads(run([*cli,'start','--bundle',prepared['bundle'],sandbox],timeout=90))
         result['start']=native;live_pid=native['runtime']['pid']
@@ -691,6 +781,12 @@ def main():
         require_paused_consumer(result['pause'], sandbox, result['start']['record']['runtime_id'], snapshot)
         result['memory_paused']=memory()
         phase('assigned-sandbox-paused')
+        if args.reserve and args.retire_resumed_checkpoints:
+            result['standby_checkpoint_retirement'] = retire_checkpoint(
+                result['standby_pause'], result['standby_resume'])
+            if args.retire_resume_images:
+                result['standby_resume_retirement'] = retire_resume(
+                    result['pause'], result['standby_resume'])
         if args.reserve:
             # Isolated source is private. Its preservation is checked through app RAM and child identity.
             pass
@@ -713,31 +809,35 @@ def main():
             raise ValueError('Dev Container restarted during Pause/Resume')
         result['docker_after']=json.loads(run([*runc,'docker','info','--format','{{json .}}']))
         if args.resume_cycles > 1:
-            def retire_checkpoint(paused, resumed):
-                def execute(request):
-                    return json.loads(run([
-                        *cli, 'retire-checkpoint', '--snapshot-id', request['snapshot_id'],
-                        '--source-owner', request['source_owner'],
-                        '--checkpoint-sha256', request['checkpoint_sha256'], request['source_id'],
-                    ], timeout=90))
-                return retire_resumed_checkpoint(
-                    paused, resumed, sandbox, result['start']['record']['runtime_id'], execute)
-
             if args.retire_resumed_checkpoints:
                 result['initial_checkpoint_retirement_attempted'] = True
                 result['initial_checkpoint_retirement'] = retire_checkpoint(result['pause'], result['resume'])
+                if args.retire_resume_images:
+                    result['rolling_backing'] = [inspect_rolling_backing(snapshot)]
+
+            previous_resumed = result['resume']
 
             def pause_again(entry):
                 endpoint('/pause','POST')
-                return json.loads(run([*cli,'pause','--snapshot-id',entry['snapshot_id'],sandbox],timeout=90))
+                paused = json.loads(run([*cli,'pause','--snapshot-id',entry['snapshot_id'],sandbox],timeout=90))
+                if args.retire_resume_images:
+                    entry['resume_image_retirement'] = retire_resume(paused, previous_resumed)
+                return paused
 
             def resume_again(entry):
-                nonlocal live_pid
+                nonlocal live_pid, previous_resumed
                 endpoint('/resume','POST')
                 resumed = resume_assigned(entry['pause'],entry['snapshot_id'],entry,
                                           'cgroup-observation-cycle-'+str(entry['cycle']))
                 live_pid=resumed['runtime']['pid']
+                previous_resumed=resumed
                 return resumed
+
+            def retire_cycle(entry):
+                receipt = retire_checkpoint(entry['pause'],entry['resume'])
+                if args.retire_resume_images:
+                    result['rolling_backing'].append(inspect_rolling_backing(entry['snapshot_id']))
+                return receipt
 
             def useful_again():
                 wait(endpoint,lambda value:value['connected'],'Same Connectors after repeated Resume',45)
@@ -747,7 +847,7 @@ def main():
             result['repeat_after'] = repeated_consumer_cycles(
                 args.resume_cycles, result, after, pause_again, resume_again, useful_again,
                 lambda:json.loads(run([*runc,'docker','inspect',child_id]))[0], phase,
-                retire=(lambda entry:retire_checkpoint(entry['pause'],entry['resume']))
+                retire=retire_cycle
                 if args.retire_resumed_checkpoints else None)
         if args.terminal:
             result['terminal_after']=endpoint('/terminal/after','POST')
@@ -760,7 +860,21 @@ def main():
             if result['git_after']['head']==revision or result['git_after']['files']:
                 raise ValueError('Actual mapped-user personal Git commit did not retain its exact outcome')
         result['delete']=json.loads(run([*cli,'delete',sandbox],timeout=60));live_pid=None
+        if args.retire_resume_images:
+            result['final_resume_retirement'] = retire_resume(result['delete'], previous_resumed)
         result['release']=json.loads(run(['exec','-i',worker_id,'python3','-c',(frozen/'prepare.py').read_text(),'release'],body=json.dumps(preparation_identity(request)),timeout=60))
+        if args.retire_deleted_backing:
+            deleted = result['delete']['record']
+            result['backing_retirement'] = json.loads(run([
+                *cli, 'retire-sandbox', '--sandbox-owner', deleted['owner'],
+                '--input-sha256', deleted['input_sha256'], sandbox], timeout=90))
+            receipt = result['backing_retirement']
+            if (receipt.get('payload_kind') != 'sandbox-backing' or
+                    receipt.get('request') != {'sandbox_id':sandbox, 'sandbox_owner':deleted['owner'],
+                                               'input_sha256':deleted['input_sha256']} or
+                    not receipt.get('completed_at') or
+                    receipt['after']['filesystem_available_bytes'] <= receipt['before']['filesystem_available_bytes']):
+                raise ValueError('Deleted private filesystem backing did not return real capacity')
         run(['stop','--timeout','45',worker_id],timeout=50)
         result['final_worker_state']=own(name,worker_id)['State']
         if result['final_worker_state']['ExitCode']!=0:raise ValueError('Worker did not shut down cleanly')

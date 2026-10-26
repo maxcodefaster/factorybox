@@ -238,6 +238,36 @@ capacity is observed separately because live open references can retain blocks.
 Do not manually clear an uncertain intent or interpret a partial result as a
 completed retirement.
 
+`retire-resume` uses the same exact checkpoint, owner and hash arguments to
+retire a completed Resume's independent private RAM image copy. It returns
+`payload_kind: "resume-images"`. The current Resume stays protected until a
+later complete Pause or confirmed Delete. Retirement never removes its successor's
+images. This operation is separate from retiring the checkpoint that supplied them.
+
+After confirmed native Delete and ordinary release of the original caller-owned
+overlay/base mounts, private mutable filesystem backing can be retired:
+
+```sh
+factorybox --worker-run-root /run/factorybox retire-sandbox \
+  --sandbox-owner EXACT_ORIGINAL_OWNER \
+  --input-sha256 EXACT_ORIGINAL_START_INPUT_SHA256 SANDBOX
+```
+
+The bounded-store operation returns `payload_kind: "sandbox-backing"`. It
+requires the original admitted bundle directory identity and removes only
+inventoried private upper/work/volume trees and a deleted fork's initial private
+images. It preserves canonical Source, registered common bases, configuration,
+operation receipts and the bundle anchor. It does not unmount caller-owned mounts
+or reclaim checkpoint/Resume generations implicitly. Retire those with their own
+exact requests. Native Delete by itself still retains all this backing.
+
+Both operations retain a durable inventory and completion reserve. Repeating
+the exact request continues interrupted deletion or returns its original completed
+receipt. Foreign hardlinks, mounted payloads, unexpected entries and successor
+objects cause refusal. Before/after capacity reports are observations of the
+shared filesystem, not a byte charge for one Sandbox. They do not establish
+production qualification or cross-worker recovery.
+
 The following timer-integration notes describe preserved older package
 experiments. The selected package passes the complete retirement suite and
 targeted timer/restore-hold cases as indexed in the current release status;
