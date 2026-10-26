@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an unselected CRIU delta for live same-worker file descriptions."""
+"""Build an ordered CRIU shared-description or namespace-validation delta."""
 import argparse
 import json
 import os
@@ -16,17 +16,35 @@ import sources
 
 
 PATCH = reference.ROOT / 'upstream/patches/criu-shared-fds-candidate.patch'
+NAMESPACE_PATCH = reference.ROOT / 'upstream/patches/criu-userns-validation-handles.patch'
+
+
+def delta_recipe(namespace_access, previous):
+    patch = NAMESPACE_PATCH if namespace_access else PATCH
+    delta = 'namespace-access' if namespace_access else 'shared-fds'
+    targets = 1 if namespace_access else 8
+    changed = [line.removeprefix('+++ b/') for line in patch.read_text().splitlines() if line.startswith('+++ b/')]
+    if (len(changed) != targets or len(set(changed)) != targets or
+            any(not value.startswith('criu/') or '..' in Path(value).parts for value in changed) or
+            namespace_access and changed != ['criu/namespaces.c']):
+        raise ValueError('ordered CRIU delta changed an undeclared source boundary')
+    if namespace_access and previous.get('candidate_patch_sha256', {}).get('shared-fds.patch') != reference.sha(PATCH):
+        raise ValueError('namespace validation requires the exact existing shared-description delta')
+    return patch, delta, changed
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--base-candidate', required=True)
+    parser.add_argument('--base-lock', type=Path,
+                        help='Exact immutable selected-base lock; its CRIU component must match the current recipe')
+    parser.add_argument('--namespace-access', action='store_true',
+                        help='After shared descriptions, pin namespace validation handles before dropping authority')
     parser.add_argument('--prepared', help='One new, unbuilt preparation from this task; never a completed input')
     args = parser.parse_args()
-    original, previous, _, _ = criu_candidate.load(args.base_candidate)
-    changed = [line.removeprefix('+++ b/') for line in PATCH.read_text().splitlines() if line.startswith('+++ b/')]
-    if len(changed) != 8 or len(set(changed)) != 8 or any(not value.startswith('criu/') or '..' in Path(value).parts for value in changed):
-        raise ValueError('shared-description delta changed an undeclared source boundary')
+    original, previous, _, _ = criu_candidate.load(args.base_candidate, base_lock=args.base_lock)
+    patch, delta, changed = delta_recipe(args.namespace_access, previous)
+    filename = delta + '.patch'
     if args.prepared:
         if not re.fullmatch(r'factorybox-build-criu-retained-[0-9a-f]{32}', args.prepared):
             raise ValueError('requires one exact private preparation')
@@ -39,11 +57,11 @@ def main():
     else:
         artifact = reference.new_artifact('factorybox-build-criu-retained-' + uuid.uuid4().hex)
         artifact.mkdir()
-        shutil.copy2(PATCH, artifact / 'shared-fds.patch')
+        shutil.copy2(patch, artifact / filename)
         shutil.copyfile(__file__, artifact / 'runner.py')
         preparation = {'schema': 1, 'base_candidate': original.name,
                        'base_result_sha256': reference.sha(original / 'result.json'),
-                       'changed_files': changed, 'patch_sha256': reference.sha(artifact / 'shared-fds.patch')}
+                       'changed_files': changed, 'patch_sha256': reference.sha(artifact / filename)}
         (artifact / 'preparation.json').write_text(json.dumps(preparation, indent=2) + '\n')
         def copy(source, target):
             if str(Path(source).relative_to(original / 'context')) in changed:
@@ -52,7 +70,7 @@ def main():
             return target
         shutil.copytree(original / 'context', artifact / 'context', copy_function=copy, symlinks=True)
         try:
-            patched = subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '-p1', '-i', str(artifact / 'shared-fds.patch')],
+            patched = subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '-p1', '-i', str(artifact / filename)],
                                      cwd=artifact / 'context', capture_output=True, text=True, timeout=30)
             (artifact / 'preparation-patch.log').write_text(patched.stdout + patched.stderr)
             patched.check_returncode()
@@ -61,8 +79,8 @@ def main():
                 'error': str(error), 'native_started': False, 'base_candidate': original.name}, indent=2) + '\n')
             raise
     # Independently reconstruct the exact ordered delta using only independent
-    # copies of its eight targets. Unchanged archived sources are never edited.
-    reconstruction = artifact / 'shared-fds-reconstruction'
+    # copies of its targets. Unchanged archived sources are never edited.
+    reconstruction = artifact / (delta + '-reconstruction')
     reconstruction.mkdir()
     before = {}
     for name in changed:
@@ -71,9 +89,9 @@ def main():
         target = reconstruction / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
-    reconstructed = subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '-p1', '-i', str(PATCH)],
+    reconstructed = subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '-p1', '-i', str(patch)],
                                    cwd=reconstruction, capture_output=True, text=True, timeout=30)
-    (artifact / 'shared-fds-patch.log').write_text(reconstructed.stdout + reconstructed.stderr)
+    (artifact / (delta + '-patch.log')).write_text(reconstructed.stdout + reconstructed.stderr)
     reconstructed.check_returncode()
     after = {name: reference.sha(artifact / 'context' / name) for name in changed}
     if any(reference.sha(reconstruction / name) != after[name] for name in changed):
@@ -82,19 +100,19 @@ def main():
         target = artifact / name
         if not target.exists():
             shutil.copy2(original / name, target)
-    if not (artifact / 'shared-fds.patch').exists():
-        shutil.copy2(PATCH, artifact / 'shared-fds.patch')
+    if not (artifact / filename).exists():
+        shutil.copy2(patch, artifact / filename)
         shutil.copyfile(__file__, artifact / 'runner.py')
-    if reference.sha(artifact / 'shared-fds.patch') != reference.sha(PATCH):
-        raise ValueError('frozen shared-description patch differs from the current preparation')
+    if reference.sha(artifact / filename) != reference.sha(patch):
+        raise ValueError('frozen ordered patch differs from the current preparation')
     shutil.copyfile(reference.ROOT / 'tests/criu-owned-scope.c', artifact / 'criu-owned-scope.c')
     lock = json.loads((original / 'source-lock.json').read_text())
     component = lock['components']['criu']
-    relative = str(PATCH.relative_to(reference.ROOT))
+    relative = str(patch.relative_to(reference.ROOT))
     if relative in component['patches']:
-        raise ValueError('shared-description delta is already applied')
+        raise ValueError('ordered CRIU delta is already applied')
     component['patches'].append(relative)
-    component['local_inputs_sha256'][relative] = reference.sha(PATCH)
+    component['local_inputs_sha256'][relative] = reference.sha(patch)
     component['prepared_files_sha256'].update(after)
     (artifact / 'source-lock.json').write_text(json.dumps(lock, indent=2) + '\n')
     sources.validate_inputs(component)
@@ -102,8 +120,8 @@ def main():
     if unchanged_tests != previous['unchanged_upstream_test_files']:
         raise ValueError('shared-description delta changed an upstream assertion')
     declaration = {'schema': 1, 'before_sha256': before, 'after_sha256': after,
-                   'patch_sha256': reference.sha(PATCH), 'upstream_assertions_unchanged': True}
-    (artifact / 'shared-fds-source.json').write_text(json.dumps(declaration, indent=2) + '\n')
+                   'patch_sha256': reference.sha(patch), 'upstream_assertions_unchanged': True}
+    (artifact / (delta + '-source.json')).write_text(json.dumps(declaration, indent=2) + '\n')
     builder, base = native_base.load(previous['native_base_build'], for_build=True)
     owner = artifact.name.rsplit('-', 1)[1]
     epoch = json.loads((artifact / 'criu-build.json').read_text())['source_date_epoch']
@@ -127,13 +145,13 @@ def main():
               'base_source_lock_sha256': previous['base_source_lock_sha256'],
               'source_lock_sha256': reference.sha(artifact / 'source-lock.json'),
               'patch_sha256': reference.sha(artifact / 'retained.patch'),
-              'candidate_patch_sha256': {**previous['candidate_patch_sha256'], 'shared-fds.patch': reference.sha(PATCH)},
+              'candidate_patch_sha256': {**previous['candidate_patch_sha256'], filename: reference.sha(patch)},
               'candidate_overlay_sha256': previous.get('candidate_overlay_sha256', {}),
               'context_sha256': sources.tree_sha(artifact / 'context'),
               'build_inputs_sha256': reference.sha(artifact / 'criu-build.json'),
               'scope_test_sha256': reference.sha(artifact / 'criu-owned-scope.c'),
               'native_base_packages_sha256': base['packages_sha256'], 'unchanged_upstream_test_files': unchanged_tests,
-              'shared_fds_source_sha256': reference.sha(artifact / 'shared-fds-source.json'),
+              delta.replace('-', '_') + '_source_sha256': reference.sha(artifact / (delta + '-source.json')),
               'scope': __doc__}
     (artifact / 'intent.json').write_text(json.dumps(result, indent=2) + '\n')
     attempted = False
