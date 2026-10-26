@@ -94,6 +94,11 @@ def collect(worker_path, worker):
         frozen = worker_path / ("image-context/Dockerfile" if name == "build/worker.Dockerfile" else "source/" + name)
         if reference.sha(root / name) != reference.sha(frozen):
             raise ValueError("release source commit differs from the worker executable source")
+    for name in ["LICENSE", "NOTICE", "LICENSING.md"]:
+        original = root / name
+        if (original.is_symlink() or
+                reference.sha(original) != worker["bundle_sha256"]["licenses/factorybox/" + name]):
+            raise ValueError("release source notice differs from the delivered worker: " + name)
     sysbox_path, sysbox = reference_lifecycle.component_build(worker["sysbox_build"], "factorybox-build-sysbox-")
     manifest = json.loads((sysbox_path / "context-manifest.json").read_text())
     if (upstream_unit.context_manifest(sysbox_path / "context") != manifest or
