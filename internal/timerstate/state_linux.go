@@ -31,6 +31,21 @@ func bpf(command uintptr, attr []byte) (int, error) {
 	return int(result), nil
 }
 
+func loadProgram(attr []byte, call func(uintptr, []byte) (int, error)) (int, error) {
+	// BPF_PROG_LOAD EAGAIN means the verifier observed a pending signal.
+	// bpf(2) requires repeating the same parameters. No descriptor has been
+	// accepted yet. This does not retry an attached reader or a lifecycle action.
+	var fd int
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		fd, err = call(5, attr)
+		if !errors.Is(err, unix.EAGAIN) {
+			return fd, err
+		}
+	}
+	return fd, err
+}
+
 // Pointers encoded inside bpf_attr are opaque integers to the Go stack mover.
 // Pin every referenced allocation until the synchronous syscall returns.
 func address(pinned *runtime.Pinner, data []byte) uint64 {
@@ -408,7 +423,7 @@ func read(tasks []Task, registers bool) (observation Observation, resultErr erro
 	binary.LittleEndian.PutUint64(attr[32:], address(&pinned, verifier))
 	binary.LittleEndian.PutUint32(attr[68:], 28)
 	binary.LittleEndian.PutUint32(attr[108:], attach)
-	progFD, err := bpf(5, attr)
+	progFD, err := loadProgram(attr, bpf)
 	runtime.KeepAlive(code)
 	runtime.KeepAlive(license)
 	runtime.KeepAlive(verifier)
