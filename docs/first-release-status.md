@@ -36,14 +36,29 @@ current runtime defects.
   Linux or macOS. Release CI has matching AMD64 and ARM64 native jobs, the
   reviewed Factory pin, distinct architecture assets and a combined manifest
   gated on both jobs. Editing CI does not mean either job has already passed.
+- Native AMD64 verification now passes all 23 required release gates for source
+  `955446f1aa9630a9692de86dc8568292bc401647`, ordinary worker image
+  `sha256:073ce8ad27c63ed5261a4da95c4e9349cc81ac208b33abafa639afa5b8c9b9dc`,
+  and reviewed Factory consumer `a5b9a931fa2a61e328d122f6ce1250664b52459e`.
+  The complete receipt is
+  `factorybox-release-native-c627416461824f56a49d96160e4b4b87`, SHA-256
+  `d0c2bd0100f2999015548416aba2e21a41944089eb6ca4304a5696532e9a54a8`.
+  This includes both worker-replacement modes and both Factory consumer lanes.
+  Fix `884e613` removes only unused DWARF from the capacity fixture's guest
+  executable; all native assertions, store limits and delivered runtime bytes
+  remain unchanged. The original failed matrix
+  `factorybox-release-native-8463fd1f2f4345ed8c1945f7296b3ed9` and both reproduced
+  capacity failures remain preserved. Cleanup removed the owned test resources
+  and builder; all nine pre-existing volume identities are retained.
 
 ## Remaining first-release checks
 
-- [ ] Run the complete required native matrix on the exact final AMD64 and ARM64
-  release images and bind sources, component identities, independent builds and
-  receipts in the final profile. Older AMD64 receipts and local ARM64 integration
-  results do not replace these image-specific checks. Each architecture needs
-  an existing matching Linux runner with an admitted kernel/storage tuple.
+- [ ] Complete the final ARM64 native matrix and bind both architectures' sources,
+  component identities, independent builds and receipts in the final profile.
+  The exact AMD64 functional matrix above is complete. Older AMD64 receipts and
+  local ARM64 integration results do not replace these image-specific checks or
+  final profile binding. Each architecture needs an existing matching Linux
+  runner with an admitted kernel/storage tuple.
 - [ ] Resolve the historical EBUSY cleanup attribution. Later controls passed;
   the latest image has not been shown to reproduce it. The original holder and
   whether it belonged to the fixture or runtime remain unestablished. Do not
