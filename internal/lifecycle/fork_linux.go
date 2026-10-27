@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"syscall"
 
+	"factorybox/internal/sandboxnetwork"
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
@@ -27,21 +28,23 @@ type ForkOrigin struct {
 }
 
 type forkIntent struct {
-	Version       int             `json:"version"`
-	TargetID      string          `json:"target_id"`
-	Owner         string          `json:"owner"`
-	BootID        string          `json:"boot_id"`
-	RuntimeSHA256 string          `json:"runtime_sha256"`
-	CriuSHA256    string          `json:"criu_sha256"`
-	ManagerRoot   string          `json:"manager_root"`
-	Origin        ForkOrigin      `json:"origin"`
-	Source        Record          `json:"source"`
-	Checkpoint    Checkpoint      `json:"checkpoint"`
-	OCI           []byte          `json:"oci"`
-	State         []byte          `json:"state"`
-	FsState       []byte          `json:"fs_state"`
-	CriuConfig    []byte          `json:"criu_config"`
-	Recovery      *RecoveryOrigin `json:"recovery,omitempty"`
+	Version       int                    `json:"version"`
+	TargetID      string                 `json:"target_id"`
+	Owner         string                 `json:"owner"`
+	BootID        string                 `json:"boot_id"`
+	RuntimeSHA256 string                 `json:"runtime_sha256"`
+	CriuSHA256    string                 `json:"criu_sha256"`
+	ManagerRoot   string                 `json:"manager_root"`
+	Origin        ForkOrigin             `json:"origin"`
+	Source        Record                 `json:"source"`
+	Checkpoint    Checkpoint             `json:"checkpoint"`
+	OCI           []byte                 `json:"oci"`
+	State         []byte                 `json:"state"`
+	FsState       []byte                 `json:"fs_state"`
+	CriuConfig    []byte                 `json:"criu_config"`
+	TargetNetwork *sandboxnetwork.Config `json:"target_network,omitempty"`
+	NetworkCopy   []byte                 `json:"network_copy,omitempty"`
+	Recovery      *RecoveryOrigin        `json:"recovery,omitempty"`
 }
 
 type forkPreparation struct {
@@ -213,7 +216,7 @@ func (e *Engine) readForkIntent(operation, sourceID, snapshotID, targetID string
 			return intent, fmt.Errorf("fork intent changed saved metadata: %s", name)
 		}
 	}
-	return intent, nil
+	return intent, validateForkNetwork(intent)
 }
 
 func (e *Engine) newForkIntent(ctx context.Context, sourceID, snapshotID, targetID string) (forkIntent, error) {
@@ -224,9 +227,6 @@ func (e *Engine) newForkIntent(ctx context.Context, sourceID, snapshotID, target
 	}
 	if source.SharedSource != nil {
 		return intent, sysboxcapture.ErrSharedSourceCopy
-	}
-	if source.Network != nil {
-		return intent, fmt.Errorf("outbound network requires a separate independent copy contract")
 	}
 	generation, _ := checkpointPath(sourceID, snapshotID)
 	if _, err := e.readCheckpoint(generation, "checkpoint.json"); err != nil {
@@ -265,11 +265,28 @@ func (e *Engine) newForkIntent(ctx context.Context, sourceID, snapshotID, target
 	if err != nil {
 		return intent, err
 	}
-	return forkIntent{Version: 1, TargetID: targetID, Owner: hex.EncodeToString(nonce[:]),
+	intent = forkIntent{Version: 1, TargetID: targetID, Owner: hex.EncodeToString(nonce[:]),
 		BootID: e.boot, RuntimeSHA256: e.config.RuntimeSHA256, CriuSHA256: e.config.CriuSHA256,
 		ManagerRoot: e.config.ManagerRoot, Source: source, Checkpoint: checkpoint, OCI: oci, State: state,
 		FsState: fsState, CriuConfig: criuConfig, Origin: ForkOrigin{SourceID: sourceID, CheckpointID: snapshotID,
-			CheckpointSHA256: sum(identity), RequestedAt: now()}}, nil
+			CheckpointSHA256: sum(identity), RequestedAt: now()}}
+	if source.Network != nil {
+		intent.NetworkCopy, err = e.root.ReadFile(generation + "/images/" + sysboxcapture.NetworkCopyImage)
+		if err != nil {
+			return intent, fmt.Errorf("network fork requires capture-time socket admission: %w", err)
+		}
+		intent.TargetNetwork, err = sandboxnetwork.Plan(intent.Owner)
+		if err != nil {
+			return intent, err
+		}
+		if err := validateForkNetwork(intent); err != nil {
+			return intent, err
+		}
+		if err := e.admitNetwork(*intent.TargetNetwork, targetID); err != nil {
+			return intent, err
+		}
+	}
+	return intent, nil
 }
 
 func forkOCI(data []byte, bundle string) ([]byte, error) {
@@ -345,9 +362,13 @@ func (e *Engine) prepareForkBacking(ctx context.Context, lock *os.File, operatio
 	if err != nil {
 		return err
 	}
+	criuConfig, err := forkCRIUConfiguration(intent)
+	if err != nil {
+		return err
+	}
 	for name, data := range map[string][]byte{
 		"filesystem.json": metadata, "source-state.json": intent.State,
-		"sysbox-state.json": intent.FsState, "criu.conf": intent.CriuConfig,
+		"sysbox-state.json": intent.FsState, "criu.conf": criuConfig,
 	} {
 		if err := e.writeForkFile(materialized, name, data); err != nil {
 			return err
@@ -363,6 +384,9 @@ func (e *Engine) prepareForkBacking(ctx context.Context, lock *os.File, operatio
 	}
 	for _, file := range files {
 		if file.Name == "filesystem.json" {
+			continue
+		}
+		if file.Name == "criu.conf" && file.Bytes == int64(len(criuConfig)) && file.SHA256 == sum(criuConfig) {
 			continue
 		}
 		original, found := originals[file.Name]
@@ -527,6 +551,11 @@ func (e *Engine) reconcileFork(ctx context.Context, lock *os.File, intent forkIn
 		}
 		if err := e.prepareCgroup(&record); err != nil {
 			return View{Record: record}, err
+		}
+		if record.Network != nil {
+			if err := record.Network.PrepareRestore(); err != nil {
+				return View{Record: record}, err
+			}
 		}
 		record.Start.Attempted = true
 		if err := e.write(record); err != nil {

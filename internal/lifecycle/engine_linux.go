@@ -564,20 +564,21 @@ func (e *Engine) prepareRecordContext(ctx context.Context, id, bundle, object st
 		return record, err
 	}
 	if requested {
-		if origin != nil {
-			return record, sandboxnetwork.ErrIndependentCopy
-		}
 		if e.config.FDStoreSocket == "" {
 			return record, fmt.Errorf("outbound networking requires the original worker epoch")
 		}
 		if err := fdstore.Ping(e.config.FDStoreSocket); err != nil {
 			return record, err
 		}
-		network, err = sandboxnetwork.Plan(owner)
+		if origin != nil {
+			network, err = e.forkNetwork(*origin, id, owner)
+		} else {
+			network, err = sandboxnetwork.Plan(owner)
+		}
 		if err != nil {
 			return record, err
 		}
-		if err := network.Admit(); err != nil {
+		if err := e.admitNetwork(*network, id); err != nil {
 			return record, err
 		}
 	}

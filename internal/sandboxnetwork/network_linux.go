@@ -23,8 +23,6 @@ import (
 
 const Annotation = "io.factorybox.outbound-ipv4"
 
-var ErrIndependentCopy = errors.New("outbound network supports same-worker pause/resume; independent copies need a separate network identity")
-
 type Config struct {
 	Owner           string `json:"owner"`
 	Peer            string `json:"peer"`

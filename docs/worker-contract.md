@@ -209,6 +209,45 @@ dependency-checked retirement procedures below. Their current-package evidence
 is indexed in the [operating procedure](first-release-operations.md); automatic
 retention remains deferred.
 
+## Independent outer-network copies
+
+The local candidate can fork a committed private-source Pause with
+`io.factorybox.outbound-ipv4=true` inside its original worker epoch. It persists
+another owner, subnet, veth pair and MAC before creating the target. Paused
+Sandboxes and pending forks reserve their subnets even without live routes.
+The source's saved files remain unchanged. The private target changes only
+the exact outer-netdev mapping in `criu.conf`, then replaces its copied outer
+address and interface identity while its restored cgroup is still held.
+
+Capture writes `images/network-copy.json` into the hashed checkpoint inventory.
+Admission inspects actual socket and network-namespace cookies and verifies
+that every captured thread shares its inspected process file table. It accepts
+unconnected TCP/UDP sockets, wildcard or loopback listeners and established
+loopback connections with both unique endpoints in the same captured namespace.
+It refuses original-outer-address bindings, connected routed/external sockets,
+raw sockets, unknown namespaces and unproved file tables before publishing a
+fork intent. Matching IP/port tuples across nested namespaces are not sufficient
+peer-ownership proof. A copy refusal does not authorize resetting the source
+or changing its checkpoint.
+
+For same-identity Pause, the guard isolates only the verified original worker
+veth end before capture and keeps it down while the frozen source is destroyed.
+Otherwise closing the original sockets sends FIN to uncaptured peers, which
+then reject the restored stream. Confirmed capture rollback reactivates that
+same owned pair after socket/filter rollback, before source release. Resume
+configures its freshly restored pair while the target is held. Neither operation
+changes the worker uplink or another Sandbox's interface. The focused
+`--suite network-resume` requires the original external TCP peer and memory,
+not a replacement connection.
+
+This does not authorize shared canonical Source copies, worker replacement,
+credential transfer or a Factory Staging template. Consumers must separately
+prepare clean role-appropriate state. Existing checkpoints without the socket
+admission image cannot gain network-copy authority through a retry. Reproduce
+the focused native lifecycle with `tools/bounded_store_native.py --worker-build
+EXACT_BUILD --suite network-fork`; full consumer and release gates remain
+separate.
+
 ## Experimental checkpoint selections and retirement
 
 The bounded-store candidate provides `select-checkpoint`,

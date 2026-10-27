@@ -88,7 +88,7 @@ def main():
     parser.add_argument('--native-candidate', action='store_true',
                         help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'resume-retirement', 'backing-retirement', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'resume-retirement', 'backing-retirement', 'network-fork', 'network-resume', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
     parser.add_argument('--nested-exec-consumer', help='Exact existing consumer image supplying nested runc for the standby-exec control')
     parser.add_argument('--exec-trace-inputs', help='Optional exact owned diagnostic strace acquisition; standby-exec only')
     parser.add_argument('--peer-source', action='store_true',
@@ -131,6 +131,8 @@ def main():
     standby_peers = args.suite == 'standby-peers'
     resume_retirement = args.suite == 'resume-retirement'
     backing_retirement = args.suite == 'backing-retirement'
+    network_fork = args.suite == 'network-fork'
+    network_resume = args.suite == 'network-resume'
     if (args.peer_source or args.peer_network or args.peer_common_base or args.peer_release or args.peer_docker) and not standby_peers:
         parser.error('peer source/network/base/release controls require standby-peers')
     if args.peer_docker and not args.nested_exec_consumer:
@@ -155,7 +157,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or resume_retirement or backing_retirement or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
+    retirement = args.suite.startswith('retirement') or resume_retirement or backing_retirement or network_fork or network_resume or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -226,6 +228,16 @@ def main():
         result['scope'] = 'Exact delivered worker with independent tiny writable-cgroup fixtures. Require exec in init.scope before and after real Pause/Resume and admission of new child cgroups from existing and empty delegation. Not Docker, Fork or platform qualification.'
     if standby_exec:
         result['scope'] = 'Exact delivered worker with the pinned consumer runc and tiny BusyBox rootfs. A new nested container exec must succeed before and after real Pause/Resume; no nested child survives the checkpoint. Optional tracing occurs only after an uninstrumented failure and cannot turn that failure into a pass. Not full consumer, Fork or platform qualification.'
+    if network_fork:
+        result['scope'] = ('Same-worker private-source Go actor Pause/Fork with independent outer IPv4 identities, '
+                           'two simultaneously useful copies, copied RAM, loopback TCP and wildcard listener preservation, '
+                           'child Pause/Resume and released anonymous/snapshot memory, paused-subnet reservation, exact replay, '
+                           'external-connection copy refusal before intent and same-identity Resume. '
+                           'Uses a 1-GiB bounded store. No Docker, Factory Staging template, full consumer or release qualification.')
+    if network_resume:
+        result['scope'] = ('A private-source Go actor pauses/resumes while another remains useful on the same worker. '
+                           'Require original external TCP peers, RAM, internal loopback, released paused memory and '
+                           'refusal of worker/foreign Sandbox namespaces. No fork, Docker, full consumer or release qualification.')
     if standby_repeat:
         result['scope'] = 'Two public Pause/Resume cycles each for inspectable and non-dumpable Go init processes, with preserved RAM, inspection policy and zero paused anonymous/resident snapshot memory. A preopened parent-owned namespace handle must remain inaccessible from a child user namespace. No Docker, network, Source, role assignment, full consumer or platform qualification.'
     if standby_peers:
@@ -353,6 +365,13 @@ def main():
             command += ['--env', 'FACTORYBOX_NATIVE_BACKING_RETIREMENT=1',
                         '--env', 'FACTORYBOX_NATIVE_IMPORT_MOUNT_INTERRUPTION=1',
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^Test(NativeSandboxBackingRetirement|SandboxBackingRetirementAdmission)$']
+        if network_fork:
+            command += ['--env', 'FACTORYBOX_NATIVE_NETWORK_FORK=1',
+                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeNetworkFork$']
+        if network_resume:
+            command += ['--env', 'FACTORYBOX_NATIVE_NETWORK_FORK=1',
+                        '--env', 'FACTORYBOX_NATIVE_NETWORK_RESUME=1',
+                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeExternalTCPResume$']
         if args.suite == 'retirement-base-diagnostic':
             pattern = '^TestNativeCheckpointRetirementImmutableAlias$'
             if args.timer_probe:
@@ -449,12 +468,30 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeSandboxBackingRetirement' if backing_retirement else 'TestNativeResumeImageRetirement' if resume_retirement else 'TestNativeStandbyPeers' if standby_peers else 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        prefix = 'TestNativeExternalTCPResume' if network_resume else 'TestNativeNetworkFork' if network_fork else 'TestNativeSandboxBackingRetirement' if backing_retirement else 'TestNativeResumeImageRetirement' if resume_retirement else 'TestNativeStandbyPeers' if standby_peers else 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
         count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
-        if backing_retirement:
+        if network_resume:
+            proof_path = output / 'network-resume.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'same_nonce', 'same_external_tcp_connection',
+                    'internal_loopback', 'paused_memory_released', 'other_sandbox_preserved', 'foreign_namespace_refused',
+                    'frozen_peer_reactivated_without_restart']):
+                raise ValueError('External TCP Resume omitted its original connection or memory proof')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif network_fork:
+            proof_path = output / 'network-fork.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'independent_addresses', 'copied_original_ram',
+                    'source_and_child_run_together', 'child_pause_resume', 'source_survives_child_delete',
+                    'snapshot_internal_tcp_preserved', 'external_connection_fork_refused_before_intent',
+                    'same_identity_external_resume', 'paused_subnet_reserved', 'exact_fork_replay',
+                    'child_pause_releases_memory', 'wildcard_listener_reachable_on_independent_addresses']):
+                raise ValueError('Network fork omitted independent useful copies or ownership preservation')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif backing_retirement:
             proof_path = output / 'backing-retirement.json'
             proof = json.loads(proof_path.read_text())
             if any(proof.get(key) is not True for key in

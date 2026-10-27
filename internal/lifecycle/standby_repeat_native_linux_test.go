@@ -200,6 +200,9 @@ func standbyRepeatFixtureWithBase(t *testing.T, status boundedLossStatus, id str
 	process["args"] = []string{"/bin/sh", "-c", "exec /bin/env FACTORYBOX_REPEAT_ACTOR=1 /bin/repeat-actor -test.run=^TestStandbyRepeatActor$ -test.timeout=0 </dev/null >/repeat-actor.log 2>&1"}
 	process["env"] = []string{"HOME=/root", "PATH=/bin:/sbin:/usr/bin:/usr/sbin",
 		fmt.Sprintf("FACTORYBOX_REPEAT_NONDUMPABLE=%t", protected)}
+	if os.Getenv("FACTORYBOX_NATIVE_NETWORK_FORK") == "1" {
+		process["env"] = append(process["env"].([]string), "FACTORYBOX_NETWORK_COPY_ACTOR=1")
+	}
 	spec["annotations"] = map[string]string{}
 	if base != nil {
 		spec["annotations"].(map[string]string)[baseAnnotation] = base.ID
@@ -303,6 +306,10 @@ func TestStandbyRepeatActor(t *testing.T) {
 		}
 		defer source.Close()
 	}
+	var echo func(string) string
+	if os.Getenv("FACTORYBOX_NETWORK_COPY_ACTOR") == "1" {
+		echo = networkForkActorConnections(t)
+	}
 	nonce, last, count := fmt.Sprint(time.Now().UnixNano()), "", 0
 	for {
 		data, _ := os.ReadFile("/repeat-request")
@@ -317,8 +324,11 @@ func TestStandbyRepeatActor(t *testing.T) {
 				t.Fatal(err)
 			}
 			count++
-			data, err := json.Marshal(map[string]any{"request": request, "dumpable": dumpable,
-				"nonce": nonce, "count": count})
+			response := map[string]any{"request": request, "dumpable": dumpable, "nonce": nonce, "count": count}
+			if echo != nil {
+				response["tcp_echo"] = echo(nonce + ":" + fmt.Sprint(count))
+			}
+			data, err := json.Marshal(response)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -351,7 +361,12 @@ exit 1`
 	data, err := exec.CommandContext(ctx, status.Lifecycle.Runtime, "--root", status.Lifecycle.Root+"/runtime",
 		"exec", source.Record.RuntimeID, "/bin/sh", "-ec", script, "repeat-request", request).CombinedOutput()
 	if err != nil {
-		t.Fatalf("Go actor did not acknowledge %q: %v: %s", request, err, data)
+		actorLog, logErr := os.ReadFile(source.Record.Rootfs + "/repeat-actor.log")
+		if len(actorLog) > 16384 {
+			actorLog = actorLog[len(actorLog)-16384:]
+		}
+		t.Fatalf("Go actor did not acknowledge %q: %v: %s\nowned actor log: %s\nlog read: %v",
+			request, err, data, actorLog, logErr)
 	}
 	var response map[string]any
 	if err := json.Unmarshal(data, &response); err != nil || response["request"] != request {

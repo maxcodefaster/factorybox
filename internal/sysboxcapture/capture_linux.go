@@ -39,6 +39,7 @@ type Request struct {
 	FDStoreKey         string
 	PreviousFDStoreKey string
 	SourceThreads      map[int]string
+	NetworkCopy        []byte
 	ProcessCaptured    func(Result) error
 }
 
@@ -171,6 +172,11 @@ func Capture(request Request) (result Result, resultErr error) {
 	}
 	if err := os.Chown(result.Images, result.MappedUID, result.MappedGID); err != nil {
 		return result, err
+	}
+	if request.NetworkCopy != nil {
+		if err := writePrivate(result.Images+"/"+NetworkCopyImage, request.NetworkCopy); err != nil {
+			return result, err
+		}
 	}
 	container, err = libcontainer.Load(request.Generation+"/runtime", request.RuntimeID)
 	if err != nil {
