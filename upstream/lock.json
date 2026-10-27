@@ -983,7 +983,8 @@
         "upstream/patches/sysbox-runc-factorybox-overlay-index.patch": "af6fce9e0cf5ffc4ebf97f5ed268c8a15a1b0bfbda8c5f8e4e10c9f9c637646c",
         "upstream/patches/sysbox-runc-factorybox-restore-hold.patch": "f2d68b2d577d8f7fe5b707bfc06aed49804fd3ec3ab0e1b5464791b8113b3243",
         "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch": "b0cc2468b3f531317af079480c458bc4ea0d78661acb2d9c84d0273cf61bf5fe",
-        "upstream/patches/sysbox-runc-exec-delegation-leaf.patch": "d98068c8c4c9ec38ad220d44f1207ad93f77128b9047f136932b783f39fdd107"
+        "upstream/patches/sysbox-runc-exec-delegation-leaf.patch": "d98068c8c4c9ec38ad220d44f1207ad93f77128b9047f136932b783f39fdd107",
+        "upstream/patches/sysbox-runc-restore-hold-diagnostics.patch": "cdb50fd2ceaf0d57599107f827871a820b47ee2bac8718a4313583cbcb808f8c"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -1017,7 +1018,8 @@
         "upstream/patches/sysbox-runc-factorybox-overlay-index.patch",
         "upstream/patches/sysbox-runc-factorybox-restore-hold.patch",
         "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch",
-        "upstream/patches/sysbox-runc-exec-delegation-leaf.patch"
+        "upstream/patches/sysbox-runc-exec-delegation-leaf.patch",
+        "upstream/patches/sysbox-runc-restore-hold-diagnostics.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
@@ -1051,10 +1053,11 @@
         "factorybox_restore_receipt.go": "eb9b3ef36b1b1d80af994d6982d6aecec61c588630d523af492060588d9e331d",
         "factorybox_restore_receipt_test.go": "9577b54e7da495b8d861f1a10c8ce0d05e229a2637832264c89fc1405c3fffcd",
         "factorybox_resume_test.go": "3a891cc4bd6e60bafc5d671129305bd73b7a3e089b1aa720fac63c60e4ca5030",
-        "factorybox_resume.go": "800cb0aa2f753776c44808c08341fa4a6c700ca89f8f3f6d6c2deb62eb80081e",
+        "factorybox_resume.go": "e4aa62d094c6edbc4b005f89f5cc926d81d07fe0a85c7a5231d518b25eb24d80",
         "libcontainer/container_linux.go": "d692ddcf37b68d9ae8ce98f4709993c7fc924d76afccf12cb45ccb89fbcebe24",
         "libcontainer/criu_opts_linux.go": "4530e3d259fcb05a459bb1a2b93d16af41340cd2364c13feb2ce3352d59cb8b8",
-        "factorybox_restore_hold.go": "b00ff13731546ce2e8e6f890e658b1a8dbf6eab2681449395a20db5d9b59786b"
+        "factorybox_restore_hold.go": "a7a60ebf08d8b0038971c8e6c0d48a12411b308b284e95299902cb6697b6b803",
+        "factorybox_restore_hold_diagnostics_test.go": "b374d98a9772b35c430933676ff629f762a9c4c08efbd5a24a5d7e50a65076ef"
       }
     },
     "sysbox-tests": {
