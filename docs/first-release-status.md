@@ -75,6 +75,17 @@ current runtime defects.
 
 ## Remaining first-release checks
 
+- [ ] Qualify the new Sysbox-fs poll retry backport on the exact next image.
+  Pre-release review found that the selected handler closed a listener on a
+  transient `POLLERR`. Ordered patch
+  `sysbox-fs-seccomp-poll-retry.patch` preserves upstream attribution and all
+  six regression cases from `1ac3fd588495674eb8604f3c79b1573348eb3487`.
+  The controlled decision test fails with the old behavior and passes with the
+  fix in `factorybox-seccomp-poll-6e5c1be21f2f49a681b3fb3285fdef67`, with cleanup.
+  It does not claim a spontaneous kernel-level reproduction. The initial
+  fixture attempt failed before executing tests because its temporary mount
+  was `noexec`; that failure remains preserved. The complete 23/23 AMD64 result
+  above qualifies its original image, not this changed component.
 - [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
   component identities, independent builds and receipts in the final profile.
   The exact `0.1.0` AMD64 matrix above is complete. It does not qualify ARM64.

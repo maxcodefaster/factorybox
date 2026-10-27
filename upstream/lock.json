@@ -828,6 +828,7 @@
         "upstream/patches/sysbox-fs-fork-registration.patch": "8847ea37c0f9d66fcfcc304de022eaf6beff773e08143ea64c7c022f4c20ab87",
         "upstream/patches/sysbox-fs-netns-lifetime.patch": "db14af3a0d881824e41b22c81ab0e054cc278fa43cdded1f6d6ed0d8d6b3d998",
         "upstream/patches/sysbox-fs-readonly-remount.patch": "8036873adf8787b076e8934ac4f5b1f7f0d107ae0903aa91bfbf6ea673d52870",
+        "upstream/patches/sysbox-fs-seccomp-poll-retry.patch": "206f2d50e0fb1ce39097ba0a9a64e0f6207606fc3f68ed3202bf180a32d397a2",
         "upstream/patches/sysbox-fs-retained-registration.patch": "d6d6f2ac0d153fcf538c12f037951031c9d6a8d01020e9d97e6f386c796ad235",
         "upstream/patches/sysbox-fs-test-fixtures.patch": "bafd49036046ed5e3679062c585f16dcfe077761dedf123dec92ac8285646321",
         "upstream/patches/sysbox-fs-state-snapshot.patch": "8498ef4cceb4f6a7b13d0b3d319b0051a374452bd567e633340033a285d34734"
@@ -843,7 +844,8 @@
         "upstream/patches/sysbox-fs-fork-registration.patch",
         "upstream/patches/sysbox-fs-netns-lifetime.patch",
         "upstream/patches/sysbox-fs-test-fixtures.patch",
-        "upstream/patches/sysbox-fs-state-snapshot.patch"
+        "upstream/patches/sysbox-fs-state-snapshot.patch",
+        "upstream/patches/sysbox-fs-seccomp-poll-retry.patch"
       ],
       "prefix": "sysbox-fs-c3d2ebc65102e32e74e383675f03b45556326888",
       "repository": "nestybox/sysbox-fs",
@@ -853,6 +855,11 @@
           "original_sha256": "48242558498694008382ddb6d85851f8563f950ae31b4ca2356b803b8ae873e7",
           "prepared_sha256": "a427816fb71787dd3ac8017809bbb13b3e6b0d2cfdc2083c34c6772433204fc5",
           "reason": "Match the current namespace-event UID/GID interface and check distinct forwarded credentials. Preserve all existing cases and assertions."
+        },
+        "seccomp/tracer_test.go": {
+          "original_sha256": "6fde828c91e8456875e3ce6bf5d0594e9e3a74bec179711598723b8222626a28",
+          "prepared_sha256": "b0d8e28a5966d4ca40fb7d04d9cbe4fd6dd60384df1b9011fc2377dceef55c17",
+          "reason": "Backport all six poll-decision regression cases from upstream 1ac3fd588495674eb8604f3c79b1573348eb3487. Preserve every original test and assertion; vet remains enabled."
         },
         "state/containerDB_test.go": {
           "original_sha256": "ccab3b1d455dd9f23c7a4606feef243d177a46ea0b3f5bfbb46ad97d4ba7c2bf",

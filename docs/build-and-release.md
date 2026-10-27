@@ -28,6 +28,11 @@ actual changes, rather than a claim that the components run unmodified:
   seccomp listeners and cgroup delegation, and issue restore receipts.
   The manager can disable unqualified binfmt_misc handling. Restored overlays
   use a mount-local `index=off` setting.
+- The ordered Sysbox-fs seccomp poll patch backports upstream
+  `1ac3fd588495674eb8604f3c79b1573348eb3487` and all six decision regressions.
+  A lone transient `POLLERR` retries the listener; hangup, invalid descriptors
+  and other terminal events still close it. Original tests remain intact and
+  vet stays enabled. This requires new exact component/image qualification.
 - The base CRIU patch stack handles the admitted nested namespaces, detached
   proc roots/descriptors, time namespaces, cgroup-v2 limits and zombie PIDs.
   Five additional retained-context/exit-observer patches protect original
