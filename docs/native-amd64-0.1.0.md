@@ -119,3 +119,77 @@ historical EBUSY holder remains unidentified. Final profile selection, upstream
 review and the exact base-image distribution obligations must be closed before
 publication. The 24-hour soak and 100-run series remain deferred. Production
 qualification is false; no release was published or installation activated.
+
+## Sysbox-fs poll retry follow-up
+
+The subsequent pre-release upstream review found a listener-lifetime issue.
+The selected handler closed its seccomp session on every non-POLLIN event.
+Upstream `1ac3fd588495674eb8604f3c79b1573348eb3487` retries a lone transient
+POLLERR and preserves terminal handling for hangup and invalid descriptors.
+Factorybox backports that change and all six upstream regression cases as an
+ordered patch. Exact original/prepared test hashes are declared in the lock;
+existing assertions, immutable overlays and vet remain intact.
+
+The controlled old-decision test fails specifically on the transient-event
+case. The backport passes all six cases. This is a unit-level decision proof,
+not a claim to have reproduced a spontaneous kernel event. The complete native
+unit suite subsequently runs these tests too and passes.
+
+| Updated input | Identity |
+| --- | --- |
+| Factorybox source | `1023be56dd70ed2115b1125c122a4f056b7824f8` |
+| Worker build | `factorybox-build-worker-7f9b25ef0b0044aa8b3888e25756aa71` |
+| Independent worker build | `factorybox-build-worker-bff3eef9b7ef4aa9a128c52f06f45e10` |
+| Image ID | `sha256:b325efac164561af8abd74932b2d0e44633fed613d44c7dba6b574235db34be8` |
+| Package SHA-256 | `5c162592cb6c58cb716294c00dd97371c1c90ae201a027af7d2680da3e694c0f` |
+| Sysbox-fs SHA-256 | `f1a23c667862785719849fbb1b28e1e541604a0a5309777e69683b16a20173fb` |
+| Native matrix | `factorybox-release-native-b6664d353f744f1dbbf6a87049115afa` |
+| Native receipt SHA-256 | `1167019e9903dd203b6a9cc3f8f80041dd8c53e03eb9d51c9e94aa75b0dd174e` |
+
+All 23 required native gates pass again on this exact ordinary image, including
+both replacement modes and both Factory lanes. Systemd executes four passes
+with the same two upstream skips; lifecycle executes seven passes. The CLI,
+Sysbox runc/mgr, CRIU, reviewed Factory consumer and project images retain the
+identities above. The unchanged CRIU recipe passes the explicit frozen-base
+equality check before reuse, and CRIU core is rerun in this matrix.
+
+The clean component build is `factorybox-build-sysbox-320f9daca5994052bdaefaaa5c1a78e3`.
+Independent compilation in the complete upstream unit build
+`factorybox-upstream-82b3bb6c0c4e47359a9aa20ce6829489` reproduces all three Sysbox
+executables and the exact package inventory. Separate no-cache worker builds
+reproduce the full image and package. Portable result
+`factorybox-checks-e9fa84b1449e4138ba9ccf37bf8efa03` passes all seven gates with
+409 Python tests.
+
+Evidence is in
+`artifacts/factorybox-seccomp-poll-6e5c1be21f2f49a681b3fb3285fdef67/`.
+`verification-result.json` binds every child receipt, build identity and cleanup.
+`matching-source-inventory.json` verifies 4,654 preferred-source entries without
+publishing an archive. The initial `noexec` fixture attempt remains failed in
+`factorybox-seccomp-poll-a198c864cab6459db2a67207877273e3`. The first sharing
+attempt refused before replacing any target because its stat check included
+read-updated access time; its original script/result are retained under
+`failed-sharing-atime/`. The corrected helper preserves every content and
+ownership identity check. The initial worker assembly's missing-base-lock
+refusal is also retained separately from its successful explicit-lock retry.
+
+Only the owned bounded builder and state volume were removed. All nine retained
+volume identities remain unchanged and no containers remain. Storage maintenance
+fully verifies every decoded diagnostic archive before replacing its raw copy.
+Redundant legacy transports remain byte-for-byte reconstructable from frozen
+bundles. Identical completed inputs share files with hashes and identity
+receipts; active selected worker inputs are untouched. Original results remain
+unchanged.
+
+The source-lane observation is 38.66 seconds of preparation and 13.97 seconds
+from Start to its first useful response. Its whole-worker paused measurement is
+2,540,175,360 bytes. The reserve lane records 33.94 seconds of preparation and
+46.09 seconds to its first useful response, including the deliberate standby
+Pause/Resume and new-container checks. Its paused whole-worker counter is
+2,957,549,568 bytes. These include services, fixture work and filesystem cache.
+They are individual acceptance observations, not private paused RAM, p95 or a
+demonstrated speedup.
+
+ARM64, the real-provider cases, historical EBUSY attribution, final profile and
+distribution checks remain open in the current checklist. No stable tag,
+release, image publication, installation activation or deferred soak was started.
