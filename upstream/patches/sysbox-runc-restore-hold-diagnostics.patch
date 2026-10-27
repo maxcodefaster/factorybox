@@ -1,0 +1,166 @@
+--- a/factorybox_restore_hold.go
++++ b/factorybox_restore_hold.go
+@@ -143,10 +143,22 @@
+ 			values[fields[0]] = value
+ 		}
+ 	}
+-	if values["frozen"] != 1 || values["populated"] != 1 {
+-		return fmt.Errorf("restored original cgroup is not populated and frozen")
++	frozen, frozenPresent := values["frozen"]
++	populated, populatedPresent := values["populated"]
++	if frozen != 1 || populated != 1 {
++		return fmt.Errorf("restored original cgroup is not populated and frozen: frozen=%d populated=%d frozen_present=%t populated_present=%t",
++			frozen, populated, frozenPresent, populatedPresent)
+ 	}
+ 	return nil
++}
++
++// Attach the failed boundary without another cgroup read. In particular this
++// must not extend the original freeze or ACK deadlines.
++func factoryboxHoldFailure(stage string, err error) error {
++	if err == nil {
++		return nil
++	}
++	return fmt.Errorf("restore hold stage=%s: %w", stage, err)
+ }
+ 
+ // CRIU invokes this callback before its final ptrace detach. The exact
+@@ -225,7 +237,7 @@
+ 		if err := factoryboxHoldConfirmed(group); err == nil {
+ 			break
+ 		} else if time.Now().After(deadline) {
+-			return err
++			return factoryboxHoldFailure("before-controller-notify", err)
+ 		}
+ 		time.Sleep(time.Millisecond)
+ 	}
+@@ -259,7 +271,7 @@
+ 	if err != nil || string(ack[:n]) != "held:"+token {
+ 		return fmt.Errorf("restore hold acknowledgement differs from its sealed request: %v", err)
+ 	}
+-	return errors.Join(validate(), factoryboxHoldConfirmed(group))
++	return factoryboxHoldFailure("after-controller-ack", errors.Join(validate(), factoryboxHoldConfirmed(group)))
+ }
+ 
+ func factoryboxRestoreOutcome(request factoryboxRestoreRequest, state *libcontainer.State, group *os.File) error {
+@@ -267,7 +279,7 @@
+ 		return factoryboxRestoreComplete(request, state)
+ 	}
+ 	if err := factoryboxHoldConfirmed(group); err != nil {
+-		return err
++		return factoryboxHoldFailure("restore-after-criu-detach", err)
+ 	}
+ 	data, err := factoryboxCompletionData(request.Owner, request, state)
+ 	if err != nil {
+--- a/factorybox_resume.go
++++ b/factorybox_resume.go
+@@ -286,7 +286,7 @@
+ 				return err
+ 			}
+ 			if err := factoryboxHoldConfirmed(group); err != nil {
+-				return err
++				return factoryboxHoldFailure("resume-after-criu-detach", err)
+ 			}
+ 			data, err := factoryboxCompletionData(request.Owner, request, state)
+ 			if err != nil {
+--- /dev/null
++++ b/factorybox_restore_hold_diagnostics_test.go
+@@ -0,0 +1,98 @@
++//go:build linux
++
++package main
++
++import (
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++)
++
++func TestFactoryboxRestoreHoldCounterDiagnostic(t *testing.T) {
++	for _, row := range []struct {
++		name, counters, want string
++	}{
++		{"populated-but-thawed", "populated 1\nfrozen 0\n", "frozen=0 populated=1"},
++		{"empty-and-thawed", "populated 0\nfrozen 0\n", "frozen=0 populated=0"},
++		{"empty-but-frozen", "populated 0\nfrozen 1\n", "frozen=1 populated=0"},
++		{"populated-missing", "frozen 1\n", "populated_present=false"},
++		{"frozen-missing", "populated 1\n", "frozen_present=false"},
++	} {
++		t.Run(row.name, func(t *testing.T) {
++			directory := t.TempDir()
++			if err := os.WriteFile(filepath.Join(directory, "cgroup.events"), []byte(row.counters), 0600); err != nil {
++				t.Fatal(err)
++			}
++			group, err := os.Open(directory)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer group.Close()
++			err = factoryboxHoldConfirmed(group)
++			if err == nil || !strings.Contains(err.Error(), "restored original cgroup is not populated and frozen") ||
++				!strings.Contains(err.Error(), row.want) {
++				t.Fatalf("restore refusal lost its exact observed counters: %v", err)
++			}
++		})
++	}
++	t.Run("confirmed", func(t *testing.T) {
++		directory := t.TempDir()
++		if err := os.WriteFile(filepath.Join(directory, "cgroup.events"), []byte("populated 1\nfrozen 1\n"), 0600); err != nil {
++			t.Fatal(err)
++		}
++		group, err := os.Open(directory)
++		if err != nil {
++			t.Fatal(err)
++		}
++		defer group.Close()
++		if err := factoryboxHoldConfirmed(group); err != nil {
++			t.Fatal("confirmed hold must remain accepted", err)
++		}
++	})
++}
++
++func TestFactoryboxRestoreHoldDiagnosticNative(t *testing.T) {
++	if os.Getenv("FACTORYBOX_NATIVE_HOLD_DIAGNOSTICS") != "1" {
++		t.Skip("explicit native read-only cgroup diagnostics lane")
++	}
++	group, err := os.Open("/sys/fs/cgroup")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer group.Close()
++	events, err := os.ReadFile("/sys/fs/cgroup/cgroup.events")
++	if err != nil || !strings.Contains(string(events), "frozen 0\n") || !strings.Contains(string(events), "populated 1\n") {
++		t.Fatal("native inspector must remain running in its own populated, unfrozen cgroup", err)
++	}
++	err = factoryboxHoldConfirmed(group)
++	if err == nil || !strings.Contains(err.Error(), "frozen=0 populated=1") {
++		t.Fatal("real native cgroup refusal lost its observed counters", err)
++	}
++	if len(err.Error()) > 256 {
++		t.Fatal("counter diagnostic is not bounded")
++	}
++	for _, stage := range []string{"before-controller-notify", "after-controller-ack", "restore-after-criu-detach", "resume-after-criu-detach"} {
++		diagnostic := factoryboxHoldFailure(stage, err)
++		if !strings.Contains(diagnostic.Error(), "stage="+stage) ||
++			!strings.Contains(diagnostic.Error(), "frozen=0 populated=1") {
++			t.Fatal("real native cgroup refusal lost its boundary or counters", diagnostic)
++		}
++	}
++	fmt.Println("native read-only cgroup refusal includes exact frozen/populated counters")
++}
++
++func TestFactoryboxRestoreHoldFailureStage(t *testing.T) {
++	if err := factoryboxHoldFailure("before-controller-notify", nil); err != nil {
++		t.Fatal("successful hold acquired an error", err)
++	}
++	for _, stage := range []string{"before-controller-notify", "after-controller-ack", "restore-after-criu-detach", "resume-after-criu-detach"} {
++		cause := errors.New("owned counter read failed")
++		err := factoryboxHoldFailure(stage, cause)
++		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "stage="+stage) {
++			t.Fatal("diagnostic lost its original failure or boundary", err)
++		}
++	}
++}
