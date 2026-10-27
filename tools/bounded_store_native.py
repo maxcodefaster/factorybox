@@ -64,6 +64,22 @@ def worker_compile_options(worker, host, *, native_candidate=False):
     return ["-tags=factorybox_worker_probe"]
 
 
+def probe_build_command(binary, compile_options, *, capacity=False):
+    compile_options = list(compile_options)
+    if capacity:
+        # This entire test executable is the guest actor and is copied into
+        # saved filesystems. DWARF data consumes the 512-MiB pressure fixture
+        # without exercising runtime storage; retain symbols and all code.
+        for index, option in enumerate(compile_options):
+            if option.startswith('-ldflags='):
+                compile_options[index] = option + ' -w'
+                break
+        else:
+            compile_options.append('-ldflags=-w')
+    return ['go', 'test', '-c', '-mod=readonly', '-trimpath', '-buildvcs=false',
+            *compile_options, '-o', str(binary), './internal/lifecycle']
+
+
 def require_detach_coverage(log):
     controls = ["foreign-thaw-refused", "changed-source-refused", "live-tracer-refused"]
     required = ["--- PASS: TestNativeTimerDetachCompletion ",
@@ -363,9 +379,10 @@ def main():
             finally:
                 reference.owned_delete('container', input_name, owner)
         binary = artifact / 'probe.test'
+        result['probe_build_command'] = probe_build_command(
+            binary, compile_options, capacity=args.suite == 'capacity')
         with (artifact / 'build.log').open('x') as log:
-            subprocess.run(['go', 'test', '-c', '-mod=readonly', '-trimpath', '-buildvcs=false', *compile_options,
-                            '-o', str(binary), './internal/lifecycle'],
+            subprocess.run(result['probe_build_command'],
                            cwd=source, env=dict(os.environ, GOOS='linux', GOARCH=architecture, CGO_ENABLED='0'),
                            stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
         result['test_binary_sha256'] = reference.sha(binary)
