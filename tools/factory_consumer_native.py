@@ -450,7 +450,10 @@ def main():
              '--mount',f'type=volume,source={name},target=/factory-seed,volume-subpath=seed',
              '--env','FACTORY_POD_UID='+pod_uid,'--env','FACTORY_STORE_ID='+owner,
              '--env','FACTORY_RUNTIME_IMAGE='+consumer['image'],'--entrypoint','/bin/sh',consumer['image'],
-             '-ec',(frozen/'export-rootfs.sh').read_text()],timeout=90)
+             # Cold image export includes Docker startup and durable archive
+             # writes. It may use more of the existing fixture budget; run()
+             # still clamps this phase to the unchanged 420-second deadline.
+             '-ec',(frozen/'export-rootfs.sh').read_text()],timeout=180)
         result['export_seconds'] = time.monotonic()-started
         phase('consumer-image-exported')
         for label in [exporter,helper]:
