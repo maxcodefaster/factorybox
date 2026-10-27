@@ -74,6 +74,25 @@ def require_detach_coverage(log):
     return {"cycles": 256, "negative_controls": controls}
 
 
+def require_restore_hold_coverage(proof, public):
+    cases = proof.get('cases', {})
+    original_modes = {'fork', 'resumed', 'fork-disconnect', 'resumed-disconnect', 'wrong-ack'}
+    if proof.get('passed') is not True or set(cases) != original_modes:
+        raise ValueError('native restore hold cases incomplete')
+    for mode in original_modes:
+        case = cases[mode]
+        keys = ['held_before_ack', 'application_counter_unchanged']
+        keys += ['held_after_criu_detach', 'explicit_thaw_runs_application'] if mode in {'fork', 'resumed'} else ['failed_closed']
+        if any(case.get(key) is not True for key in keys):
+            raise ValueError('native restore hold proof incomplete: ' + mode)
+    cycles = public.get('observations', [])
+    if (public.get('passed') is not True or public.get('no_consumer_or_peer') is not True or
+            public.get('cycles') != 20 or len(cycles) != 20 or
+            [cycle.get('cycle') for cycle in cycles] != list(range(1, 21)) or
+            any(cycle.get('passed') is not True for cycle in cycles)):
+        raise ValueError('public sleep-only Resume control incomplete')
+
+
 def detach_fixture_arguments(worker_path, worker):
     runtime = worker_path / "image-context/bundle/components/sysbox-runc"
     expected = worker["bundle_sha256"]["components/sysbox-runc"]
@@ -408,7 +427,7 @@ def main():
         if kernel_prototype:
             command += ['--env', 'FACTORYBOX_TIMER_KERNEL_PROTOTYPE=1']
         if restore_hold:
-            command += ['--env', 'FACTORYBOX_NATIVE_RESTORE_HOLD=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeRestoreHold$']
+            command += ['--env', 'FACTORYBOX_NATIVE_RESTORE_HOLD=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeRestoreHold(PublicResume)?$']
         if timer_orphan:
             command += ['--env', 'FACTORYBOX_NATIVE_TIMER_ORPHAN=1', '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeTimerOrphan$']
         if timer_guard_loss:
@@ -470,6 +489,8 @@ def main():
         log = (artifact / 'stdout.txt').read_text()
         prefix = 'TestNativeExternalTCPResume' if network_resume else 'TestNativeNetworkFork' if network_fork else 'TestNativeSandboxBackingRetirement' if backing_retirement else 'TestNativeResumeImageRetirement' if resume_retirement else 'TestNativeStandbyPeers' if standby_peers else 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
         count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
+        if restore_hold:
+            count = 2
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -720,15 +741,10 @@ def main():
         elif restore_hold:
             proof_path = output / 'restore-hold.json'
             proof = json.loads(proof_path.read_text())
-            cases = proof.get('cases', {})
-            if proof.get('passed') is not True or set(cases) != {'fork', 'resumed', 'fork-disconnect', 'resumed-disconnect', 'wrong-ack'}:
-                raise ValueError('native restore hold cases incomplete')
-            for mode, case in cases.items():
-                keys = ['held_before_ack', 'application_counter_unchanged']
-                keys += ['held_after_criu_detach', 'explicit_thaw_runs_application'] if mode in {'fork', 'resumed'} else ['failed_closed']
-                if any(case.get(key) is not True for key in keys):
-                    raise ValueError('native restore hold proof incomplete: ' + mode)
+            public_path = output / 'restore-hold-public-sleep.json'
+            require_restore_hold_coverage(proof, json.loads(public_path.read_text()))
             result['proof_sha256'] = reference.sha(proof_path)
+            result['public_resume_proof_sha256'] = reference.sha(public_path)
         elif protection:
             proof_path = output / 'timer-remainder-protection.json'
             proof = json.loads(proof_path.read_text())

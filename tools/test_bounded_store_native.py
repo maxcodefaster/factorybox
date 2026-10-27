@@ -10,6 +10,44 @@ import build_worker
 
 
 class BoundedWorkerPlatformTests(unittest.TestCase):
+    def test_restore_hold_preserves_original_guards_and_requires_each_public_resume(self):
+        cases = {}
+        for mode in ['fork', 'resumed', 'fork-disconnect', 'resumed-disconnect', 'wrong-ack']:
+            cases[mode] = {'held_before_ack': True, 'application_counter_unchanged': True}
+            if mode in ['fork', 'resumed']:
+                cases[mode].update({'held_after_criu_detach': True, 'explicit_thaw_runs_application': True})
+            else:
+                cases[mode]['failed_closed'] = True
+        public = {
+            'passed': True, 'no_consumer_or_peer': True, 'cycles': 20,
+            'observations': [{'cycle': n, 'passed': True} for n in range(1, 21)],
+        }
+        proof = {'passed': True, 'cases': cases}
+        bounded_store_native.require_restore_hold_coverage(proof, public)
+        for mode, case in cases.items():
+            missing = json.loads(json.dumps(proof))
+            del missing['cases'][mode]
+            with self.subTest(missing=mode), self.assertRaises(ValueError):
+                bounded_store_native.require_restore_hold_coverage(missing, public)
+            for key, value in case.items():
+                if value is True:
+                    changed = json.loads(json.dumps(proof))
+                    changed['cases'][mode][key] = False
+                    with self.subTest(mode=mode, guard=key), self.assertRaises(ValueError):
+                        bounded_store_native.require_restore_hold_coverage(changed, public)
+        for key in ['passed', 'no_consumer_or_peer']:
+            with self.subTest(public=key), self.assertRaises(ValueError):
+                bounded_store_native.require_restore_hold_coverage(proof, {**public, key: False})
+        for index in range(20):
+            changed = json.loads(json.dumps(public))
+            changed['observations'][index]['passed'] = False
+            with self.subTest(cycle=index), self.assertRaises(ValueError):
+                bounded_store_native.require_restore_hold_coverage(proof, changed)
+        changed = json.loads(json.dumps(public))
+        changed['observations'].pop()
+        with self.assertRaises(ValueError):
+            bounded_store_native.require_restore_hold_coverage(proof, changed)
+
     def test_exec_trace_requires_the_exact_worker_base_and_unchanged_files(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
