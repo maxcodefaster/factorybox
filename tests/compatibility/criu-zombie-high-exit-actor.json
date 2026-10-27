@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "file": "internal/lifecycle/capture_native_linux_test.go",
+  "patch": "tests/compatibility/criu-zombie-high-exit-actor.patch",
+  "before_sha256": "25091444a47038125cab13a1989e84557b3097997e0d17daa2afd1ca0f053667",
+  "after_sha256": "ff037c03869616e04eff6d2b50789999715593086afeeea65af584d21e54a2ed",
+  "patch_sha256": "8334576b264163099893c7c91586104a36b093e84a9431613768fe982e6a764d",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "reason": "Apply only in a fresh native context. Preserve the existing status-47 actor mode and every original assertion; add an explicit status-201 actor mode for the separate complete high-bit zombie lifecycle regression. Root and archived actor inputs remain byte-identical."
+}

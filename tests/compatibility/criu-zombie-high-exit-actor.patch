@@ -1,0 +1,36 @@
+--- a/internal/lifecycle/capture_native_linux_test.go
++++ b/internal/lifecycle/capture_native_linux_test.go
+@@ -102 +102,6 @@
+-	if os.Getenv("FACTORYBOX_CAPTURE_ACTOR_ZOMBIE") == "1" {
++	zombieMode := os.Getenv("FACTORYBOX_CAPTURE_ACTOR_ZOMBIE")
++	zombieExit := 47
++	if zombieMode == "high-exit" {
++		zombieExit = 201
++	}
++	if zombieMode != "" {
+@@ -106 +111 @@
+-	if os.Getenv("FACTORYBOX_CAPTURE_ACTOR_ZOMBIE") == "1" {
++	if zombieMode != "" {
+@@ -110 +115 @@
+-		child := exec.Command("/bin/sh", "-c", "exit 47")
++		child := exec.Command("/bin/sh", "-c", "exit "+strconv.Itoa(zombieExit))
+@@ -420 +425 @@
+-			case "make-shared-child", "make-memory-child", "make-nested-zombie":
++			case "make-shared-child", "make-memory-child", "make-nested-zombie", "make-nested-zombie-high-exit":
+@@ -427 +432,2 @@
+-				if request == "make-memory-child" || request == "make-nested-zombie" {
++				nestedZombie := request == "make-nested-zombie" || request == "make-nested-zombie-high-exit"
++				if request == "make-memory-child" || nestedZombie {
+@@ -431 +437 @@
+-					if request == "make-nested-zombie" {
++					if nestedZombie {
+@@ -433 +439,5 @@
+-						child.Env = append(os.Environ(), "FACTORYBOX_CAPTURE_ACTOR_ZOMBIE=1")
++						zombieMode := "1"
++						if request == "make-nested-zombie-high-exit" {
++							zombieMode = "high-exit"
++						}
++						child.Env = append(os.Environ(), "FACTORYBOX_CAPTURE_ACTOR_ZOMBIE="+zombieMode)
+@@ -453 +463 @@
+-				if err != nil || pid != state.ZombiePID || !status.Exited() || status.ExitStatus() != 47 {
++				if err != nil || pid != state.ZombiePID || !status.Exited() || status.ExitStatus() != zombieExit {

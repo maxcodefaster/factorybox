@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import tempfile
+import shutil
 import unittest
 from unittest import mock
 
@@ -8,6 +9,40 @@ import lifecycle_native
 
 
 class LifecycleBuilderSelectionTests(unittest.TestCase):
+    def test_high_exit_actor_patches_only_the_new_context_and_rejects_reapplication(self):
+        root = lifecycle_native.ROOT
+        name = "internal/lifecycle/capture_native_linux_test.go"
+        original = (root / name).read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory)
+            target = archive / "context" / name
+            target.parent.mkdir(parents=True)
+            target.write_bytes(original)
+            declaration = lifecycle_native.prepare_zombie_actor(archive / "context", archive)
+            self.assertEqual((root / name).read_bytes(), original)
+            self.assertEqual((archive / "zombie-high-exit-actor.before.go").read_bytes(), original)
+            self.assertEqual(lifecycle_native.reference.sha(target), declaration["after_sha256"])
+            self.assertIn(b'zombieExit := 47', target.read_bytes())
+            self.assertIn(b'zombieExit = 201', target.read_bytes())
+            with self.assertRaisesRegex(ValueError, "original or ordered patch changed"):
+                lifecycle_native.prepare_zombie_actor(archive / "context", archive)
+
+    def test_high_exit_suite_adds_coverage_and_keeps_original_script_and_adapter_assertions(self):
+        source = lifecycle_native.ROOT / "tests/lifecycle-native.sh"
+        before = source.read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory)
+            shutil.copyfile(source, archive / "lifecycle-native.sh")
+            declaration = lifecycle_native.select_adapter_fixture(archive, include_high_exit=True)
+            after = (archive / "lifecycle-native.sh").read_bytes()
+            self.assertEqual(source.read_bytes(), before)
+            self.assertEqual(declaration["original_adapter_tests"], list(lifecycle_native.ADAPTER_TESTS))
+            self.assertFalse(declaration["assertions_modified"])
+            self.assertTrue(declaration["zero_skip_requirement_unchanged"])
+            self.assertEqual(declaration["additional_namespace_tests"], ["TestCaptureNestedZombieHighExitNamespaceNative"])
+            self.assertIn(b'NestedZombie(HighExit)?Namespace', after)
+            self.assertIn(b'test_timeout=360s', after)
+
     def test_candidates_link_only_the_explicit_architecture_and_exact_kernel(self):
         for platform in ["linux/arm64", "linux/amd64"]:
             self.assertEqual(lifecycle_native.candidate_compile_options(platform, "7.0.14-test+native"), [
