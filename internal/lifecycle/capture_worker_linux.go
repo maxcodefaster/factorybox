@@ -117,6 +117,19 @@ func captureWorkerServe() (resultErr error) {
 	if err := network.TrackSockets(threads); err != nil {
 		return err
 	}
+	var networkCopy []byte
+	if request.Guard.Source.Network != nil {
+		networkCopy = network.CopyEvidence(threads, request.Guard.Source.Network.Address)
+	}
+	isolated := request.Guard.StopSource && request.Guard.Source.Network != nil
+	if isolated {
+		if err := captureGuardCaptureReturned(request.Guard, anchors); err != nil {
+			return err
+		}
+		if err := request.Guard.Source.Network.SetPeerActive(request.Guard.PID, false); err != nil {
+			return errors.Join(err, request.Guard.Source.Network.SetPeerActive(request.Guard.PID, true))
+		}
+	}
 	captured, err = sysboxcapture.Capture(sysboxcapture.Request{
 		RuntimeRoot: request.Guard.Root + "/runtime", RuntimeID: request.Guard.Source.RuntimeID,
 		Owner: request.Guard.Source.Owner, Rootfs: request.Guard.Source.Rootfs,
@@ -129,6 +142,7 @@ func captureWorkerServe() (resultErr error) {
 		FDStoreKey:         request.Guard.Source.Owner + ":" + filepath.Base(filepath.Dir(request.Guard.Evidence)),
 		PreviousFDStoreKey: previousSharedFDKey(request.Guard.Source),
 		SourceThreads:      threads,
+		NetworkCopy:        networkCopy,
 		ProcessCaptured: func(result sysboxcapture.Result) error {
 			if result.SourcePID != request.Guard.PID || !result.CompleteWriter || !result.LeaveRunning {
 				return fmt.Errorf("process completion lacks its retained original source")
@@ -159,6 +173,9 @@ func captureWorkerServe() (resultErr error) {
 		var rollback error
 		if validation == nil {
 			rollback = network.Rollback()
+			if rollback == nil && isolated {
+				rollback = request.Guard.Source.Network.SetPeerActive(request.Guard.PID, true)
+			}
 		}
 		receipt := captureGuardWrite(anchors.evidence, "capture-network-rollback.json", map[string]any{
 			"token": request.Guard.Token, "source_pid": request.Guard.PID,

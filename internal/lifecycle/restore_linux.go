@@ -237,8 +237,21 @@ func (e *Engine) heldRestoreWorker(ctx context.Context, lock *os.File, target Re
 		return fmt.Errorf("restore detached without retaining its exact freeze: %v", err)
 	}
 	if target.Network != nil {
-		if err := target.Network.Configure(ctx, ready.PID, true); err != nil {
-			return err
+		var networkErr error
+		if operation == "restore" && target.Fork != nil {
+			intent, err := e.readForkIntent("forks/"+target.ID, target.Fork.SourceID, target.Fork.CheckpointID, target.ID)
+			if err != nil {
+				return err
+			}
+			if intent.Source.Network == nil {
+				return fmt.Errorf("network fork lost its original network identity")
+			}
+			networkErr = target.Network.ConfigureCopy(ctx, ready.PID, *intent.Source.Network)
+		} else {
+			networkErr = target.Network.Configure(ctx, ready.PID, true)
+		}
+		if networkErr != nil {
+			return networkErr
 		}
 	}
 	if err := e.activateRestoredTimers(target, ready.PID); err != nil {
