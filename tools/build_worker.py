@@ -51,14 +51,25 @@ def verify_native_candidate(result, recipe):
 
 def image_context_bytes(context):
     """Normalize transport metadata without touching hardlinked frozen inputs."""
+    # Docker otherwise timestamps the missing destination parent at build time.
+    reserved = context / "rootfs"
+    if reserved.exists() or reserved.is_symlink():
+        raise ValueError("image context uses the reserved rootfs directory")
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w", format=tarfile.USTAR_FORMAT) as transport:
+        for name in ["rootfs", "rootfs/opt"]:
+            parent = tarfile.TarInfo(name)
+            parent.type, parent.mode, parent.mtime = tarfile.DIRTYPE, 0o755, 0
+            transport.addfile(parent)
         for path in sorted(context.rglob("*")):
             if path.is_symlink() or not (path.is_dir() or path.is_file()):
                 raise ValueError("image build context contains a redirected or special file")
-            info = tarfile.TarInfo(str(path.relative_to(context)))
+            relative = path.relative_to(context)
+            bundle = relative.parts[0] == "bundle"
+            name = Path("rootfs/opt/factorybox", *relative.parts[1:]) if bundle else relative
+            info = tarfile.TarInfo(str(name))
             info.mtime, info.uid, info.gid = 0, 0, 0
-            info.mode = 0o755 if path.is_dir() else 0o644
+            info.mode = 0o700 if bundle else (0o755 if path.is_dir() else 0o644)
             if path.is_dir():
                 info.type = tarfile.DIRTYPE
                 transport.addfile(info)
@@ -390,7 +401,7 @@ def main():
                    "--metadata-file", str(artifact / "image-metadata.json"), "-"]
         # Docker's image exporter unpacks into its local image store and cannot
         # combine that with rewrite-timestamp. A normalized tar transport gives
-        # COPY fixed file timestamps without mutating shared component inputs.
+        # COPY fixed file and parent-directory timestamps without mutating inputs.
         image_input = image_context_bytes(context)
         result["image_context_tar_sha256"] = hashlib.sha256(image_input).hexdigest()
         result["image_context_tar_bytes"] = len(image_input)

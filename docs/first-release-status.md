@@ -50,27 +50,43 @@ current runtime defects.
   `factorybox-release-native-8463fd1f2f4345ed8c1945f7296b3ed9` and both reproduced
   capacity failures remain preserved. Cleanup removed the owned test resources
   and builder; all nine pre-existing volume identities are retained.
+- The verified fix and AMD64 report are on `main` at `7c1e53b`.
+  [Both portable CI jobs passed](https://github.com/maxcodefaster/factorybox/actions/runs/40584615545)
+  there. The subsequent `0.1.0` preparation fixes image reproducibility: Docker
+  had timestamped the missing `/opt` parent differently despite identical
+  packages. Both fixed no-cache builds, `factorybox-build-worker-7e0a025ca2454077a91404e2ca64da53`
+  and `factorybox-build-worker-90f6cc09046a4ff2a153c2322fb27276`, produce image
+  `sha256:b70c858c6c8a918f1fca3259cd469c9f53a85d1a4e5be12723dd6e762a689ebf`
+  and package `da9b6b511e5a077bfa7a80586b3202ebbe89b267809790ec8eb30e6593a2d80e`.
+  All seven local portable gates pass with 409 Python tests. The original failed
+  independent build `factorybox-build-worker-acc4fdca454e480f9f048904de9bc50a`
+  stays failed and preserved. These new images still need native qualification.
 
 ## Remaining first-release checks
 
-- [ ] Complete the final ARM64 native matrix and bind both architectures' sources,
+- [ ] Complete the `0.1.0` native matrix on both architectures and bind their sources,
   component identities, independent builds and receipts in the final profile.
-  The exact AMD64 functional matrix above is complete. Older AMD64 receipts and
+  The exact `0.1.0-rc.1` AMD64 matrix above is complete. Its image identity does
+  not qualify the new `0.1.0` image. Older AMD64 receipts and
   local ARM64 integration results do not replace these image-specific checks or
   final profile binding. Each architecture needs an existing matching Linux
-  runner with an admitted kernel/storage tuple.
+  runner with an admitted kernel/storage tuple. This session currently has only
+  the AMD64 Docker host; GitHub has no registered native release runners.
 - [ ] Resolve the historical EBUSY cleanup attribution. Later controls passed;
   the latest image has not been shown to reproduce it. The original holder and
   whether it belonged to the fixture or runtime remain unestablished. Do not
   call it a current reproduced runtime bug or silently mark it fixed.
 - [ ] Complete the eight real-provider continuation cases required by the
-  original controlled-release scope. The recorded provider attempt stopped at
-  HTTP 429 before actual tool start. This is missing evidence, not a demonstrated
-  checkpoint/restore failure. The old quota timestamp is historical, not a
-  current availability check. Keep its explicit model/cost policy unless the
-  release scope is deliberately changed.
+  original controlled-release scope. A fresh October 27 availability probe with
+  pinned OpenCode 2.0.27 confirms the same free model and pricing, then receives
+  HTTP 429 before actual tool start. Its one request, response and confirmed
+  cleanup are preserved in `factorybox-external-opencode-a04b67153f7d4a068e8de1194eadfe85`.
+  The new retry-after lower bound is `2026-10-28T00:00:00.533718Z`; it does not
+  guarantee availability. No failed case is retried automatically, and no model,
+  identity or cost class is changed. The probe passes none of the eight cases.
 - [ ] Review and select the final qualified profile before any activation or
-  publication. This cleanup does neither.
+  publication. Stable release preparation is authorized; no release or image has
+  been published and no installation has been activated.
 
 The 24-hour soak, 100-run series, additional optimization and automatic
 retention remain deferred. Cross-node migration and arbitrary Unix/Linux hosts

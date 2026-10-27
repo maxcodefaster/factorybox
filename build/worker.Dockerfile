@@ -3,7 +3,7 @@ FROM ${NATIVE_BASE}
 ARG SOURCE_DATE_EPOCH=0
 ARG FACTORYBOX_VERSION
 USER root
-COPY --chmod=0700 bundle/ /opt/factorybox/
+COPY rootfs/opt/ /opt/
 RUN chmod 0755 /opt/factorybox/factorybox /opt/factorybox/components/* \
     && chmod 0600 /opt/factorybox/components.json /opt/factorybox/build.json
 LABEL io.factorybox.worker="unselected-candidate"
