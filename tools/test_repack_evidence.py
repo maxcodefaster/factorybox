@@ -11,6 +11,68 @@ import repack_evidence
 
 
 class EvidenceRepackBoundaryTests(unittest.TestCase):
+    def test_shared_encoding_is_not_repacked_into_an_extra_allocation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = pathlib.Path(temporary) / "probe.test.zst"
+            source.write_bytes(b"already shared exact bytes")
+            alias = source.with_name("another-closed-run.zst")
+            repack_evidence.os.link(source, alias)
+            before = source.read_bytes()
+            receipt = {"encoded": {"file": source.name}}
+            with self.assertRaisesRegex(ValueError, "keep them shared"):
+                repack_evidence.encoded_input(source, receipt, False)
+            self.assertEqual(source.read_bytes(), before)
+            self.assertEqual(source.stat().st_ino, alias.stat().st_ino)
+
+    def test_native_test_requires_its_exact_closed_owner_and_executable_hash(self):
+        run = pathlib.Path("factorybox-checkpoint-retirement-" + "a" * 32)
+        source = run / "probe.test.zst"
+        original = {"file": "probe.test", "sha256": "b" * 64}
+        outcome = {"owner": "a" * 32, "cleanup": True, "inputs_unchanged": True,
+                   "test_binary_sha256": "b" * 64}
+        repack_evidence.require_payload(source, run, outcome, original)
+        for key, value in [("cleanup", False), ("inputs_unchanged", False),
+                           ("owner", "c" * 32), ("test_binary_sha256", "c" * 64)]:
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "exact closed native"):
+                repack_evidence.require_payload(source, run, dict(outcome, **{key: value}), original)
+        for path in [run / "factorybox.zst", run / "foreign.test.zst"]:
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                repack_evidence.require_payload(path, run, outcome, original)
+        with self.assertRaises(ValueError):
+            repack_evidence.require_payload(source, pathlib.Path("factorybox-build-worker-" + "a" * 32),
+                                           outcome, original)
+
+    @unittest.skipUnless(shutil.which("zstd"), "requires the archive encoder")
+    def test_native_executable_repack_preserves_the_original_reader_and_result(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary).resolve()
+            run = root / "artifacts" / ("factorybox-checkpoint-retirement-" + "a" * 32)
+            run.mkdir(parents=True)
+            payload = b"exact ELF test byte sequence remains reconstructable\n" * 4000
+            expected = {"file": "probe.test", "bytes": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest()}
+            source = run / "probe.test.zst"
+            source.write_bytes(subprocess.check_output(["zstd", "-q", "-c"], input=payload) +
+                               subprocess.check_output(["zstd", "-q", "-c"], input=b"") * 100)
+            encoded = {"file": source.name, "bytes": source.stat().st_size,
+                       "sha256": repack_evidence.file_sha(source)}
+            receipt = run / "probe.test.encoding.json"
+            receipt.write_text(json.dumps({"whole_decompressed_payload_verified": True,
+                                          "original": expected, "encoded": encoded}))
+            closed = run / "result.json"
+            closed.write_text(json.dumps({"owner": "a" * 32, "cleanup": True, "passed": False,
+                                          "inputs_unchanged": True, "test_binary_sha256": expected["sha256"]}))
+            immutable = {path: path.read_bytes() for path in [receipt, closed]}
+            with mock.patch.object(repack_evidence.reference, "ROOT", root), \
+                    mock.patch.object(repack_evidence.reference.artifact_storage, "require_capacity", return_value={}), \
+                    mock.patch.object(repack_evidence.shutil, "disk_usage", return_value=mock.Mock(free=100 << 30)), \
+                    mock.patch("sys.argv", ["repack_evidence", str(source)]):
+                repack_evidence.main()
+            self.assertFalse(source.exists())
+            repack_evidence.reference.artifact_storage.verify_compacted(run / "probe.test", expected)
+            for path, before in immutable.items():
+                self.assertEqual(path.read_bytes(), before)
+
     @unittest.skipUnless(shutil.which("zstd"), "requires the archive encoder")
     def test_full_refresh_keeps_exact_raw_bytes_and_one_original_pointer(self):
         with tempfile.TemporaryDirectory() as temporary:

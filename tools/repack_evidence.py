@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Losslessly re-encode one closed evidence dump, keeping its exact raw bytes."""
+"""Losslessly re-encode a closed dump or native test, keeping its exact raw bytes."""
 import argparse
 import hashlib
 import json
@@ -13,6 +13,18 @@ import uuid
 
 import reference
 import reference_lifecycle
+
+
+def require_payload(source, run, outcome, original):
+    if source.name.endswith(".tar.zst"):
+        return
+    if (source.name != "probe.test.zst" or
+            not re.fullmatch(r"factorybox-(?:checkpoint-retirement|bounded-store|bounded-loss|bounded-store-loss)-[0-9a-f]{32}", run.name) or
+            outcome.get("cleanup") is not True or outcome.get("inputs_unchanged") is not True or
+            outcome.get("owner") != run.name.rsplit("-", 1)[1] or
+            original.get("file") != "probe.test" or
+            original.get("sha256") != outcome.get("test_binary_sha256", outcome.get("probe_sha256"))):
+        raise ValueError("requires an exact closed native test or evidence tar encoding")
 
 
 def file_sha(path):
@@ -68,6 +80,8 @@ def encoded_input(source, receipt, refresh):
         physical, encoding = reference.artifact_storage.verified_replacement(
             source, receipt["encoded"], receipt["original"])
         previous = pointer.read_bytes()
+    if physical.stat().st_nlink != 1:
+        raise ValueError("shared encodings already use one inode; keep them shared")
     before = reference.artifact_storage.identity(physical)
     if (receipt.get("whole_decompressed_payload_verified") is not True or
             receipt["encoded"]["file"] != source.name or
@@ -103,14 +117,14 @@ def commit_pointer(pointer, replacement, previous):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", help="Original closed-run .tar.zst path under artifacts")
+    parser.add_argument("source", help="Original closed-run .tar.zst or probe.test.zst under artifacts")
     parser.add_argument("--level", type=int, choices=[9, 19], default=9)
     parser.add_argument("--refresh", action="store_true",
                         help="Re-encode its verified replacement and retain one direct original pointer")
     options = parser.parse_args()
     supplied = Path(options.source).absolute()
     source = supplied.resolve()
-    if supplied != source or source.is_symlink() or not source.is_relative_to(reference.ROOT/"artifacts") or not source.name.endswith(".tar.zst"):
+    if supplied != source or source.is_symlink() or not source.is_relative_to(reference.ROOT/"artifacts") or not source.name.endswith(".zst"):
         raise ValueError("requires one canonical repository evidence archive")
     run = reference.ROOT/"artifacts"/source.relative_to(reference.ROOT/"artifacts").parts[0]
     if run.name.startswith(("factorybox-build-","factorybox-devx-inputs-","factorybox-devx-project-images-","factorybox-bats-images-",
@@ -122,6 +136,7 @@ def main():
     receipt_path = source.with_name(source.name.removesuffix(".zst")+".encoding.json")
     receipt = json.loads(receipt_path.read_text())
     expected = receipt["original"]
+    require_payload(source, run, json.loads((run / "result.json").read_text()), expected)
     if closed_path != run / "result.json":
         closed = json.loads(closed_path.read_text())
         if closed["failed_volume_archives"][run.name] != expected:
