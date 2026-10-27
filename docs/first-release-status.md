@@ -73,19 +73,27 @@ current runtime defects.
   stays failed. The [AMD64 report](native-amd64-0.1.0.md) records identities,
   limitations, resource handling and evidence locations.
 
+- Pre-release review then identified the transient seccomp `POLLERR` close
+  behavior. Ordered patch `sysbox-fs-seccomp-poll-retry.patch` backports upstream
+  `1ac3fd588495674eb8604f3c79b1573348eb3487` with attribution and all six new
+  regression cases. Original assertions and vet remain intact. The controlled
+  old-decision test fails specifically on the transient event; the backport
+  passes. This does not claim a spontaneous kernel-level reproduction.
+- The updated ordinary AMD64 image now also passes all 23 native gates on
+  source `1023be56dd70ed2115b1125c122a4f056b7824f8`: image
+  `sha256:b325efac164561af8abd74932b2d0e44633fed613d44c7dba6b574235db34be8`,
+  unchanged CLI `d7734394fb92d333c3e08a11dbc8e24da2bc3e6b50ac7b940fe69a5ee34e8247`,
+  and the reviewed Factory pin above. The receipt is
+  `factorybox-release-native-b6664d353f744f1dbbf6a87049115afa`, SHA-256
+  `1167019e9903dd203b6a9cc3f8f80041dd8c53e03eb9d51c9e94aa75b0dd174e`.
+  Independent builds reproduce the updated Sysbox executables, package and
+  complete image. Seven portable gates pass with 409 Python tests. Cleanup
+  confirms zero containers and all nine retained volume identities. The
+  [AMD64 report](native-amd64-0.1.0.md#sysbox-fs-poll-retry-follow-up) records the
+  new identities and retained fixture failures.
+
 ## Remaining first-release checks
 
-- [ ] Qualify the new Sysbox-fs poll retry backport on the exact next image.
-  Pre-release review found that the selected handler closed a listener on a
-  transient `POLLERR`. Ordered patch
-  `sysbox-fs-seccomp-poll-retry.patch` preserves upstream attribution and all
-  six regression cases from `1ac3fd588495674eb8604f3c79b1573348eb3487`.
-  The controlled decision test fails with the old behavior and passes with the
-  fix in `factorybox-seccomp-poll-6e5c1be21f2f49a681b3fb3285fdef67`, with cleanup.
-  It does not claim a spontaneous kernel-level reproduction. The initial
-  fixture attempt failed before executing tests because its temporary mount
-  was `noexec`; that failure remains preserved. The complete 23/23 AMD64 result
-  above qualifies its original image, not this changed component.
 - [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
   component identities, independent builds and receipts in the final profile.
   The exact `0.1.0` AMD64 matrix above is complete. It does not qualify ARM64.
