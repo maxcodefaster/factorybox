@@ -1,6 +1,6 @@
 # Release readiness
 
-Updated October 27, 2026. This is the single current release checklist.
+Updated October 28, 2026. This is the single current release checklist.
 [GOAL.md](../GOAL.md) defines the first controlled release's scope. Historical
 reports below and in [production-progress.md](production-progress.md) retain
 their original failures and package-specific results; they are not a list of
@@ -92,6 +92,15 @@ current runtime defects.
   [AMD64 report](native-amd64-0.1.0.md#sysbox-fs-poll-retry-follow-up) records the
   new identities and retained fixture failures.
 
+- Distribution preparation now includes a fully verified matching component
+  source archive and a separate companion for all 20 exact CLI module sources
+  and their notices. A non-executing audit binds all 258 installed packages to
+  the base inventory and records the image's inherited executables and Go
+  dependency identities. It confirms inspection cleanup and all nine retained
+  volumes. The [distribution report](distribution-0.1.0.md) identifies the
+  archives, evidence hashes and remaining coverage gaps; it grants no public
+  image distribution qualification.
+
 ## Remaining first-release checks
 
 - [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
@@ -116,9 +125,12 @@ current runtime defects.
 - [ ] Review and select the final qualified profile before any activation or
   publication. Finish the upstream review and exact image's distribution/source
   obligations described in [LICENSING.md](../LICENSING.md). The component source
-  inventory is verified; it does not cover every operating-system package's
-  distribution obligations. Stable release preparation is authorized; no release
-  or image has been published and no installation has been activated.
+  inventory and CLI dependency companion are verified. Exact Sysbox/inherited
+  executable dependencies, operating-system source/notice coverage and the
+  inherited Sysbox package's conflicting notice remain unresolved; see the
+  [distribution report](distribution-0.1.0.md). Stable release preparation is
+  authorized; no release or image has been published and no installation has
+  been activated.
 
 The 24-hour soak, 100-run series, additional optimization and automatic
 retention remain deferred. Cross-node migration and arbitrary Unix/Linux hosts
