@@ -1069,26 +1069,29 @@
       "commit": "82881aaaf2ce22ad0ff81487f458162908cb933f",
       "local_inputs_sha256": {
         "upstream/patches/sysbox-tests-systemd-cgroups.patch": "4987109a3a86f86f1b2f762a608b66dc73b94a02f940288b64840105261745fd",
-        "upstream/patches/sysbox-tests-lifecycle-readiness.patch": "ea2928e232ad3cc31ad52abac98c0a3578d0d004881c3f2858e45b0c76be3d33"
+        "upstream/patches/sysbox-tests-lifecycle-readiness.patch": "ea2928e232ad3cc31ad52abac98c0a3578d0d004881c3f2858e45b0c76be3d33",
+        "upstream/patches/sysbox-tests-systemd-proc-profile.patch": "acbf64348e7aff2c5be404c4f6568286da903b0ae15ede664e6be774a48e2ad4"
       },
       "overlays": {},
       "patches": [
         "upstream/patches/sysbox-tests-systemd-cgroups.patch",
-        "upstream/patches/sysbox-tests-lifecycle-readiness.patch"
+        "upstream/patches/sysbox-tests-lifecycle-readiness.patch",
+        "upstream/patches/sysbox-tests-systemd-proc-profile.patch"
       ],
       "prefix": "sysbox-82881aaaf2ce22ad0ff81487f458162908cb933f",
       "prepared_files_sha256": {
-        "tests/apps/l1/systemd.bats": "9c70b72e8b905e1561b7a6a174e3e4fece31afe60c736c373a00aaf187569f44",
+        "tests/apps/l1/systemd.bats": "23d35d0213b1c21f71a7a27c9dc58106db1dca121326be50ad3fc1ed4563366a",
         "tests/lifecycle/basic.bats": "6194cccf325b033b3dceb87199d8e442606421cfd8f74825cd995ca1add8f786"
       },
       "repository": "nestybox/sysbox",
-      "role": "Pinned v0.7.1 umbrella tests with declared helper-import and startup-readiness fixture fixes; original assertions retained.",
+      "role": "Pinned v0.7.1 umbrella tests with declared helper-import, startup-readiness and host-proc fixture fixes; original assertions retained.",
       "sha256": "67354023d0f33d930dcb6a3f17dd4ba0d6967793d19b60f9733b5dde504489d3",
       "test_file_changes": {
         "tests/apps/l1/systemd.bats": {
           "original_sha256": "0196070282d899299b7c7601165f5843bf84170956426663588117d81cd2c6a0",
-          "prepared_sha256": "9c70b72e8b905e1561b7a6a174e3e4fece31afe60c736c373a00aaf187569f44",
-          "reason": "Load upstream's cgroups helper used by the existing Bionic cgroup-v1 admission check. No assertions, skip conditions or test bodies changed."
+          "prepared_sha256": "23d35d0213b1c21f71a7a27c9dc58106db1dca121326be50ad3fc1ed4563366a",
+          "previous_prepared_sha256": "9c70b72e8b905e1561b7a6a174e3e4fece31afe60c736c373a00aaf187569f44",
+          "reason": "Load upstream's cgroups helper. Preserve every original proc assertion on kernels exposing kcore; when the outer fixture observes kcore absent before Sysbox, require guest absence, no symlink and a failed ENOENT read instead. Kmsg denial, zeroed symbols, all six test titles and skip conditions are unchanged. No host node is synthesized."
         },
         "tests/lifecycle/basic.bats": {
           "original_sha256": "647b397a5d415b0b9a45039de50aff7ee48d061e2cd89a7dd69fe0823f57c764",

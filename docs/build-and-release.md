@@ -53,21 +53,31 @@ Both require 4096-byte pages, cgroup v2 and the tested Docker/local-volume path.
 a new image. The historical AMD64 pilot remains unchanged. Cross-compilation
 does not qualify another machine, kernel, page size or storage backend.
 
-The local ARM64 Factory/worker functional lanes pass, but full release
-qualification on this OrbStack kernel remains blocked. Its host `/proc/kcore`
-does not exist. Read-only observation of the Docker host's actual procfs confirms
-the file is already absent outside Sysbox. The unchanged upstream Systemd
-`/proc exposure` case requires that read to fail with `Permission denied`, not
-`No such file`. That case is neither passed nor skipped. Do not synthesize a host
-proc node, weaken the assertion or publish this profile as production-qualified.
-The release workflow retains that required gate.
+The Systemd proc-security fixture observes `/proc/kcore` before starting Sysbox.
+If the kernel exposes it, all original permission-denied assertions still run.
+If the kernel lacks it, the guest must also lack the node and any symlink, and
+reading it must fail with `No such file or directory`. Kmsg must still deny reads
+and kallsyms must still return zeroed addresses. The ordered test-only patch and
+exact before/after hashes are declared in the source lock. No test is skipped,
+host node synthesized or runtime permission changed. Historical failures retain
+their original results; see the [current status](first-release-status.md).
 
-The [native revalidation task](https://github.com/maxcodefaster/factorybox/issues/1)
-records the completed AMD64 revalidation and its exact receipts. The remaining
-[ARM64 host check](https://github.com/maxcodefaster/factorybox/issues/5) stays open.
-Local images and `artifacts/` are not transferred by Git; rebuild exact native
-inputs on that machine and select its Docker context explicitly. A successful
-AMD64 rerun does not qualify ARM64 or authorize publication.
+The launcher can run on macOS or Linux, but native execution requires a matching
+Linux Docker host. It cannot run natively on arbitrary Unix kernels. On macOS,
+the default Docker context is `orbstack`; on Linux it is `default`.
+`FACTORYBOX_DOCKER_CONTEXT` overrides `DOCKER_CONTEXT` and both override that
+default. Select the context explicitly when more than one daemon is available.
+Inspect the selected host without creating any resources:
+
+```sh
+mise exec -- python3 tools/release_native.py --check-host
+```
+
+The runner detects the Docker server's architecture, not the client machine's.
+An explicit incompatible `--platform` is refused even when Docker can emulate
+it. This check grants no kernel admission or lifecycle qualification.
+Local images and `artifacts/` are not transferred by Git. Rebuild exact native
+inputs on the release machine. An AMD64 pass never qualifies ARM64.
 
 The repository pins Go and Python through mise. Run portable checks first:
 
@@ -180,15 +190,16 @@ The [release publication workflow](../.github/workflows/images.yaml) runs only w
 GitHub release is published. It does not run on branch pushes, pull requests or
 manual dispatch. The canonical tag, initially `v0.1.0-rc.1`, must name a commit contained
 in `main` and match `internal/version/VERSION`, the delivered CLI and image label.
-The first candidate includes AMD64 only. Its native job publishes
-`ghcr.io/<owner>/<repository>/worker:<version>-amd64`; after that job passes, the
-workflow creates the AMD64 `<version>` manifest. ARM64 remains excluded until
-the original systemd `/proc exposure` gate passes on its release host.
+Each native job publishes its qualified
+`ghcr.io/<owner>/<repository>/worker:<version>-amd64` or `<version>-arm64` image.
+Only after both native jobs pass does the workflow create the combined
+`<version>` manifest. An unavailable runner or failing gate blocks that manifest.
 An existing version is refused rather than overwritten; an uncertain registry
 lookup also refuses publication. There is no moving `latest` tag.
 
-The candidate needs a dedicated self-hosted Linux runner labelled
-`factorybox-native-amd64`, with mise, Docker/Buildx, Zstandard, GitHub CLI
+The candidate needs matching dedicated self-hosted Linux runners labelled
+`factorybox-native-amd64` and `factorybox-native-arm64`, with mise,
+Docker/Buildx, Zstandard, GitHub CLI
 and the exact admitted native Docker kernel, cgroups and privileges. The
 workflow installs no host Sysbox runtime, VM, kernel or emulator. It builds a uniquely
 named 3-CPU/3-GiB BuildKit container without changing the operator's selected
@@ -200,11 +211,14 @@ its offline project-image archive. `tools/release_native.py` refuses Candidate
 workers, foreign architectures and a mismatched CLI version. It runs the original
 CRIU core and Sysbox unit/integration/lifecycle/systemd gates, all fourteen delivered-worker
 suites, planned and abrupt worker replacement, and both actual Factory consumer
-lanes. The original upstream skip sets stay explicit. Qualification failure
+lanes. The original upstream skip sets stay explicit. The host-proc fixture is
+the same on both architectures. Qualification failure
 prevents publication. Uploaded workflow artifacts contain gate receipts and
-build/gate logs, not RAM images or private test stores. The separate endurance, security and
-production-release gates below remain open; these jobs do not grant production
-qualification or activate Factory.
+build/gate logs, not RAM images or private test stores. Source inventories,
+checksums and receipts have architecture-specific asset names so the two jobs
+cannot collide when attaching release assets. These jobs do not complete the
+remaining [controlled-release checklist](first-release-status.md), qualify
+deferred endurance work or activate Factory.
 
 Cold isolated builders use in-file stages instead of Docker-daemon-only parent
 tags and explicitly load their outputs. The Bats-only fixture reconstructs the

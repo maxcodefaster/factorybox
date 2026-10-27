@@ -14,6 +14,35 @@ namespace. Neither change modifies a host sysctl or weakens CRIU's mount checks.
 
 ## Native ARM64 local execution
 
+The latest integrated worker is
+`factorybox-build-worker-008d3ab940204c87a01befa6ca268a8f`, image
+`factorybox-worker-008d3ab940204c87a01befa6ca268a8f@sha256:556fc4c7ca50cb937c159ae78fa4929752a62fe3885496cdb5c78cd249dc3d40`.
+Its executable SHA-256 is
+`431fb101edd1d62ccf67b9cb0fc22b52e663606860426b61d0f3b92658727b4d`.
+Factory commit `a5b9a931fa2a61e328d122f6ce1250664b52459e` is the reviewed consumer
+pin used by the release pipeline. Later Factory commits are not implied passes.
+
+The Factory acceptance receipt is
+`.factory/test-results/ide-final-acceptance/final-verification.json` in that
+consumer checkout. The actual IDE proof passes 105 assertions, including
+automatic start/resume, idle pause, unchanged app RAM and canonical Source,
+and zero paused anonymous/snapshot residency. The Staging-pool proof observes
+two paused clean Forks, recovery of the assigned Fork after a Factory crash,
+and two new unused replacements on one worker. That command's original exit 1
+remains recorded: an already empty namespace waited for broken Kubernetes
+Metrics API discovery. The original deletion later completed without replay
+or finalizer removal, and exact fixture cleanup was reconciled. The original
+final namespace-inventory assertions were not replayed.
+
+Standalone diagnostic repeat
+`factorybox-factory-consumer-642c0b8255e144918cb4e3a5ba0681e4` passes twelve
+consecutive Pause/Resume cycles with the same worker. Diagnostic mode keeps
+top-level `passed: false`; its explicit controls and repeat receipts, rather
+than that field, identify what was exercised. These results neither install a
+retained profile nor qualify or publish a release.
+
+### Earlier ARM64 package
+
 The ordinary ARM64 worker build is
 `factorybox-build-worker-28a65e26aff44e7484f55bd7c6dbf0c7`, image
 `factorybox-worker-28a65e26aff44e7484f55bd7c6dbf0c7@sha256:a3627f7ffdea8c4ce188c8a3b75977f2912c1fc538e4c24a28f6b9f254afce73`.
@@ -56,13 +85,16 @@ The local tests neither activate a retained Factory installation nor publish an
 image. The release-only workflow must run its native gates again on each actual
 release image; the broader production-release programme remains separate.
 
-The separate upstream Systemd suite still has one required failure on this
+The separate upstream Systemd suite originally had one failure on this
 kernel: `systemd /proc exposure` expects `/proc/kcore` to deny a read, but the host
 has no such kernel node. The other three executable cases pass and the original
 two skips remain explicit. The exact failure is retained as
 `factorybox-bats-5498a7fb7436489b831822a8a1e39777`. No assertion or skip condition
-was changed. This blocks full release qualification even though the actual
-Factory lanes above pass.
+was changed in that historical run. The later declared host-proc fixture
+preserves denial assertions when kcore exists and checks strict absence when
+the host lacks it. Its current native result and remaining release work are in
+the [readiness checklist](first-release-status.md). The old failure is not
+rewritten as a pass.
 
 ## Earlier AMD64 acceptance
 

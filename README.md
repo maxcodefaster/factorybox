@@ -80,15 +80,16 @@ and [local worker example](examples/worker). Check the
 
 ## Status
 
-The first release candidate targets one admitted **Linux AMD64** kernel and
-local-storage profile. Native acceptance covers lifecycle, upstream regression
-suites, planned and abrupt worker replacement, and the actual Factory consumer.
-ARM64 builds and portable CI are available; full ARM64 release qualification is
-[still open](https://github.com/maxcodefaster/factorybox/issues/5).
+AMD64 and ARM64 use one codebase and the same release gates. The release-only
+pipeline builds and tests each image on its matching Linux runner, then publishes
+the combined image manifest only after both jobs pass. Each worker still admits
+only its tested kernel, page size and local-storage profile.
 
-Broader Kubernetes/provider qualification, cross-node migration and the 24-hour
-endurance run remain open. Measurements document their exact tested packages,
-preparation costs, first useful work and retained memory.
+The [current readiness checklist](docs/first-release-status.md) separates recent
+Factory integration results, remaining release checks and historical failures.
+Local integration passes do not qualify an untested release image. The 24-hour
+endurance run and 100-run series are deferred from the first controlled release.
+Cross-node migration and arbitrary hosts are outside that release's scope.
 
 [Release scope](docs/releases/0.1.0-rc.1.md) ·
 [Measurements](docs/first-release-performance.md) ·

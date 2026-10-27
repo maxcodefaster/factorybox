@@ -1,0 +1,24 @@
+--- a/tests/upstream-bats.sh
++++ b/tests/upstream-bats.sh
+@@ -7,11 +7,20 @@
+ bats --version > /output/bats-version.txt
+ cp /opt/factorybox-bats-packages.tsv /output/packages.tsv
+ uname -a > /output/kernel.txt
++# Derive this inside the private Linux fixture, before Sysbox is started.
++# Never accept the caller's claim that the kernel node is absent.
++if test ! -e /proc/kcore && test ! -L /proc/kcore; then
++  host_kcore=absent
++else
++  host_kcore=present
++fi
++export FACTORYBOX_HOST_KCORE="$host_kcore"
+ python3 - <<'PY'
+-import json, pathlib, platform
++import json, os, pathlib, platform
+ pathlib.Path("/output/platform.json").write_text(json.dumps({
+     "kernel": platform.release(), "machine": platform.machine(),
+     "kernel_nodes": {name: pathlib.Path(name).exists() for name in ["/proc/kcore", "/proc/kmsg", "/proc/config.gz"]},
++    "systemd_proc_profile": {"host_kcore": os.environ["FACTORYBOX_HOST_KCORE"]},
+ }, indent=2) + "\n")
+ PY
+ python3 /observe-sysctls.py before

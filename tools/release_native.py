@@ -109,21 +109,34 @@ def require_original_license(worker):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--platform", choices=build_config.PLATFORMS, required=True)
-    parser.add_argument("--version", required=True)
-    parser.add_argument("--worker-build", required=True)
-    parser.add_argument("--consumer-build", required=True)
-    parser.add_argument("--project-images", required=True)
-    parser.add_argument("--factory-repo", type=Path, required=True)
-    parser.add_argument("--builder", required=True)
+    parser.add_argument("--platform", choices=build_config.PLATFORMS,
+                        help="Defaults to the selected Linux Docker host, never the client CPU")
+    parser.add_argument("--check-host", action="store_true",
+                        help="Report native Docker platform without building, running tests or granting admission")
+    parser.add_argument("--version")
+    parser.add_argument("--worker-build")
+    parser.add_argument("--consumer-build")
+    parser.add_argument("--project-images")
+    parser.add_argument("--factory-repo", type=Path)
+    parser.add_argument("--builder")
     parser.add_argument("--bats-images", help="Reuse an exact verified pinned image archive; all native tests still run")
     options = parser.parse_args()
+    if not options.check_host:
+        for argument in ["version", "worker_build", "consumer_build", "project_images", "factory_repo", "builder"]:
+            if not getattr(options, argument):
+                parser.error("--" + argument.replace("_", "-") + " is required unless --check-host is used")
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
+    options.platform = options.platform or native_base.native_platform(host)
+    native_base.require_native_host(options.platform, host)
+    if options.check_host:
+        print(json.dumps({"platform": options.platform, "docker_command": reference.DOCKER,
+                          "kernel": host.get("KernelVersion"), "cgroup_version": host.get("CgroupVersion"),
+                          "native_lifecycle_qualified": False, "production_qualified": False}))
+        return
     _, worker = build_worker.load(options.worker_build)
     if worker["platform"] != options.platform or worker.get("native_candidate") is not None:
         raise ValueError("release qualification refuses cross-target or unqualified candidate workers")
     require_original_license(worker)
-    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
-    native_base.require_native_host(options.platform, host)
     options.bounded_build = True
     builder = build_config.verify_builder(options, reference.DOCKER)
     owner = uuid.uuid4().hex

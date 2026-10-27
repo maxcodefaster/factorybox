@@ -8,6 +8,22 @@ import native_base
 
 
 class NativeBaseInputsTests(unittest.TestCase):
+    def test_native_platform_is_the_linux_docker_host_not_the_unix_client(self):
+        for architecture, expected in [
+            ("x86_64", "linux/amd64"), ("amd64", "linux/amd64"),
+            ("aarch64", "linux/arm64"), ("arm64", "linux/arm64"),
+        ]:
+            host = {"OSType": "linux", "Architecture": architecture}
+            self.assertEqual(native_base.native_platform(host), expected)
+            native_base.require_native_host(expected, host)
+            other = "linux/amd64" if expected == "linux/arm64" else "linux/arm64"
+            with self.assertRaisesRegex(ValueError, "emulation is not qualification"):
+                native_base.require_native_host(other, host)
+        for host in [{}, {"OSType": "darwin", "Architecture": "arm64"},
+                     {"OSType": "linux", "Architecture": "riscv64"}]:
+            with self.assertRaisesRegex(ValueError, "Linux AMD64 or ARM64 Docker host"):
+                native_base.native_platform(host)
+
     def test_missing_buildx_config_digest_still_requires_the_exact_manifest_and_architecture(self):
         result = {"image": "owned@sha256:" + "a" * 64, "platform": "linux/amd64"}
         inspected = {"Id": "sha256:" + "b" * 64, "RepoDigests": [result["image"]],

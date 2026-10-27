@@ -35,8 +35,15 @@ class BuildConfigurationTests(unittest.TestCase):
                     build_config.require_elf(path, "linux/arm64")
 
     def test_reference_context_does_not_fall_back_to_the_host(self):
-        self.assertEqual(build_config.docker_command({}),
-                         ['docker', '--context', 'orbstack'])
+        for system, expected in [('darwin', 'orbstack'), ('linux', 'default')]:
+            with patch.object(build_config.sys, 'platform', system):
+                self.assertEqual(build_config.docker_command({}),
+                                 ['docker', '--context', expected])
+        self.assertEqual(build_config.docker_command({'DOCKER_CONTEXT': 'chosen-linux'}),
+                         ['docker', '--context', 'chosen-linux'])
+        self.assertEqual(build_config.docker_command({
+            'DOCKER_CONTEXT': 'ignored', 'FACTORYBOX_DOCKER_CONTEXT': 'owned'}),
+            ['docker', '--context', 'owned'])
         self.assertEqual(build_config.docker_command({
             'FACTORYBOX_DOCKER_CONTEXT': 'default',
             'FACTORYBOX_DOCKER_ELEVATION': 'pkexec'}),
@@ -51,6 +58,7 @@ class BuildConfigurationTests(unittest.TestCase):
             {'FACTORYBOX_DOCKER_CONTEXT': '--host=tcp://foreign'},
             {'FACTORYBOX_DOCKER_CONTEXT': 'default --host=foreign'},
             {'FACTORYBOX_DOCKER_CONTEXT': ''},
+            {'DOCKER_CONTEXT': '--host=tcp://foreign'},
             {'FACTORYBOX_DOCKER_ELEVATION': 'sh -c'},
         ]:
             with self.subTest(environment=environment), self.assertRaises(ValueError):
