@@ -92,6 +92,13 @@ mise exec -- python3 tools/sources.py prepare
 mise exec -- python3 tools/sources.py verify
 ```
 
+The 512-MiB capacity fixture compiles its guest test actor without unused DWARF
+debug data. ELF symbols, executable code and every native assertion remain intact;
+the store size and admission reserves stay unchanged. Regression checks compare
+the actual ELF code and preserve candidate kernel pinning. Exact recipe and
+assertion hashes are declared in
+[`bounded-capacity-debug-info.json`](../tests/compatibility/bounded-capacity-debug-info.json).
+
 Build the native base and Sysbox, then the selected CRIU composition and worker:
 
 ```sh

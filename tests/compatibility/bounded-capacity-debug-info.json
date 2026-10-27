@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "source_commit": "955446f1aa9630a9692de86dc8568292bc401647",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Only the capacity suite's guest actor executable omits unused DWARF through Go -ldflags=-w. Keep ELF symbols and executable code, all original native assertions, the 512-MiB store, 64-MiB floor, 128-MiB reserve, actual ENOSPC, deadlines, cleanup and vet. Other suites retain their original compiler options. The delivered worker and all runtime sources are unchanged.",
+  "files": {
+    "tools/bounded_store_native.py": {
+      "before_sha256": "90f3d9e05e688d3b22e7129c69803a1a92ede5699405faf58308fe91fbd06876",
+      "after_sha256": "58e2491fa971c60995e973c07412a2e782f33f847061e22045b6f584afac067e"
+    },
+    "internal/lifecycle/bounded_store_native_linux_test.go": {
+      "before_sha256": "302a4e945984ad8e3925251ce2c496c342a8311202aeff0a3473722ff34a1c55",
+      "after_sha256": "302a4e945984ad8e3925251ce2c496c342a8311202aeff0a3473722ff34a1c55"
+    }
+  },
+  "regressions": [
+    "test_capacity_actor_omits_dwarf_without_changing_executable_code",
+    "test_capacity_actor_keeps_candidate_kernel_and_probe_tags",
+    "TestNativeBoundedWorkerStore"
+  ]
+}

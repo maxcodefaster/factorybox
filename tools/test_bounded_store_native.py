@@ -1,6 +1,9 @@
 import hashlib
 import json
+import os
 from pathlib import Path
+import struct
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,6 +13,57 @@ import build_worker
 
 
 class BoundedWorkerPlatformTests(unittest.TestCase):
+    def test_capacity_fixture_declaration_preserves_original_assertion_bytes(self):
+        root = bounded_store_native.reference.ROOT
+        declaration = json.loads((root / 'tests/compatibility/bounded-capacity-debug-info.json').read_text())
+        self.assertEqual(declaration['schema'], 1)
+        self.assertTrue(declaration['assertions_preserved'])
+        self.assertFalse(declaration['upstream_assertions_modified'])
+        for name, row in declaration['files'].items():
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
+        original = declaration['files']['internal/lifecycle/bounded_store_native_linux_test.go']
+        self.assertEqual(original['before_sha256'], original['after_sha256'])
+
+    def test_capacity_actor_omits_dwarf_without_changing_executable_code(self):
+        def sections(path):
+            data = path.read_bytes()
+            self.assertEqual(data[:6], b'\x7fELF\x02\x01')
+            table = struct.unpack_from('<Q', data, 40)[0]
+            stride, count, names = struct.unpack_from('<HHH', data, 58)
+            headers = [struct.unpack_from('<IIQQQQIIQQ', data, table + n * stride)
+                       for n in range(count)]
+            strings = data[headers[names][4]:headers[names][4] + headers[names][5]]
+            return {strings[h[0]:].split(b'\0', 1)[0].decode(): data[h[4]:h[4] + h[5]]
+                    for h in headers}
+
+        with tempfile.TemporaryDirectory() as directory:
+            outputs = [Path(directory) / name for name in ['diagnostic.test', 'capacity.test']]
+            for output, capacity in zip(outputs, [False, True]):
+                subprocess.run(bounded_store_native.probe_build_command(
+                    output, ['-tags=factorybox_worker_probe'], capacity=capacity),
+                    cwd=bounded_store_native.reference.ROOT,
+                    env=dict(os.environ, GOOS='linux', CGO_ENABLED='0'),
+                    check=True, capture_output=True, timeout=90)
+            diagnostic, capacity = [sections(output) for output in outputs]
+            self.assertIn('.debug_info', set(diagnostic))
+            self.assertNotIn('.debug_info', set(capacity))
+            self.assertIn('.symtab', set(capacity))
+            self.assertEqual(hashlib.sha256(diagnostic['.text']).hexdigest(),
+                             hashlib.sha256(capacity['.text']).hexdigest())
+            self.assertLess(outputs[1].stat().st_size, outputs[0].stat().st_size)
+
+    def test_capacity_actor_keeps_candidate_kernel_and_probe_tags(self):
+        host = {'OSType': 'linux', 'Architecture': 'x86_64', 'KernelVersion': '7.2.8-test'}
+        candidate = build_worker.native_candidate_profile('linux/amd64', host)
+        flags = bounded_store_native.worker_compile_options(
+            {'platform': 'linux/amd64', 'native_candidate': candidate}, host, native_candidate=True)
+        original = list(flags)
+        command = bounded_store_native.probe_build_command('probe.test', flags, capacity=True)
+        linked = [flag for flag in command if flag.startswith('-ldflags=')]
+        self.assertEqual(linked, [candidate['compile_options'][1] + ' -w'])
+        self.assertIn(candidate['compile_options'][0] + ',factorybox_worker_probe', command)
+        self.assertEqual(flags, original)
+
     def test_restore_hold_preserves_original_guards_and_requires_each_public_resume(self):
         cases = {}
         for mode in ['fork', 'resumed', 'fork-disconnect', 'resumed-disconnect', 'wrong-ack']:
