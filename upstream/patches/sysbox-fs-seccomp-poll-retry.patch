@@ -1,0 +1,104 @@
+From: Sami Jawhar <sami@trajectorylabs.net>
+Subject: Keep the seccomp session open on a transient POLLERR
+Origin: https://github.com/nestybox/sysbox-fs/commit/1ac3fd588495674eb8604f3c79b1573348eb3487
+
+Backport the original handler change and all six regression cases.
+The existing upstream test assertions remain unchanged.
+
+--- a/seccomp/tracer.go
++++ b/seccomp/tracer.go
+@@ -369,6 +369,38 @@ func (t *syscallTracer) seccompSessionPidfd(
+ 	return pidfd
+ }
+ 
++// pollAction is what connHandler does after poll() returns events on a
++// seccomp-fd.
++type pollAction int
++
++const (
++	pollRecv  pollAction = iota // a notification is pending: receive it
++	pollRetry                   // transient error: poll the seccomp-fd again
++	pollClose                   // the seccomp-fd is done: end the session
++)
++
++// seccompFdPollAction maps the events poll() returned for a seccomp-fd to
++// connHandler's next step.
++//
++// The kernel's seccomp_notify_poll() returns a lone POLLERR when a signal
++// interrupts its wait for the filter's notify_lock, which happens whenever
++// the polling thread takes a signal while a notification is being received or
++// answered. The seccomp-fd is still healthy. Ending the session on it would
++// close the fd, and every process under the filter would then get ENOSYS for
++// the trapped syscalls (mount, umount2, ...) for the rest of its life. A
++// seccomp-fd that is really done returns POLLHUP (the filter has no users
++// left) or POLLNVAL.
++func seccompFdPollAction(revents int16) pollAction {
++	switch revents {
++	case unix.POLLIN:
++		return pollRecv
++	case unix.POLLERR:
++		return pollRetry
++	default:
++		return pollClose
++	}
++}
++
+ // Tracer's connection-handler method. Executed within a dedicated goroutine (one
+ // per connection).
+ func (t *syscallTracer) connHandler(c *net.UnixConn) {
+@@ -429,9 +461,15 @@ func (t *syscallTracer) connHandler(c *net.UnixConn) {
+ 			break
+ 		}
+ 
+-		// Exit the polling loop whenever the received event on the seccomp-fd is not
+-		// the expected one.
+-		if fds[0].Revents != unix.POLLIN {
++		// Poll the seccomp-fd again after a transient error, and exit the polling
++		// loop once it is done.
++		action := seccompFdPollAction(fds[0].Revents)
++		if action == pollRetry {
++			logrus.Debugf("Transient POLLERR received on fd %d, pid %d, cntr %s",
++				fd, pid, formatter.ContainerID{cntrID})
++			continue
++		}
++		if action == pollClose {
+ 			logrus.Debugf("Non-POLLIN event received on fd %d, pid %d, cntr %s",
+ 				fd, pid, formatter.ContainerID{cntrID})
+ 			break
+--- a/seccomp/tracer_test.go
++++ b/seccomp/tracer_test.go
+@@ -24,6 +24,7 @@ import (
+ 	"testing"
+ 
+ 	unixIpc "github.com/nestybox/sysbox-ipc/unix"
++	"golang.org/x/sys/unix"
+ )
+ 
+ func Test_syscallTracer_createErrorResponse(t *testing.T) {
+@@ -89,3 +90,26 @@ func Test_syscallTracer_createErrorResponse(t *testing.T) {
+ 		})
+ 	}
+ }
++
++func Test_seccompFdPollAction(t *testing.T) {
++	tests := []struct {
++		name    string
++		revents int16
++		want    pollAction
++	}{
++		{"pending notification", unix.POLLIN, pollRecv},
++		{"signal interrupted the notify_lock wait", unix.POLLERR, pollRetry},
++		{"filter has no users", unix.POLLHUP, pollClose},
++		{"pending notification on a filter with no users", unix.POLLIN | unix.POLLHUP, pollClose},
++		{"seccomp-fd closed", unix.POLLNVAL, pollClose},
++		{"no event on the seccomp-fd", 0, pollClose},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := seccompFdPollAction(tt.revents); got != tt.want {
++				t.Errorf("seccompFdPollAction(%#x) = %v, want %v", tt.revents, got, tt.want)
++			}
++		})
++	}
++}
