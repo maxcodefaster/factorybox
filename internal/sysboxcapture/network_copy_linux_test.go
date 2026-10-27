@@ -3,6 +3,7 @@
 package sysboxcapture
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -15,10 +16,15 @@ import (
 )
 
 func TestNetworkCopySocketInspection(t *testing.T) {
-	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	// Match the admitted ordinary-TCP profile without changing a host sysctl.
+	// Go 1.27 can otherwise select MPTCP on a native Linux CI runner.
+	listen := net.ListenConfig{}
+	listen.SetMultipathTCP(false)
+	opened, err := listen.Listen(context.Background(), "tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	listener := opened.(*net.TCPListener)
 	defer listener.Close()
 	if err := listener.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		t.Fatal(err)
@@ -30,7 +36,9 @@ func TestNetworkCopySocketInspection(t *testing.T) {
 			accepted <- connection
 		}
 	}()
-	client, err := net.DialTimeout("tcp4", listener.Addr().String(), 3*time.Second)
+	dialer := net.Dialer{Timeout: 3 * time.Second}
+	dialer.SetMultipathTCP(false)
+	client, err := dialer.DialContext(context.Background(), "tcp4", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +64,7 @@ func TestNetworkCopySocketInspection(t *testing.T) {
 		if err := raw.Control(func(fd uintptr) { socket, relevant, inspectErr = inspectCopySocket(int(fd)) }); err != nil {
 			t.Fatal(err)
 		}
-		if inspectErr != nil || !relevant || socket.Cookie == 0 || socket.Namespace == 0 {
+		if inspectErr != nil || !relevant || socket.Cookie == 0 || socket.Namespace == 0 || socket.Protocol != unix.IPPROTO_TCP {
 			t.Fatal("actual socket inspection omitted kernel identity", socket, inspectErr)
 		}
 		inventory = append(inventory, socket)
