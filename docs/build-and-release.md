@@ -235,6 +235,12 @@ recipe rebuild from a byte-identical base-image rebuild. Runtime worker images
 still use their exact supplied native-base image digest. Upstream assertions
 and the bounded builder ceiling are unchanged.
 
+Worker image transports include the `/opt` destination parent with a fixed
+timestamp and its original permissions. Normalizing bundle files alone leaves
+Docker to timestamp that missing parent at build time, producing different
+image layers from identical packages. Independent no-cache builds must match
+the package, image and every layer; a matching package alone is insufficient.
+
 Original Factorybox code uses Apache-2.0. The worker package includes the exact
 root `LICENSE`, `NOTICE`, `LICENSING.md` and pinned upstream notices, with their
 hashes. CRIU keeps its GPL-2.0-only terms and its library keeps its original

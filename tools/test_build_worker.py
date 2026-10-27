@@ -269,11 +269,29 @@ class WorkerBuildInputs(unittest.TestCase):
         with tarfile.open(fileobj=io.BytesIO(first)) as transport:
             self.assertTrue(all(row.mtime == 0 and row.uid == 0 and row.gid == 0
                                 for row in transport.getmembers()))
-            self.assertEqual(transport.extractfile("bundle/factorybox").read(),
+            self.assertEqual(transport.extractfile("rootfs/opt/factorybox/factorybox").read(),
                              (self.bundle / "factorybox").read_bytes())
+            # Docker otherwise creates the missing /opt at build time, making
+            # both COPY and chmod layers differ despite identical input bytes.
+            self.assertTrue(transport.getmember("rootfs/opt").isdir())
+            self.assertEqual(transport.getmember("rootfs/opt").mode, 0o755)
+            self.assertEqual(transport.getmember("rootfs/opt/factorybox").mode, 0o700)
+            self.assertEqual(transport.getmember("rootfs/opt/factorybox/factorybox").mode, 0o700)
         (context / "redirect").symlink_to(self.artifact / "source")
         with self.assertRaisesRegex(ValueError, "redirected"):
             build_worker.image_context_bytes(context)
+
+    def test_reserved_image_root_cannot_replace_the_generated_parent(self):
+        context = self.artifact / "image-context"
+        (context / "rootfs").mkdir()
+        with self.assertRaisesRegex(ValueError, "reserved"):
+            build_worker.image_context_bytes(context)
+
+    def test_worker_recipe_copies_the_timestamped_parent_and_keeps_permissions(self):
+        recipe = (Path(build_worker.__file__).resolve().parents[1] / "build/worker.Dockerfile").read_text()
+        self.assertIn("COPY rootfs/opt/ /opt/\n", recipe)
+        self.assertIn("chmod 0755 /opt/factorybox/factorybox /opt/factorybox/components/*", recipe)
+        self.assertIn("chmod 0600 /opt/factorybox/components.json /opt/factorybox/build.json", recipe)
 
 
 if __name__ == "__main__":
