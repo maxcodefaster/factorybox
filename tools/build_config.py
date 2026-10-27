@@ -3,13 +3,15 @@ import os
 import re
 import json
 import subprocess
+import sys
 
 PLATFORMS = ('linux/arm64', 'linux/amd64')
 
 
 def docker_command(environ=None):
     environ = os.environ if environ is None else environ
-    context = environ.get('FACTORYBOX_DOCKER_CONTEXT', 'orbstack')
+    context = environ.get('FACTORYBOX_DOCKER_CONTEXT',
+                          environ.get('DOCKER_CONTEXT', 'orbstack' if sys.platform == 'darwin' else 'default'))
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', context):
         raise ValueError('expected one explicit Docker context name')
     elevation = environ.get('FACTORYBOX_DOCKER_ELEVATION', '')

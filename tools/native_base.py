@@ -6,11 +6,22 @@ import reference
 import build_config
 
 
+def native_platform(host):
+    machines = {"aarch64": "linux/arm64", "arm64": "linux/arm64",
+                "x86_64": "linux/amd64", "amd64": "linux/amd64"}
+    target = machines.get(host.get("Architecture"))
+    if host.get("OSType") != "linux" or target is None:
+        raise ValueError("native tests require a Linux AMD64 or ARM64 Docker host, not the client OS")
+    return target
+
+
 def require_native_host(target, host):
     build_config.architecture(target)
-    machines = {"linux/arm64": {"aarch64", "arm64"},
-                "linux/amd64": {"x86_64", "amd64"}}
-    if host["OSType"] != "linux" or host["Architecture"] not in machines[target]:
+    try:
+        observed = native_platform(host)
+    except ValueError:
+        observed = None
+    if observed != target:
         raise ValueError("native tests require a matching Linux Docker host; emulation is not qualification")
 
 

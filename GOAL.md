@@ -1,5 +1,11 @@
 # Factorybox: erste lokale Produktionsfreigabe
 
+Der aktuelle Arbeitsstand steht ausschließlich in
+[docs/first-release-status.md](docs/first-release-status.md). Dieses Dokument
+bewahrt den vereinbarten Umfang und die ausdrücklich nachgelagerten Arbeiten.
+Alte Paketnamen und spätere historische Einträge qualifizieren weder die
+aktuellen AMD64-/ARM64-Binaries noch belegen sie einen aktuellen Fehler.
+
 Am 2026-10-23 hat der Nutzer die erste kontrollierte Freigabe für diesen
 Linux-AMD64-Rechner bestätigt. Datensicherheit, zuverlässige Wiederherstellung,
 Speichergrenzen und die Abnahme des endgültigen Pakets haben Vorrang.
@@ -22,40 +28,16 @@ abgeschlossene Goal, der Quellmanifest und dessen Eingaben liegen unter
 Der [Abnahmebericht](docs/pilot-validation.md) und die Referenzartefakte bleiben
 historische Nachweise. Produktionsqualifikation ist zu Beginn dieses Goals false.
 
-## Verbindliche To-do-Liste dieser ersten Freigabe
+## Verbindlicher Umfang dieser ersten Freigabe
 
-- [ ] Endgültiges Paket unabhängig reproduzieren und alle erforderlichen
-  bestehenden nativen, Verbraucher- und Upstream-Prüfungen bestehen.
-  Erhaltener Gegenbeweis des Vorgängers: Factory-Lifecycle verweigert beim erneuten Checkpoint
-  der Branch eine relative Timer-Aufnahme mit anstehendem gefangenem Signal,
-  `factorybox-consumer-worker-loss-87d3d62a3d544fa8b2a0bba588c90b38`.
-  Der vollständige ursprüngliche Fehlerzustand bleibt unverändert erhalten.
-  Der aktuelle Kandidat `a66c5db009d5458b9f5d85b7c233516e` besteht den
-  vollständigen Factory-Lifecycle mit lokaler Modell-Fixture und einen
-  unabhängigen identischen Paketnachbau. Auf seinen Komponenten bestehen
-  18 CRIU-Core-Fälle und die bytegleich gebundenen Sysbox-Upstream-/Bats-Fälle.
-  Aufnahmeprüfung, CRIU-Abbruch und Capture-Worker-Verlust bestehen erneut
-  auf dem aktuellen Kern. Die übrigen erforderlichen nativen Prüfgruppen,
-  Verbraucher-/Anbieterfälle und endgültige Wiederholungsserie bleiben offen.
-  Die ursprünglichen Fehler bleiben erhalten. Die endgültige Paketabnahme
-  einschließlich der übrigen offenen Anforderungen bleibt erforderlich.
-- [x] Seltenen Restore-PID-Konflikt erklären und beheben. Die ursprünglichen
-  Prozessabbilder reproduzieren denselben Konflikt mit verzögertem Reap eines
-  echten Sysbox-Helfers. Das Vorbelegen frischer innerer PID-Namespaces behebt
-  diesen Gegenbeweis; der vollständige Factory-Lifecycle, 18 CRIU-Core-Fälle
-  und unabhängige identische Komponenten-/Paketbuilds bestehen auf Kandidat
-  `a66c5db009d5458b9f5d85b7c233516e`. Der damals historische PID-Besitzer
-  wurde nicht direkt beobachtet. Die übrige endgültige Paketabnahme bleibt
-  erforderlich; Belege stehen in `docs/production-progress.md`.
-- [ ] Offenen Busy-Mount-Aufräumfehler dem Test oder der Laufzeit zuordnen;
-  einen Laufzeitfehler beheben und Besitz sowie vollständiges Aufräumen prüfen.
-- [ ] Aufnahme neuer Arbeit und Aufbewahrung so begrenzen, dass volle Stores
-  bestehende Sicherungen und laufende Quellen erhalten. Einen geprüften
-  manuellen Betriebsweg für Stilllegung und Kapazitätsmangel liefern.
-- [ ] Mit ausgelieferte Agentenfortsetzung einschließlich Abbruch und unklarer
-  Werkzeugwirkungen auf dem endgültigen Paket prüfen.
-- [ ] Start, Stop, Update, Drain, Recovery und Rollback dokumentieren und prüfen;
-  vorab festgelegte Wiederholungsserie abschließen und Grenzen offen ausweisen.
+Endgültige Pakete unabhängig reproduzieren und die erforderlichen nativen,
+Verbraucher- und Upstream-Prüfungen bestehen. Besitz, Daten- und Speichergrenzen,
+Agentenfortsetzung sowie Start, Stop, Update, Drain, Recovery und Rollback
+nachweisen. Den historischen Busy-Mount-Fehler zuordnen, statt ihn durch
+erfolgreiche Wiederholungen für erledigt zu erklären. Bestandene frühere
+Paketprüfungen, behobene Fehler und noch offene Nachweise stehen zusammen in
+der [aktuellen Checkliste](docs/first-release-status.md); hier wird keine zweite,
+abweichende Aufgabenliste fortgeschrieben.
 
 Die bestehende Startfehler-Korrektur wird in dieses Paket übernommen und dort
 vollständig abgenommen. Keine neuen Optimierungsexperimente beginnen, bevor

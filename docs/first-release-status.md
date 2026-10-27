@@ -1,6 +1,69 @@
-# Stand der ersten lokalen Freigabe
+# Release readiness
 
-Stand: 25. Oktober 2026. Die Freigabe ist offen. Verbindlicher Umfang bleibt
+Updated October 27, 2026. This is the single current release checklist.
+[GOAL.md](../GOAL.md) defines the first controlled release's scope. Historical
+reports below and in [production-progress.md](production-progress.md) retain
+their original failures and package-specific results; they are not a list of
+current runtime defects.
+
+## What is already working
+
+- One Factorybox codebase implements the same lifecycle for Linux AMD64 and
+  ARM64. CPU-specific restore/timer code stays behind that shared lifecycle.
+- The final local ARM64 Factory integration uses worker
+  `factorybox-build-worker-008d3ab940204c87a01befa6ca268a8f`, executable
+  `431fb101edd1d62ccf67b9cb0fc22b52e663606860426b61d0f3b92658727b4d`,
+  and reviewed Factory commit `a5b9a931fa2a61e328d122f6ce1250664b52459e`.
+  The IDE proof passes 105 assertions. The clean Staging-derived paused Fork
+  pool, automatic demand/resume and memory release have native observations.
+  The pool command's cleanup-only failure and later exact reconciliation
+  remain explicit in the [consumer evidence](factory-consumer.md).
+- The intermittent post-detach Resume refusal and interrupted unpublished BPF
+  load were fixed in `e12f18d` and `55bd66e`, with targeted native regressions.
+  The final worker passes twelve consecutive diagnostic Pause/Resume cycles.
+  These are functional results, not full release qualification.
+- The Systemd proc-security fixture now observes the actual kernel capability
+  before Sysbox starts. An existing kcore must deny reads with the original
+  assertions; an absent kcore must remain absent in the guest and fail an
+  attempted read. Kmsg denial, zeroed kallsyms, all test titles and the original
+  skip set are preserved. The source lock declares the ordered patch and exact
+  original, preceding and resulting hashes. The complete native ARM64 Systemd
+  suite now passes in `factorybox-bats-f75e703b59ed495bb30b55647e78dc82`:
+  four executed passes, including proc exposure, and the same two upstream
+  skips. Cleanup, unchanged components/inputs and unchanged observed global
+  sysctls all pass. The old failed run is preserved, not reclassified.
+- The launcher detects the selected Linux Docker server, whether launched from
+  Linux or macOS. Release CI has matching AMD64 and ARM64 native jobs, the
+  reviewed Factory pin, distinct architecture assets and a combined manifest
+  gated on both jobs. Editing CI does not mean either job has already passed.
+
+## Remaining first-release checks
+
+- [ ] Run the complete required native matrix on the exact final AMD64 and ARM64
+  release images and bind sources, component identities, independent builds and
+  receipts in the final profile. Older AMD64 receipts and local ARM64 integration
+  results do not replace these image-specific checks. Each architecture needs
+  an existing matching Linux runner with an admitted kernel/storage tuple.
+- [ ] Resolve the historical EBUSY cleanup attribution. Later controls passed;
+  the latest image has not been shown to reproduce it. The original holder and
+  whether it belonged to the fixture or runtime remain unestablished. Do not
+  call it a current reproduced runtime bug or silently mark it fixed.
+- [ ] Complete the eight real-provider continuation cases required by the
+  original controlled-release scope. The recorded provider attempt stopped at
+  HTTP 429 before actual tool start. This is missing evidence, not a demonstrated
+  checkpoint/restore failure. The old quota timestamp is historical, not a
+  current availability check. Keep its explicit model/cost policy unless the
+  release scope is deliberately changed.
+- [ ] Review and select the final qualified profile before any activation or
+  publication. This cleanup does neither.
+
+The 24-hour soak, 100-run series, additional optimization and automatic
+retention remain deferred. Cross-node migration and arbitrary Unix/Linux hosts
+are not added to this release. Production qualification remains false.
+
+## Archived October 25 AMD64 report
+
+Historischer Stand: 25. Oktober 2026. Die Freigabe war offen. Verbindlicher Umfang bleibt
 [GOAL.md](../GOAL.md), einschließlich aller dort genannten Grenzen.
 Der 24-Stunden-Dauerlauf und die 100er-Serie gehören zur späteren Etappe.
 

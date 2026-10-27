@@ -4,6 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from contextlib import redirect_stdout
+import io
 
 import reference
 import release_native
@@ -14,7 +16,7 @@ class NativeReleaseQualificationTests(unittest.TestCase):
         workflow = (reference.ROOT / ".github/workflows/images.yaml").read_text()
         self.assertEqual(workflow.split("on:", 1)[1].split("permissions:", 1)[0],
                          "\n  release:\n    types: [published]\n")
-        for required in ["arch: [amd64]", 'runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]',
+        for required in ["arch: [amd64, arm64]", 'runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]',
                          '[[ ! -s LICENSE ]]', "git merge-base --is-ancestor HEAD origin/main",
                          "tools/release_native.py", "release_native.completed_receipt",
                          "QUALIFIED_IMAGE: ${{ steps.qualify.outputs.image }}",
@@ -22,13 +24,40 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                          "ci-builder-identity.json", "actual==expected",
                          'test "$version" = "$(cat internal/version/VERSION)"',
                          "tools/release_sources.py", 'gh release upload "v$RELEASE"',
-                         "d11b1ec7b83bcd3ff2df0d7a03e0907de9d4eb78"]:
+                         "a5b9a931fa2a61e328d122f6ce1250664b52459e",
+                         "SHA256SUMS-$ARCH", "sources-$ARCH.json", "native-result-$ARCH.json"]:
             self.assertIn(required, workflow)
         for forbidden in ["workflow_dispatch", "pull_request:", "push:", "setup-qemu", "--native-candidate",
                           ":latest", "cancel-in-progress: true", "docker system prune"]:
             self.assertNotIn(forbidden, workflow)
         self.assertLess(workflow.index("tools/release_sources.py"), workflow.index("docker push"))
-        self.assertNotIn('"$image-arm64"', workflow)
+        self.assertIn('"$image-amd64" "$image-arm64"', workflow)
+
+    def test_host_preflight_detects_both_native_platforms_without_creating_resources(self):
+        for architecture, expected in [("aarch64", "linux/arm64"), ("x86_64", "linux/amd64")]:
+            host = {"OSType": "linux", "Architecture": architecture,
+                    "KernelVersion": "observed-kernel", "CgroupVersion": "2"}
+            output = io.StringIO()
+            with patch("sys.argv", ["release_native.py", "--check-host"]), \
+                    patch.object(reference, "docker", return_value=json.dumps(host)) as docker, \
+                    patch.object(reference, "new_artifact") as artifact, \
+                    patch.object(release_native.build_worker, "load") as worker, \
+                    redirect_stdout(output):
+                release_native.main()
+            result = json.loads(output.getvalue())
+            self.assertEqual(result["platform"], expected)
+            self.assertFalse(result["production_qualified"])
+            self.assertFalse(result["native_lifecycle_qualified"])
+            docker.assert_called_once_with(["info", "--format", "{{json .}}"])
+            artifact.assert_not_called()
+            worker.assert_not_called()
+
+    def test_host_preflight_rejects_an_explicit_emulated_target(self):
+        host = {"OSType": "linux", "Architecture": "aarch64"}
+        with patch("sys.argv", ["release_native.py", "--check-host", "--platform", "linux/amd64"]), \
+                patch.object(reference, "docker", return_value=json.dumps(host)), \
+                self.assertRaisesRegex(ValueError, "emulation is not qualification"):
+            release_native.main()
 
     def test_both_targets_require_all_original_native_gates_without_candidate_admission_or_push(self):
         worker = {"native_base_build": "exact-base", "sysbox_build": "exact-sysbox",

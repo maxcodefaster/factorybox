@@ -1,0 +1,54 @@
+--- a/tests/apps/l1/systemd.bats
++++ b/tests/apps/l1/systemd.bats
+@@ -279,33 +279,48 @@
+ @test "systemd /proc exposure" {
+ 
+   # Verify that /proc nodes that we expose for systemd (/proc/kcore,
+   # /proc/kallsyms, /proc/kmsg) do not present a security hole.
+ 
+   syscont=$(docker_run -d --rm --name=sys-cont-systemd \
+                             --hostname=sys-cont-systemd ${CTR_IMG_REPO}/ubuntu-focal-systemd)
+ 
+   wait_for_systemd_init $syscont
+ 
+   docker exec "$syscont" sh -c 'systemctl status | egrep "^ +State:"'
+   [ "$status" -eq 0 ]
+   [[ "$output" =~ "State: running" ]]
+ 
+-  docker exec "$syscont" sh -c "cat /proc/kcore"
+-  [ "$status" -eq 1 ]
+-  [[ "$output" =~ "Permission denied" ]]
++  # The private outer fixture records this before starting Sysbox. A kernel
++  # built without CONFIG_PROC_KCORE has no node to expose or deny. Require
++  # absence in the guest too, rather than skipping the security assertion.
++  case "${FACTORYBOX_HOST_KCORE:-present}" in
++    absent)
++      docker exec "$syscont" sh -c "test ! -e /proc/kcore && test ! -L /proc/kcore"
++      [ "$status" -eq 0 ]
++      docker exec "$syscont" sh -c "cat /proc/kcore"
++      [ "$status" -eq 1 ]
++      [[ "$output" =~ "No such file or directory" ]]
++      ;;
++    present)
++      docker exec "$syscont" sh -c "cat /proc/kcore"
++      [ "$status" -eq 1 ]
++      [[ "$output" =~ "Permission denied" ]]
++      ;;
++    *) return 1 ;;
++  esac
+ 
+   docker exec "$syscont" sh -c "cat /proc/kmsg"
+   [ "$status" -eq 1 ]
+   [[ "$output" =~ "Permission denied" ]]
+ 
+   docker exec "$syscont" sh -c "cat /proc/kallsyms | head -n 10 | cut -d ' ' -f1"
+   [ "$status" -eq 0 ]
+ 
+   for line in "${lines[@]}"; do
+     [[ "$line" == "0000000000000000" ]]
+   done
+ 
+   # Cleanup
+   docker_stop "$syscont"
+   [ "$status" -eq 0 ]
+ }

@@ -8,6 +8,14 @@
   "upstream_assertions_modified": false,
   "latency_comparable_to_previous_fixture": false,
   "files": {
+    "tests/upstream-bats.sh": {
+      "before_sha256": "4a2dbb7753cdff5e9a3d2c57bc208ceca5f4bb5da26f3ea8ccfc35cf78014a9f",
+      "after_sha256": "b3a21beb92a42a9e1011639cadc9faa374aeedbdac7ac661915466b547bba4ff",
+      "patch": "tests/compatibility/systemd-host-proc-profile.patch",
+      "patch_sha256": "8480d2300bbc53c6029455eca5f39cceff8b98d4859b986e0776f0bf16fe1991",
+      "before_file": "factorybox-proc-fixture-inputs-b0ecdf531b6b4c11a3c52c121c6556ba/upstream-bats.sh.before",
+      "reason": "Observe kcore existence and symlink state inside the private Linux fixture before starting Sysbox; overwrite caller-supplied profile values and record the result. The separately declared ordered upstream test patch preserves original read-denial assertions for an existing node and requires strict guest absence plus ENOENT when the kernel lacks it. Preserve all remaining proc assertions, original test titles/skips, capability drops, deadlines, resource limits, global-sysctl observations and exact cleanup. Complete native ARM64 Systemd suite passes with four executed cases and the two unchanged upstream skips in factorybox-bats-f75e703b59ed495bb30b55647e78dc82. No runtime permission, kernel setting or historical result changed."
+    },
     "tests/devx-lifecycle.sh": {
       "before_sha256": "6ec7c7e19105abeb314dcbfeb7b6f089be01d6db07ac2d54b294cc47585253fe",
       "after_sha256": "459c32d0073555b075fe294fa405aa384b6bd62fd9d2acd79c34a7fe4f093fde",

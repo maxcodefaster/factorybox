@@ -318,7 +318,10 @@ def main():
         "scope": "Selected pinned Sysbox Bats file with original assertions in a bounded private "
                  "PID/net/cgroup fixture. A declared missing-helper import repairs Systemd's original "
                  "cgroup admission; lifecycle helpers wait for real listener readiness after the "
-                 "original delay. No test body, PID-file assertion or skip condition is changed. "
+                 "original delay. The declared proc fixture retains the original kcore denial "
+                 "assertions when the host node exists and requires guest absence plus ENOENT "
+                 "when it is already absent before Sysbox. Kmsg denial, zeroed symbols, "
+                 "PID-file assertions and skip conditions are unchanged. "
                  "Module/rawio/boot/time/syslog capabilities removed. "
                  "Selected global kernel sentinels compared before and after. "
                  "Not the complete upstream umbrella matrix or Factorybox lifecycle qualification.",

@@ -1,4 +1,10 @@
-# Local production work
+# Historical production investigation
+
+This log preserves the original attempts, failures and receipts. Its old
+"current", "open" and package-selection statements describe their own dated
+attempts. Do not treat them as the latest release checklist or reopen a fixed
+bug solely because it appears here. Use [first-release-status.md](first-release-status.md)
+for current readiness and [GOAL.md](../GOAL.md) for the agreed release scope.
 
 Status on 2026-10-24: active, **production qualification false**. The accepted
 [goal](../GOAL.md) extends the completed local pilot. Its frozen starting point

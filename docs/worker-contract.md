@@ -2,13 +2,12 @@
 
 The historical [pilot profile](../upstream/amd64-pilot-profile.json) retains only
 its exact results and limits in [pilot-validation.md](pilot-validation.md).
-The current first-release candidate is the independently reproduced 6016/829f
-package described in [the operating procedure](first-release-operations.md).
-It uses the bounded-store Compose profile. Its native, ordinary, pressure and
-operating gates pass; actual-provider acceptance, historical cleanup attribution
-and final qualification remain open. Older named package experiments below are
-development history and do not qualify or describe defects in the current
-package. Production qualification remains false.
+The [current readiness checklist](first-release-status.md) is the single list of
+open release work. The older 6016/829f package and its
+[operating procedure](first-release-operations.md) retain their own evidence;
+they do not qualify the latest binaries. Older named package experiments below
+are development history and do not establish defects in the current package.
+Production qualification remains false.
 
 The worker is a privileged administrative service for one
 customer or trust domain. Consumers are separate processes inside its system
@@ -25,10 +24,13 @@ not promote a new production candidate or rewrite the historical AMD64 pilot.
 `factorybox doctor` checks the platform tuple; it does not establish component
 or lifecycle qualification. Cross-compilation, another filesystem, a different
 ARM64 kernel/page size or a successful image build does not qualify another host.
-The local ARM64 tuple has complete Factory/worker functional evidence, but its
-missing host `/proc/kcore` still fails the unchanged upstream Systemd proc-exposure
-assertion. That required failure blocks release/production qualification; tuple
-admission and `doctor` must not be interpreted as overriding it.
+The local ARM64 tuple has Factory/worker functional evidence. The declared
+Systemd proc fixture now checks the host's actual kcore capability: original
+read-denial assertions for an existing node, strict guest absence and a failed
+ENOENT read for an absent node. It keeps kmsg denial, zeroed kallsyms and the
+original skip set on both architectures. This removes a test's kernel-config
+assumption, not the requirement to pass all native gates on each release image.
+Tuple admission and `doctor` do not override those gates.
 
 The image runs `factorybox worker` as root PID 1 in a private cgroup namespace,
 with at most 3 CPUs and 3 GiB memory. It needs privileged container access to

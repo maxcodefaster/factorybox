@@ -1,6 +1,9 @@
 # First local release operating procedure
 
-This is the candidate procedure for the scope in [GOAL.md](../GOAL.md).
+This is the historical 6016/829f package procedure for the scope in
+[GOAL.md](../GOAL.md). The [readiness checklist](first-release-status.md) tracks
+the latest integration and release gaps. "Current package" below refers only
+to the package named in this procedure, not to the latest repository build.
 Production qualification remains false until the final profile binds all
 required passing evidence. The older pilot profile does not qualify this
 candidate. The current independently reproduced package is
