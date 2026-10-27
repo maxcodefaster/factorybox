@@ -17,6 +17,15 @@ import (
 // record. The real parent must still reap its original own-namespace PID and
 // exit status independently after a fork and a fork of that fork.
 func TestCaptureNestedZombieNamespaceNative(t *testing.T) {
+	testCaptureNestedZombieNamespace(t, "make-nested-zombie", 47, "nested-zombie.json")
+}
+
+func TestCaptureNestedZombieHighExitNamespaceNative(t *testing.T) {
+	testCaptureNestedZombieNamespace(t, "make-nested-zombie-high-exit", 201, "nested-zombie-high-exit.json")
+}
+
+func testCaptureNestedZombieNamespace(t *testing.T, request string, exitStatus int, output string) {
+	t.Helper()
 	if os.Getenv("FACTORYBOX_NATIVE_NAMESPACES") != "1" {
 		t.Skip("requires the bounded native namespace fixture")
 	}
@@ -67,7 +76,7 @@ func TestCaptureNestedZombieNamespaceNative(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	created, err := readCaptureActor(source.Runtime.PID, "make-nested-zombie")
+	created, err := readCaptureActor(source.Runtime.PID, request)
 	if err != nil || created.NestedPID <= 1 || created.TimeMode != "nested-zombie" ||
 		created.BallastSHA != original.BallastSHA || created.BallastBytes != 32<<20 {
 		t.Fatal("nested PID init was not created with original RAM intact", err)
@@ -101,7 +110,7 @@ func TestCaptureNestedZombieNamespaceNative(t *testing.T) {
 	}
 	reapedSource, err := readCaptureActorAt(source.Runtime.PID, "/zombie-state", "reap-zombie")
 	if err != nil || !reapedSource.ZombieReaped || reapedSource.ZombieWaitable ||
-		reapedSource.ZombiePID != before.ZombiePID || reapedSource.ZombieExit != 47 {
+		reapedSource.ZombiePID != before.ZombiePID || reapedSource.ZombieExit != exitStatus {
 		t.Fatal("source cannot reap its original own-namespace PID and status", err)
 	}
 	stillWaiting, err := readCaptureActorAt(branch.Runtime.PID, "/zombie-state", "get")
@@ -126,19 +135,19 @@ func TestCaptureNestedZombieNamespaceNative(t *testing.T) {
 		}
 		reaped, err := readCaptureActorAt(view.Runtime.PID, "/zombie-state", "reap-zombie")
 		if err != nil || !reaped.ZombieReaped || reaped.ZombieWaitable ||
-			reaped.ZombiePID != before.ZombiePID || reaped.ZombieExit != 47 ||
+			reaped.ZombiePID != before.ZombiePID || reaped.ZombieExit != exitStatus ||
 			reaped.BallastSHA != before.BallastSHA || !reflect.DeepEqual(reaped.Payload, before.Payload) {
 			t.Fatal("restored real parent cannot independently reap its original child", err)
 		}
 	}
 	result, err := json.Marshal(map[string]any{
-		"passed": true, "original_child_pid": before.ZombiePID, "exit_status": 47,
+		"passed": true, "original_child_pid": before.ZombiePID, "exit_status": exitStatus,
 		"source_and_branches_reaped_independently": true, "fork_of_fork": true,
 		"original_deleted_before_descendant": true, "private_ram_per_parent": 32 << 20,
 		"scope": "One nested PID namespace, retained exited child, original parent wait PID/status, " +
 			"complete parent payload and independent reaping across checkpoint/fork/recapture/descendant.",
 	})
-	if err != nil || os.WriteFile("/output/nested-zombie.json", append(result, '\n'), 0600) != nil {
+	if err != nil || os.WriteFile("/output/"+output, append(result, '\n'), 0600) != nil {
 		t.Fatal("save complete native nested-zombie proof", err)
 	}
 }

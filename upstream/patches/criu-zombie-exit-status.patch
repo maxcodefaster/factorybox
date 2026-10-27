@@ -1,0 +1,21 @@
+From: Andrei Vagin <avagin@google.com>
+Subject: [PATCH] restore: preserve the complete eight-bit zombie exit status
+
+Backport of castai/criu e956db75f7a60c883daf9440a3ffed909515d2f1
+("restore: Fix exit code truncation for zombies").
+The wait-status exit field has eight bits. Retain the high bit when the
+restored zombie exits. Signal handling and every upstream assertion remain
+unchanged. This modification retains the CRIU source file's GPL-2.0 terms.
+
+Signed-off-by: Andrei Vagin <avagin@google.com>
+--- a/criu/cr-restore.c
++++ b/criu/cr-restore.c
+@@ -975,7 +975,7 @@ static int restore_one_zombie(CoreEntry *core)
+ 		exit_code = 0;
+ 	}
+ 
+-	exit((exit_code >> 8) & 0x7f);
++	exit((exit_code >> 8) & 0xff);
+ 
+ 	/* never reached */
+ 	BUG_ON(1);

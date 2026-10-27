@@ -103,6 +103,14 @@ current runtime defects.
 
 ## Remaining first-release checks
 
+- [ ] Qualify the subsequent CRIU zombie exit-status correction on an ordinary
+  worker and independent builds. The controlled native function regression
+  confirms that status 201 was truncated to 73 and that the ordered upstream
+  fix preserves all 256 normal exit statuses. The original complete status-47
+  case remains, with a separate status-201 lifecycle case added through a
+  declared patch to new native fixture copies. The component builds with all
+  1,030 upstream test files unchanged. Full image and lifecycle results are
+  still pending; the 23-gate receipts above apply to their earlier exact images.
 - [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
   component identities, independent builds and receipts in the final profile.
   The exact `0.1.0` AMD64 matrix above is complete. It does not qualify ARM64.

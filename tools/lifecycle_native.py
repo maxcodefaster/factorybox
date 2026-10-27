@@ -36,7 +36,34 @@ def candidate_compile_options(platform, kernel):
     return build_config.candidate_compile_options(platform, kernel)
 
 
-def select_adapter_fixture(archive):
+def prepare_zombie_actor(context, archive):
+    """Extend only a fresh native copy of the declared original actor."""
+    declaration = json.loads((ROOT / "tests/compatibility/criu-zombie-high-exit-actor.json").read_text())
+    if (context.resolve() != archive.resolve() / "context" or
+            declaration["file"] != "internal/lifecycle/capture_native_linux_test.go" or
+            declaration["patch"] != "tests/compatibility/criu-zombie-high-exit-actor.patch" or
+            declaration["assertions_preserved"] is not True or declaration["upstream_assertions_modified"] is not False):
+        raise ValueError("high-exit actor requires its exact fresh context and assertion declaration")
+    original, target = ROOT / declaration["file"], context / declaration["file"]
+    patch = ROOT / declaration["patch"]
+    if (target.is_symlink() or reference.sha(original) != declaration["before_sha256"] or
+            reference.sha(target) != declaration["before_sha256"] or
+            reference.sha(patch) != declaration["patch_sha256"]):
+        raise ValueError("high-exit actor original or ordered patch changed")
+    shutil.copyfile(target, archive / "zombie-high-exit-actor.before.go")
+    saved = archive / "zombie-high-exit-actor.patch"
+    shutil.copyfile(patch, saved)
+    completed = subprocess.run(["patch", "--batch", "--forward", "--fuzz=0", "-p1", "-i", str(saved.resolve())],
+                               cwd=context, capture_output=True, text=True, timeout=15)
+    (archive / "zombie-high-exit-actor.log").write_text(completed.stdout + completed.stderr)
+    completed.check_returncode()
+    if reference.sha(target) != declaration["after_sha256"] or reference.sha(original) != declaration["before_sha256"]:
+        raise ValueError("high-exit actor differs from its declared result or changed the original")
+    reference_lifecycle.write_json(archive / "zombie-high-exit-actor.json", declaration)
+    return declaration
+
+
+def select_adapter_fixture(archive, *, include_high_exit=False):
     """Keep all original adapter cases in their original unbounded fixture.
 
     The added bounded-device case has its own real ext4 worker fixture in
@@ -52,6 +79,12 @@ def select_adapter_fixture(archive):
     pattern = "^(" + "|".join(ADAPTER_TESTS) + ")$"
     after = before.replace(original,
                            ("  /sysboxcapture.test -test.v -test.timeout=30s -test.run='" + pattern + "'\n").encode())
+    if include_high_exit:
+        previous = b"^TestCapture(Namespaces|ChildrenNamespace|NestedZombieNamespace)Native$"
+        extended = b"^TestCapture(Namespaces|ChildrenNamespace|NestedZombie(HighExit)?Namespace)Native$"
+        if after.count(previous) != 1:
+            raise ValueError("original complete namespace-suite selection changed")
+        after = after.replace(previous, extended)
     (archive / "lifecycle-native.before.sh").write_bytes(before)
     patch = archive / "adapter-fixture-selection.patch"
     patch.write_text(''.join(difflib.unified_diff(before.decode().splitlines(True), after.decode().splitlines(True),
@@ -62,6 +95,7 @@ def select_adapter_fixture(archive):
                    "after_sha256": reference.sha(path), "patch_sha256": reference.sha(patch),
                    "original_adapter_tests": list(ADAPTER_TESTS), "assertions_modified": False,
                    "zero_skip_requirement_unchanged": True,
+                   "additional_namespace_tests": ["TestCaptureNestedZombieHighExitNamespaceNative"] if include_high_exit else [],
                    "separate_required_case": "TestFilesystemBaseDeviceRecoveryNative",
                    "separate_required_fixture": "tools/base_recovery_native.py"}
     reference_lifecycle.write_json(archive / "adapter-fixture-selection.json", declaration)
@@ -274,6 +308,8 @@ def main():
             shutil.copytree(ROOT / directory, context / directory)
         for module_file in ["go.mod", "go.sum"]:
             shutil.copyfile(ROOT / module_file, context / module_file)
+        if options.suite == "namespaces":
+            result["zombie_actor_extension"] = prepare_zombie_actor(context, archive)
         result["source_context"] = upstream_unit.context_manifest(context)
         env = dict(os.environ, GOOS="linux", GOARCH=build_config.architecture(target), CGO_ENABLED="0")
         binary = archive / "lifecycle.test"
@@ -290,7 +326,7 @@ def main():
         for script in ["lifecycle-native.sh", "private-cgroup-delegation.sh"]:
             shutil.copyfile(ROOT / "tests" / script, archive / script)
         if capture_mode:
-            result["adapter_fixture_selection"] = select_adapter_fixture(archive)
+            result["adapter_fixture_selection"] = select_adapter_fixture(archive, include_high_exit=options.suite == "namespaces")
         shutil.copyfile(ROOT / "tests/capture-archive.sh", archive / "capture-archive.sh")
         input_files = [binary, cli, archive / "lifecycle-native.sh",
                        archive / "private-cgroup-delegation.sh"]
@@ -427,7 +463,7 @@ def main():
         result["passed"] = (
             done.returncode == 0 and not state["OOMKilled"] and result["inputs_unchanged"] and
             result["source_context_unchanged"] and
-            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (6 if options.suite == "admission" else 3 if options.suite == "namespaces" else 1) if capture_mode else
+            result["passed_tests"] == (EXPECTED_ADAPTER_TESTS + (6 if options.suite == "admission" else 4 if options.suite == "namespaces" else 1) if capture_mode else
                                       1 if options.test or options.suite == "guard" else EXPECTED_TESTS) and
             (options.suite != "guard" or result["passed_subtests"] == 12) and
             (options.suite not in ["capture", "base"] or result["passed_subtests"] == EXPECTED_CAPTURE_SUBTESTS + EXPECTED_ADAPTER_SUBTESTS) and

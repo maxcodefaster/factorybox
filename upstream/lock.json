@@ -13,7 +13,8 @@
         "upstream/patches/criu-detached-proc-self-fd.patch": "3b0b08d2dfaef24dbb6ab1604e4b2d410aebcad8261d533a7d53c7a01541766d",
         "upstream/patches/criu-nested-shared-proc.patch": "256cb9b012c71f52f3053de3bd036f0e5a3ce10e86e620910ac161517e6c22df",
         "upstream/patches/criu-nested-zombie-pid.patch": "46272d2035c6a9aa7ebbc30bf645203d7a28fa4331a664ace6da0043a9ca12b9",
-        "upstream/patches/criu-cgroup-v2-auxiliary-limits.patch": "568004206b39baa2bce3d5223e41c45fab2aff136a9540159b97c87aaa2c1025"
+        "upstream/patches/criu-cgroup-v2-auxiliary-limits.patch": "568004206b39baa2bce3d5223e41c45fab2aff136a9540159b97c87aaa2c1025",
+        "upstream/patches/criu-zombie-exit-status.patch": "a54774f2840e41aeec5cde88fef35831fdcd6455d05847bd7aa9e1ef8c6b9b20"
       },
       "overlays": {},
       "patches": [
@@ -26,7 +27,8 @@
         "upstream/patches/criu-detached-proc-self-fd.patch",
         "upstream/patches/criu-nested-shared-proc.patch",
         "upstream/patches/criu-nested-zombie-pid.patch",
-        "upstream/patches/criu-cgroup-v2-auxiliary-limits.patch"
+        "upstream/patches/criu-cgroup-v2-auxiliary-limits.patch",
+        "upstream/patches/criu-zombie-exit-status.patch"
       ],
       "prefix": "criu-086df34a2da27125fa05e66ba4d6b63cbb220b2e",
       "prepared_files_sha256": {
@@ -423,7 +425,7 @@
         "criu/cr-dedup.c": "364f319fbe12edc0e8b6c0167a0f455f8db566e94e7716d989327da78c726e35",
         "criu/cr-dump.c": "cfaca23f52d813d0787e257a2047a155529c413f9eba4def0f91c20056237edc",
         "criu/cr-errno.c": "bc257bb96c11610edb62b921d8211a116840d99f566214a49d4c7b7e061a74a8",
-        "criu/cr-restore.c": "efa8b71865bbbc267813e136fde641ae2725bf2f5b7295b6258ea158555ebfcc",
+        "criu/cr-restore.c": "b7e18d003b480db9794d179a2cbcdf746caf2d16020bc92677c4883ea4930873",
         "criu/cr-service.c": "a73bfe48b97c5afe14d07f5e853dd609338ffa6fd120c0aab3179d29de223ef6",
         "criu/crtools.c": "59a306d3f36f7a5a412331406825f6c01abfbdae171e45e79382f33e3d60f57f",
         "criu/eventfd.c": "cc2b5bb98888b54bcb799537324783c73d97cb7b010ee503dd107e520bd3ce80",
