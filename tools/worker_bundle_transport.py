@@ -11,9 +11,14 @@ import tarfile
 import uuid
 
 import reference
+import build_config
 
 PACKAGE = 'factorybox-worker-linux-amd64.tar'
 MAXIMUM = 512 << 20
+
+
+def package_name(result):
+    return 'factorybox-worker-linux-' + build_config.architecture(result['platform']) + '.tar'
 
 
 class Fingerprint:
@@ -53,7 +58,7 @@ def transport(bundle, output=None):
 
 
 def verify(directory, result):
-    pointer = directory / (PACKAGE + '.bundle-retention.json')
+    pointer = directory / (package_name(result) + '.bundle-retention.json')
     if pointer.resolve() != pointer or pointer.is_symlink():
         raise ValueError('worker bundle transport receipt is redirected')
     saved = json.loads(pointer.read_text())
@@ -151,7 +156,7 @@ def retire(build, proof):
                'reconstruct': ['mise', 'exec', '--', 'python3', 'tools/worker_bundle_transport.py', '--restore-build', build,
                                '--output', '<new-output-path>'],
                'scope': 'Only the redundant encoded transport. Every original raw tar byte is reconstructed from the unchanged runnable bundle. Keep original build, source, encoding receipt, all component executables and Docker image directly usable.'}
-    pointer = directory / (PACKAGE + '.bundle-retention.json')
+    pointer = directory / (package_name(result) + '.bundle-retention.json')
     with pointer.open('x') as stream:
         json.dump(receipt, stream, indent=2); stream.write('\n')
         stream.flush()
@@ -176,13 +181,45 @@ def retire(build, proof):
             'receipt_sha256': reference.sha(pointer)}
 
 
+def bounded_replacement(name):
+    """A complete delivered-CLI retirement proof, not platform qualification."""
+    import build_worker
+    if not re.fullmatch(r'factorybox-checkpoint-retirement-[0-9a-f]{32}', name):
+        raise ValueError('requires an exact complete bounded retirement proof')
+    path = reference.ROOT / 'artifacts' / name / 'result.json'
+    if path.resolve() != path or path.is_symlink():
+        raise ValueError('replacement proof is redirected')
+    proof = json.loads(path.read_text())
+    if (any(proof.get(key) is not True for key in ['passed', 'cleanup', 'inputs_unchanged']) or
+            proof.get('suite') != 'retirement' or proof.get('passed_tests') != 8 or proof.get('exit_code') != 0 or
+            proof.get('global_sysctls_before') != proof.get('global_sysctls_after') or
+            not isinstance(proof.get('global_sysctls_before'), dict)):
+        raise ValueError('bounded replacement did not complete all eight delivered CLI cases')
+    _, worker = build_worker.load(proof['worker_build'])
+    core = lambda rows: {key: value for key, value in rows.items() if not key.endswith('_test.go')}
+    if (proof.get('worker_image_id') != worker['image_id'] or proof.get('platform') != worker['platform'] or
+            core(proof.get('source_context', {})) != core(worker['source_context']) or
+            set(proof.get('proof_sha256', {})) != {'retirement', 'retirement-base', 'retirement-base-actor', 'timer-state'}):
+        raise ValueError('bounded replacement differs from its delivered worker or complete proof inventory')
+    for label, digest in proof['proof_sha256'].items():
+        output = path.parent / 'output' / (label + '.json')
+        if output.is_symlink() or reference.sha(output) != digest or json.loads(output.read_text()).get('passed') is not True:
+            raise ValueError('bounded replacement proof changed: ' + label)
+    if (reference.sha(path.parent / 'runner.py') != proof.get('runner_sha256') or
+            reference.sha(path.parent / 'setup.sh') != proof.get('setup_sha256')):
+        raise ValueError('bounded replacement runner or fixture changed')
+    return path, proof
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument('--retire-build', action='append')
     action.add_argument('--retire-legacy-archive', action='append',type=Path)
     action.add_argument('--restore-build')
-    parser.add_argument('--replacement-proof')
+    replacement = parser.add_mutually_exclusive_group()
+    replacement.add_argument('--replacement-proof')
+    replacement.add_argument('--bounded-retirement-proof')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
     import build_worker
@@ -198,12 +235,15 @@ def main():
             raise ValueError('restored transport differs')
         print(json.dumps(actual))
         return
-    if not re.fullmatch(r'factorybox-shared-source-[0-9a-f]{32}', args.replacement_proof or ''):
-        raise ValueError('requires one exact delivered shared-source replacement proof')
-    path = reference.ROOT / 'artifacts' / args.replacement_proof / 'result.json'
-    proof = json.loads(path.read_text())
-    if (path.resolve() != path or any(proof.get(key) is not True for key in ['passed','cleanup','exact_packaged_cli','inputs_unchanged']) or len(proof['phases']) < 3):
-        raise ValueError('replacement proof did not complete the exact delivered image')
+    if args.bounded_retirement_proof:
+        path, proof = bounded_replacement(args.bounded_retirement_proof)
+    else:
+        if not re.fullmatch(r'factorybox-shared-source-[0-9a-f]{32}', args.replacement_proof or ''):
+            raise ValueError('requires one exact delivered shared-source replacement proof')
+        path = reference.ROOT / 'artifacts' / args.replacement_proof / 'result.json'
+        proof = json.loads(path.read_text())
+        if (path.resolve() != path or any(proof.get(key) is not True for key in ['passed','cleanup','exact_packaged_cli','inputs_unchanged']) or len(proof['phases']) < 3):
+            raise ValueError('replacement proof did not complete the exact delivered image')
     if reference.docker(['ps','--filter','label=com.factorybox.run','--format','{{.ID}}']):
         raise ValueError('worker transport maintenance requires closed native workloads')
     reference.artifact_storage.require_capacity(reference.ROOT, run_reserve=0)
