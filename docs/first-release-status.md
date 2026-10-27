@@ -60,16 +60,26 @@ current runtime defects.
   and package `da9b6b511e5a077bfa7a80586b3202ebbe89b267809790ec8eb30e6593a2d80e`.
   All seven local portable gates pass with 409 Python tests. The original failed
   independent build `factorybox-build-worker-acc4fdca454e480f9f048904de9bc50a`
-  stays failed and preserved. These new images still need native qualification.
+  stays failed and preserved.
+- The ordinary `0.1.0` AMD64 image above now passes all 23 native release gates
+  on source `9a17ba720d3b03f0c2fddc785ae2190542fb3807`, with executable
+  `d7734394fb92d333c3e08a11dbc8e24da2bc3e6b50ac7b940fe69a5ee34e8247`
+  and the same reviewed Factory pin. The exact receipt is
+  `factorybox-release-native-dcb1e1c8db0a4f4ebf8f05065848bbc6`, SHA-256
+  `1e804b500d42f8095ed7443d4427c041a22e0e6c4752460ca79ddf0187dfdfe9`.
+  Independent compilation also reproduces Sysbox and CRIU. Every native child
+  confirms cleanup; the temporary builder is removed and all nine retained
+  volume identities remain unchanged. The earlier headroom-refused attempt
+  stays failed. The [AMD64 report](native-amd64-0.1.0.md) records identities,
+  limitations, resource handling and evidence locations.
 
 ## Remaining first-release checks
 
-- [ ] Complete the `0.1.0` native matrix on both architectures and bind their sources,
+- [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
   component identities, independent builds and receipts in the final profile.
-  The exact `0.1.0-rc.1` AMD64 matrix above is complete. Its image identity does
-  not qualify the new `0.1.0` image. Older AMD64 receipts and
-  local ARM64 integration results do not replace these image-specific checks or
-  final profile binding. Each architecture needs an existing matching Linux
+  The exact `0.1.0` AMD64 matrix above is complete. It does not qualify ARM64.
+  Older local ARM64 integration results do not replace the image-specific
+  checks or final profile binding. Each architecture needs an existing matching Linux
   runner with an admitted kernel/storage tuple. This session currently has only
   the AMD64 Docker host; GitHub has no registered native release runners.
 - [ ] Resolve the historical EBUSY cleanup attribution. Later controls passed;
@@ -85,8 +95,11 @@ current runtime defects.
   guarantee availability. No failed case is retried automatically, and no model,
   identity or cost class is changed. The probe passes none of the eight cases.
 - [ ] Review and select the final qualified profile before any activation or
-  publication. Stable release preparation is authorized; no release or image has
-  been published and no installation has been activated.
+  publication. Finish the upstream review and exact image's distribution/source
+  obligations described in [LICENSING.md](../LICENSING.md). The component source
+  inventory is verified; it does not cover every operating-system package's
+  distribution obligations. Stable release preparation is authorized; no release
+  or image has been published and no installation has been activated.
 
 The 24-hour soak, 100-run series, additional optimization and automatic
 retention remain deferred. Cross-node migration and arbitrary Unix/Linux hosts
