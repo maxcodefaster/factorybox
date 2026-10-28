@@ -6,6 +6,43 @@ reports below and in [production-progress.md](production-progress.md) retain
 their original failures and package-specific results; they are not a list of
 current runtime defects.
 
+## Local 0.1.0-rc.2 ARM64 candidate
+
+The local ARM64 candidate now passes all 23 native release groups, including
+planned/abrupt worker replacement and both Factory source/reserve consumers.
+The exact result is `factorybox-release-native-27fe6c53898047deb9c81f2a346b807a`,
+SHA-256 `d4beae15f09d14c691832deeb3897a8b38fc2ecd98eedfaf88d85bc8bedeb822`.
+Cleanup is confirmed. The reviewed Factory consumer is
+`094a84ca63befa5e6ecbbc14312fa5683b790a5b`, now contained in Factory main.
+The original upstream assertions and skip sets remain unchanged.
+
+- Image: `sha256:29e4a23c66ab2889b33cbf936f4a51872a14d2be5bc8939b2e7d37f1f2816ded`
+- CLI: `29a052d66e63471e0d0c7f92cfd60dff15cdb53bcd66df2f3e6f195e6605e8cd`
+- Worker package: `9afac2a513542aea8fc8f5d1e4bf17b55e0ba13768ded0c480db2afbc41e1cbf`
+
+Independent fresh Sysbox and complete CRIU builds reproduce every executable,
+and workers `5328bac414c949dd9bd154fc428d0789` and
+`51ec7abc08af40adac669837530e8c23` reproduce the complete package, image and layers.
+The first full comparison remains failed: its identical executables produced
+different packages because the bundled recipe contained local component-run
+names. Fix `1bc8a64` keeps those names only in external receipts and pins the
+bundled base by digest. The regression fails before the fix and passes after it.
+The earlier image's successful native matrix remains separately bound to that
+image; it was not relabelled as qualification of these corrected bytes.
+
+Matching sources are retained in
+`factorybox-release-sources-5ce5cdd6b64b4ed6912dad1d26c8f8bf`.
+Release CI now requires the same independent rebuild before native qualification.
+Its actual shell step also passes locally with only the owned builder and log
+directory substituted, in
+`factorybox-release-reproduction-workflow-73e99fafb8fa4bfa85e7b65f486eaa7d`.
+This is not a published-image, full ADAC UI, or external-provider acceptance
+claim. AMD64 candidate qualification, final source/distribution clearance and
+the other checks below remain open. No Factorybox candidate has been published
+through the release pipeline or activated as a stable installation.
+
+## Corrected 0.1.0 AMD64 baseline
+
 The ordinary-image composition gap reproduced on October 28 is corrected.
 Source `1284d7357d070a4fc46ba33cfe14937ae8ae480a`, ordinary image
 `sha256:aa6d803a56c8ea346823681e6b90e3f4cca55699ac7b8960e5bb288bc5271121`
@@ -223,13 +260,14 @@ all seven portable gates, including 416 Python tests, and both GitHub CI targets
   failed result. Independent component/image builds and the full native
   matrix now pass on this exact changed composition. Older results above keep
   their historical source/image bindings; they were not relabelled.
-- [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
-  component identities, independent builds and receipts in the final profile.
-  The corrected `0.1.0` AMD64 verification is complete. It does not qualify ARM64.
-  Older local ARM64 integration results do not replace the image-specific
-  checks or final profile binding. Each architecture needs an existing matching Linux
-  runner with an admitted kernel/storage tuple. This session currently has only
-  the AMD64 Docker host; GitHub has no registered native release runners.
+- [x] Complete the local `0.1.0-rc.2` ARM64 native matrix with independent
+  component/package/image reproduction and matching sources, as bound above.
+- [ ] Qualify the final AMD64 candidate and bind both release architectures'
+  sources, component identities, independent builds and receipts in the final
+  profile. The corrected `0.1.0` AMD64 baseline does not qualify a new candidate
+  image. Each native release job needs an existing matching Linux runner with
+  an admitted kernel/storage tuple; GitHub has no registered native release
+  runners. Hosted portable CI on both architectures does not replace those jobs.
 - [ ] Resolve the historical EBUSY cleanup attribution. Later controls passed;
   the latest image has not been shown to reproduce it. The original holder and
   whether it belonged to the fixture or runtime remain unestablished. Do not
