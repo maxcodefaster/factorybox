@@ -291,6 +291,14 @@ terms. Before pushing the image, the workflow attaches the matching component
 source archive, CLI, worker package, checksums and native gate receipt to the
 release. `tools/release_sources.py` binds the exact prepared sources, patches,
 original upstream archives and build recipes to the tested worker result.
+`tools/release_cli_sources.py` separately reads the delivered CLI's Go build
+information, downloads its exact linked modules into an owned cache and binds
+each ZIP to the embedded checksum. Go's own `mod verify` rechecks the ZIPs and
+directories. The companion retains their original named notices and the matching
+Go source tree, then independently verifies every archive member. The release
+job attaches this architecture-specific archive, inventory and receipt before
+pushing the image. This is CLI coverage, not clearance for Sysbox's linkage or
+the inherited image.
 See [LICENSING.md](../LICENSING.md) for the separate operating-system package obligations.
 The workflow pins the Factory
 checkout to the exact reviewed consumer commit. If that repository is private,
