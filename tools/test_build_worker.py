@@ -281,6 +281,48 @@ class WorkerBuildInputs(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "redirected"):
             build_worker.image_context_bytes(context)
 
+    def test_worker_bundle_recipe_uses_content_identities_not_component_run_names(self):
+        context = self.artifact / "image-context"
+        recipe = {
+            **json.loads((self.bundle / "build.json").read_text()),
+            "base_image": "first-native-base@sha256:" + "a" * 64,
+            "sysbox_build": "factorybox-build-sysbox-" + "1" * 32,
+            "criu_build": "factorybox-build-criu-retained-" + "2" * 32,
+        }
+        build_worker.write_build_recipe(self.bundle, recipe)
+        first_package = worker_bundle_transport.transport(self.bundle)
+        first_context = build_worker.image_context_bytes(context)
+        independent = {
+            **recipe,
+            "base_image": "independent-native-base@sha256:" + "a" * 64,
+            "sysbox_build": "factorybox-build-sysbox-" + "3" * 32,
+            "criu_build": "factorybox-build-criu-retained-" + "4" * 32,
+        }
+        build_worker.write_build_recipe(self.bundle, independent)
+        self.assertEqual(worker_bundle_transport.transport(self.bundle), first_package)
+        self.assertEqual(build_worker.image_context_bytes(context), first_context)
+        delivered = json.loads((self.bundle / "build.json").read_text())
+        self.assertNotIn("sysbox_build", delivered)
+        self.assertNotIn("criu_build", delivered)
+        self.assertEqual(delivered["base_image"], "sha256:" + "a" * 64)
+        # Local receipts retain their precise component-run references.
+        self.assertEqual(independent["sysbox_build"], "factorybox-build-sysbox-" + "3" * 32)
+        self.assertEqual(independent["criu_build"], "factorybox-build-criu-retained-" + "4" * 32)
+        for changed in [
+                {"base_image": "independent-native-base@sha256:" + "b" * 64},
+                {"factorybox_sha256": "f" * 64},
+                {"source_lock_sha256": "f" * 64},
+                {"binary_sha256": {**recipe["binary_sha256"], "criu": "f" * 64}}]:
+            with self.subTest(changed=changed):
+                build_worker.write_build_recipe(self.bundle, {**independent, **changed})
+                self.assertNotEqual(worker_bundle_transport.transport(self.bundle), first_package)
+                self.assertNotEqual(build_worker.image_context_bytes(context), first_context)
+
+    def test_worker_bundle_recipe_refuses_unpinned_base_image_metadata(self):
+        for value in ["unversioned:latest", "owned-base@unconfirmed", "sha256:" + "g" * 64]:
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "immutable image digest"):
+                build_worker.write_build_recipe(self.bundle, {"base_image": value})
+
     def test_reserved_image_root_cannot_replace_the_generated_parent(self):
         context = self.artifact / "image-context"
         (context / "rootfs").mkdir()

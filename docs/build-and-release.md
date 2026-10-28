@@ -272,6 +272,14 @@ Docker to timestamp that missing parent at build time, producing different
 image layers from identical packages. Independent no-cache builds must match
 the package, image and every layer; a matching package alone is insufficient.
 
+The bundled build recipe identifies components by their binary, source-lock and
+patch hashes, and the base image by its immutable digest. Local Sysbox and CRIU
+run-directory names stay in the completed build receipt, outside the package.
+Rebuilding identical components under new local names must reproduce the entire
+package and image, not just their executables. Keep those independent component
+receipts with the matching source archive; do not rewrite completed inputs to
+make their local names match.
+
 Original Factorybox code uses Apache-2.0. The worker package includes the exact
 root `LICENSE`, `NOTICE`, `LICENSING.md` and pinned upstream notices, with their
 hashes. CRIU keeps its GPL-2.0-only terms and its library keeps its original

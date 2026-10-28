@@ -118,6 +118,19 @@ def copy_distribution_notices(root, bundle):
     return hashes
 
 
+def write_build_recipe(bundle, recipe):
+    # Local artifact names belong in the completed build receipt, not in the
+    # distributed bytes. Independently compiled identical components keep the
+    # same binary/source hashes but necessarily have different run directories.
+    delivered = {key: value for key, value in recipe.items()
+                 if key not in {"sysbox_build", "criu_build"}}
+    digest = delivered["base_image"].rsplit("@", 1)[-1]
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise ValueError("bundled worker base requires an immutable image digest")
+    delivered["base_image"] = digest
+    reference_lifecycle.write_json(Path(bundle) / "build.json", delivered)
+
+
 def load(name):
     if not name.startswith("factorybox-build-worker-") or Path(name).name != name:
         raise ValueError("expected one exact completed worker build")
@@ -374,7 +387,7 @@ def main():
             result["sysbox_shm_reexec"] = {"patch_sha256": reference.sha(patch),
                                             "source_sha256": reference.sha(proof)}
             recipe["sysbox_shm_reexec"] = result["sysbox_shm_reexec"]
-        reference_lifecycle.write_json(bundle / "build.json", recipe)
+        write_build_recipe(bundle, recipe)
         result["bundle_sha256"] = {str(p.relative_to(bundle)): reference.sha(p) for p in sorted(bundle.rglob("*")) if p.is_file()}
         package = artifact / f"factorybox-worker-linux-{architecture}.tar"
         import worker_bundle_transport
