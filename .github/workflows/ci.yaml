@@ -59,6 +59,10 @@ jobs:
           build_cli.require_native_target('linux/' + os.environ['ARCH'])
           print(artifact_storage.require_capacity(reference.ROOT))
           PY
+          mkdir -p artifacts
+          mise exec -- python3 tools/release_native.py --check-host --platform "linux/$ARCH" \
+            > artifacts/ci-host-preflight.json
+          cat artifacts/ci-host-preflight.json
       - name: Run Go, Python and immutable reference checks
         run: |
           set -euo pipefail
@@ -83,6 +87,7 @@ jobs:
           name: factorybox-linux-${{ matrix.arch }}-${{ github.run_attempt }}
           path: |
             artifacts/ci-checks.jsonl
+            artifacts/ci-host-preflight.json
             artifacts/factorybox-checks-*/result.json
             artifacts/factorybox-checks-*/*.stdout
             artifacts/factorybox-checks-*/*.stderr
