@@ -297,8 +297,17 @@ each ZIP to the embedded checksum. Go's own `mod verify` rechecks the ZIPs and
 directories. The companion retains their original named notices and the matching
 Go source tree, then independently verifies every archive member. The release
 job attaches this architecture-specific archive, inventory and receipt before
-pushing the image. This is CLI coverage, not clearance for Sysbox's linkage or
-the inherited image.
+pushing the image.
+`tools/release_sysbox_sources.py` supplies a separate companion for all three
+delivered Sysbox executables. It checks their native target, compiler and exact
+remote module checksums, binds local replacements to the frozen build context,
+and preserves the pristine runc source used by fs and mgr. Original notices and
+the pinned compiler's source tree accompany the verified archive. A nonstandard
+notice location needs an exact module identity and file hashes in
+`upstream/sysbox-go-notices.json`; it is not a missing-license exception.
+The release attaches that architecture-specific archive, inventory and receipt
+before pushing the image. These companions cover Go inputs, not native-linker,
+operating-system or inherited-image distribution obligations.
 See [LICENSING.md](../LICENSING.md) for the separate operating-system package obligations.
 The workflow pins the Factory
 checkout to the exact reviewed consumer commit. If that repository is private,

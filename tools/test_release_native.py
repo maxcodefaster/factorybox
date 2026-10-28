@@ -26,6 +26,8 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                          "tools/release_sources.py", 'gh release upload "v$RELEASE"',
                          "tools/release_cli_sources.py", "cli-dependencies-$ARCH.json",
                          "cli-source-result-$ARCH.json",
+                         "tools/release_sysbox_sources.py", "sysbox-go-dependencies-$ARCH.json",
+                         "sysbox-source-result-$ARCH.json",
                          "Reproduce the worker with independently rebuilt components",
                          '--shm-startup-reexec --clean --compare "$original_sysbox"',
                          '--compare "$WORKER_BUILD" --image-only',
@@ -38,6 +40,7 @@ class NativeReleaseQualificationTests(unittest.TestCase):
             self.assertNotIn(forbidden, workflow)
         self.assertLess(workflow.index("tools/release_sources.py"), workflow.index("docker push"))
         self.assertLess(workflow.index("tools/release_cli_sources.py"), workflow.index("docker push"))
+        self.assertLess(workflow.index("tools/release_sysbox_sources.py"), workflow.index("docker push"))
         self.assertLess(workflow.index("Reproduce the worker with independently rebuilt components"),
                         workflow.index("Qualify the actual ordinary native image"))
         self.assertIn('"$image-amd64" "$image-arm64"', workflow)

@@ -182,22 +182,31 @@ jobs:
           mise exec -- python3 tools/release_cli_sources.py --worker-build "$WORKER_BUILD" \
             > artifacts/ci-cli-sources.log 2>&1
           cli_sources="$(mise exec -- python3 -c 'import pathlib,sys;sys.path.insert(0,"tools");import build_worker_pipeline;print(pathlib.Path(build_worker_pipeline.completed_output(pathlib.Path(sys.argv[1]).read_text())).name)' artifacts/ci-cli-sources.log)"
+          mise exec -- python3 tools/release_sysbox_sources.py --worker-build "$WORKER_BUILD" \
+            > artifacts/ci-sysbox-sources.log 2>&1
+          sysbox_sources="$(mise exec -- python3 -c 'import pathlib,sys;sys.path.insert(0,"tools");import build_worker_pipeline;print(pathlib.Path(build_worker_pipeline.completed_output(pathlib.Path(sys.argv[1]).read_text())).name)' artifacts/ci-sysbox-sources.log)"
           cp "artifacts/$WORKER_BUILD/image-context/bundle/factorybox" "artifacts/$sources/factorybox-linux-$ARCH"
           cp "artifacts/$WORKER_BUILD/factorybox-worker-linux-$ARCH.tar.zst" "artifacts/$sources/"
           cp "artifacts/$cli_sources/factorybox-$RELEASE-linux-$ARCH-cli-dependencies.tar.zst" "artifacts/$sources/"
           cp "artifacts/$cli_sources/cli-dependencies.json" "artifacts/$sources/cli-dependencies-$ARCH.json"
           cp "artifacts/$cli_sources/result.json" "artifacts/$sources/cli-source-result-$ARCH.json"
+          cp "artifacts/$sysbox_sources/factorybox-$RELEASE-linux-$ARCH-sysbox-go-dependencies.tar.zst" "artifacts/$sources/"
+          cp "artifacts/$sysbox_sources/sysbox-go-dependencies.json" "artifacts/$sources/sysbox-go-dependencies-$ARCH.json"
+          cp "artifacts/$sysbox_sources/result.json" "artifacts/$sources/sysbox-source-result-$ARCH.json"
           cp artifacts/ci-native-result.json "artifacts/$sources/native-result-$ARCH.json"
           cp "artifacts/$sources/sources.json" "artifacts/$sources/sources-$ARCH.json"
           cp "artifacts/$sources/result.json" "artifacts/$sources/result-$ARCH.json"
           (cd "artifacts/$sources" && sha256sum factorybox-* "sources-$ARCH.json" \
             "result-$ARCH.json" "native-result-$ARCH.json" "cli-dependencies-$ARCH.json" \
-            "cli-source-result-$ARCH.json" > "SHA256SUMS-$ARCH")
+            "cli-source-result-$ARCH.json" "sysbox-go-dependencies-$ARCH.json" \
+            "sysbox-source-result-$ARCH.json" > "SHA256SUMS-$ARCH")
           gh release upload "v$RELEASE" "artifacts/$sources/"*.tar.zst \
             "artifacts/$sources/factorybox-linux-$ARCH" "artifacts/$sources/SHA256SUMS-$ARCH" \
             "artifacts/$sources/sources-$ARCH.json" "artifacts/$sources/result-$ARCH.json" \
             "artifacts/$sources/native-result-$ARCH.json" "artifacts/$sources/cli-dependencies-$ARCH.json" \
-            "artifacts/$sources/cli-source-result-$ARCH.json"
+            "artifacts/$sources/cli-source-result-$ARCH.json" \
+            "artifacts/$sources/sysbox-go-dependencies-$ARCH.json" \
+            "artifacts/$sources/sysbox-source-result-$ARCH.json"
       - name: Remove only the exact owned builder
         if: always()
         run: |
@@ -245,6 +254,8 @@ jobs:
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-*.log
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-cli-sources-*/go-verification.log
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-cli-sources-*/result.json
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-sysbox-sources-*/go-verification.log
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-sysbox-sources-*/result.json
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-native-*/*.stdout
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-native-*/*.stderr
           if-no-files-found: warn
