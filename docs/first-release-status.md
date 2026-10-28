@@ -31,6 +31,14 @@ preserves the first transition's failed result and both complete store archives.
 Its CRIU-specific oracle is unchanged; the corrected comparison uses a previously
 verified image with identical CLI/Sysbox executables and different CRIU.
 
+The five retained-context integration cases now also verify against the current
+Go core and exact corrected components. Four native interruption cases pass;
+the deliberate RAM-corruption control fails only its required complete-RAM
+assertion and is accepted as a rejection control. Every current capture remains
+fully reconstructable. The reviewed Factory IDE image has been rebuilt and its
+setup probe passes; its full lifecycle and the remaining programme checks are
+still open. The current report records these distinct scopes.
+
 ## Earlier verified builds and historical results
 
 - One Factorybox codebase implements the same lifecycle for Linux AMD64 and
