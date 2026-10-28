@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "declarations": [
+    {
+      "path": "gopkg.in/hlandau/service.v1",
+      "version": "v1.0.7",
+      "sum": "h1:16G5AJ1Cp8Vr65QItJXpyAIzf/FWAWCZBsTgsc6eyA8=",
+      "reason": "The original ISC notice is in README.md; service.go carries its copyright notice. Preserve both verbatim. This is not a generic missing-license exception.",
+      "files": {
+        "README.md": "b7f43850fd92f1c7e4283f5860df0d2758ac83e59ea19774afc6d6f0bf37af65",
+        "service.go": "896ab23a2ee43ed560036d8120e71fb3db4c71c6362a281ef99f7ff9cdc4bb5a"
+      }
+    }
+  ]
+}

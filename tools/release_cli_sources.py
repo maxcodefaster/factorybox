@@ -70,7 +70,7 @@ def downloaded_files(module, downloaded, cache):
     return result
 
 
-def add_module(entries, module, files, index, notices):
+def add_module(entries, module, files, index, notices, declared_notice=None):
     prefix = f"{module['path']}@{module['version']}/"
     archive_path = f"modules/{index:03d}.zip"
     release_sources.add_entry(entries, archive_path, files["Zip"])
@@ -89,11 +89,21 @@ def add_module(entries, module, files, index, notices):
                     ".." in path.parts or "\\" in relative or
                     relative and str(path) != relative):
                 raise ValueError("module source ZIP member leaves its declared root")
+        additional = {}
+        if declared_notice is not None:
+            if any(declared_notice.get(key) != module[key] for key in ["path", "version", "sum"]):
+                raise ValueError("notice declaration belongs to a different source identity")
+            for name, digest in declared_notice["files"].items():
+                member = prefix + name
+                if (member not in names or hashlib.sha256(archive.read(member)).hexdigest() != digest):
+                    raise ValueError("declared notice file differs from its pinned source")
+                additional[member] = True
         found = []
         for name in sorted(names):
             relative = PurePosixPath(name[len(prefix):])
-            if not re.match(r"^(licen[cs]es?|copying|notice|copyright|patents)(?:$|[._-])",
-                            relative.name, re.IGNORECASE):
+            if (name not in additional and
+                    not re.match(r"^(licen[cs]es?|copying|notice|copyright|patents)(?:$|[._-])",
+                                 relative.name, re.IGNORECASE)):
                 continue
             if name.endswith("/"):
                 continue
