@@ -211,8 +211,11 @@ zstd -dc worker-image.tar.zst | docker load
 The image is saved by its immutable image ID, recorded in the export's
 `result.json`. The workflow publishes no registry image and makes no lifecycle
 qualification claim. It needs native Linux Docker/Buildx, Zstandard and enough
-disk for the component build. The unchanged storage guard requires 8 GiB of
-artifact headroom and reserves 12 GiB of host free space. Standard GitHub runner
+disk for the component build. Generated evidence has a 64-GiB disk budget,
+authorized on October 28 after retained evidence exceeded the former 32-GiB
+budget's start threshold. The storage guard requires 8 GiB of artifact headroom
+and reserves 12 GiB of host free space. This development evidence budget does
+not set the worker's memory or store capacity. Standard GitHub runner
 disk capacity is not guaranteed to fit the full pipeline. Set repository Actions
 variables `FACTORYBOX_BUILD_RUNNER_AMD64` and `FACTORYBOX_BUILD_RUNNER_ARM64`
 to larger runner labels when needed. A self-hosted override must name a unique

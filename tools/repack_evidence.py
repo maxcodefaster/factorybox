@@ -145,7 +145,7 @@ def main():
     pointer = source.with_name(source.name+".repacked.json")
     # This maintenance operation creates no build or native workload. It must
     # remain possible when native-run headroom is exhausted. The encoder's
-    # hard file-size limit still preserves the full 32-GiB/host-reserve limits.
+    # hard file-size limit still preserves the artifact/host-reserve limits.
     reference.artifact_storage.require_capacity(reference.ROOT, run_reserve=0)
     artifact = reference.ROOT/"artifacts"/("factorybox-storage-repack-"+uuid.uuid4().hex)
     artifact.mkdir()

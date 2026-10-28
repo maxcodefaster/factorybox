@@ -163,12 +163,31 @@ class ArtifactStorageTests(unittest.TestCase):
                     artifact_storage.require_capacity(
                         directory, limit=33, run_reserve=8, free_reserve=12)
 
-    def test_default_budget_refuses_growth_above_32_gib_including_run_headroom(self):
+    def test_explicit_32_gib_budget_still_refuses_growth_including_run_headroom(self):
         with tempfile.TemporaryDirectory() as directory:
             with mock.patch.object(artifact_storage, "allocated_bytes", return_value=25 << 30), \
                     mock.patch.object(artifact_storage.shutil, "disk_usage") as usage:
                 usage.return_value.free = 100 << 30
                 with self.assertRaisesRegex(ValueError, "32 GiB limit"):
+                    artifact_storage.require_capacity(directory, limit=32 << 30)
+                self.assertFalse((Path(directory) / "artifacts").exists())
+
+    def test_default_64_gib_budget_admits_retained_evidence_and_preserves_reserves(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(artifact_storage, "allocated_bytes", return_value=25 << 30) as allocated, \
+                    mock.patch.object(artifact_storage.shutil, "disk_usage") as usage:
+                usage.return_value.free = 100 << 30
+                admitted = artifact_storage.require_capacity(directory)
+                self.assertEqual(admitted["limit_bytes"], 64 << 30)
+                self.assertEqual(admitted["run_reserve_bytes"], 8 << 30)
+                allocated.return_value = 56 << 30
+                self.assertEqual(artifact_storage.require_capacity(directory)["allocated_bytes"], 56 << 30)
+                allocated.return_value = 57 << 30
+                with self.assertRaisesRegex(ValueError, "64 GiB limit"):
+                    artifact_storage.require_capacity(directory)
+                allocated.return_value = 25 << 30
+                usage.return_value.free = 19 << 30
+                with self.assertRaisesRegex(ValueError, "reserved free disk"):
                     artifact_storage.require_capacity(directory)
                 self.assertFalse((Path(directory) / "artifacts").exists())
 
