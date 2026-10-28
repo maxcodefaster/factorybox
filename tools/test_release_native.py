@@ -12,6 +12,14 @@ import release_native
 
 
 class NativeReleaseQualificationTests(unittest.TestCase):
+    def test_portable_ci_retains_read_only_host_tuples_without_granting_native_qualification(self):
+        workflow = (reference.ROOT / ".github/workflows/ci.yaml").read_text()
+        command = 'tools/release_native.py --check-host --platform "linux/$ARCH"'
+        self.assertIn(command, workflow)
+        self.assertIn("artifacts/ci-host-preflight.json", workflow)
+        self.assertLess(workflow.index(command),
+                        workflow.index("Run Go, Python and immutable reference checks"))
+
     def test_workflow_only_publishes_releases_after_native_qualification_and_license_resolution(self):
         workflow = (reference.ROOT / ".github/workflows/images.yaml").read_text()
         self.assertEqual(workflow.split("on:", 1)[1].split("permissions:", 1)[0],
