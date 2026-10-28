@@ -101,16 +101,29 @@ current runtime defects.
   archives, evidence hashes and remaining coverage gaps; it grants no public
   image distribution qualification.
 
+- The CRIU zombie exit-status correction is now verified on ordinary AMD64
+  source `0b73944d6a34439d97984dcd8da8a08cbc264ae4`. Independent builds produce
+  image `sha256:1b8ac1fc16d8467ffd0f80bedd4567e9510453bc0682c5439bced7ff3b878c6b`
+  and package `88d27ebdbe916ee19c0addc156c8613f3ce774e55d8faefea9aa569234b357c6`.
+  All 23 required native gates pass in
+  `factorybox-release-native-21323bab8196426e82394fbc8498e35f`, result SHA-256
+  `60da1aef3d782e9d59f90fc6c4373d23338a1825c5ded0bdb2231132c56a8abf`.
+  This includes both worker-replacement modes and both reviewed Factory lanes.
+  The separate namespace suite passes 15 tests and 62 subtests with zero skips,
+  preserving status 47 and adding an actual status-201 checkpoint/restore case.
+  Controlled native function tests preserve all 256 normal exit statuses.
+  Seven portable gates pass with 411 Python tests; all 232 reference files,
+  original fixture assertions and vet remain intact. Cleanup removes the owned
+  builder and test containers while preserving all nine retained volumes.
+  The [AMD64 follow-up](native-amd64-0.1.0.md#criu-zombie-exit-status-follow-up)
+  records the exact inputs, retained failures and verification receipts.
+- A new matching source archive binds that exact CRIU composition and worker in
+  `factorybox-release-sources-9d0b57842d604893ae9ef8941da47ea9`. The unchanged CLI
+  companion is explicitly rebound to the new image. These assets do not close
+  the inherited-image distribution obligations below.
+
 ## Remaining first-release checks
 
-- [ ] Qualify the subsequent CRIU zombie exit-status correction on an ordinary
-  worker and independent builds. The controlled native function regression
-  confirms that status 201 was truncated to 73 and that the ordered upstream
-  fix preserves all 256 normal exit statuses. The original complete status-47
-  case remains, with a separate status-201 lifecycle case added through a
-  declared patch to new native fixture copies. The component builds with all
-  1,030 upstream test files unchanged. Full image and lifecycle results are
-  still pending; the 23-gate receipts above apply to their earlier exact images.
 - [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
   component identities, independent builds and receipts in the final profile.
   The exact `0.1.0` AMD64 matrix above is complete. It does not qualify ARM64.
@@ -123,11 +136,11 @@ current runtime defects.
   whether it belonged to the fixture or runtime remain unestablished. Do not
   call it a current reproduced runtime bug or silently mark it fixed.
 - [ ] Complete the eight real-provider continuation cases required by the
-  original controlled-release scope. A fresh October 27 availability probe with
+  original controlled-release scope. A fresh October 28 availability probe with
   pinned OpenCode 2.0.27 confirms the same free model and pricing, then receives
   HTTP 429 before actual tool start. Its one request, response and confirmed
-  cleanup are preserved in `factorybox-external-opencode-a04b67153f7d4a068e8de1194eadfe85`.
-  The new retry-after lower bound is `2026-10-28T00:00:00.533718Z`; it does not
+  cleanup are preserved in `factorybox-external-opencode-72328ea870524526a0201699c618c65c`.
+  The new retry-after lower bound is `2026-10-29T00:00:00.460472Z`; it does not
   guarantee availability. No failed case is retried automatically, and no model,
   identity or cost class is changed. The probe passes none of the eight cases.
 - [ ] Review and select the final qualified profile before any activation or

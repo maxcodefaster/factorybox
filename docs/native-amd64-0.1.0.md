@@ -1,6 +1,9 @@
 # Native AMD64 verification of 0.1.0
 
-Verified October 27, 2026. All 23 required native functional gates passed on the
+The latest verified image is the October 28
+[CRIU exit-status follow-up](#criu-zombie-exit-status-follow-up).
+
+Initial verification: October 27, 2026. All 23 required native functional gates passed on the
 ordinary `0.1.0` worker. This verifies the exact AMD64 image below. It does not
 qualify ARM64, arbitrary Kubernetes nodes or the overall production release.
 The [current release checklist](first-release-status.md) remains authoritative.
@@ -193,3 +196,98 @@ demonstrated speedup.
 ARM64, the real-provider cases, historical EBUSY attribution, final profile and
 distribution checks remain open in the current checklist. No stable tag,
 release, image publication, installation activation or deferred soak was started.
+
+## CRIU zombie exit-status follow-up
+
+Verified October 28, 2026. All 23 required native gates pass again on the
+ordinary image below, including planned/abrupt worker replacement and both
+Factory consumer lanes. This supersedes neither the historical receipts nor
+their retained failures. Overall production and ARM64 qualification remain false.
+
+| Input | Exact identity |
+| --- | --- |
+| Tested Factorybox source | `0b73944d6a34439d97984dcd8da8a08cbc264ae4` |
+| Reviewed Factory consumer | `a5b9a931fa2a61e328d122f6ce1250664b52459e` |
+| Ordinary worker | `factorybox-build-worker-d98fbdfb094b4c38b37b7c0dcc2c36d3` |
+| Image ID | `sha256:1b8ac1fc16d8467ffd0f80bedd4567e9510453bc0682c5439bced7ff3b878c6b` |
+| Package SHA-256 | `88d27ebdbe916ee19c0addc156c8613f3ce774e55d8faefea9aa569234b357c6` |
+| Factorybox executable | `d7734394fb92d333c3e08a11dbc8e24da2bc3e6b50ac7b940fe69a5ee34e8247` |
+| CRIU executable | `fd8055bf432bf651cdfe00844c9fce65b1ded896e1ac48c118eb9b26ae675818` |
+| Sysbox runc executable | `3c66c0239a512ebd51e4a0aab8737e557d726f5989314bc64af172273aed47e3` |
+| Sysbox fs executable | `f1a23c667862785719849fbb1b28e1e541604a0a5309777e69683b16a20173fb` |
+| Sysbox mgr executable | `9e61acac59a3143b6cbd50907274e8873b01901dc34f36e2fab5ea8228c28d07` |
+
+The ordered CRIU patch backports upstream `e956db75f7a60c883daf9440a3ffed909515d2f1`.
+It preserves the high exit-status bit of a restored zombie: status 201 had been
+restored as 73. A native regression extracts the actual old/new restore function;
+the old function fails 128 of 256 normal statuses and the corrected function
+preserves all 256. Its red and green results remain in
+`factorybox-criu-zombie-exit-regression-37983868c62b43c5b457b0438c8f0b0e`.
+
+The separate real namespace suite,
+`factorybox-runtime-a5d844f468c544418aada7847aa58302`, passes 15 tests and 62
+subtests with zero skips, including the original status-47 lifecycle and a new
+status-201 case. The latter preserves parent/PID/wait status, RAM, independent
+fork/recapture, source deletion and descendant assertions. Original reference
+fixtures remain unchanged; only fresh native copies receive the declared actor
+patch and recorded suite-selection extension. All 1,030 upstream CRIU test
+files remain unchanged; that is a file-integrity count, not 1,030 executed tests.
+
+The full matrix is
+`factorybox-release-native-21323bab8196426e82394fbc8498e35f`, result SHA-256
+`60da1aef3d782e9d59f90fc6c4373d23338a1825c5ded0bdb2231132c56a8abf`.
+Every required child passed with cleanup and unchanged-input checks. Existing
+upstream skip sets are retained, including Systemd's four executed passes and
+two original skips. All seven portable gates pass with 411 Python tests in
+`factorybox-checks-1c17c49abc7049b5abe3780e1b40d723`; all 232 reference files and
+vet remain intact.
+
+Independent worker `factorybox-build-worker-825279bfefb54318852d88c029d963f5`
+reproduces the CLI, every bundle member, package and complete image. Independent
+CRIU compilation `factorybox-build-criu-retained-5f5c9bae6e5c49acad640f39098068f1`
+matches the selected `factorybox-build-criu-retained-ec3fa02d5dbb4c3ca826438e10c36f6d`.
+The unchanged Sysbox components retain their independent native compilation proof
+from `factorybox-upstream-82b3bb6c0c4e47359a9aa20ce6829489`. The new matrix also
+reruns the complete Sysbox unit and integration suites.
+
+The failed comparison build `factorybox-build-worker-796990d77d2b4dab9872974875b2f7b5`
+remains failed. Its CRIU executable was identical, but a different build-receipt
+name changed `build.json` and therefore package/image hashes. Repeating assembly
+with the same exact receipt produced the matching pair; no provenance field or
+comparison assertion was removed. Its optional compiler cache is losslessly
+retained with reconstruction receipts. The first namespace admission refusal
+and portable fixture-guard failure also remain explicit.
+
+Evidence closure is
+`factorybox-upstream-review-4dd04b8717004785908a2ffdc5a543db/verification-result.json`,
+SHA-256 `204bd2ad1e46fb8d6defb0b835ee180be2cef80944cc2cdc43eb0d1262650637`.
+It binds the native matrix, separate namespace suite, independent builds,
+portable gates, matching source archive and exact cleanup. The same admitted
+kernel/page/cgroup/storage profile and all resource/deadline limits above were
+used. The owned builder was removed; zero containers and all nine retained
+volume identities were confirmed. No host configuration or installation changed.
+
+Storage maintenance kept the 32-GiB cap and 8-GiB start headroom. Lossless dump
+compaction verifies the complete decoded bytes. One older, superseded local
+OpenCode prepare-phase failure's bulk snapshot was deliberately retired after
+an exact-consumer-lane passing replacement, with full member hashes, selected
+diagnostics, source, logs and the original failed result preserved in
+`factorybox-storage-retirement-13a7532290b54a44a2fd0347accbb134`. That retired bulk
+payload is no longer reconstructable. Current unresolved EBUSY and provider
+failure evidence remain preserved. A canceled optional repack removed only its
+incomplete encoder output and retained its complete original archive.
+
+These are individual acceptance observations: source-lane preparation 42.50 s,
+Start to first useful work 14.83 s; reserve-lane preparation 37.53 s and first
+useful work 35.34 s, including deliberate standby Pause/Resume and new-container
+checks. The standby Resume command took 3.57 s. Paused whole-worker counters
+were 2,402,082,816 and 2,964,664,320 bytes, including file cache and test services;
+their anonymous counters were 29,196,288 and 26,537,984 bytes. The paused workload
+cgroups had zero anonymous RAM and zero resident snapshot bytes. These samples
+establish no percentile, speedup or end-user latency guarantee.
+
+The current matching sources and image inventory are in the
+[distribution report](distribution-0.1.0.md). ARM64, real-provider acceptance,
+historical EBUSY attribution, upstream review and the final distribution/profile
+gate remain open. No stable release or image has been published, no retained
+installation activated, and neither deferred endurance series started.
