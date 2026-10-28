@@ -14,7 +14,11 @@
         "upstream/patches/criu-nested-shared-proc.patch": "256cb9b012c71f52f3053de3bd036f0e5a3ce10e86e620910ac161517e6c22df",
         "upstream/patches/criu-nested-zombie-pid.patch": "46272d2035c6a9aa7ebbc30bf645203d7a28fa4331a664ace6da0043a9ca12b9",
         "upstream/patches/criu-cgroup-v2-auxiliary-limits.patch": "568004206b39baa2bce3d5223e41c45fab2aff136a9540159b97c87aaa2c1025",
-        "upstream/patches/criu-zombie-exit-status.patch": "a54774f2840e41aeec5cde88fef35831fdcd6455d05847bd7aa9e1ef8c6b9b20"
+        "upstream/patches/criu-zombie-exit-status.patch": "a54774f2840e41aeec5cde88fef35831fdcd6455d05847bd7aa9e1ef8c6b9b20",
+        "upstream/patches/criu-thread-array-bound.patch": "62d688cbf9a3649a2a78673ea3b444b9ee459ba9e53104afbbd605feb969426d",
+        "upstream/patches/criu-controller-string-bounds.patch": "ce3b043aea9d85a5ba927759689ea50dc516fc34d5b0b91107ce2df6677bde00",
+        "upstream/patches/criu-proc-scan-widths.patch": "f1062044298d890b40d827283306ff133c799f003bdae32bc8b5a605257a57bf",
+        "upstream/patches/criu-loginuid-write-length.patch": "95f01a6899d153bf3a8e2c6bab413c822d30ff7df2e8f0680ca1ec79bbca03c8"
       },
       "overlays": {},
       "patches": [
@@ -28,7 +32,11 @@
         "upstream/patches/criu-nested-shared-proc.patch",
         "upstream/patches/criu-nested-zombie-pid.patch",
         "upstream/patches/criu-cgroup-v2-auxiliary-limits.patch",
-        "upstream/patches/criu-zombie-exit-status.patch"
+        "upstream/patches/criu-zombie-exit-status.patch",
+        "upstream/patches/criu-thread-array-bound.patch",
+        "upstream/patches/criu-controller-string-bounds.patch",
+        "upstream/patches/criu-proc-scan-widths.patch",
+        "upstream/patches/criu-loginuid-write-length.patch"
       ],
       "prefix": "criu-086df34a2da27125fa05e66ba4d6b63cbb220b2e",
       "prepared_files_sha256": {
@@ -417,7 +425,7 @@
         "criu/bitmap.c": "adb8536810f1214c38db50f62371b8a870a5c28ae59d9bfd3bd72ce90ce6794d",
         "criu/bpfmap.c": "5fc6d85b7a6919d51f8b5f583abb53e65d7098ab5d6205f0000753bb1057f07a",
         "criu/cgroup-props.c": "abd4a3fec9846539aea56d48ffc7095ae5a109d26f02370ca0f130f6136fad63",
-        "criu/cgroup.c": "a2d8418810b5bd45081cb458650058454d5072dd3f86cb8bbbc96feb800c226f",
+        "criu/cgroup.c": "5abe9a0cf2a3c7cc6f5099e360712382527c433e4aee5aea136e04a6c094420b",
         "criu/clone-noasan.c": "08ce6c89da1660251f77e55e45938301e76db7e1ee4c1f129a0b467cb2b1d143",
         "criu/config.c": "dfcffaabd502f13ca095ef33cfcc01d32bf6f6d36eb0bdab009d0935e3dc60dd",
         "criu/cow-capture.c": "f05b55e0e4a7ea211805e8a4ac439e705ae8720ecb13218597cc75322de3f434",
@@ -636,7 +644,7 @@
         "criu/pipe-read.c": "3ef54b201beef2a4f06846b867dfb8ac8feff49feef965a6c06f60fa46a67238",
         "criu/pipes.c": "53a808b342489951d0d6a28778e35d4c8321cec21e3c7352f685342548525cf5",
         "criu/plugin.c": "cccc37406aa86eda925825a75d7642fe59656de21e95b0c4b30ad6cab3bebc40",
-        "criu/proc_parse.c": "0845f7e4e4dbdcdedc326cf71ec9c09fbb90af6f699eaea03fed9c5daf3f224e",
+        "criu/proc_parse.c": "8c04bd8bbf6302a651bca61801150cfb8677fad0a8d2ac7da8bae09c9db8e70f",
         "criu/protobuf-desc.c": "37d9a4c25b1505c15215b3dd1a57cc07090c429ecf7ff6cef86100ce3a80284d",
         "criu/protobuf.c": "bb98793e51c135757e3ee80db685292d5a54be14c35fe15adc2556eb797908d8",
         "criu/pstree.c": "944780b54ff44f4bd3cc0c8731ee0ace1addf634a343de990a81315738bcb872",

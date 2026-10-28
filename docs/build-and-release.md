@@ -97,6 +97,21 @@ mise exec -- python3 tools/sources.py prepare
 mise exec -- python3 tools/sources.py verify
 ```
 
+After preparing CRIU, run the bounded
+[patched-function regressions](../tests/criu-defensive-functions/README.md):
+
+```sh
+mise exec -- python3 tests/criu-defensive-functions/run.py
+```
+
+The source lock includes ordered upstream defensive backports for reused
+thread arrays, controller strings, mount/lock scanner widths and loginuid
+write lengths. Every controller-string caller propagates rejection, including
+the retained fork's delegation caller. Existing OOM-score and pid-max writes
+already use actual string lengths and retain their existing checks. Original
+CRIU test files remain unchanged. The function checks run on both CI targets;
+they do not replace exact-image native qualification.
+
 The 512-MiB capacity fixture compiles its guest test actor without unused DWARF
 debug data. ELF symbols, executable code and every native assertion remain intact;
 the store size and admission reserves stay unchanged. Regression checks compare

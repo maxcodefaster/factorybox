@@ -1,0 +1,23 @@
+From: Andrei Vagin <avagin@google.com>
+Subject: [PATCH] proc: bound reused thread arrays
+
+Backport of castai/criu 22c3ab6b8dae78e19cc15ed1313886b611ea2f1b
+(proc: Fix potential buffer overflow in parse_threads).
+This modification retains the CRIU source files' GPL-2.0 terms.
+
+Signed-off-by: Andrei Vagin <avagin@google.com>
+--- a/criu/proc_parse.c
++++ b/criu/proc_parse.c
+@@ -2602,6 +2602,12 @@
+ 			}
+ 			t = tmp;
+ 			t[nr - 1].ns[0].virt = -1;
++		} else {
++			if (nr > *_n) {
++				pr_err("Too many threads for %d (%d > %d)\n", pid, nr, *_n);
++				closedir(dir);
++				return -1;
++			}
+ 		}
+ 		t[nr - 1].real = atoi(de->d_name);
+ 		t[nr - 1].state = TASK_THREAD;

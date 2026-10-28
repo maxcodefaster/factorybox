@@ -72,6 +72,10 @@ jobs:
           PY
       - name: Build and execute the native CLI
         run: mise exec -- python3 tools/build_cli.py --platform "linux/$ARCH"
+      - name: Check patched CRIU helper functions
+        run: |
+          mise exec -- python3 tools/sources.py prepare --component criu
+          mise exec -- python3 tests/criu-defensive-functions/run.py
       - name: Retain CLI binaries, frozen inputs and check logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -83,5 +87,6 @@ jobs:
             artifacts/factorybox-checks-*/*.stdout
             artifacts/factorybox-checks-*/*.stderr
             artifacts/factorybox-build-cli-*/
+            artifacts/factorybox-criu-defensive-functions-*/
           if-no-files-found: warn
           retention-days: 7

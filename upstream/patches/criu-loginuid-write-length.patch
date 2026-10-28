@@ -1,0 +1,39 @@
+From: Andrei Vagin <avagin@google.com>
+Subject: [PATCH] proc: write only the formatted loginuid bytes
+
+Backport of castai/criu c11579493eb1b51a9820bbaeae2b5def7ffcb908
+(criu: Fix garbage write to /proc files).
+Backport prepare_loginuid only: selected OOM and pid_max writes already
+use actual string lengths and retain their stronger existing checks.
+This modification retains the CRIU source files' GPL-2.0 terms.
+
+Signed-off-by: Andrei Vagin <avagin@google.com>
+--- a/criu/proc_parse.c
++++ b/criu/proc_parse.c
+@@ -990,16 +990,21 @@
+ 
+ int prepare_loginuid(unsigned int value)
+ {
+-	int fd, ret = 0;
+-	char buf[11]; /* 4294967295 is maximum for u32 */
++	int fd, len, ret = 0;
++	char buf[11];  /* 4294967295 is maximum for u32 */
+ 
+ 	fd = open_proc_rw(PROC_SELF, "loginuid");
+ 	if (fd < 0)
+ 		return -1;
+ 
+-	snprintf(buf, 11, "%u", value);
+-
+-	if (write(fd, buf, 11) < 0) {
++	len = snprintf(buf, sizeof(buf), "%u", value);
++	if (len >= sizeof(buf)) {
++		pr_err("loginuid value %u is too long\n", value);
++		close(fd);
++		return -1;
++	}
++
++	if (write(fd, buf, len) < 0) {
+ 		pr_warn("Write %s to /proc/self/loginuid failed: %s\n", buf, strerror(errno));
+ 		ret = -1;
+ 	}
