@@ -32,6 +32,12 @@ image; it was not relabelled as qualification of these corrected bytes.
 
 Matching sources are retained in
 `factorybox-release-sources-5ce5cdd6b64b4ed6912dad1d26c8f8bf`.
+The candidate's CLI dependency companion separately retains all 20 linked
+module sources, 27 named module notices and matching Go sources in
+`factorybox-release-cli-sources-343e7d5d8c394d04a97367bb5d9195d4`.
+All 13,481 archive members and the archived modules' actual executable checksums
+verify independently; [the distribution record](distribution-0.1.0.md) keeps the
+exact binding and its image-wide coverage limits.
 Release CI now requires the same independent rebuild before native qualification.
 Its actual shell step also passes locally with only the owned builder and log
 directory substituted, in
