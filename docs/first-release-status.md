@@ -121,6 +121,22 @@ current runtime defects.
   `factorybox-release-sources-9d0b57842d604893ae9ef8941da47ea9`. The unchanged CLI
   companion is explicitly rebound to the new image. These assets do not close
   the inherited-image distribution obligations below.
+- Sysbox's Go dependency source companion is now verified: 70 exact remote
+  module ZIPs match the executables' checksums, and 17 local replacement
+  identities bind file by file to the matching source archive. It retains 94
+  original module notice files and 38 notices from Go 1.25.14. All 212 archive
+  members and full decompression pass independent verification, with changed/
+  missing-source rejection controls. The original missing-named-license result
+  stays failed; the exact README license text and copyright-bearing source are
+  retained through a hash-bound declaration. See the
+  [dependency source report](distribution-0.1.0.md#selected-sysbox-go-dependencies).
+- Exact Ubuntu glibc and libseccomp source packages are now retained with
+  their patches and notices. Signed snapshot indexes authenticate the sources
+  and binary packages; all six observed compiler library/startup files match.
+  The fully decoded 30-member bundle and a changed-signature rejection control
+  pass independent verification. This covers those two packages, not every
+  static linker input or inherited image package; see the
+  [native-library source report](distribution-0.1.0.md#observed-native-library-source-packages).
 
 ## Remaining first-release checks
 
@@ -146,8 +162,10 @@ current runtime defects.
 - [ ] Review and select the final qualified profile before any activation or
   publication. Finish the upstream review and exact image's distribution/source
   obligations described in [LICENSING.md](../LICENSING.md). The component source
-  inventory and CLI dependency companion are verified. Exact Sysbox/inherited
-  executable dependencies, operating-system source/notice coverage and the
+  inventory, CLI dependency companion, selected Sysbox Go sources/notices and
+  observed glibc/libseccomp source packages are verified. Complete Sysbox
+  static linkage, inherited executable dependencies,
+  operating-system source/notice coverage and the
   inherited Sysbox package's conflicting notice remain unresolved; see the
   [distribution report](distribution-0.1.0.md). Stable release preparation is
   authorized; no release or image has been published and no installation has
