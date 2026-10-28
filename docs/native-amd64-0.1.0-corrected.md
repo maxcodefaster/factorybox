@@ -149,11 +149,13 @@ after cleanup, within the unchanged 32-GiB limit with the 8-GiB start reserve.
 Five sequence controllers stopped between successful children at that reserve;
 their original refusal logs remain. Closed current dumps were losslessly
 re-encoded and fully verified before their prior encodings were removed.
-Eleven older successful MAIN output bulks were then retired after complete
+Twelve older successful MAIN output bulks were then retired after complete
 decompression/member verification and replacement proof. Every original case
-passed on the current build with byte-identical native assertion files. Their
+passed on the current build. Native assertion files remain byte-identical except
+the declared additive namespace regression: its original status-47 whole file
+was mechanically reconstructed byte for byte before retirement. Their
 source, results, logs, complete member headers/hashes, selected diagnostics and
-retirement receipts remain; those eleven old whole captures are deliberately
+retirement receipts remain; those twelve old whole captures are deliberately
 no longer reconstructable. The controller's three
 `superseded-main-retention*.stdout` logs identify each receipt. All current full
 captures, frozen inputs and unresolved failures remain preserved.
@@ -209,6 +211,64 @@ unchanged. Only three exact worker/package input identities change from the
 original recipe; the before/after hashes and unchanged support files are declared
 in `actual-transition-plan-v2.json`. The earlier image serves only this controlled
 comparison. It is not selected as a production fallback.
+
+### Current retained-context integrations and reviewed IDE build
+
+All five original retained-context cases are independently verified on source
+`3e9f70d4f47bd336da292bc9d93d812081a5cac1`, whose runtime core remains identical
+to the corrected build above. The protected native fixture compiles an explicitly
+kernel-pinned AMD64 candidate CLI, SHA-256
+`9ca3a0e435eba95f878e36af46855e1b6be9fc0d18eb74f7cb594da170e0c305`.
+It uses the exact current worker's four component executables. This is separate
+from the delivered ordinary CLI/image acceptance above.
+
+| Case | Native evidence under `artifacts/` | Outcome |
+| --- | --- | --- |
+| Interrupted child | `factorybox-runtime-retained-1dbc73a003fa43e9887fc29d7219aa4a` | 12 main / 61 subtests pass |
+| Controller loss | `factorybox-runtime-retained-e101162680a345bcae63c0e3def13e77` | 12 / 61 pass |
+| Guard loss | `factorybox-runtime-retained-4915d2ce20eb42649a972d3db76d5015` | 12 / 61 pass |
+| Thread churn | `factorybox-runtime-retained-831160f0329f42f5a309cedbe0416354` | 12 / 61 pass |
+| Deliberate RAM corruption | `factorybox-runtime-retained-6189b348d724495bb97dab8aa72e391a` | Exact original complete-RAM assertion fails; rejection control accepted |
+
+The controller is
+`factorybox-current-integration-83d9cdd7ba84476c80b3760f35e3a099`.
+Its independent `retained-closure.json`, SHA-256
+`d6083dfce96d76ae4e0c2202dd1d00985fffcd601df105326d929b934930812c`,
+verifies all five source contexts, current production core, executable inputs,
+complete capture decompression, unchanged original assertions, zero containers
+and all nine retained volume identities. There are no added skips. The corruption
+child remains failed and retains its full evidence; its parent accepts only the
+original single RAM-integrity failure with successful adapter checks and cleanup.
+
+The first extra controller incorrectly required the aggregate to have a cleanup
+field, although cleanup belongs to its actual native child. Its rejected result,
+`retained-progress.json` SHA-256
+`50f8207eab2b24f36d1ab360b405c390d0bc2e106ad223de1829e644202004fe`,
+is preserved. The corrected reader checks the actual child and rejects six bad
+cleanup/outcome/hash/OOM controls. It reuses the already successful native case
+without rerunning or relabelling that rejected controller.
+
+Eight older successful retained-context output bulks were retired only after
+complete original decompression, member hashes, selected diagnostics and exact
+original assertion/flag checks against their current replacement. Sources,
+results, logs, frozen inputs and receipts remain. These eight superseded whole
+captures are deliberately no longer reconstructable; every current full capture
+and unresolved failure remains. Byte-identical closed executable inputs share
+immutable files, including the explicitly hash-bound accepted negative control.
+
+The earlier developer-IDE image uses Factory commit `be8e3ba`; it cannot represent
+the reviewed `a5b9a931fa2a61e328d122f6ce1250664b52459e` pin because 15 Theia source
+paths changed. New local build
+`factorybox-reviewed-ide-build-a688bb288087413b95c4c37b1586301d` uses that exact
+reviewed source and its unchanged Dockerfile, with a 3-CPU/3-GiB builder and
+900-second build limit. Its image is
+`factorybox-reviewed-ide-a688bb288087413b95c4c37b1586301d@sha256:6600a59afa1c2ee011478da4dab592bb543ba4a8874d3af6b33cade0641ae756`.
+Native ELF/backend inspection and the original IDE setup admission pass in
+`factorybox-theia-admission-2bdfbe38fb3b48ca9c872b918e23e76c`.
+The owned builder/state are removed and retained volumes are unchanged.
+Build/setup alone do not qualify the full IDE lifecycle. The reviewed runtime/hub
+build `edb59de28a7d44d48fa4cfe79426f297` is a distinct image role; the older frozen
+developer rootfs also remains a distinct input awaiting reviewed-pin replacement.
 
 ### Earlier release-matrix cleanup
 
