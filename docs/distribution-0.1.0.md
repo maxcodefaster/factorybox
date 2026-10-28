@@ -1,8 +1,39 @@
 # Distribution preparation for 0.1.0
 
-Updated October 28, 2026. The AMD64 native tests pass; public distribution
+Updated October 28, 2026. The AMD64 baseline and local ARM64 candidate tests pass; public distribution
 qualification remains false. These receipts prepare release material without
 changing the tested image or publishing an asset.
+
+## Local 0.1.0-rc.2 ARM64 CLI sources
+
+The CLI dependency companion now binds the delivered ARM64 executable
+`29a052d66e63471e0d0c7f92cfd60dff15cdb53bcd66df2f3e6f195e6605e8cd`
+in candidate image
+`sha256:29e4a23c66ab2889b33cbf936f4a51872a14d2be5bc8939b2e7d37f1f2816ded`.
+It retains all 20 exact linked remote module ZIPs, 27 original named module
+notices and the matching Go 1.27.1 source tree with its original notices.
+`tools/release_cli_sources.py` reads the real executable's build information,
+binds each source checksum to that executable, and uses Go's own `mod verify`
+before notice extraction and after collection. Dependency source is not executed.
+The release workflow attaches this architecture-specific companion and its
+inventory/receipt before image publication.
+
+The archive is
+`factorybox-0.1.0-rc.2-linux-arm64-cli-dependencies.tar.zst`, SHA-256
+`397ae88fbb913b5ca518f475936143d13fe3499fda81e1badca6999926f88eb3`,
+in `factorybox-release-cli-sources-343e7d5d8c394d04a97367bb5d9195d4`.
+Independent verification in
+`factorybox-cli-source-verification-f9ceb15b908148b0a4cfa987165dc1df`
+checks all 13,481 members, complete decompression and each archived ZIP directly
+against the delivered CLI's embedded `h1:` checksum. A different ZIP encoding
+of identical source passes; changed source is rejected. Unit controls also
+reject an escaping notice path, a modified cache ZIP, missing notices, wrong
+targets and missing archive members.
+
+This closes the local candidate's CLI dependency-source coverage. It does not
+rebind the AMD64 companions below, cover Sysbox's static linkage or inherited
+operating-system/executable sources, resolve their conflicting notice, or grant
+image-wide distribution clearance.
 
 ## Current corrected image
 
