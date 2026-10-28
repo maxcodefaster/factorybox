@@ -24,6 +24,13 @@ The namespace result is reused with its exact hash; the other 16 groups ran
 afresh. All nine retained volume identities and all 232 reference files verify.
 The report records the closure and the remaining broader programme coverage.
 
+All five current-image operating cases also pass: startup refusals, bounded-store
+identity, all stop guards, the supplied Compose workflow and the actual
+empty-drain recipe transition with guarded rollback. Independent verification
+preserves the first transition's failed result and both complete store archives.
+Its CRIU-specific oracle is unchanged; the corrected comparison uses a previously
+verified image with identical CLI/Sysbox executables and different CRIU.
+
 ## Earlier verified builds and historical results
 
 - One Factorybox codebase implements the same lifecycle for Linux AMD64 and
@@ -158,6 +165,12 @@ The report records the closure and the remaining broader programme coverage.
 
 ## Remaining first-release checks
 
+- [x] Requalify the 17 MAIN groups and all five operating cases on the corrected
+  ordinary AMD64 image. Independent source/executable/archive and cleanup checks
+  pass; all nine retained volume identities are preserved. The current report
+  records both closures and the transition fixture's preserved input-mismatch
+  failure. Broader consumer, integration, storage and regular-series coverage
+  remains part of the final profile requirement below.
 - [x] Complete the corrected ordinary AMD64 image composition. A new audit and the
   unchanged process-tree regression show that the ordinary pipeline omitted
   recovery corrections already tested in the earlier programme composition.

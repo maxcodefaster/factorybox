@@ -5,6 +5,7 @@ native release gate, the complete namespace regression and all 17 current MAIN
 qualification groups. It is independently reproduced. Overall production and
 public-distribution qualification remain false;
 no stable tag, release, image publication or installation activation happened.
+All five current-image operating cases also pass with an independent closure.
 
 The original requested commit `955446f1aa9630a9692de86dc8568292bc401647`
 and its completed verification remain in the [earlier report](native-amd64-0.1.0.md).
@@ -157,11 +158,57 @@ no longer reconstructable. The controller's three
 `superseded-main-retention*.stdout` logs identify each receipt. All current full
 captures, frozen inputs and unresolved failures remain preserved.
 
-This closes the 17 MAIN groups. Full consumer/pressure/drain cases, operating
-procedures, additional storage/integration coverage, the regular series and
+This closes the 17 MAIN groups. Full consumer/pressure/drain cases,
+additional storage/integration coverage, the regular series and
 final profile still need current-image reconciliation. The 23 release-image
 gates above remain separately complete. Neither set closes ARM64, actual-provider,
 historical EBUSY or distribution obligations.
+
+### Current operating cases
+
+All five original operating cases now pass on the same corrected image and
+source `9ea72cce234e5da7baf3c007ba176d882e79e40c` (documentation-only changes
+after the MAIN qualification above):
+
+| Case | Evidence under `artifacts/` |
+| --- | --- |
+| Startup refusals | `factorybox-worker-startup-failure-318720b54885405994189e8ac45d704c` |
+| Bounded-store identity | `factorybox-bounded-identity-8027448dcd8f481db7c731ed9b068482` |
+| All stop guards | `factorybox-bounded-base-stop-e2d6f9e42bbb4e63bc19069fba9f4f29` |
+| Supplied Compose workflow | `factorybox-worker-example-651b75dcf98243208fd359ea1a5b2161` |
+| Actual recipe transition and rollback | `factorybox-operations-transition-a0bec394aa4548ab83f20330a2a4e3cd` |
+
+The controller is
+`factorybox-release-operations-current-84cd579aa0274ce8a6202e4149c3796f`.
+Its independent `closure.json` has SHA-256
+`7a5737f3bd177d9eae48bfd0556fdc1d8932ff439af6490ca25fc9e2a1f6f4bf`.
+It binds exact image/CLI inputs, all original checks, unchanged observed global
+sysctls, zero containers and all nine retained volume identities.
+
+The transition performs useful work with the earlier recipe, explicitly deletes
+and drains it, seals its complete store, and starts the corrected image on a
+separate fresh store. A confirmed current pause must survive refusal of an
+incompatible image and rollback to the exact corrected image. Complete RAM/files,
+useful continuation and an independent descendant after source deletion pass;
+the sealed earlier store's complete contents and recorded metadata remain equal.
+This verifies the documented procedure for these recipes and component identities.
+
+The first attempt,
+`factorybox-operations-transition-b810c96bc29f42af91e6a020ad7b8e50`, remains failed
+(result SHA-256 `786492c5900e701bef5ec55014dd2f158e5061f41267d486e50d766c1db0f668`).
+Its old comparison image also changed Sysbox-runc, so the valid rejection named
+that component before reaching the fixture's specific CRIU oracle. Both complete
+failed store archives are retained and independently decoded/verified.
+
+The corrected fixture selects previously verified ordinary worker
+`factorybox-build-worker-d98fbdfb094b4c38b37b7c0dcc2c36d3`, image
+`sha256:1b8ac1fc16d8467ffd0f80bedd4567e9510453bc0682c5439bced7ff3b878c6b`.
+Its CLI and all three Sysbox executables match the current build; CRIU differs.
+Every original assertion, vet/build step and 420-second native deadline remains
+unchanged. Only three exact worker/package input identities change from the
+original recipe; the before/after hashes and unchanged support files are declared
+in `actual-transition-plan-v2.json`. The earlier image serves only this controlled
+comparison. It is not selected as a production fallback.
 
 ### Earlier release-matrix cleanup
 
