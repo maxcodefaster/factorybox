@@ -1,0 +1,33 @@
+From: Pengda Yang <daz-3ux@proton.me>
+Subject: [PATCH] proc: bound mount and lock scanner fields
+
+Backport of castai/criu 810f52e443a226a73ba20a3dc36cf51107645173
+(limit the field width of 'scanf').
+Backport production parser changes only; original upstream tests remain byte-identical.
+This modification retains the CRIU source files' GPL-2.0 terms.
+
+Signed-off-by: Pengda Yang <daz-3ux@proton.me>
+--- a/criu/proc_parse.c
++++ b/criu/proc_parse.c
+@@ -1500,7 +1500,7 @@
+ 		goto err;
+ 
+ 	new->mountpoint[0] = '.';
+-	ret = sscanf(str, "%i %i %u:%u %ms %s %ms %n", &new->mnt_id, &new->parent_mnt_id, &kmaj, &kmin, &new->root,
++	ret = sscanf(str, "%i %i %u:%u %ms %4094s %ms %n", &new->mnt_id, &new->parent_mnt_id, &kmaj, &kmin, &new->root,
+ 		     new->mountpoint + 1, &opt, &n);
+ 	if (ret != 7)
+ 		goto err;
+@@ -2339,10 +2339,10 @@
+ 	char fl_flag[10], fl_type[15], fl_option[10];
+ 
+ 	if (is_blocked) {
+-		num = sscanf(buf, "%lld: -> %s %s %s %d %x:%x:%ld %lld %s", &fl->fl_id, fl_flag, fl_type, fl_option,
++		num = sscanf(buf, "%lld: -> %9s %14s %9s %d %x:%x:%ld %lld %31s", &fl->fl_id, fl_flag, fl_type, fl_option,
+ 			     &fl->fl_owner, &fl->maj, &fl->min, &fl->i_no, &fl->start, fl->end);
+ 	} else {
+-		num = sscanf(buf, "%lld:%s %s %s %d %x:%x:%ld %lld %s", &fl->fl_id, fl_flag, fl_type, fl_option,
++		num = sscanf(buf, "%lld:%9s %14s %9s %d %x:%x:%ld %lld %31s", &fl->fl_id, fl_flag, fl_type, fl_option,
+ 			     &fl->fl_owner, &fl->maj, &fl->min, &fl->i_no, &fl->start, fl->end);
+ 	}
+ 

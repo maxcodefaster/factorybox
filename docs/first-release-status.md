@@ -140,6 +140,15 @@ current runtime defects.
 
 ## Remaining first-release checks
 
+- [ ] Qualify the four additional CRIU defensive backports selected during
+  upstream review: reused thread-array bounds, controller-string bounds and
+  all six callers, mount/lock scan widths, and exact loginuid write length.
+  Fresh source assembly preserves all 1,030 original upstream test files.
+  Portable checks and the extracted-function regressions pass; the first
+  regression fixture's header-name compilation conflict remains a preserved
+  failed result. Independent component/image builds and the full native
+  matrix for this changed composition remain required. The fully qualified
+  AMD64 image above remains bound to its earlier exact source, not these changes.
 - [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
   component identities, independent builds and receipts in the final profile.
   The exact `0.1.0` AMD64 matrix above is complete. It does not qualify ARM64.
