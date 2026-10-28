@@ -4,6 +4,7 @@ import unittest
 
 import build_worker_pipeline
 import build_criu_shared_fds
+import criu_candidate
 import reference
 
 
@@ -27,9 +28,35 @@ class WorkerPipelineTests(unittest.TestCase):
             self.assertIn("--bounded-build", commands["sysbox"])
             self.assertIn("owned-builder", commands["sysbox"])
             self.assertIn("--discard-compiler-scratch", commands["worker"])
+            self.assertEqual(commands["recovery"][1:],
+                             ["tools/build_criu_recovery.py", "--base-candidate", "exact-criu"])
             for command in commands.values():
                 self.assertNotIn("--push", command)
                 self.assertNotIn("publish", command)
+
+    def test_reuse_requires_every_exact_recovery_correction_and_the_base_failure_fix(self):
+        patches = {name: reference.sha(path)
+                   for name, path in criu_candidate.RECOVERY_CORRECTIONS.items()}
+        key = str(criu_candidate.PSTREE_CORRECTION.relative_to(reference.ROOT))
+        component = {"local_inputs_sha256": {
+            key: reference.sha(criu_candidate.PSTREE_CORRECTION)}}
+        complete = {"candidate_patch_sha256": patches}
+        criu_candidate.require_recovery_corrections(complete, component)
+        for name in patches:
+            for value in [None, "0" * 64]:
+                changed = dict(patches)
+                if value is None:
+                    del changed[name]
+                else:
+                    changed[name] = value
+                with self.subTest(patch=name, value=value), self.assertRaisesRegex(ValueError, "recovery corrections"):
+                    criu_candidate.require_recovery_corrections(
+                        {"candidate_patch_sha256": changed, "recovery_corrections": True}, component)
+        for changed in [{}, {"local_inputs_sha256": {key: "0" * 64}}]:
+            with self.assertRaisesRegex(ValueError, "process-tree failure correction"):
+                criu_candidate.require_recovery_corrections(complete, changed)
+        with self.assertRaisesRegex(ValueError, "recovery corrections"):
+            criu_candidate.require_recovery_corrections({"recovery_corrections": True}, component)
 
     def test_only_the_exact_full_shared_source_component_can_skip_the_delta_build(self):
         digest = reference.sha(build_criu_shared_fds.PATCH)

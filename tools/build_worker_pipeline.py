@@ -27,6 +27,7 @@ def commands(options, sysbox, criu):
                  "--native-base-build", options.native_base_build,
                  "--exit-hold", "--exit-hold-socket", "--nested-overlay",
                  "--nested-overlay-stable-paths", "--nested-overlay-shared-root"],
+        "recovery": [*common, "tools/build_criu_recovery.py", "--base-candidate", criu],
         "shared-fds": [*common, "tools/build_criu_shared_fds.py",
                        "--base-candidate", criu],
         "namespace-access": [*common, "tools/build_criu_shared_fds.py",
@@ -103,8 +104,12 @@ def main():
             supplied = evidence.name
         if role == "sysbox":
             _, loaded = reference_lifecycle.component_build(supplied, "factorybox-build-sysbox-")
-        elif role in {"criu", "shared-fds", "namespace-access"}:
-            _, loaded, _, _ = criu_candidate.load(supplied)
+        elif role in {"criu", "recovery", "shared-fds", "namespace-access"}:
+            _, loaded, component, _ = criu_candidate.load(supplied)
+            if role == "criu":
+                criu_candidate.require_base_failure_correction(component)
+            else:
+                criu_candidate.require_recovery_corrections(loaded, component)
         else:
             _, loaded = build_worker.load(supplied)
         build_config.require_platform(options.platform, base, loaded)
@@ -115,6 +120,9 @@ def main():
     try:
         sysbox, _ = step("sysbox", commands(options, "", "")["sysbox"], options.sysbox_build)
         criu, loaded_criu = step("criu", commands(options, "", "")["criu"], options.retained_candidate)
+        recovery = loaded_criu.get("candidate_patch_sha256", {})
+        reused_recovery = criu if any(name in recovery for name in criu_candidate.RECOVERY_CORRECTIONS) else None
+        criu, loaded_criu = step("recovery", commands(options, sysbox, criu)["recovery"], reused_recovery)
         criu, loaded_criu = step("shared-fds", commands(options, sysbox, criu)["shared-fds"],
                                  shared_source_input(criu, loaded_criu))
         if shared_source_input(criu, loaded_criu) != criu:

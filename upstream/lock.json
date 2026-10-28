@@ -18,7 +18,8 @@
         "upstream/patches/criu-thread-array-bound.patch": "62d688cbf9a3649a2a78673ea3b444b9ee459ba9e53104afbbd605feb969426d",
         "upstream/patches/criu-controller-string-bounds.patch": "ce3b043aea9d85a5ba927759689ea50dc516fc34d5b0b91107ce2df6677bde00",
         "upstream/patches/criu-proc-scan-widths.patch": "f1062044298d890b40d827283306ff133c799f003bdae32bc8b5a605257a57bf",
-        "upstream/patches/criu-loginuid-write-length.patch": "95f01a6899d153bf3a8e2c6bab413c822d30ff7df2e8f0680ca1ec79bbca03c8"
+        "upstream/patches/criu-loginuid-write-length.patch": "95f01a6899d153bf3a8e2c6bab413c822d30ff7df2e8f0680ca1ec79bbca03c8",
+        "upstream/patches/criu-pstree-error-propagation-candidate.patch": "ee1de7fd06bc1319c844424691ef66f2567cb4789301fb87b715fdbfc8937fc2"
       },
       "overlays": {},
       "patches": [
@@ -36,7 +37,8 @@
         "upstream/patches/criu-thread-array-bound.patch",
         "upstream/patches/criu-controller-string-bounds.patch",
         "upstream/patches/criu-proc-scan-widths.patch",
-        "upstream/patches/criu-loginuid-write-length.patch"
+        "upstream/patches/criu-loginuid-write-length.patch",
+        "upstream/patches/criu-pstree-error-propagation-candidate.patch"
       ],
       "prefix": "criu-086df34a2da27125fa05e66ba4d6b63cbb220b2e",
       "prepared_files_sha256": {
@@ -647,7 +649,7 @@
         "criu/proc_parse.c": "8c04bd8bbf6302a651bca61801150cfb8677fad0a8d2ac7da8bae09c9db8e70f",
         "criu/protobuf-desc.c": "37d9a4c25b1505c15215b3dd1a57cc07090c429ecf7ff6cef86100ce3a80284d",
         "criu/protobuf.c": "bb98793e51c135757e3ee80db685292d5a54be14c35fe15adc2556eb797908d8",
-        "criu/pstree.c": "944780b54ff44f4bd3cc0c8731ee0ace1addf634a343de990a81315738bcb872",
+        "criu/pstree.c": "7eaba08b9d0f77a36373d9c2acbc89024741e7c4da891b955e873913f4b8453b",
         "criu/rbtree.c": "2424e5201b5a03bd324e9e7d9e43da1d9d962cea25220d05019d9730c18e727d",
         "criu/rst-malloc.c": "d623d7be0560686d6efaf8140253a7759872889d6e390cfaa60041eef11edecf",
         "criu/seccomp.c": "0de21dd440b2589ee354fb5644c8772ce3e6828663d81e943bd994e231f5f221",

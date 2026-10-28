@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import resource
+import shutil
 import subprocess
 import sys
 import uuid
@@ -53,10 +54,17 @@ def main():
                      extract(proc, "int parse_threads(int pid, struct pid **_t, int *_n)"),
                      extract(proc, "int prepare_loginuid(unsigned int value)"),
                      extract(proc, "static int parse_file_lock_buf(char *buf, struct file_lock *fl, bool is_blocked)")]
+        pstree = tree / "criu/pstree.c"
+        pstree_body = extract(pstree.read_text(), "int dump_pstree(struct pstree_item *root_item)")
+        (artifact / "dump-pstree.inc").write_text(pstree_body)
+        pstree_fixture = ROOT / "tests/criu-pstree-dump.c"
+        shutil.copyfile(pstree_fixture, artifact / "pstree-regression.c")
         result["source_lock_sha256"] = reference.sha(ROOT / "upstream/lock.json")
         result["source_files_sha256"] = {name: reference.sha(tree / name)
-                                          for name in ["criu/cgroup.c", "criu/proc_parse.c"]}
+                                          for name in ["criu/cgroup.c", "criu/proc_parse.c", "criu/pstree.c"]}
         result["function_sha256"] = [hashlib.sha256(f.encode()).hexdigest() for f in functions]
+        result["pstree_function_sha256"] = hashlib.sha256(pstree_body.encode()).hexdigest()
+        result["pstree_fixture_sha256"] = reference.sha(pstree_fixture)
         fixture = Path(__file__).with_name("fixture.c")
         text = fixture.read_text()
         assert text.count("/* @CRIU_FUNCTIONS@ */") == 1
@@ -65,7 +73,10 @@ def main():
         result["fixture_sha256"] = reference.sha(fixture)
         result["generated_source_sha256"] = reference.sha(source)
         commands = [["cc", "-std=gnu11", "-O2", "-Wall", "-Werror", str(source), "-o", str(artifact / "functions")],
-                    [str(artifact / "functions")]]
+                    [str(artifact / "functions")],
+                    ["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
+                     str(artifact / "pstree-regression.c"), "-o", str(artifact / "pstree-regression")],
+                    [str(artifact / "pstree-regression")]]
         result["checks"] = []
         for i, command in enumerate(commands):
             with (artifact / f"{i}.stdout").open("wb") as out, (artifact / f"{i}.stderr").open("wb") as err:
@@ -74,6 +85,7 @@ def main():
             result["checks"].append({"command": command, "exit_code": done.returncode})
             done.check_returncode()
         result["executable_sha256"] = reference.sha(artifact / "functions")
+        result["pstree_executable_sha256"] = reference.sha(artifact / "pstree-regression")
         result["passed"] = True
         return 0
     finally:
