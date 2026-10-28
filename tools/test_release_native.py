@@ -24,7 +24,7 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                          "ci-builder-identity.json", "actual==expected",
                          'test "$version" = "$(cat internal/version/VERSION)"',
                          "tools/release_sources.py", 'gh release upload "v$RELEASE"',
-                         "a5b9a931fa2a61e328d122f6ce1250664b52459e",
+                         "094a84ca63befa5e6ecbbc14312fa5683b790a5b",
                          "SHA256SUMS-$ARCH", "sources-$ARCH.json", "native-result-$ARCH.json"]:
             self.assertIn(required, workflow)
         for forbidden in ["workflow_dispatch", "pull_request:", "push:", "setup-qemu", "--native-candidate",
