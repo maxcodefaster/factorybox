@@ -6,11 +6,17 @@ reports below and in [production-progress.md](production-progress.md) retain
 their original failures and package-specific results; they are not a list of
 current runtime defects.
 
-The ordinary-image composition gap reproduced on October 28 is a current
-release blocker. Its process-tree correction and enforced recovery selection
-are checked below; the complete corrected image still needs native qualification.
+The ordinary-image composition gap reproduced on October 28 is corrected.
+Source `1284d7357d070a4fc46ba33cfe14937ae8ae480a`, ordinary image
+`sha256:aa6d803a56c8ea346823681e6b90e3f4cca55699ac7b8960e5bb288bc5271121`
+and the reviewed Factory pin pass all 23 native AMD64 gates, the complete
+15-test/62-subtest namespace regression and independent component/image builds.
+Matching sources, explicit companion bindings and owned-resource cleanup also
+verify. The [corrected AMD64 report](native-amd64-0.1.0-corrected.md) is the
+current image-specific evidence. Overall production qualification remains false;
+the remaining checks below still gate the first stable release.
 
-## What is already working
+## Earlier verified builds and historical results
 
 - One Factorybox codebase implements the same lifecycle for Linux AMD64 and
   ARM64. CPU-specific restore/timer code stays behind that shared lifecycle.
@@ -144,7 +150,7 @@ are checked below; the complete corrected image still needs native qualification
 
 ## Remaining first-release checks
 
-- [ ] Complete the corrected ordinary image composition. A new audit and the
+- [x] Complete the corrected ordinary AMD64 image composition. A new audit and the
   unchanged process-tree regression show that the ordinary pipeline omitted
   recovery corrections already tested in the earlier programme composition.
   `factorybox-criu-pstree-red-a6be80fa5fc543ef8d6343a1d83a962f` retains three
@@ -152,23 +158,24 @@ are checked below; the complete corrected image still needs native qualification
   in `factorybox-criu-pstree-green-e1cfde136b9e47698d499afec8b81e34`.
   The process-tree failure correction is now required in the base source lock;
   production build tooling adds and requires the four remaining recovery
-  patches. Protected build fixtures stay unchanged. These changes still need
-  complete exact-image native qualification and independent reproduction.
+  patches. Protected build fixtures stay unchanged. The corrected image now
+  passes all 23 native gates, the complete namespace regression and independent
+  reproduction, with matching source and cleanup receipts in the current report.
   The intermediate matrix `factorybox-release-native-f53e0fd112de45559dc96d5e3fa0b200`
   was stopped after its CRIU-core and full Sysbox-unit children finished with
   cleanup; it is incomplete, and its remaining 21 gates were not run.
-- [ ] Qualify the four additional CRIU defensive backports selected during
+- [x] Qualify the four additional CRIU defensive backports on AMD64, selected during
   upstream review: reused thread-array bounds, controller-string bounds and
   all six callers, mount/lock scan widths, and exact loginuid write length.
   Fresh source assembly preserves all 1,030 original upstream test files.
   Portable checks and the extracted-function regressions pass; the first
   regression fixture's header-name compilation conflict remains a preserved
   failed result. Independent component/image builds and the full native
-  matrix for this changed composition remain required. The fully qualified
-  AMD64 image above remains bound to its earlier exact source, not these changes.
+  matrix now pass on this exact changed composition. Older results above keep
+  their historical source/image bindings; they were not relabelled.
 - [ ] Complete the `0.1.0` ARM64 native matrix and bind both architectures' sources,
   component identities, independent builds and receipts in the final profile.
-  The exact `0.1.0` AMD64 matrix above is complete. It does not qualify ARM64.
+  The corrected `0.1.0` AMD64 verification is complete. It does not qualify ARM64.
   Older local ARM64 integration results do not replace the image-specific
   checks or final profile binding. Each architecture needs an existing matching Linux
   runner with an admitted kernel/storage tuple. This session currently has only
@@ -189,7 +196,10 @@ are checked below; the complete corrected image still needs native qualification
   publication. Finish the upstream review and exact image's distribution/source
   obligations described in [LICENSING.md](../LICENSING.md). The component source
   inventory, CLI dependency companion, selected Sysbox Go sources/notices and
-  observed glibc/libseccomp source packages are verified. Complete Sysbox
+  observed glibc/libseccomp source packages are verified and explicitly bound to
+  the corrected image. Reconcile all required programme coverage with its exact
+  current components; older changed-component results do not replace unrun checks.
+  Complete Sysbox
   static linkage, inherited executable dependencies,
   operating-system source/notice coverage and the
   inherited Sysbox package's conflicting notice remain unresolved; see the

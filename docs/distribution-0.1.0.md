@@ -4,7 +4,34 @@ Updated October 28, 2026. The AMD64 native tests pass; public distribution
 qualification remains false. These receipts prepare release material without
 changing the tested image or publishing an asset.
 
-## Exact image and prepared sources
+## Current corrected image
+
+The [current AMD64 verification](native-amd64-0.1.0-corrected.md) binds source
+`1284d7357d070a4fc46ba33cfe14937ae8ae480a` and image
+`sha256:aa6d803a56c8ea346823681e6b90e3f4cca55699ac7b8960e5bb288bc5271121`.
+Its new matching source archive is in
+`factorybox-release-sources-1b6a37d54f1540e094054ec6bdb4141c`:
+`factorybox-0.1.0-linux-amd64-sources.tar.zst`, SHA-256
+`2170dc09b56433a38639f132a921e6504120f3bd917643fceca93da2f43cd0a8`.
+All 4,673 archive members and the complete decoded payload verify independently.
+
+The CLI, three Sysbox executables, selected Sysbox source tree and compiler
+identities are unchanged. The three dependency companions listed below were
+fully decoded and explicitly rebound to this image and its new matching Sysbox
+source members. Their original bytes and historical result fields were preserved.
+The new binding is `current-distribution-verification.json` in
+`factorybox-upstream-applicability-19fb25b7b9ed4487bc4e404a16f291d6`, SHA-256
+`ecbefb2c1cd1c0ee2658b5cb5633fefb94e19bd6c36259c8039604c86c4c5951`.
+
+The fresh never-started inspection is
+`factorybox-distribution-audit-f651e6bf4f0c496da872b7a86ff5db52`.
+It verifies 514 metadata files and the same 258 installed package tuples,
+141 source-package versions, 15 Go executables, 605 remote module versions and
+17 local replacement identities. Its inspection container was removed; all
+nine retained volume identities remain unchanged. The inherited notice conflict
+and missing coverage below remain unresolved. Distribution qualification is false.
+
+## Earlier image and prepared sources
 
 The audit inspects ordinary worker
 `factorybox-build-worker-d98fbdfb094b4c38b37b7c0dcc2c36d3`, image
