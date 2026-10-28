@@ -1,5 +1,13 @@
 # First local release operating procedure
 
+The corrected `0.1.0` AMD64 image now also passes all five operating cases,
+including the actual empty-drain recipe transition, incompatible-image refusal
+and guarded rollback with complete RAM/files and useful independent descendants.
+The [current verification report](native-amd64-0.1.0-corrected.md#current-operating-cases)
+records exact current/previous images, the preserved fixture-input failure and
+independent cleanup/archive checks. The procedure and evidence below remain
+historical; overall production qualification is still open.
+
 This is the historical 6016/829f package procedure for the scope in
 [GOAL.md](../GOAL.md). The [readiness checklist](first-release-status.md) tracks
 the latest integration and release gaps. "Current package" below refers only
