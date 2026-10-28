@@ -129,6 +129,34 @@ jobs:
           projects="$(receipt artifacts/ci-project-images.log)"
           printf 'WORKER_BUILD=%s\nCONSUMER_BUILD=%s\nPROJECT_IMAGES=%s\n' \
             "$worker" "$consumer" "$projects" >> "$GITHUB_ENV"
+      - name: Reproduce the worker with independently rebuilt components
+        run: |
+          set -euo pipefail
+          receipt() {
+            mise exec -- python3 -c 'import pathlib,sys;sys.path.insert(0,"tools");import build_worker_pipeline;print(pathlib.Path(build_worker_pipeline.completed_output(pathlib.Path(sys.argv[1]).read_text())).name)' "$1"
+          }
+          builder="factorybox-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
+          original="artifacts/$WORKER_BUILD/result.json"
+          base="$(mise exec -- python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["native_base_build"])' "$original")"
+          original_sysbox="$(mise exec -- python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["sysbox_build"])' "$original")"
+          mise exec -- python3 tools/build_sysbox.py --platform "linux/$ARCH" \
+            --builder "$builder" --bounded-build --network host \
+            --shm-startup-reexec --clean --compare "$original_sysbox" \
+            > artifacts/ci-independent-sysbox.log 2>&1
+          sysbox="$(receipt artifacts/ci-independent-sysbox.log)"
+          mise exec -- python3 tools/build_worker_pipeline.py --platform "linux/$ARCH" \
+            --native-base-build "$base" --sysbox-build "$sysbox" \
+            --builder "$builder" --bounded-build --network host \
+            > artifacts/ci-independent-components.log 2>&1
+          pipeline="$(receipt artifacts/ci-independent-components.log)"
+          independent="$(mise exec -- python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["worker_build"])' "artifacts/$pipeline/result.json")"
+          criu="$(mise exec -- python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["criu_build"])' "artifacts/$independent/result.json")"
+          mise exec -- python3 tools/build_worker.py --platform "linux/$ARCH" \
+            --native-base-build "$base" --sysbox-build "$sysbox" --retained-candidate "$criu" \
+            --component-input-worker "$independent" --compare "$WORKER_BUILD" --image-only \
+            --discard-compiler-scratch > artifacts/ci-independent-comparison.log 2>&1
+          comparison="$(receipt artifacts/ci-independent-comparison.log)"
+          cp "artifacts/$comparison/result.json" artifacts/ci-independent-result.json
       - name: Qualify the actual ordinary native image
         id: qualify
         run: |
@@ -204,6 +232,7 @@ jobs:
           name: worker-native-${{ matrix.arch }}-${{ github.run_attempt }}
           path: |
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-native-result.json
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-independent-result.json
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-builder-identity.json
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-*.log
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-native-*/*.stdout

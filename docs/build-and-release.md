@@ -245,7 +245,11 @@ builder. Cleanup requires its recorded immutable identity. Checkout directories
 and Docker client credentials are separate for each run and attempt.
 
 The jobs build the exact component pipeline, the pinned Factory consumer and
-its offline project-image archive. `tools/release_native.py` refuses Candidate
+its offline project-image archive. Before native qualification, each job rebuilds
+Sysbox with empty compiler/module caches, rebuilds the complete CRIU composition,
+and requires an identical worker package, image and every layer from those new
+component runs. The comparison receipt and build logs stay with the CI evidence.
+`tools/release_native.py` refuses Candidate
 workers, foreign architectures and a mismatched CLI version. It runs the original
 CRIU core and Sysbox unit/integration/lifecycle/systemd gates, all fourteen delivered-worker
 suites, planned and abrupt worker replacement, and both actual Factory consumer

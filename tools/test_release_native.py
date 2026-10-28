@@ -24,6 +24,10 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                          "ci-builder-identity.json", "actual==expected",
                          'test "$version" = "$(cat internal/version/VERSION)"',
                          "tools/release_sources.py", 'gh release upload "v$RELEASE"',
+                         "Reproduce the worker with independently rebuilt components",
+                         '--shm-startup-reexec --clean --compare "$original_sysbox"',
+                         '--compare "$WORKER_BUILD" --image-only',
+                         "ci-independent-result.json",
                          "094a84ca63befa5e6ecbbc14312fa5683b790a5b",
                          "SHA256SUMS-$ARCH", "sources-$ARCH.json", "native-result-$ARCH.json"]:
             self.assertIn(required, workflow)
@@ -31,6 +35,8 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                           ":latest", "cancel-in-progress: true", "docker system prune"]:
             self.assertNotIn(forbidden, workflow)
         self.assertLess(workflow.index("tools/release_sources.py"), workflow.index("docker push"))
+        self.assertLess(workflow.index("Reproduce the worker with independently rebuilt components"),
+                        workflow.index("Qualify the actual ordinary native image"))
         self.assertIn('"$image-amd64" "$image-arm64"', workflow)
 
     def test_host_preflight_detects_both_native_platforms_without_creating_resources(self):
