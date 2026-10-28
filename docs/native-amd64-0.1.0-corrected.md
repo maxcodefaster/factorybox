@@ -1,8 +1,9 @@
 # Corrected 0.1.0 AMD64 verification
 
 Updated October 28, 2026. The corrected ordinary image passes every original
-native release gate and the complete namespace regression. It is independently
-reproduced. Overall production and public-distribution qualification remain false;
+native release gate, the complete namespace regression and all 17 current MAIN
+qualification groups. It is independently reproduced. Overall production and
+public-distribution qualification remain false;
 no stable tag, release, image publication or installation activation happened.
 
 The original requested commit `955446f1aa9630a9692de86dc8568292bc401647`
@@ -101,6 +102,68 @@ exact native base. Inventorying 141 source-package versions and inherited
 executables does not establish complete distribution clearance.
 
 ## Cleanup and limits
+
+### Current MAIN programme follow-up
+
+The same delivered bytes also pass the broader 17-group MAIN qualification on
+source `eec596cec30a1cd93f9d208902e9e7560ae5911e`, which adds only documentation
+since runtime source `1284d7357d070a4fc46ba33cfe14937ae8ae480a`.
+Fifteen complete lifecycle suites use ordinary native builds, the exact
+delivered CLI and components, with zero skips; two storage groups exercise the
+exact worker image. The current namespace result is reused by its verified
+hash. The remaining 16 groups were executed afresh with their original checks.
+
+| Group | Evidence under `artifacts/` |
+| --- | --- |
+| Lifecycle | `factorybox-runtime-1aa4f7234f044040ad7bf6994496611d` |
+| Guard | `factorybox-runtime-33e1640de82c4f5699a00d425a0f44d9` |
+| Capture | `factorybox-runtime-f7692184bc4942718d7251b0e2099d66` |
+| Pause | `factorybox-runtime-6546cb11388b47a083b5ebb4b260da4f` |
+| Base | `factorybox-runtime-81757d36d4674865a3ea129314ea791a` |
+| Base pause | `factorybox-runtime-99c3475ed4794ff194fcac8cfd341e61` |
+| Delegation | `factorybox-runtime-2e3b07a8a80a45fb8c9d5281c1fa44d7` |
+| Auxiliary controllers | `factorybox-runtime-e236a56498974dec9dc4f6a401695ea7` |
+| Namespaces | `factorybox-runtime-5051159e67d948e2aeb273427268a8e1` |
+| Time namespaces | `factorybox-runtime-b7616f7735ba4feab756ab300e7f3756` |
+| Detached proc descriptor | `factorybox-runtime-3197bc54b58744288e3b8a0af36fbfd1` |
+| Overlay | `factorybox-runtime-a6c7fa19a743493d865a06d0b854c897` |
+| CRIU interruption | `factorybox-runtime-63fa4eed27b547dfa2eb8513b8e37e7b` |
+| Capture admission | `factorybox-runtime-6af2e39c3df14dc7a67bd23e935c8c89` |
+| Capture-worker loss | `factorybox-runtime-558dbee2f17a47dfafeaff21e344200a` |
+| Storage admission | `factorybox-storage-admission-10bfd4c5056848d0ab623a79f9564ee4` |
+| Storage controller loss | `factorybox-storage-admission-b1322e9de0f54c208539387c503b1032` |
+
+The controller is
+`factorybox-release-profile-qualification-4e632f9fc8c34032baa267f3e6706387`.
+Its independently verified `current-main-closure.json` has SHA-256
+`c9cac202f9ce92342ccdce3b5256af9d88ac45e8fcf82b2f71a4561d0412fb26`.
+It checks complete current archive decompression, frozen source manifests,
+production-core and executable bindings and exact owned-resource cleanup.
+`cleanup.json`, SHA-256
+`52fbe970cae5d66eb57f3eab5e4f225ff253bc11181fde90112570d266244c6a`,
+confirms zero containers, all nine pre-existing volume identities and all
+232 immutable reference files. Artifact allocation was 25,701,203,968 bytes
+after cleanup, within the unchanged 32-GiB limit with the 8-GiB start reserve.
+
+Five sequence controllers stopped between successful children at that reserve;
+their original refusal logs remain. Closed current dumps were losslessly
+re-encoded and fully verified before their prior encodings were removed.
+Eleven older successful MAIN output bulks were then retired after complete
+decompression/member verification and replacement proof. Every original case
+passed on the current build with byte-identical native assertion files. Their
+source, results, logs, complete member headers/hashes, selected diagnostics and
+retirement receipts remain; those eleven old whole captures are deliberately
+no longer reconstructable. The controller's three
+`superseded-main-retention*.stdout` logs identify each receipt. All current full
+captures, frozen inputs and unresolved failures remain preserved.
+
+This closes the 17 MAIN groups. Full consumer/pressure/drain cases, operating
+procedures, additional storage/integration coverage, the regular series and
+final profile still need current-image reconciliation. The 23 release-image
+gates above remain separately complete. Neither set closes ARM64, actual-provider,
+historical EBUSY or distribution obligations.
+
+### Earlier release-matrix cleanup
 
 Only the owned bounded builder and state volume were removed. Zero containers
 remain; all nine retained volume identities are unchanged. Verified identical

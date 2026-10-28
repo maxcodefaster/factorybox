@@ -16,6 +16,14 @@ verify. The [corrected AMD64 report](native-amd64-0.1.0-corrected.md) is the
 current image-specific evidence. Overall production qualification remains false;
 the remaining checks below still gate the first stable release.
 
+The broader current MAIN qualification now also passes all 17 required groups:
+15 complete ordinary lifecycle suites and both storage-admission/loss groups.
+Independent verification binds their production core, delivered CLI/components,
+complete current capture archives and cleanup to the same corrected image.
+The namespace result is reused with its exact hash; the other 16 groups ran
+afresh. All nine retained volume identities and all 232 reference files verify.
+The report records the closure and the remaining broader programme coverage.
+
 ## Earlier verified builds and historical results
 
 - One Factorybox codebase implements the same lifecycle for Linux AMD64 and
