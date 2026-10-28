@@ -291,11 +291,12 @@ It verifies every raw byte and selected image, preserves the extra controller's
 tuple/JSON readback rejection, confirms zero containers and all nine retained
 volume identities, and does not reclassify the failed XZ attempt.
 
-The next eight original integration commands are prepared but unrun. Native
-admission currently refuses their start: about 25.67 GiB of artifacts plus the
-required 8-GiB reserve exceeds the unchanged 32-GiB budget. A request to increase
-that budget to 64 GiB is pending; no admission check is bypassed. All original
-native limits and the 420-second lifecycle deadline remain unchanged.
+The next eight original integration commands are prepared but unrun. The former
+32-GiB artifact budget refused their start at about 25.67 GiB plus the required
+8-GiB reserve. On October 28 the user authorized a 64-GiB development evidence
+budget. The start reserve, 12-GiB host free-space reserve, native CPU/memory
+limits and 420-second lifecycle deadline remain unchanged. The original refusal
+and every failed result remain preserved; no admission check is bypassed.
 
 ### Earlier release-matrix cleanup
 

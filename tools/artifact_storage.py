@@ -13,7 +13,7 @@ import subprocess
 import threading
 import time
 
-ARTIFACT_LIMIT = 32 << 30
+ARTIFACT_LIMIT = 64 << 30
 FREE_RESERVE = 12 << 30
 RUN_RESERVE = 8 << 30
 

@@ -19,7 +19,7 @@
   unrelated resources alone. Keep the 3 CPU/3 GiB sandbox and 1 CPU/768 MiB separate Theia ceilings,
   420-second lifecycle deadline and maximum two live sandboxes.
 - Use `reference.new_artifact` before generating a new build or native run. Generated artifacts
-  have a 32-GiB budget, with 8 GiB of headroom required before starting and 12 GiB of host free
+  have a 64-GiB budget, with 8 GiB of headroom required before starting and 12 GiB of host free
   space reserved. Keep frozen inputs and active runs. Compact closed-run dumps only after complete
   decompression verification; preserve source, results, logs and reconstruction receipts.
   Completed artifact inputs may share immutable files. Never rewrite archived inputs in place.

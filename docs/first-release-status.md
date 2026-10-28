@@ -43,10 +43,12 @@ The reviewed Factory raw developer rootfs is now independently verified in
 `factorybox-devx-inputs-73caf48e38814e32bee3afca47371757`. It shares the completed
 exact export without duplicating its data. The separate XZ preparation exceeded
 its 300-second deadline and remains failed with full evidence. No native case
-uses that failed preparation. Further native runs currently fail artifact
-admission: retained evidence uses about 25.67 GiB, while the 32-GiB limit requires
-8 GiB of start headroom. The requested increase to 64 GiB awaits the user's
-answer; the limit is unchanged. The eight pending integration cases remain unrun.
+uses that failed preparation. The former 32-GiB artifact limit refused further
+runs at about 25.67 GiB of retained evidence with 8 GiB of required start
+headroom. On October 28 the user authorized increasing this development disk
+budget to 64 GiB. The 8-GiB start reserve, 12-GiB host free-space reserve and all
+native CPU, memory and deadline limits remain unchanged. The eight pending
+integration cases remain unrun at this update.
 
 ## Earlier verified builds and historical results
 
