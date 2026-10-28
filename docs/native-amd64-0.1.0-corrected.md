@@ -291,12 +291,76 @@ It verifies every raw byte and selected image, preserves the extra controller's
 tuple/JSON readback rejection, confirms zero containers and all nine retained
 volume identities, and does not reclassify the failed XZ attempt.
 
-The next eight original integration commands are prepared but unrun. The former
+The former
 32-GiB artifact budget refused their start at about 25.67 GiB plus the required
 8-GiB reserve. On October 28 the user authorized a 64-GiB development evidence
 budget. The start reserve, 12-GiB host free-space reserve, native CPU/memory
 limits and 420-second lifecycle deadline remain unchanged. The original refusal
 and every failed result remain preserved; no admission check is bypassed.
+
+### Eight further integration cases
+
+All eight prepared original integration cases now pass in
+`factorybox-current-integration-eight-ac611a7f5835419dad899b2ca253b666`.
+The independent `closure.json` has SHA-256
+`0f01fab909380cf31671f1aa30f623904bef2b5134753e62114472f17350ca1b`.
+Its plan, progress, original commands, parent/child result hashes, input hashes,
+complete logs and verification sources are retained in that directory.
+
+| Original case | Native evidence | Result SHA-256 |
+| --- | --- | --- |
+| docker-root | `factorybox-devx-lifecycle-c8cce3ab91e94d58988667a60e9ba52b` | `57d424a557c7bc78a114322b78b182147a59ef0fcc122de7f79c9e20b9934fd3` |
+| docker-daemon | `factorybox-devx-lifecycle-ebd994d78b7c4f3ab7e7c4d20d7134f7` | `a8039fabe8f5e906a14b5667670914c87879f84b26a5a946f485d2a5b6fc068f` |
+| docker-pause | `factorybox-devx-lifecycle-52500a489e594160ad1fa3f480ef4770` | `12e483433453ade6ecb4968d05d72e75eef9447637b40ee6c22910477f5f3e3c` |
+| docker-helper | `factorybox-devx-lifecycle-9a08a74068f4487989a24ede8b96aacb` | `8b05a50a63b15279365c015508fbd308ef2b5b803cd19a7489595d010bb227b2` |
+| docker-controller | `factorybox-devx-lifecycle-f24d46abe84c46929e308bf2b5c7e316` | `42bbfaaac61d35768d5bb8220b4db09b8dcacc2a1fa37f4914dd7ad56cc6ad37` |
+| docker-guard | `factorybox-devx-lifecycle-6352e80bd7c2403a938a92aa130a0907` | `795641415e51a1425c567106c76baff8320a502951df212dc1fe3b2c4fa2a11b` |
+| factory-agent | `factorybox-consumer-worker-loss-4d38eb2291fb4df1b122db863d769e48` | `1118a26bc4911a67f2e0493662eb5d5f4570d80e74800532a787c901c5c89895` |
+| minimal-planned-loss | `factorybox-consumer-worker-loss-e96ae3bd3ab34bd6bc694541bf2e3637` | `50ea4c207ed0832f71e5d4aa34f13c54e39aa4d6b79785b0f1ac216ecbac7508` |
+
+These runs use source commit `120e5a0b1534887b16a21a316c7424e2364f70f6`.
+Its production Go core still matches tested runtime source
+`1284d7357d070a4fc46ba33cfe14937ae8ae480a` and the ordinary worker identified
+above. The budget change alters development tools and documentation only.
+The reviewed Factory commit remains
+`a5b9a931fa2a61e328d122f6ce1250664b52459e`; the raw rootfs and both project
+archives are the exact inputs identified above. The whole raw rootfs hash is
+independently verified again at closure.
+
+The six Docker probes use the native base with the exact ordinary CLI and
+corrected components, with no candidate build options. They retain every
+original interruption, RAM/filesystem, usable Docker, independent branch and
+replay assertion. Each has six completed useful-work observations; the helper
+case has nine. The two consumer cases use the actual delivered worker image.
+Factory runs the complete original lifecycle with the reviewed separate Theia
+and deterministic local OpenCode fixture. Its one prepare phase does not claim
+Factory worker replacement or external-provider continuation. Minimal runs both
+prepare and recover phases after planned replacement. These original consumer
+commands do not select a bounded store override.
+
+The first extra controller rejected the already passed docker-root result
+because three frozen test executables had been losslessly compressed by the
+original runner. Its failed `progress.json` remains unchanged, SHA-256
+`701b26d3ca31e9b0d73d898854ea4191ed31a54bfef400992987bde728419be3`.
+The corrected controller verifies the full decoded bytes and their original
+hashes. It reuses that passed native result and runs the other seven cases once.
+This changes no native assertion and does not erase the first controller failure.
+
+Independent verification confirms exact source contexts, ordinary CLI/components,
+all input hashes, unchanged observed global sysctls and actual child cleanup.
+Every owned container/volume is absent; all nine preexisting volume identities
+remain equal. Artifact allocation is 28,360,081,408 bytes, about 26.41 GiB, within
+the authorized 64-GiB budget with the 8-GiB start reserve. Original failed XZ
+preparation, unresolved failures, frozen inputs and current captures remain.
+No images or release were published and no retained installation was activated.
+
+The quota change itself passes all seven portable gates in
+`factorybox-checks-e93675275892432c91525ce90291a93b`, including 416 Python
+tests and all 232 reference files. Both CI targets pass in
+[run 40640734730](https://github.com/maxcodefaster/factorybox/actions/runs/40640734730).
+This batch grants no ARM64, real-provider, endurance or overall production
+qualification. Broader consumer pressure/drain, storage and regular-series
+coverage and the other current release gates remain open.
 
 ### Earlier release-matrix cleanup
 

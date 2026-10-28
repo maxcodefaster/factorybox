@@ -35,9 +35,12 @@ The five retained-context integration cases now also verify against the current
 Go core and exact corrected components. Four native interruption cases pass;
 the deliberate RAM-corruption control fails only its required complete-RAM
 assertion and is accepted as a rejection control. Every current capture remains
-fully reconstructable. The reviewed Factory IDE image has been rebuilt and its
-setup probe passes; its full lifecycle and the remaining programme checks are
-still open. The current report records these distinct scopes.
+fully reconstructable. Eight further original integration cases now also pass:
+all six ordinary Docker interruption probes, the delivered-worker Factory
+lifecycle with the reviewed IDE and local OpenCode fixture, and planned Minimal
+worker replacement. Independent verification confirms their exact production
+core/components and cleanup. The Factory lifecycle is not a Factory worker-loss
+or real-provider proof. The current report records these distinct scopes.
 
 The reviewed Factory raw developer rootfs is now independently verified in
 `factorybox-devx-inputs-73caf48e38814e32bee3afca47371757`. It shares the completed
@@ -47,8 +50,15 @@ uses that failed preparation. The former 32-GiB artifact limit refused further
 runs at about 25.67 GiB of retained evidence with 8 GiB of required start
 headroom. On October 28 the user authorized increasing this development disk
 budget to 64 GiB. The 8-GiB start reserve, 12-GiB host free-space reserve and all
-native CPU, memory and deadline limits remain unchanged. The eight pending
-integration cases remain unrun at this update.
+native CPU, memory and deadline limits remain unchanged. All eight previously
+blocked integration cases now pass in
+`factorybox-current-integration-eight-ac611a7f5835419dad899b2ca253b666`.
+Its independent closure preserves the first extra controller's compressed-input
+readback failure and reuses the already passed native test after full decode/hash
+verification. No native test was rerun for that bookkeeping correction.
+All nine retained volume identities are preserved and zero containers remain.
+Artifacts use about 26.41 GiB after this batch. The budget/tooling change passes
+all seven portable gates, including 416 Python tests, and both GitHub CI targets.
 
 ## Earlier verified builds and historical results
 
