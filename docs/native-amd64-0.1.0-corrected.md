@@ -268,7 +268,34 @@ Native ELF/backend inspection and the original IDE setup admission pass in
 The owned builder/state are removed and retained volumes are unchanged.
 Build/setup alone do not qualify the full IDE lifecycle. The reviewed runtime/hub
 build `edb59de28a7d44d48fa4cfe79426f297` is a distinct image role; the older frozen
-developer rootfs also remains a distinct input awaiting reviewed-pin replacement.
+developer rootfs remains a distinct historical input.
+
+The reviewed raw replacement is independently verified in
+`factorybox-devx-inputs-73caf48e38814e32bee3afca47371757`, result SHA-256
+`2430f07fb96e571244de5abc8bf690064eeb92a8ba4b866e79f7a700afb038f1`.
+It binds the reviewed runtime and IDE images above and the complete 1,823,902,720-byte
+Docker export, SHA-256
+`d9f436161a580316cbf9445d62a0c60145525f81dd5071c7a5431fe20d64acd4`.
+Its source image/version inspection and export completed successfully. A subsequent
+XZ-encoding attempt exceeded its fixed 300-second deadline in
+`factorybox-devx-inputs-c7847c6606fc4eed8fdcd8e1d416352d`; that original result
+remains failed, SHA-256
+`cb00f460f572cd429fb702fe7d50f3e80f07dad58fac67e5849333d599fb3c6f`.
+Its complete raw export, partial encoding, source and logs remain intact.
+
+The new raw input reuses only the completed export/inspection stages offline.
+It shares the exact immutable file and passes the unchanged developer-input
+loader. The independent `raw-export-reuse-verification.json` has SHA-256
+`0dc80b029f77b045fdf407c09f46e36e8ed62179a62aad9b127db28e0ee56ccb`.
+It verifies every raw byte and selected image, preserves the extra controller's
+tuple/JSON readback rejection, confirms zero containers and all nine retained
+volume identities, and does not reclassify the failed XZ attempt.
+
+The next eight original integration commands are prepared but unrun. Native
+admission currently refuses their start: about 25.67 GiB of artifacts plus the
+required 8-GiB reserve exceeds the unchanged 32-GiB budget. A request to increase
+that budget to 64 GiB is pending; no admission check is bypassed. All original
+native limits and the 420-second lifecycle deadline remain unchanged.
 
 ### Earlier release-matrix cleanup
 
