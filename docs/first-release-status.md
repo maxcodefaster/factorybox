@@ -6,6 +6,10 @@ reports below and in [production-progress.md](production-progress.md) retain
 their original failures and package-specific results; they are not a list of
 current runtime defects.
 
+The ordinary-image composition gap reproduced on October 28 is a current
+release blocker. Its process-tree correction and enforced recovery selection
+are checked below; the complete corrected image still needs native qualification.
+
 ## What is already working
 
 - One Factorybox codebase implements the same lifecycle for Linux AMD64 and
@@ -140,6 +144,19 @@ current runtime defects.
 
 ## Remaining first-release checks
 
+- [ ] Complete the corrected ordinary image composition. A new audit and the
+  unchanged process-tree regression show that the ordinary pipeline omitted
+  recovery corrections already tested in the earlier programme composition.
+  `factorybox-criu-pstree-red-a6be80fa5fc543ef8d6343a1d83a962f` retains three
+  false-success failures. All seven original assertions pass after those patches
+  in `factorybox-criu-pstree-green-e1cfde136b9e47698d499afec8b81e34`.
+  The process-tree failure correction is now required in the base source lock;
+  production build tooling adds and requires the four remaining recovery
+  patches. Protected build fixtures stay unchanged. These changes still need
+  complete exact-image native qualification and independent reproduction.
+  The intermediate matrix `factorybox-release-native-f53e0fd112de45559dc96d5e3fa0b200`
+  was stopped after its CRIU-core and full Sysbox-unit children finished with
+  cleanup; it is incomplete, and its remaining 21 gates were not run.
 - [ ] Qualify the four additional CRIU defensive backports selected during
   upstream review: reused thread-array bounds, controller-string bounds and
   all six callers, mount/lock scan widths, and exact loginuid write length.

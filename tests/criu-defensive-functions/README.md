@@ -14,6 +14,9 @@ failure propagation, thread allocation/reuse, a reduced logical thread
 capacity with sufficient physical storage, exact numeric write lengths and
 both lock record formats. Historical bounds code is refused before compilation.
 It does not attempt to trigger an overflow or write any host procfs setting.
+It also runs the unchanged seven-case `tests/criu-pstree-dump.c` regression
+against the actual prepared process-tree writer, including failure after an
+earlier successful record. A truncated tree must never be reported as success.
 
 Every run keeps the extracted source, executable, logs, source and fixture
 hashes, limits and result under a newly admitted `artifacts/` directory.

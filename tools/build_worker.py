@@ -236,7 +236,9 @@ def main():
         reference.docker(["info", "--format", "{{json .}}"]))) if options.native_candidate else None)
     base_image, base = native_base.load(options.native_base_build, candidate_platform=options.platform)
     sysbox_path, sysbox = reference_lifecycle.component_build(options.sysbox_build, "factorybox-build-sysbox-")
-    criu_path, criu, _, _ = criu_candidate.load(options.retained_candidate, base_lock=options.criu_base_lock)
+    criu_path, criu, criu_component, _ = criu_candidate.load(options.retained_candidate, base_lock=options.criu_base_lock)
+    if not options.native_candidate:
+        criu_candidate.require_recovery_corrections(criu, criu_component)
     architecture = build_config.require_platform(options.platform, base, sysbox, criu)
     comparison = load(options.compare)[1] if options.compare else None
     component_input = load(options.component_input_worker) if options.component_input_worker else None

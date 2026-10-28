@@ -128,6 +128,7 @@ mise exec -- python3 tools/build_sysbox.py --platform linux/amd64 --network host
 mise exec -- python3 tests/criu-retained-candidate/build.py \
   --native-base-build "$base_build" --exit-hold --exit-hold-socket \
   --nested-overlay --nested-overlay-stable-paths --nested-overlay-shared-root
+mise exec -- python3 tools/build_criu_recovery.py --base-candidate "$retained_build"
 mise exec -- python3 tools/build_worker.py \
   --platform linux/amd64 \
   --native-base-build "$base_build" --sysbox-build "$sysbox_build" \
@@ -171,6 +172,13 @@ mise exec -- python3 tools/build_worker_pipeline.py \
 
 Use `--sysbox-build` and `--retained-candidate` to reuse exact verified completed
 inputs, never an inferred latest build. A retained CRIU input without the
+required process-tree failure correction is rejected. Before shared descriptions,
+the pipeline applies the exact owned PID-counter and cross-parent zombie recovery
+patches through `tools/build_criu_recovery.py`. A supplied complete composition
+must match all four patch hashes. Ordinary direct worker builds enforce the same
+requirement. The original build fixture and seven process-tree assertions stay
+unchanged; CI also runs that process-tree regression on the prepared base source.
+A retained CRIU input without the
 shared-description patch receives that ordered delta in a new build. An input
 that already has the exact patch and both required feature receipts is reused.
 The worker checks the ELF architecture

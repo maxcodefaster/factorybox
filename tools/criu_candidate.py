@@ -7,6 +7,28 @@ import reference
 import sources
 
 
+PSTREE_CORRECTION = reference.ROOT / "upstream/patches/criu-pstree-error-propagation-candidate.patch"
+RECOVERY_CORRECTIONS = {
+    name + ".patch": reference.ROOT / ("upstream/patches/criu-" + name + "-candidate.patch")
+    for name in ["pid-collision-diagnostics", "pid-collision-references",
+                 "nested-pid-counter", "nested-zombie-peer-pidns"]
+}
+
+
+def require_base_failure_correction(component):
+    base_path = str(PSTREE_CORRECTION.relative_to(reference.ROOT))
+    if component.get("local_inputs_sha256", {}).get(base_path) != reference.sha(PSTREE_CORRECTION):
+        raise ValueError("worker requires the exact base process-tree failure correction")
+
+
+def require_recovery_corrections(result, component):
+    """Keep exact selected recovery fixes in ordinary builds and reused inputs."""
+    require_base_failure_correction(component)
+    patches = result.get("candidate_patch_sha256", {})
+    if any(patches.get(name) != reference.sha(path) for name, path in RECOVERY_CORRECTIONS.items()):
+        raise ValueError("worker requires the exact complete CRIU recovery corrections")
+
+
 def supports_exit_hold(result):
     """Read a verified build's page-hold capability without changing its receipt.
 
