@@ -149,7 +149,7 @@ func runLifecycle(args []string) error {
 		if err := errors.Join(decodeErr, file.Close()); err != nil {
 			return err
 		}
-	} else if command == "retire-sandbox" {
+	} else if command == "retire-sandbox" || command == "retire-manager" {
 		operation := flag.NewFlagSet(command, flag.ContinueOnError)
 		operation.StringVar(&backingRequest.SandboxOwner, "sandbox-owner", "", "exact deleted Sandbox owner")
 		operation.StringVar(&backingRequest.InputSHA256, "input-sha256", "", "exact original OCI input SHA-256")
@@ -158,7 +158,7 @@ func runLifecycle(args []string) error {
 		}
 		remaining = operation.Args()
 		if backingRequest.SandboxOwner == "" || backingRequest.InputSHA256 == "" {
-			return fmt.Errorf("retire-sandbox requires exact Sandbox owner and input hash")
+			return fmt.Errorf("%s requires exact Sandbox owner and input hash", command)
 		}
 	} else if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
@@ -250,9 +250,15 @@ func runLifecycle(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
-	if command == "retire-sandbox" {
+	if command == "retire-sandbox" || command == "retire-manager" {
 		backingRequest.SandboxID = remaining[0]
-		result, err := engine.RetireDeletedBacking(ctx, backingRequest)
+		var result lifecycle.SandboxBackingRetirement
+		var err error
+		if command == "retire-manager" {
+			result, err = engine.RetireDeletedManagerBacking(ctx, backingRequest)
+		} else {
+			result, err = engine.RetireDeletedBacking(ctx, backingRequest)
+		}
 		if result.Version != 0 {
 			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
 		}

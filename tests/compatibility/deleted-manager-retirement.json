@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "source_commit": "21192cf68964e2c5550fdd0e5415783db3756820",
+  "previous_manifest": "tests/compatibility/bounded-capacity-debug-info.json",
+  "previous_manifest_sha256": "87ac6a1529d6f44d0ec6b0935755d41980b345365e9c9a884e9db776f7824bf0",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Extend the existing private-backing retirement fixture and runner with automatic Sysbox manager retirement, interrupted manager deletion, foreign-entry preservation and unaccepted ENOSPC metadata recovery. Keep every original backing/capacity assertion, compiler option, resource ceiling, lifecycle deadline, cleanup and vet. The previous capacity compatibility declaration and its native capacity actor remain byte-for-byte unchanged.",
+  "files": {
+    "tools/bounded_store_native.py": {
+      "before_sha256": "58e2491fa971c60995e973c07412a2e782f33f847061e22045b6f584afac067e",
+      "after_sha256": "9a996a678e67bd7b10221b2fcb6dcefbaf92a0f15a6ccd4c6063e2266793b14d"
+    },
+    "internal/lifecycle/sandbox_retirement_native_linux_test.go": {
+      "before_sha256": "3e91fff0662231ba6f17b138b0ab99eda567f662144cb9927b97fb342a4d36ff",
+      "after_sha256": "1b244b1153569ec134fe0056e839aedbce956e439e11b9690519c16b5a7f8b69"
+    }
+  },
+  "regressions": [
+    "test_backing_gate_requires_automatic_cleanup_and_every_preservation_guard",
+    "TestNativeSandboxBackingRetirement",
+    "TestManagerBackingChecksOtherEpochOwnersAndBindings",
+    "TestManagerBackingRejectsForeignOrWritableRoots",
+    "TestRetirementPreparationRecoversPartialENOSPCMetadata",
+    "TestRetirementPreparationRefusesAcceptanceAndForeignMetadata",
+    "TestRetirementPreparationRefusesUnsafeObjectsBeforeAnyRemoval"
+  ]
+}

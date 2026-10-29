@@ -13,13 +13,41 @@ import build_worker
 
 
 class BoundedWorkerPlatformTests(unittest.TestCase):
+    def test_backing_gate_requires_automatic_cleanup_and_every_preservation_guard(self):
+        proof = {name: True for name in bounded_store_native.BACKING_RETIREMENT_PROOFS}
+        rows = ['--- PASS: ' + name + ' (0.0s)' for name in bounded_store_native.BACKING_RETIREMENT_UNIT_TESTS]
+        log = '\n'.join(rows)
+        bounded_store_native.require_backing_retirement_coverage(proof, log)
+        for key in proof:
+            missing = {name: value for name, value in proof.items() if name != key}
+            with self.subTest(missing=key), self.assertRaisesRegex(ValueError, 'omitted'):
+                bounded_store_native.require_backing_retirement_coverage(missing, log)
+        for index in range(len(rows)):
+            with self.subTest(missing_test=index), self.assertRaisesRegex(ValueError, 'omitted'):
+                bounded_store_native.require_backing_retirement_coverage(proof, '\n'.join(rows[:index] + rows[index+1:]))
+        with self.assertRaisesRegex(ValueError, 'omitted'):
+            bounded_store_native.require_backing_retirement_coverage(proof, log + '\n--- SKIP: required')
+
     def test_capacity_fixture_declaration_preserves_original_assertion_bytes(self):
         root = bounded_store_native.reference.ROOT
         declaration = json.loads((root / 'tests/compatibility/bounded-capacity-debug-info.json').read_text())
         self.assertEqual(declaration['schema'], 1)
         self.assertTrue(declaration['assertions_preserved'])
         self.assertFalse(declaration['upstream_assertions_modified'])
+        extension = json.loads((root / 'tests/compatibility/deleted-manager-retirement.json').read_text())
+        self.assertEqual(extension['schema'], 1)
+        self.assertTrue(extension['assertions_preserved'])
+        self.assertFalse(extension['upstream_assertions_modified'])
+        self.assertEqual(extension['previous_manifest'], 'tests/compatibility/bounded-capacity-debug-info.json')
+        self.assertEqual(hashlib.sha256((root / extension['previous_manifest']).read_bytes()).hexdigest(),
+                         extension['previous_manifest_sha256'])
         for name, row in declaration['files'].items():
+            if name in extension['files']:
+                final = extension['files'][name]
+                self.assertEqual(final['before_sha256'], row['after_sha256'])
+                row = final
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
+        for name, row in extension['files'].items():
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
         original = declaration['files']['internal/lifecycle/bounded_store_native_linux_test.go']
         self.assertEqual(original['before_sha256'], original['after_sha256'])

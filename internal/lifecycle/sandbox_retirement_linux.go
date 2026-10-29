@@ -96,17 +96,15 @@ func (e *Engine) sandboxBackingDependencies(ctx context.Context, storePath strin
 }
 
 // RetireDeletedBacking is explicitly authorized by the original Start input and
-// completed Delete. It removes mutable private payloads, never the canonical
-// Source, registered bases, request/configuration records or the bundle anchor.
+// completed Delete. It retires the Sandbox's Sysbox-managed private data before
+// its OCI backing, never the canonical Source, registered bases,
+// request/configuration records or the bundle anchor.
 func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackingRequest) (result SandboxBackingRetirement, resultErr error) {
-	lock, err := e.lock()
+	forest, err := e.deletedBackingForest()
 	if err != nil {
 		return result, err
 	}
-	defer lock.Close()
-	if e.config.BoundedStore == nil {
-		return result, fmt.Errorf("Sandbox backing retirement requires the explicit bounded-store profile")
-	}
+	defer forest.close()
 	record, err := e.read(request.SandboxID)
 	if err != nil {
 		return result, err
@@ -133,8 +131,13 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 	if err != nil {
 		return result, err
 	}
-	if err := e.sandboxBackingSafety(ctx, record, lock); err != nil {
+	if err := e.sandboxBackingSafety(ctx, record, forest.locks[0]); err != nil {
 		return result, err
+	}
+	// Complete even on an old overlay-only receipt. Manager data has its own
+	// immutable journal; no historical overlay inventory or receipt is rewritten.
+	if _, err := e.retireDeletedManagerBacking(ctx, request, forest); err != nil {
+		return result, fmt.Errorf("retire original Sandbox manager backing: %w", err)
 	}
 	bundle, err := filepath.Rel(storePath, record.InputBundle)
 	if err != nil {
@@ -219,6 +222,9 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 		}
 	}
 	if first {
+		if err := e.resetUnacceptedRetirementPreparation(ctx, relative); err != nil {
+			return result, err
+		}
 		for _, name := range []string{"rootfs", "lower"} {
 			identity, err := directoryIdentity(record.InputBundle + "/" + name)
 			if err != nil || identity.MountID != record.InputDirectory.MountID || identity.Device != record.InputDirectory.Device {

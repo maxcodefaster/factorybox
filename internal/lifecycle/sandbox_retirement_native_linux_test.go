@@ -64,6 +64,36 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 	if err := os.Rename(renamed, bundle); err != nil {
 		t.Fatal(err)
 	}
+	engine, err := Open(status.Lifecycle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { engine.Close() })
+	manager := status.Lifecycle.ManagerRoot + "/docker/" + victim.Record.RuntimeID
+	if err := os.MkdirAll(manager, 0700); err != nil {
+		t.Fatal(err)
+	}
+	managerWindow := manager + "/zz-retirement-window"
+	if err := os.WriteFile(managerWindow, []byte("private stopped manager data\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	managerCancel := cancelResumeRemoval{Context: context.Background(), files: []string{managerWindow}}
+	if _, err := engine.RetireDeletedManagerBacking(managerCancel, request); !errors.Is(err, context.Canceled) {
+		t.Fatal("actual manager unlink did not stop after partial deletion", err)
+	}
+	managerForeign := manager + "/foreign-added"
+	if err := os.WriteFile(managerForeign, []byte("preserve foreign manager data\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.RetireDeletedBacking(context.Background(), request); err == nil {
+		t.Fatal("ordinary cleanup accepted foreign manager data after interruption")
+	}
+	if data, err := os.ReadFile(managerForeign); err != nil || string(data) != "preserve foreign manager data\n" {
+		t.Fatal("ordinary cleanup changed foreign manager data", err)
+	}
+	if err := os.Remove(managerForeign); err != nil {
+		t.Fatal(err)
+	}
 	window := bundle + "/upper/import-window/0000"
 	foreignLink := status.Store + "/foreign-backing-hardlink"
 	if err := os.Link(window, foreignLink); err != nil {
@@ -89,16 +119,22 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 	if mountErr == nil {
 		t.Fatal("foreign mounted payload was accepted")
 	}
-	engine, err := Open(status.Lifecycle)
-	if err != nil {
+	relative := status.Lifecycle.Root + "/objects/victim/backing-retirement"
+	if err := os.MkdirAll(relative, 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { engine.Close() })
+	for _, name := range []string{"retirement-payload.json.gz", ".retirement-reserve"} {
+		if err := os.WriteFile(relative+"/"+name, []byte("interrupted ENOSPC preparation"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	cancel := cancelResumeRemoval{Context: context.Background(), files: []string{window}}
 	if _, err := engine.RetireDeletedBacking(cancel, request); !errors.Is(err, context.Canceled) {
 		t.Fatal("actual backing unlink did not stop after partial deletion", err)
 	}
-	relative := status.Lifecycle.Root + "/objects/victim/backing-retirement"
+	if _, err := os.Lstat(manager); !os.IsNotExist(err) {
+		t.Fatal("ordinary backing cleanup retained the original private manager data", err)
+	}
 	if _, err := os.Stat(relative + "/retirement-intent.json"); err != nil {
 		t.Fatal("partial unlink lacks durable intent", err)
 	}
@@ -181,5 +217,7 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 		"exact_partial_continuation": true, "exact_completion_replayed": true,
 		"foreign_successor_preserved": true, "common_base_and_peer_preserved": true, "retirement": retired,
 		"epoch_metadata_accepts_completed_retirement": true,
+		"manager_partial_unlink_interrupted":          true, "foreign_manager_entry_preserved": true,
+		"manager_automatically_retired": true, "unaccepted_preparation_automatically_recovered": true,
 	})
 }
