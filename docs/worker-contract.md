@@ -294,15 +294,41 @@ factorybox --worker-run-root /run/factorybox retire-sandbox \
   --input-sha256 EXACT_ORIGINAL_START_INPUT_SHA256 SANDBOX
 ```
 
-The bounded-store operation returns `payload_kind: "sandbox-backing"`. It
-requires the original admitted bundle directory identity and removes only
-inventoried private upper/work/volume trees and a deleted fork's initial private
-images. It preserves canonical Source, registered common bases, configuration,
+The bounded-store operation returns `payload_kind: "sandbox-backing"`. After
+confirmed Delete it first retires the original runtime's private Sysbox manager
+data, then its inventoried upper/work/volume trees and a deleted fork's initial
+private images. It requires the original admitted bundle directory identity.
+It preserves canonical Source, registered common bases, configuration,
 operation receipts and the bundle anchor. It does not unmount caller-owned mounts
 or reclaim checkpoint/Resume generations implicitly. Retire those with their own
 exact requests. Native Delete by itself still retains all this backing.
 
-Both operations retain a durable inventory and completion reserve. Repeating
+Manager retirement uses only the pinned Sysbox kinds and the exact `fbx-<owner>`
+runtime directory. All retained controller epochs are locked and checked for
+owners, bind references, registered bases and incomplete descendants. Foreign
+owners, symlinks, writable roots, mounts, hardlinks and changed or successor
+payloads refuse deletion. Its separate immutable `sandbox-manager-backing`
+receipt and inventory live beside the bounded image on the original private
+backing volume, so a guest-full image does not prevent reclamation. This does
+not enlarge the guest store or replace worker admission.
+
+Ordinary `retire-sandbox` also completes this manager stage when replaying an
+older overlay-only receipt, without rewriting that receipt or inventory.
+`retire-manager` accepts the same exact owner/input arguments for isolated
+recovery of such historical data. These operations are part of the worker
+package; an older pinned executable does not acquire the new behavior.
+
+Before publishing a new intent, an exact retry can discard an interrupted
+private inventory, allocation reserve or publication temporary. It inspects
+the complete remaining metadata afresh and removes only known, root-owned,
+single-link private files. Neither an accepted intent nor a completion can be
+reset. Unknown or changed objects refuse recovery; metadata contents never
+authorize payload deletion. This recovery runs in the ordinary cleanup path,
+not through a filesystem prune or installation reset.
+
+Checkpoint and OCI-backing retirement retain a durable inventory and completion
+reserve. Manager retirement retains its journal outside the guest-full image.
+Repeating
 the exact request continues interrupted deletion or returns its original completed
 receipt. Foreign hardlinks, mounted payloads, unexpected entries and successor
 objects cause refusal. Before/after capacity reports are observations of the

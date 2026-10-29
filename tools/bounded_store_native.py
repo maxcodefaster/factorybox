@@ -32,6 +32,37 @@ ADMISSION_UNIT_TESTS = [
     'TestCaptureCompletionPendingFreezerIsExact',
 ]
 
+BACKING_RETIREMENT_PROOFS = [
+    'passed', 'actual_capacity_returned', 'running_protected',
+    'original_directory_protected', 'foreign_hardlink_preserved', 'foreign_mount_refused',
+    'partial_unlink_interrupted', 'foreign_partial_entry_preserved', 'exact_partial_continuation',
+    'exact_completion_replayed', 'foreign_successor_preserved', 'common_base_and_peer_preserved',
+    'epoch_metadata_accepts_completed_retirement', 'manager_partial_unlink_interrupted',
+    'foreign_manager_entry_preserved', 'manager_automatically_retired',
+    'unaccepted_preparation_automatically_recovered',
+]
+
+BACKING_RETIREMENT_UNIT_TESTS = [
+    'TestSandboxBackingRetirementAdmission',
+    'TestManagerBackingChecksOtherEpochOwnersAndBindings',
+    'TestManagerBackingPathsAreBoundToOneNativeOwner',
+    'TestManagerBackingRejectsSymlinkKindsAndPayloads',
+    'TestManagerBackingEmptySelectionDoesNotSelectPeers',
+    'TestManagerBackingPreservesSysboxTraversalMode',
+    'TestManagerBackingRejectsForeignOrWritableRoots',
+    'TestRetirementPreparationRecoversPartialENOSPCMetadata',
+    'TestRetirementPreparationRefusesAcceptanceAndForeignMetadata',
+    'TestRetirementPreparationRefusesUnsafeObjectsBeforeAnyRemoval',
+    'TestRetirementPreparationCancellationPreservesMetadata',
+]
+
+
+def require_backing_retirement_coverage(proof, log):
+    if (any(proof.get(key) is not True for key in BACKING_RETIREMENT_PROOFS) or
+            '--- SKIP:' in log or any(
+                '--- PASS: ' + name + ' ' not in log for name in BACKING_RETIREMENT_UNIT_TESTS)):
+        raise ValueError('Sandbox backing retirement omitted its capacity, recovery or preservation proof')
+
 
 def freeze_exec_trace(name, worker, artifact):
     if not re.fullmatch(r'factorybox-exec-trace-inputs-[0-9a-f]{32}', name):
@@ -400,7 +431,8 @@ def main():
         if backing_retirement:
             command += ['--env', 'FACTORYBOX_NATIVE_BACKING_RETIREMENT=1',
                         '--env', 'FACTORYBOX_NATIVE_IMPORT_MOUNT_INTERRUPTION=1',
-                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^Test(NativeSandboxBackingRetirement|SandboxBackingRetirementAdmission)$']
+                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^(' + '|'.join(
+                            ['TestNativeSandboxBackingRetirement', *BACKING_RETIREMENT_UNIT_TESTS]) + ')$']
         if network_fork:
             command += ['--env', 'FACTORYBOX_NATIVE_NETWORK_FORK=1',
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeNetworkFork$']
@@ -532,15 +564,7 @@ def main():
         elif backing_retirement:
             proof_path = output / 'backing-retirement.json'
             proof = json.loads(proof_path.read_text())
-            if any(proof.get(key) is not True for key in
-                   ['passed', 'actual_capacity_returned', 'running_protected',
-                    'original_directory_protected', 'foreign_hardlink_preserved', 'foreign_mount_refused',
-                    'partial_unlink_interrupted', 'foreign_partial_entry_preserved', 'exact_partial_continuation',
-                    'exact_completion_replayed', 'foreign_successor_preserved', 'common_base_and_peer_preserved',
-                    'epoch_metadata_accepts_completed_retirement']):
-                raise ValueError('Sandbox backing retirement omitted its capacity or preservation proof')
-            if '--- PASS: TestSandboxBackingRetirementAdmission ' not in log:
-                raise ValueError('Sandbox backing retirement omitted admission regressions')
+            require_backing_retirement_coverage(proof, log)
             result['proof_sha256'] = reference.sha(proof_path)
         elif resume_retirement:
             proof_path = output / 'resume-retirement.json'
