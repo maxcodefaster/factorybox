@@ -14,10 +14,10 @@ func TestCapacitySelectionFitsActualBackingWithoutConsumingHostFloor(t *testing.
 		available uint64
 		want      int64
 	}{
-		{"reported failure fits 17 instead of fixed 32", 32 * gib, 8 * gib, 29 * uint64(gib), 17 * gib},
-		{"available fraction rounds down", 32 * gib, 8 * gib, 29*uint64(gib) + 999, 17 * gib},
-		{"minimum exact boundary", 32 * gib, 8 * gib, 20 * uint64(gib), 8 * gib},
-		{"maximum exact boundary", 32 * gib, 8 * gib, 44 * uint64(gib), 32 * gib},
+		{"reported failure fits 13 and retains operating reserve", 32 * gib, 8 * gib, 29 * uint64(gib), 13 * gib},
+		{"available fraction rounds down", 32 * gib, 8 * gib, 29*uint64(gib) + 999, 13 * gib},
+		{"minimum exact boundary", 32 * gib, 8 * gib, 24 * uint64(gib), 8 * gib},
+		{"maximum exact boundary", 32 * gib, 8 * gib, 48 * uint64(gib), 32 * gib},
 		{"extra host capacity never raises requested maximum", 32 * gib, 8 * gib, math.MaxUint64, 32 * gib},
 		{"equal range retains requested capacity", 8 * gib, 8 * gib, 29 * uint64(gib), 8 * gib},
 	} {
@@ -26,8 +26,8 @@ func TestCapacitySelectionFitsActualBackingWithoutConsumingHostFloor(t *testing.
 			if err != nil || got != test.want {
 				t.Fatalf("selected capacity=%d, error=%v; want %d", got, err, test.want)
 			}
-			if uint64(got)+HostFreeFloor > test.available {
-				t.Fatal("selected capacity consumed the native host free-space floor")
+			if uint64(got)+HostFreeFloor+HostWriteReserve > test.available {
+				t.Fatal("selected capacity consumed the native floor or operating write reserve")
 			}
 		})
 	}
@@ -41,7 +41,7 @@ func TestCapacitySelectionRefusesInsufficientOrUnadmittedRanges(t *testing.T) {
 		minimum   int64
 		available uint64
 	}{
-		{"below minimum", 32 * gib, 8 * gib, 20*uint64(gib) - 1},
+		{"below minimum", 32 * gib, 8 * gib, 24*uint64(gib) - 1},
 		{"below host floor", 32 * gib, 8 * gib, 1},
 		{"unknown capacity", 32 * gib, 8 * gib, 0},
 		{"zero minimum is not automatic selection", 32 * gib, 0, math.MaxUint64},
