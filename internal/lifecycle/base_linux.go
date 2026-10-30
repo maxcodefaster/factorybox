@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 
 	"factorybox/internal/sysboxcapture"
 )
@@ -24,8 +25,9 @@ type Base struct {
 }
 
 // PrepareBase imports and verifies a complete base before application startup.
-// The immutable caller-selected ID owns one import request. Interrupted imports
-// remain retained and cannot be overwritten by repeating that ID.
+// The immutable caller-selected ID owns one import request. An interrupted copy
+// cannot be overwritten. A fully copied but unpublished import can finish only
+// after its complete independent backing matches the original source again.
 func (e *Engine) PrepareBase(ctx context.Context, id, source string) (Base, error) {
 	lock, err := e.lock()
 	if err != nil {
@@ -45,13 +47,34 @@ func (e *Engine) PrepareBase(ctx context.Context, id, source string) (Base, erro
 	if !errors.Is(err, os.ErrNotExist) {
 		return Base{}, err
 	}
+	relative := "bases/" + id
+	if _, err := e.root.Lstat(relative); err == nil {
+		if err := e.readCheckpointJSON(relative+"/intent.json", &base); err != nil {
+			return Base{}, err
+		}
+		if base.Version != 1 || base.ID != id || base.Source != source || base.BootID != e.boot ||
+			base.RuntimeSHA256 != e.config.RuntimeSHA256 || base.PreparedAt != "" ||
+			!reflect.DeepEqual(base.Tree, sysboxcapture.FilesystemTree{}) {
+			return Base{}, fmt.Errorf("unpublished base differs from its original import intent")
+		}
+		if err := e.admitStorageWrite(); err != nil {
+			return base, err
+		}
+		base.Tree, err = sysboxcapture.ConfirmFilesystemBaseCopy(ctx, source, e.config.Root+"/"+relative+"/rootfs")
+		if err != nil {
+			return base, err
+		}
+		base.PreparedAt = now()
+		return base, e.publishCheckpoint(relative, "base.json", base)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Base{}, err
+	}
 	if err := e.admitBaseImport(ctx, id, source); err != nil {
 		return Base{}, err
 	}
 	if err := e.admitStorageWrite(); err != nil {
 		return Base{}, err
 	}
-	relative := "bases/" + id
 	if err := e.root.Mkdir(relative, 0700); err != nil {
 		return Base{}, fmt.Errorf("base import is incomplete or already owned; refusing replacement: %w", err)
 	}

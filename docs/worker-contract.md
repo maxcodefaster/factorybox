@@ -197,6 +197,14 @@ No image pull, Docker daemon, package installer or application startup policy
 is hidden in these commands. `prepare-base --source ABSOLUTE_DIRECTORY BASE_ID`
 can import and verify a reusable immutable base before start. Its complete
 initial preparation is charged separately from prepared-start latency.
+If publication was interrupted after copying, the exact same request can verify
+and publish that complete independent copy. It compares all source and target
+content, metadata and link topology, checks the source again for changes, and
+preserves the original intent and payload inodes. An already sealed copy keeps
+its read-only mount. Missing or different content, shared source inodes, a
+changed intent or foreign mounts still refuse recovery without overwriting,
+repairing or deleting the retained import. This is completion of the original
+import, not a new base identity or a retry of application execution.
 
 The selected Factory consumer starts its private Docker daemon with
 `--storage-driver=overlay2` and the qualified CRIU components. The original
