@@ -32,14 +32,15 @@ import (
 )
 
 type Config struct {
-	Store        string
-	RunRoot      string
-	Components   string
-	Manifest     string
-	StoreID      string
-	BoundedRoot  string
-	BoundedBytes int64
-	HealthListen string
+	Store               string
+	RunRoot             string
+	Components          string
+	Manifest            string
+	StoreID             string
+	BoundedRoot         string
+	BoundedBytes        int64
+	MinimumBoundedBytes int64
+	HealthListen        string
 }
 
 const (
@@ -53,20 +54,21 @@ type Process struct {
 }
 
 type Status struct {
-	Schema           int               `json:"schema"`
-	StoreID          string            `json:"store_id"`
-	Store            string            `json:"store"`
-	Epoch            string            `json:"epoch"`
-	BootID           string            `json:"boot_id"`
-	Supervisor       Process           `json:"supervisor"`
-	SupervisorSHA256 string            `json:"supervisor_sha256"`
-	Components       map[string]string `json:"component_sha256"`
-	Manager          Process           `json:"manager"`
-	Filesystem       Process           `json:"filesystem"`
-	ManagerPeer      Process           `json:"manager_peer"`
-	FilesystemPeer   Process           `json:"filesystem_peer"`
-	ReadyAt          string            `json:"ready_at"`
-	Lifecycle        lifecycle.Config  `json:"lifecycle"`
+	Schema           int                   `json:"schema"`
+	StoreID          string                `json:"store_id"`
+	Store            string                `json:"store"`
+	Epoch            string                `json:"epoch"`
+	BootID           string                `json:"boot_id"`
+	Supervisor       Process               `json:"supervisor"`
+	SupervisorSHA256 string                `json:"supervisor_sha256"`
+	Components       map[string]string     `json:"component_sha256"`
+	Manager          Process               `json:"manager"`
+	Filesystem       Process               `json:"filesystem"`
+	ManagerPeer      Process               `json:"manager_peer"`
+	FilesystemPeer   Process               `json:"filesystem_peer"`
+	ReadyAt          string                `json:"ready_at"`
+	Lifecycle        lifecycle.Config      `json:"lifecycle"`
+	BoundedCapacity  *boundedCapacityRange `json:"bounded_capacity,omitempty"`
 }
 
 type child struct {
@@ -608,7 +610,8 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	}
 	defer manager.stop()
 	status := Status{Schema: 1, Store: config.Store, StoreID: identity.ID, Epoch: epoch, Components: binaries,
-		Manager: manager.identity,
+		Manager:         manager.identity,
+		BoundedCapacity: boundedRange(config),
 		Lifecycle: lifecycle.Config{Root: root + "/controller", Runtime: config.Components + "/sysbox-runc", RuntimeSHA256: binaries["sysbox-runc"],
 			Criu: config.Components + "/criu", CriuSHA256: binaries["criu"], ManagerRoot: config.Store + "/manager",
 			MinFreeBytes: localMinFreeBytes, WriteReserve: localWriteReserve, BoundedStore: bounded,

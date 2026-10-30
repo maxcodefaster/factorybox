@@ -22,8 +22,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const HostFreeFloor = 12 << 30
-
 var ownerID = regexp.MustCompile(`^[0-9a-f]{32}$`)
 var shaID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
