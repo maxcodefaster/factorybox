@@ -33,9 +33,14 @@ assumption, not the requirement to pass all native gates on each release image.
 Tuple admission and `doctor` do not override those gates.
 
 The image runs `factorybox worker` as root PID 1 in a private cgroup namespace,
-with at most 3 CPUs and 3 GiB memory. It needs privileged container access to
-its namespaces, mounts, cgroups, FUSE and checkpoint facilities. It checks its
-finite resource ceilings and component hashes before publishing readiness.
+with finite positive CPU and memory ceilings selected by the consumer before
+admission. These bound the whole worker and all its Sandboxes, not one Sandbox.
+The native qualification fixtures retain their 3 CPU / 3 GiB ceiling; accepting a
+larger aggregate budget does not qualify that deployment profile. See
+[the resource-budget decision](adr/0003-separate-worker-budgets-from-qualification-fixtures.md).
+The worker needs privileged container access to its namespaces, mounts, cgroups,
+FUSE and checkpoint facilities. It checks its finite resource ceilings and
+component hashes before publishing readiness.
 The included [Compose file](../examples/worker/compose.yaml) expresses this
 deployment. It exposes no ports. Its external volume must belong exclusively
 to this store; an administrator supplies a random 32-character hexadecimal

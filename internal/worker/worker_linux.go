@@ -259,22 +259,12 @@ func delegate() error {
 	if err != nil {
 		return err
 	}
-	maximum, err := strconv.ParseUint(strings.TrimSpace(string(memory)), 10, 64)
-	if err != nil || maximum == 0 || maximum > 3<<30 {
-		return fmt.Errorf("worker requires at most 3 GiB of finite cgroup memory")
-	}
 	cpu, err := os.ReadFile("/sys/fs/cgroup/cpu.max")
 	if err != nil {
 		return err
 	}
-	parts := strings.Fields(string(cpu))
-	if len(parts) != 2 {
-		return fmt.Errorf("worker CPU limit missing")
-	}
-	quota, e1 := strconv.ParseUint(parts[0], 10, 64)
-	period, e2 := strconv.ParseUint(parts[1], 10, 64)
-	if e1 != nil || e2 != nil || quota == 0 || period == 0 || quota/period > 3 || quota > 3*period {
-		return fmt.Errorf("worker requires at most 3 CPUs")
+	if err := validateWorkerResourceLimits(memory, cpu); err != nil {
+		return err
 	}
 	processes, err := os.ReadFile("/sys/fs/cgroup/cgroup.procs")
 	if err != nil || strings.TrimSpace(string(processes)) != "1" {
