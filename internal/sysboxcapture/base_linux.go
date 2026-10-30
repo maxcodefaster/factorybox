@@ -52,6 +52,57 @@ func PrepareFilesystemBase(ctx context.Context, source, destination string) (Fil
 	return prepareFilesystemBase(ctx, source, destination, nil, nil)
 }
 
+// ConfirmFilesystemBaseCopy completes publication of an already copied private
+// tree. It never creates, repairs or overwrites payloads. Both complete trees,
+// metadata and independent inodes must match before the target can be sealed.
+// The lifecycle caller must validate the original durable import intent.
+func ConfirmFilesystemBaseCopy(ctx context.Context, source, destination string) (FilesystemTree, error) {
+	var tree FilesystemTree
+	if !cleanAbsolute(source) || !cleanAbsolute(destination) || source == destination ||
+		strings.HasPrefix(destination, source+"/") || strings.HasPrefix(source, destination+"/") {
+		return tree, fmt.Errorf("base confirmation requires separate canonical roots")
+	}
+	if err := immutableParents(destination); err != nil {
+		return tree, err
+	}
+	input, err := openDirectory(source)
+	if err != nil {
+		return tree, err
+	}
+	defer input.Close()
+	target, err := openDirectory(destination)
+	if err != nil {
+		return tree, err
+	}
+	defer target.Close()
+	tree, err = fingerprintTree(ctx, input, nil, false)
+	if err != nil {
+		return tree, err
+	}
+	actual, err := fingerprintTree(ctx, target, input, true)
+	if err != nil {
+		return tree, err
+	}
+	current, err := fingerprintTree(ctx, input, nil, false)
+	if err != nil {
+		return tree, err
+	}
+	if !sameFilesystemTree(tree, actual) || !sameFilesystemTree(tree, current) {
+		return tree, fmt.Errorf("unpublished filesystem copy differs from its complete stable source")
+	}
+	for path, anchored := range map[string]*os.File{source: input, destination: target} {
+		current, err := os.Lstat(path)
+		original, statErr := anchored.Stat()
+		if err != nil || statErr != nil || !os.SameFile(current, original) {
+			return tree, fmt.Errorf("unpublished filesystem root identity changed: %v %v", err, statErr)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return tree, err
+	}
+	return sealFilesystemBase(source, destination, tree)
+}
+
 // RecoverFilesystemBase reimports the canonical file backing after its old
 // worker mount has disappeared. Only complete target content/metadata matching
 // the saved checkpoint can establish a new immutable identity. Old mount IDs
@@ -167,10 +218,22 @@ func prepareFilesystemBase(ctx context.Context, source, destination string, expe
 	if err != nil {
 		return tree, err
 	}
+	return sealFilesystemBase(source, destination, tree)
+}
+
+func sealFilesystemBase(source, destination string, tree FilesystemTree) (FilesystemTree, error) {
 	// The private backing has no guest-visible writable alias. The inherited
 	// read-only self-bind also protects the canonical path used by later forks.
-	if err := readonlyBind(destination, destination); err != nil {
+	var filesystem unix.Statfs_t
+	if err := unix.Statfs(destination, &filesystem); err != nil {
 		return tree, err
+	}
+	// A lost publication can follow the completed read-only bind. Do not stack
+	// another mount when confirming that same complete, independent copy.
+	if filesystem.Flags&unix.ST_RDONLY == 0 {
+		if err := readonlyBind(destination, destination); err != nil {
+			return tree, err
+		}
 	}
 	sealed, err := openDirectory(destination)
 	if err != nil {
