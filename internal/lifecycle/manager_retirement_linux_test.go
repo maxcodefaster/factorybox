@@ -45,6 +45,9 @@ func managerDependencyFixture(t *testing.T, id, owner, phase, bind string) (*Eng
 }
 
 func TestManagerBackingChecksOtherEpochOwnersAndBindings(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("requires root ownership; exercised in the native worker lane")
+	}
 	for _, mode := range []string{"independent", "same-owner", "live-bind", "unresolved-bind"} {
 		t.Run(mode, func(t *testing.T) {
 			engine, record := managerDependencyFixture(t, "source", strings.Repeat("a", 32), "deleted", "")
