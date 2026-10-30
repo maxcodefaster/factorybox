@@ -43,7 +43,7 @@ type HostCapacity struct {
 	WriteReserve   uint64       `json:"write_reserve_bytes"`
 }
 
-const hostWriteReserve = 4 << 30
+const hostWriteReserve = storefs.HostWriteReserve
 
 func withinStore(root, path string) bool {
 	return filepath.IsAbs(root) && filepath.Clean(root) == root && root != "/" &&

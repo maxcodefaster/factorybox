@@ -47,7 +47,7 @@ func validBoundedCapacity(capacity int64, policy *boundedCapacityRange) bool {
 		return true
 	}
 	selected, err := storefs.SelectCapacity(policy.MaximumBytes, policy.MinimumBytes,
-		storefs.HostFreeFloor+uint64(capacity))
+		storefs.HostFreeFloor+storefs.HostWriteReserve+uint64(capacity))
 	return err == nil && capacity == selected
 }
 

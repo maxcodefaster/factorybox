@@ -149,7 +149,9 @@ New worker builds also accept `--bounded-min-bytes MINIMUM` with
 `--bounded-bytes MAXIMUM`. Both bounds must be whole GiB from 1 through 64 GiB.
 For a new empty store, the supervisor observes its actual backing filesystem under
 the outer store lease and selects the largest whole-GiB image within those bounds
-while preserving the existing 12-GiB host floor. Actual allocation still checks that
+while preserving the existing 12-GiB host floor and 4-GiB operating write reserve.
+Leaving only the floor can boot a worker but cannot admit a new Sandbox write.
+Actual allocation still checks that
 floor before and after formatting. Insufficient capacity fails without waiting or
 creating an image below the minimum.
 
