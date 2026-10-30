@@ -25,6 +25,10 @@ worker replacement. Deleting a sandbox does not imply retiring its stored data.
 The maximum storage assigned to the persistent store, including its own recovery
 space. It is distinct from the free space available elsewhere on the host.
 
+**Storage admission range**:
+The acceptable minimum and requested maximum for a new persistent store.
+Admission fixes one store capacity within that range; later availability does not resize it.
+
 **Host free-space floor**:
 The host space that must remain available when Factorybox admits new allocation.
 It is an admission condition, not the persistent store's capacity.

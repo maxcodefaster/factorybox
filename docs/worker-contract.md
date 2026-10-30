@@ -145,6 +145,22 @@ results. The historical pilot deployment remains unchanged. These results
 cover the tested capacity and failure cases, not arbitrary workloads or
 coordination of several workers' host-space use.
 
+New worker builds also accept `--bounded-min-bytes MINIMUM` with
+`--bounded-bytes MAXIMUM`. Both bounds must be whole GiB from 1 through 64 GiB.
+For a new empty store, the supervisor observes its actual backing filesystem under
+the outer store lease and selects the largest whole-GiB image within those bounds
+while preserving the existing 12-GiB host floor. Actual allocation still checks that
+floor before and after formatting. Insufficient capacity fails without waiting or
+creating an image below the minimum.
+
+The original range is retained in `bounded.json` and published as
+`worker-status.bounded_capacity`; the actual image size remains in
+`worker-status.lifecycle.bounded_store.image.bytes`. Reattaching the same store
+requires the original range and exact saved image identity. It neither samples a
+new size nor resizes, reformats or reinterprets an existing fixed-size store.
+Omitting the new flag retains the original fixed-size contract. Earlier fixed-size
+qualification does not qualify this automatic selection path or a new worker image.
+
 ## Local commands and responses
 
 Administrative clients execute the image's own binary inside the worker:
