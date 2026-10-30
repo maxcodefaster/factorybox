@@ -12,6 +12,7 @@ import uuid
 
 import build_config
 import build_worker
+import factory_consumer_native
 import native_base
 import reference
 import reference_lifecycle
@@ -107,6 +108,28 @@ def require_original_license(worker):
         raise ValueError("release requires the exact approved original-code LICENSE inside the delivered image")
 
 
+def retain_input_image(artifact, result, owner, role, image):
+    inspected = json.loads(reference.docker(["image", "inspect", image["image"]]))[0]
+    native_base.verify_image(image, inspected)
+    volumes = inspected["Config"].get("Volumes") or {}
+    if any(not re.fullmatch(r"/[A-Za-z0-9_./-]+", path) or path == "/" for path in volumes):
+        raise ValueError("release input image declares an invalid volume")
+    name = "factorybox-release-input-" + owner + "-" + role
+    command = ["create", "--pull=never", "--name", name,
+               "--label", "com.factorybox.run=" + owner,
+               "--network=none", "--read-only", "--cpus=.1", "--memory=16m", "--pids-limit=8",
+               "--cap-drop=ALL", "--security-opt=no-new-privileges",
+               *[argument for path in volumes for argument in ["--tmpfs", path + ":rw,size=16m"]],
+               "--entrypoint", "/bin/true", image["image"]]
+    # An inspected local image is not a lease. Node image GC can remove an
+    # unreferenced input between gates. This owned container is never started.
+    hold = {"name": name, "image": image["image"], "image_id": inspected["Id"], "command": command}
+    result.setdefault("image_holds", []).append(hold)
+    reference_lifecycle.write_json(artifact / "intent.json", result)
+    hold["container_id"] = reference.docker(command)
+    reference_lifecycle.write_json(artifact / "intent.json", result)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=build_config.PLATFORMS,
@@ -137,6 +160,8 @@ def main():
     if worker["platform"] != options.platform or worker.get("native_candidate") is not None:
         raise ValueError("release qualification refuses cross-target or unqualified candidate workers")
     require_original_license(worker)
+    _, base = native_base.load(worker["native_base_build"], candidate_platform=options.platform)
+    _, consumer = factory_consumer_native.load_consumer(options.consumer_build, options.platform)
     options.bounded_build = True
     builder = build_config.verify_builder(options, reference.DOCKER)
     owner = uuid.uuid4().hex
@@ -189,8 +214,10 @@ def main():
         doctor = reference.docker(command, timeout=65)
         (artifact / "doctor.stdout").write_text(doctor + "\n")
         validate_doctor(worker, options.version, doctor)
-        reference.owned_delete("container", helper, owner)
-        attempted = False
+        # Keep the exited doctor container's exact image reference until every
+        # gate finishes. The other selected images need the same lifetime.
+        for role, image in [("base", base), *consumer["images"].items()]:
+            retain_input_image(artifact, result, owner, role, image)
         target = ["--candidate-platform", "linux/amd64"] if options.platform == "linux/amd64" else []
         if options.bats_images:
             upstream_bats.image_archive(options.bats_images, worker["native_base_build"], platform=options.platform)
@@ -205,6 +232,8 @@ def main():
         for role, command in native_commands(options, worker, images):
             stage(role, command)
         if (build_worker.load(options.worker_build)[1] != worker or
+                native_base.load(worker["native_base_build"], candidate_platform=options.platform)[1] != base or
+                factory_consumer_native.load_consumer(options.consumer_build, options.platform)[1] != consumer or
                 build_config.verify_builder(options, reference.DOCKER) != builder or
                 reference.sha(Path(__file__)) != result["runner_sha256"]):
             raise ValueError("native release image, builder or gate runner changed during qualification")
@@ -213,12 +242,18 @@ def main():
         result["error"] = str(error)
         raise
     finally:
-        try:
-            if attempted:
-                reference.owned_delete("container", helper, owner)
-            result["cleanup"] = True
-        except Exception as error:
-            result["cleanup_error"] = str(error)
+        cleanup_errors = []
+        holds = ([helper] if attempted else []) + [
+            hold["name"] for hold in result.get("image_holds", [])
+        ]
+        for name in holds:
+            try:
+                reference.owned_delete("container", name, owner)
+            except Exception as error:
+                cleanup_errors.append(str(error))
+        result["cleanup"] = not cleanup_errors
+        if cleanup_errors:
+            result["cleanup_error"] = "; ".join(cleanup_errors)
             result["passed"] = False
         reference_lifecycle.write_json(artifact / "result.json", result)
         print(json.dumps({"evidence": str(artifact), "passed": result["passed"],

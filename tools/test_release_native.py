@@ -6,12 +6,110 @@ import unittest
 from unittest.mock import patch
 from contextlib import redirect_stdout
 import io
+import subprocess
 
 import reference
 import release_native
 
 
 class NativeReleaseQualificationTests(unittest.TestCase):
+    def test_selected_images_remain_referenced_through_every_gate_and_release_only_owned_holds(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            artifact = root / "qualification"
+            receipt = root / "completed-gate"
+            receipt.mkdir()
+            (receipt / "result.json").write_text('{"passed":true,"cleanup":true}')
+            bats = root / "artifacts/owned-bats"
+            bats.mkdir(parents=True)
+            (bats / "result.json").write_text('{"passed":true,"cleanup":true}')
+            images = {role: {
+                "image": "owned-" + role + "@sha256:" + digest * 64,
+                "image_config": "sha256:" + digest * 64, "platform": "linux/arm64",
+            } for role, digest in [("worker", "a"), ("base", "b"), ("runtime", "c"), ("hub", "d")]}
+            worker = {**images["worker"], "image_id": images["worker"]["image_config"],
+                      "native_base_build": "owned-base", "sysbox_build": "owned-sysbox",
+                      "criu_build": "owned-criu", "bundle_sha256": {"factorybox": "e" * 64},
+                      "original_license_sha256": "f" * 64}
+            consumer = {"images": {role: images[role] for role in ["runtime", "hub"]}}
+            containers = {}
+            mutations = []
+            gate_fails = False
+            host = {"OSType": "linux", "Architecture": "aarch64",
+                    "KernelVersion": "exact", "CgroupVersion": "2"}
+            doctor = json.dumps({"matches_reference": True, "platform": {
+                "os": "linux", "architecture": "arm64", "page_size": 4096, "kernel": "exact",
+            }}) + "\nfactorybox v0.1.0\n" + "f" * 64 + "  /opt/factorybox/licenses/factorybox/LICENSE"
+
+            def docker(command, **_):
+                if command[0] == "info":
+                    return json.dumps(host)
+                if command[:2] == ["image", "inspect"]:
+                    image = next(row for row in images.values() if row["image"] == command[-1])
+                    return json.dumps([{"Id": image["image_config"], "RepoDigests": [image["image"]],
+                                        "Os": "linux", "Architecture": "arm64", "Config": {}}])
+                if command[0] in ["run", "create"]:
+                    name = command[command.index("--name") + 1]
+                    image = next(row for row in images.values() if row["image"] in command)
+                    containers[name] = image["image"]
+                    mutations.append(command)
+                    return doctor if command[0] == "run" else "1" * 64
+                raise AssertionError("Unexpected Docker command: " + repr(command))
+
+            def remove(kind, name, owner):
+                self.assertEqual(kind, "container")
+                self.assertTrue(name.startswith("factorybox-release-"))
+                self.assertIn(owner, name)
+                containers.pop(name, None)
+
+            def gate(command, **_):
+                self.assertEqual(command, ["owned-native-gate"])
+                # Model ordinary image GC removing every unreferenced input.
+                # No host GC or real image removal is performed by this test.
+                self.assertEqual(set(containers.values()), {row["image"] for row in images.values()},
+                                 "Selected release inputs were left unreferenced before native work")
+                if gate_fails:
+                    raise RuntimeError("Owned native gate failed")
+                return subprocess.CompletedProcess(command, 0)
+
+            arguments = ["release_native.py", "--platform", "linux/arm64", "--version", "0.1.0",
+                         "--worker-build", "owned-worker", "--consumer-build", "owned-consumer",
+                         "--project-images", "owned-project", "--factory-repo", str(root),
+                         "--builder", "owned-builder", "--bats-images", "owned-bats"]
+            with patch("sys.argv", arguments), patch.object(reference, "docker", side_effect=docker), \
+                    patch.object(reference, "ROOT", root), \
+                    patch.object(reference, "new_artifact", side_effect=lambda _: artifact), \
+                    patch.object(reference, "owned_delete", side_effect=remove), \
+                    patch.object(release_native.build_worker, "load", return_value=(root, worker)), \
+                    patch.object(release_native.native_base, "load", return_value=(images["base"]["image"], images["base"])), \
+                    patch("factory_consumer_native.load_consumer", return_value=(root, consumer)), \
+                    patch.object(release_native, "require_original_license"), \
+                    patch.object(release_native.build_config, "verify_builder", return_value={"exact": True}), \
+                    patch.object(release_native.upstream_bats, "image_archive"), \
+                    patch.object(release_native, "native_commands", return_value=[("owned", ["owned-native-gate"])]), \
+                    patch.object(release_native.subprocess, "run", side_effect=gate), \
+                    patch.object(release_native, "completed_receipt", return_value=(receipt, {})), \
+                    redirect_stdout(io.StringIO()):
+                release_native.main()
+                result = json.loads((artifact / "result.json").read_text())
+                self.assertTrue(result["passed"])
+                self.assertTrue(result["cleanup"])
+                self.assertEqual(containers, {})
+                artifact = root / "failed-qualification"
+                gate_fails = True
+                with self.assertRaisesRegex(RuntimeError, "Owned native gate failed"):
+                    release_native.main()
+                failed = json.loads((artifact / "result.json").read_text())
+                self.assertFalse(failed["passed"])
+                self.assertTrue(failed["cleanup"])
+            self.assertEqual(containers, {})
+            self.assertEqual(len(mutations), 8)
+            for command in mutations:
+                self.assertIn("--pull=never", command)
+                self.assertIn("--network=none", command)
+                self.assertIn("--read-only", command)
+                self.assertNotIn("--privileged", command)
+
     def test_portable_ci_retains_read_only_host_tuples_without_granting_native_qualification(self):
         workflow = (reference.ROOT / ".github/workflows/ci.yaml").read_text()
         command = 'tools/release_native.py --check-host --platform "linux/$ARCH"'

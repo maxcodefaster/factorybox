@@ -262,6 +262,14 @@ cannot collide when attaching release assets. These jobs do not complete the
 remaining [controlled-release checklist](first-release-status.md), qualify
 deferred endurance work or activate Factory.
 
+The qualification runner retains the exact worker, native-base and Factory
+consumer images through owned container references until every gate finishes.
+The worker's exited inspection container and the other never-started holders
+consume no running compute. This prevents ordinary node image garbage collection
+from removing selected local inputs between gates. Cleanup releases only those
+run-owned references on success or failure; it does not prune images or change
+the host's garbage-collection settings.
+
 Cold isolated builders use in-file stages instead of Docker-daemon-only parent
 tags and explicitly load their outputs. The Bats-only fixture reconstructs the
 unchanged pinned native-base recipe and checks its full original package
