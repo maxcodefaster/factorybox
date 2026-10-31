@@ -20,6 +20,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// BPF_LOG_STATS retains verification errors and the final summary without the
+// per-instruction trace. A valid reader with hundreds of exact PIDs can exhaust
+// a fixed trace buffer and make BPF_PROG_LOAD return ENOSPC.
+const verifierLogStats = 4
+
 func bpf(command uintptr, attr []byte) (int, error) {
 	var pinned runtime.Pinner
 	defer pinned.Unpin()
@@ -418,7 +423,7 @@ func read(tasks []Task, registers bool) (observation Observation, resultErr erro
 	binary.LittleEndian.PutUint32(attr[4:], uint32(len(code)/8))
 	binary.LittleEndian.PutUint64(attr[8:], address(&pinned, code))
 	binary.LittleEndian.PutUint64(attr[16:], address(&pinned, license))
-	binary.LittleEndian.PutUint32(attr[24:], 1)
+	binary.LittleEndian.PutUint32(attr[24:], verifierLogStats)
 	binary.LittleEndian.PutUint32(attr[28:], uint32(len(verifier)))
 	binary.LittleEndian.PutUint64(attr[32:], address(&pinned, verifier))
 	binary.LittleEndian.PutUint32(attr[68:], 28)

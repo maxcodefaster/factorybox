@@ -19,6 +19,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", required=True, choices=build_config.PLATFORMS)
     parser.add_argument("--native-base-build", required=True)
+    parser.add_argument("--many-tasks", action="store_true",
+                        help="Also read a realistic exact set of owned stopped timers")
     options = parser.parse_args()
     host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
     native_base.require_native_host(options.platform, host)
@@ -42,9 +44,16 @@ def main():
     attempted = False
     try:
         tests = ["NativeOwnedRelativeTimerState", "ReleaseObservationDoesNotReopenAnObject",
-                 "MaplessPIDFilterPreservesExactMembershipAndLongExitBounds"]
+                 "MaplessPIDFilterPreservesExactMembershipAndLongExitBounds",
+                 "NativeRejectedTimerProgramRetainsDiagnostic",
+                 "ProgramLoadRetriesOnlyRejectedInterruptedLoads",
+                 "ProgramLoadNeverRetriesAcceptedOrPermanentOutcomes",
+                 "ProgramLoadInterruptedRetriesAreBounded",
+                 "ProgramLoadStopsOnPermanentFailureAfterInterruption"]
         if options.platform == "linux/arm64":
             tests.append("NativeArm64SavedTimerRegisters")
+        if options.many_tasks:
+            tests.append("NativeOwnedTimerPIDSet")
         compile = ["go", "test", "-c", "-trimpath", "-buildvcs=false", "-o", str(binary), "./internal/timerstate"]
         subprocess.run(compile, cwd=source, check=True,
                        env=dict(os.environ, GOOS="linux", GOARCH=build_config.architecture(options.platform),
@@ -53,10 +62,13 @@ def main():
         result["binary_sha256"] = reference.sha(binary)
         command = [*reference.DOCKER, "run", "--pull=never", "--platform=" + options.platform,
                    "--name", name, "--label", "com.factorybox.run=" + owner,
-                   "--privileged", "--network=none", "--read-only", "--cpus=1", "--memory=256m",
-                   "--pids-limit=64", "--env", "FACTORYBOX_TIMERSTATE_NATIVE=1",
+                   "--privileged", "--network=none", "--read-only", "--cpus=1",
+                   "--memory=" + ("512m" if options.many_tasks else "256m"),
+                   "--pids-limit=" + ("1280" if options.many_tasks else "64"),
+                   "--env", "FACTORYBOX_TIMERSTATE_NATIVE=1",
                    "--mount", f"type=bind,source={binary},target=/timerstate.test,readonly",
-                   "--entrypoint", "/timerstate.test", image, "-test.v", "-test.timeout=15s",
+                   "--entrypoint", "/timerstate.test", image, "-test.v",
+                   "-test.timeout=" + ("60s" if options.many_tasks else "15s"),
                    "-test.run=^Test(" + "|".join(tests) + ")$"]
         result["command"] = command
         reference_lifecycle.write_json(archive / "intent.json", result)

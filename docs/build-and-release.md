@@ -335,11 +335,16 @@ Run the timer-reader prerequisite against an exact native base for the target:
 
 ```sh
 mise exec -- python3 tools/timerstate_native.py \
-  --platform linux/arm64 --native-base-build "$base_build"
+  --platform linux/arm64 --native-base-build "$base_build" --many-tasks
 ```
 
 It verifies the real relative deadline, PID/birth ownership, refusal of a wrong
-birth and removal of its temporary BPF program. It does not admit the platform,
+birth and removal of its temporary BPF program. The many-task cases read exact
+sets of 192 and 1,024 owned stopped processes. They catch valid loads rejected
+because a per-instruction verifier trace fills its log buffer. Compact logging
+must still retain the kernel's reason for rejecting an invalid program.
+The loader never retries an accepted or permanent outcome.
+This does not admit the platform,
 test RAM checkpoint/restore, or replace the required lifecycle/consumer suites.
 
 The separate CPU prerequisite executes the real ARM64 private code and confirms
