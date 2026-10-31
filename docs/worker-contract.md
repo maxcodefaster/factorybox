@@ -242,6 +242,17 @@ dependency-checked retirement procedures below. Their current-package evidence
 is indexed in the [operating procedure](first-release-operations.md); automatic
 retention remains deferred.
 
+An explicit `delete` can also terminate a failed Pause before CRIU admitted a
+retained helper. It requires the exact failed writer outcome, checked network
+rollback, unchanged source-state evidence and completed source-hold outcome.
+The original controller, guard and writer must all be absent; the original
+source must still be frozen and untraced. Completed captures, retained helpers,
+unknown outcomes and unresolved Resume remain protected. Admission is recorded
+before the ordinary owned-runtime deletion. This never thaws the failed source,
+replays capture or fabricates a successful Pause. The incomplete Pause, capture
+payload and failure history remain retained. This path does not qualify capture
+recovery or make an incomplete checkpoint usable.
+
 ## Independent outer-network copies
 
 The local candidate can fork a committed private-source Pause with

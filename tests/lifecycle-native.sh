@@ -16,7 +16,7 @@ if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1 || test "${FACTORYBOX_COMP
     chmod 0755 /out/criu
   fi
 fi
-test_pattern='^TestNative(StartRecoveryAndDelete|ForeignIdentityPreservesRunningProcess|UncertainStartDoesNotRecreate|ControllerLockAndRuntimePin|CaptureGuardOnSysbox|EmptyCgroupRetirement)$'
+test_pattern='^TestNative(StartRecoveryAndDelete|ForeignIdentityPreservesRunningProcess|UncertainStartDoesNotRecreate|ControllerLockAndRuntimePin|CaptureGuardOnSysbox|EmptyCgroupRetirement|DeleteFailedPause)$'
 if test "${FACTORYBOX_NATIVE_CAPTURE_GUARD:-}" = 1; then
   test_pattern='^TestCaptureGuardNative$'
 else
