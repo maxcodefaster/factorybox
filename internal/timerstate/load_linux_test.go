@@ -4,7 +4,11 @@ package timerstate
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
+	"os"
+	"runtime"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -41,6 +45,7 @@ func TestProgramLoadNeverRetriesAcceptedOrPermanentOutcomes(t *testing.T) {
 		{"unsafe-program", -1, unix.EACCES},
 		{"invalid-program", -1, unix.EINVAL},
 		{"memory", -1, unix.ENOMEM},
+		{"log-buffer", -1, unix.ENOSPC},
 		{"other-signal-error", -1, unix.EINTR},
 	} {
 		t.Run(row.name, func(t *testing.T) {
@@ -56,6 +61,37 @@ func TestProgramLoadNeverRetriesAcceptedOrPermanentOutcomes(t *testing.T) {
 				t.Fatal("accepted or permanent outcome was repeated or changed", fd, calls, err)
 			}
 		})
+	}
+}
+
+func TestNativeRejectedTimerProgramRetainsDiagnostic(t *testing.T) {
+	if os.Getenv("FACTORYBOX_TIMERSTATE_NATIVE") != "1" {
+		t.Skip("explicit owned native timer reader proof only")
+	}
+	// Returning an uninitialized R0 must fail verification. Statistics-only
+	// logging must preserve the kernel's reason rather than hide that failure.
+	code := []byte{0x95, 0, 0, 0, 0, 0, 0, 0}
+	license, verifier, attr := []byte("GPL\x00"), make([]byte, 65536), make([]byte, 144)
+	var pinned runtime.Pinner
+	defer pinned.Unpin()
+	binary.LittleEndian.PutUint32(attr, 1)
+	binary.LittleEndian.PutUint32(attr[4:], uint32(len(code)/8))
+	binary.LittleEndian.PutUint64(attr[8:], address(&pinned, code))
+	binary.LittleEndian.PutUint64(attr[16:], address(&pinned, license))
+	binary.LittleEndian.PutUint32(attr[24:], verifierLogStats)
+	binary.LittleEndian.PutUint32(attr[28:], uint32(len(verifier)))
+	binary.LittleEndian.PutUint64(attr[32:], address(&pinned, verifier))
+	fd, err := loadProgram(attr, bpf)
+	runtime.KeepAlive(code)
+	runtime.KeepAlive(license)
+	runtime.KeepAlive(verifier)
+	if fd >= 0 {
+		_ = unix.Close(fd)
+		t.Fatal("kernel accepted an invalid owned test program")
+	}
+	diagnostic := strings.TrimRight(string(verifier), "\x00")
+	if !errors.Is(err, unix.EACCES) || !strings.Contains(diagnostic, "R0 !read_ok") {
+		t.Fatal("rejected program lost its verification failure", err, diagnostic)
 	}
 }
 
