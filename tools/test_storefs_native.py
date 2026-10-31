@@ -12,7 +12,7 @@ import storefs_native
 
 
 class StorefsRunnerTests(unittest.TestCase):
-    def exercise_passed_fixture(self, runner, native_count=4):
+    def exercise_passed_fixture(self, runner, native_count=4, platform="linux/amd64"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "internal/storefs").mkdir(parents=True)
@@ -57,6 +57,7 @@ class StorefsRunnerTests(unittest.TestCase):
 
             def execute(command, **options):
                 if command[0] == "go":
+                    self.assertEqual(options["env"]["GOARCH"], platform.split("/")[1])
                     Path(command[command.index("-o") + 1]).write_bytes(b"synthetic test executable")
                 elif command[:3] == ["docker", "start", "--attach"]:
                     self.assertEqual(command[-1], state["identity"])
@@ -74,23 +75,38 @@ class StorefsRunnerTests(unittest.TestCase):
                 patches.enter_context(mock.patch.object(runner.reference, "new_artifact", return_value=artifact))
                 patches.enter_context(mock.patch.object(runner.reference, "docker", side_effect=docker))
                 patches.enter_context(mock.patch.object(runner.reference, "owned_delete", side_effect=delete))
-                patches.enter_context(mock.patch.object(runner.build_worker, "load", return_value=(root, {"image_id": "exact-image", "image": "exact-image"})))
-                patches.enter_context(mock.patch.object(runner.native_base, "require_native_host"))
-                patches.enter_context(mock.patch.object(runner.consumer_worker_loss, "sysctls", return_value={"fixture": "unchanged"}))
+                patches.enter_context(mock.patch.object(runner.build_worker, "load", return_value=(root, {
+                    "image_id": "exact-image", "image": "exact-image", "platform": platform,
+                    "native_base_image": "exact-native-base",
+                })))
+                native_host = patches.enter_context(mock.patch.object(runner.native_base, "require_native_host"))
+                sysctls = patches.enter_context(mock.patch.object(
+                    runner.consumer_worker_loss, "sysctls", return_value={"fixture": "unchanged"}))
                 patches.enter_context(mock.patch.object(runner.consumer_worker_loss, "exact_worker", side_effect=exact))
                 patches.enter_context(mock.patch.object(runner.subprocess, "run", side_effect=execute))
                 patches.enter_context(mock.patch("sys.argv", ["storefs-native", "--worker-build", "synthetic-image"]))
                 patches.enter_context(contextlib.redirect_stdout(io.StringIO()))
                 runner.main()
+            native_host.assert_called_once_with(platform, {})
+            self.assertEqual(sysctls.call_count, 2)
+            for call, phase in zip(sysctls.call_args_list, ["before", "after"]):
+                self.assertEqual(call.kwargs, {
+                    "docker_image": "exact-native-base", "owner": state["owner"],
+                    "artifact": artifact, "phase": phase,
+                })
             self.assertEqual(state["deleted"], ["container", "volume"])
             saved = json.loads((artifact / "result.json").read_text())
             self.assertTrue(saved["passed"])
             self.assertTrue(saved["cleanup"])
             self.assertFalse(saved["production_qualified"])
             self.assertEqual(saved["passed_tests"], native_count)
+            self.assertEqual(saved["platform"], platform)
 
     def test_passed_proofs_keep_exact_container_identity_through_cleanup(self):
         self.exercise_passed_fixture(storefs_native)
+
+    def test_arm64_uses_the_same_native_storage_assertions(self):
+        self.exercise_passed_fixture(storefs_native, platform="linux/arm64")
 
 
 if __name__ == "__main__":
