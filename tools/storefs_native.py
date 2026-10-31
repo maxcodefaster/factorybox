@@ -3,12 +3,12 @@
 import argparse
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import time
 import uuid
 
+import build_config
 import build_worker
 import consumer_worker_loss
 import native_base
@@ -23,7 +23,9 @@ def main():
     parser.add_argument("--worker-build", required=True, help="Exact existing native image supplying the formatter and libraries")
     args = parser.parse_args()
     _, worker = build_worker.load(args.worker_build)
-    native_base.require_native_host("linux/amd64", json.loads(reference.docker(["info", "--format", "{{json .}}"])))
+    platform = worker["platform"]
+    architecture = build_config.architecture(platform)
+    native_base.require_native_host(platform, json.loads(reference.docker(["info", "--format", "{{json .}}"])))
     if reference.docker(["ps", "--filter", "label=com.factorybox.run", "--format", "{{.ID}}"]):
         raise ValueError("other Factorybox runs must finish before this serialized storage test")
     owner = uuid.uuid4().hex
@@ -39,11 +41,12 @@ def main():
     output = artifact / "output"
     output.mkdir()
     result = {"schema": 1, "owner": owner, "passed": False, "cleanup": False,
+              "platform": platform,
               "production_qualified": False, "source_context": manifest,
               "runtime_image_build": args.worker_build, "image_id": worker["image_id"],
               "runner_sha256": reference.sha(artifact / "runner.py"),
-              "global_sysctls_before": consumer_worker_loss.sysctls(),
-              "loop_module_before": Path("/sys/module/loop").exists(),
+              "global_sysctls_before": consumer_worker_loss.sysctls(
+                  docker_image=worker["native_base_image"], owner=owner, artifact=artifact, phase="before"),
               "scope": "New runtime component, built from its frozen source with vet. Actual fixed-size filesystem ENOSPC, reserve rollback, data persistence, changed image/mount refusal, duplicate/orphan association refusal and last-reference autoclear lease. Existing exact native image supplies tools/libraries only. Not a delivered-worker, Sysbox lifecycle, worker-replacement or production qualification."}
     reference_lifecycle.write_json(artifact / "intent.json", result)
     volume = container = preserve = False
@@ -52,7 +55,7 @@ def main():
     print(json.dumps({"running": str(artifact)}), flush=True)
     try:
         binary = artifact / "storefs.test"
-        env = dict(os.environ, GOOS="linux", GOARCH="amd64", CGO_ENABLED="0")
+        env = dict(os.environ, GOOS="linux", GOARCH=architecture, CGO_ENABLED="0")
         command = ["go", "test", "-c", "-mod=readonly", "-trimpath", "-buildvcs=false", "-o", str(binary), "./internal/storefs"]
         with (artifact / "build.log").open("x") as log:
             subprocess.run(command, cwd=source, env=env, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
@@ -126,8 +129,8 @@ def main():
         finally:
             result["inputs_unchanged"] = (upstream_unit.context_manifest(source) == manifest and
                                           reference.sha(artifact / "runner.py") == result["runner_sha256"])
-            result["global_sysctls_after"] = consumer_worker_loss.sysctls()
-            result["loop_module_after"] = Path("/sys/module/loop").exists()
+            result["global_sysctls_after"] = consumer_worker_loss.sysctls(
+                docker_image=worker["native_base_image"], owner=owner, artifact=artifact, phase="after")
             result["passed"] = (result["passed"] and result["cleanup"] and result["inputs_unchanged"] and
                                 result["global_sysctls_after"] == result["global_sysctls_before"])
             result["outer_seconds"] = time.monotonic() - started
