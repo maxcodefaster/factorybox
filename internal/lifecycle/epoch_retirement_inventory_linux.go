@@ -312,6 +312,19 @@ func (b *epochInventoryBuilder) captures(record Record) error {
 		if err != nil || !entry.IsDir() {
 			return fmt.Errorf("unknown epoch capture generation: %v", err)
 		}
+		rejected, err := b.engine.epochRejectedCapture(record, entry.Name(), relative)
+		if err != nil {
+			return err
+		}
+		if rejected {
+			b.keep(relative, unix.S_IFDIR|0700)
+			b.file(relative + "/admission-rejected.json")
+			b.file(relative + "/checkpoint-intent.json")
+			if err := b.guard(relative+"/guard", record); err != nil {
+				return err
+			}
+			continue
+		}
 		retired, err := b.retired(record, relative)
 		if err != nil {
 			return err

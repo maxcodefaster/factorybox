@@ -295,6 +295,22 @@ func (e *Engine) epochDependencies(ctx context.Context, forest *epochRetirementF
 				}
 				var saved Checkpoint
 				if err := controller.readCheckpointJSON(relative+"/checkpoint.json", &saved); err != nil {
+					if errors.Is(err, os.ErrNotExist) {
+						rejected, proofErr := controller.epochRejectedCapture(record, capture.Name(), relative)
+						if proofErr != nil {
+							return proofErr
+						}
+						if rejected {
+							continue
+						}
+						deleted, proofErr := controller.deletedFailedPauseCapture(record, capture.Name())
+						if proofErr != nil {
+							return proofErr
+						}
+						if deleted {
+							continue
+						}
+					}
 					return fmt.Errorf("incomplete dependent capture blocks epoch retirement: %w", err)
 				}
 				if err := epochSnapshotReferences(saved.Filesystem, request.SourceRoot); err != nil {

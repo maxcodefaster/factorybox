@@ -253,6 +253,17 @@ replays capture or fabricates a successful Pause. The incomplete Pause, capture
 payload and failure history remain retained. This path does not qualify capture
 recovery or make an incomplete checkpoint usable.
 
+After confirmed deletion, another epoch's dependency scan recognizes only that
+exact admission and its unchanged evidence. The failed generation cannot block
+unrelated epoch retirement merely because no successful checkpoint exists.
+Its own payload stays retained; changed proof, unconfirmed deletion, published
+checkpoint state and retained helpers still refuse this exception.
+Proved pre-capture admission rejections in a closed Sandbox also remain
+metadata, not missing successful checkpoints. Their retained Pause history,
+pinned intent and safe guard outcome must agree, with no capture entry or RAM
+payload. Unknown guard files and changed or unconfirmed outcomes still refuse
+the retiring epoch's inventory.
+
 ## Independent outer-network copies
 
 The local candidate can fork a committed private-source Pause with

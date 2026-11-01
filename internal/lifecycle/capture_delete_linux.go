@@ -191,3 +191,69 @@ func (e *Engine) admitFailedPauseDelete(record Record) (resultErr error) {
 	admission.AdmittedAt = now()
 	return e.publishCheckpoint(relative, "capture-delete-admission.json", admission)
 }
+
+// A confirmed Delete withdraws this failed generation's execution authority.
+// Recognize only the original admission and unchanged evidence. This grants no
+// deletion authority over the failed capture itself; other-epoch retirement
+// leaves its complete diagnostic payload in place.
+func (e *Engine) deletedFailedPauseCapture(record Record, snapshotID string) (bool, error) {
+	if record.Phase != "deleted" || epochClosedRecord(record) != nil ||
+		record.Pause == nil || record.Pause.SnapshotID != snapshotID ||
+		record.Pause.CompletedAt != "" || record.Pause.RejectedAt != "" ||
+		record.Pause.Resume != nil {
+		return false, nil
+	}
+	relative, err := checkpointPath(record.ID, snapshotID)
+	if err != nil {
+		return false, err
+	}
+	root, err := e.root.Open(".")
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+	var admission failedCaptureDeleteAdmission
+	if err := captureCompletionReadLimit(root, relative+"/capture-delete-admission.json", &admission, checkpointManifestLimit); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	names := []string{
+		"guard/guard-intent.json", "checkpoint-intent.json", "guard/guard-outcome.json",
+		"guard/guard-armed.json", "guard/capture-worker-intent.json", "guard/capture-worker-outcome.json",
+		"source-state.json", "guard/capture-network-rollback.json",
+	}
+	if admission.Version != 1 || admission.SourceID != record.ID || admission.Owner != record.Owner ||
+		admission.RuntimeID != record.RuntimeID || admission.SnapshotID != snapshotID ||
+		admission.AdmittedAt == "" || !digest.MatchString(admission.RecordSHA) ||
+		len(admission.Evidence) != len(names) {
+		return false, fmt.Errorf("deleted failed capture differs from its original admission")
+	}
+	for _, name := range names {
+		data, err := captureCompletionBytes(root, relative+"/"+name, checkpointManifestLimit)
+		if err != nil || admission.Evidence[name] != sum(data) {
+			return false, fmt.Errorf("deleted failed capture evidence changed: %s: %v", name, err)
+		}
+	}
+	var config captureGuardConfig
+	if err := captureCompletionReadLimit(root, relative+"/guard/guard-intent.json", &config, checkpointManifestLimit); err != nil {
+		return false, err
+	}
+	original := record
+	original.Phase, original.Delete = "pausing", nil
+	data, err := sandboxRecordBytes(original)
+	if err != nil || config.Version != 1 || config.Root != e.config.Root || !config.StopSource ||
+		config.Token != snapshotID || config.Criu != e.config.Criu || config.CriuSHA256 != e.config.CriuSHA256 ||
+		config.RecordSHA != admission.RecordSHA || sum(append(data, '\n')) != admission.RecordSHA ||
+		!reflect.DeepEqual(config.Source, original) {
+		return false, fmt.Errorf("deleted failed capture original source changed: %v", err)
+	}
+	for _, path := range []string{"checkpoint.json", "capture-result.json", "filesystem.json", "filesystem",
+		"guard/criu-retained-arm.json", "guard/capture-process-complete.json", "guard/capture-process-restored.json"} {
+		if _, err := e.root.Lstat(relative + "/" + path); !errors.Is(err, os.ErrNotExist) {
+			return false, fmt.Errorf("deleted failed capture gained published or retained state: %s: %v", path, err)
+		}
+	}
+	return true, nil
+}
