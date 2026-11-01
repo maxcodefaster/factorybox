@@ -41,13 +41,28 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
         self.assertEqual(extension['previous_manifest'], 'tests/compatibility/bounded-capacity-debug-info.json')
         self.assertEqual(hashlib.sha256((root / extension['previous_manifest']).read_bytes()).hexdigest(),
                          extension['previous_manifest_sha256'])
+        successor = json.loads((root / 'tests/compatibility/failed-capture-retirement.json').read_text())
+        self.assertEqual(successor['schema'], 1)
+        self.assertTrue(successor['assertions_preserved'])
+        self.assertFalse(successor['upstream_assertions_modified'])
+        self.assertEqual(successor['previous_manifest'], 'tests/compatibility/deleted-manager-retirement.json')
+        self.assertEqual(hashlib.sha256((root / successor['previous_manifest']).read_bytes()).hexdigest(),
+                         successor['previous_manifest_sha256'])
+        def current(name, row):
+            if name in successor['files']:
+                final = successor['files'][name]
+                self.assertEqual(final['before_sha256'], row['after_sha256'])
+                return final
+            return row
         for name, row in declaration['files'].items():
             if name in extension['files']:
                 final = extension['files'][name]
                 self.assertEqual(final['before_sha256'], row['after_sha256'])
                 row = final
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), current(name, row)['after_sha256'])
         for name, row in extension['files'].items():
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), current(name, row)['after_sha256'])
+        for name, row in successor['files'].items():
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
         original = declaration['files']['internal/lifecycle/bounded_store_native_linux_test.go']
         self.assertEqual(original['before_sha256'], original['after_sha256'])

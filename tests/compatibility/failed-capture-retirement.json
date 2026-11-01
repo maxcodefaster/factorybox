@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "source_commit": "a90366ad8afa4a9d7fe817f89c681e5965bad9b2",
+  "previous_manifest": "tests/compatibility/deleted-manager-retirement.json",
+  "previous_manifest_sha256": "441a41fe4dd435fdd45a3e9bab7f04af18758460f005088109bba0400eae1aa7",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Add one explicit failed-capture retirement suite to the existing owned runner. The existing failed-Pause fixture may select that suite's exact live bounded worker and Sandbox; its original unbounded case and all assertions remain intact. The new suite proves actual guest ENOSPC, ordinary delivered cleanup, a successful repeat of the failed write, mapped guest ownership, preserved diagnostic metadata, rejected missing or published proof, foreign hardlinks/mounts and successor protection. Existing capacity/backing/timer tests, vet, resource ceilings, lifecycle deadlines, cleanup and prior compatibility declarations remain unchanged.",
+  "files": {
+    "tools/bounded_store_native.py": {
+      "before_sha256": "9a996a678e67bd7b10221b2fcb6dcefbaf92a0f15a6ccd4c6063e2266793b14d",
+      "after_sha256": "3314ea89ca4ea2c7aa1b265f828015b555ebfb71d62728953981c3f051b550c4"
+    },
+    "internal/lifecycle/capture_delete_native_linux_test.go": {
+      "before_sha256": "beebad0a50423cdce9084770345d43fad6327306efdc13cc506209d87db2d079",
+      "after_sha256": "0ae5058f829b42def95f40916c2641579e97eadc26ffbe78e4717be88f0bb787"
+    },
+    "internal/lifecycle/failed_capture_retirement_native_linux_test.go": {
+      "before_sha256": null,
+      "after_sha256": "81f332b848b115650bad5ebb7e965ac0fca0067149360560192093fbed8dc24c"
+    }
+  },
+  "regressions": [
+    "TestNativeFailedCaptureBackingRetirement",
+    "TestNativeDeleteFailedPause",
+    "TestNativeSandboxBackingRetirement",
+    "test_capacity_fixture_declaration_preserves_original_assertion_bytes"
+  ]
+}
