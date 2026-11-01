@@ -5,9 +5,11 @@
 package fdstore
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"regexp"
@@ -17,8 +19,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const MaximumFiles = 128
+const maximumPacketFiles = 128
 const maximumMessage = 32 << 10
+const descriptorControlReserve = 64
+
+// TransferVersion binds the Go worker and its independently built CRIU client.
+const TransferVersion = 2
 
 var keyPattern = regexp.MustCompile(`^[0-9a-f]{32}:[0-9a-f]{32}$`)
 var namePattern = regexp.MustCompile(`^factorybox-(reg|dir|inotify|fanotify):[1-9][0-9]{0,9}$`)
@@ -29,6 +35,14 @@ type message struct {
 	Names       []string    `json:"names"`
 	Error       string      `json:"error,omitempty"`
 	Directories []Directory `json:"directories,omitempty"`
+}
+
+type packet struct {
+	Version int     `json:"version"`
+	Offset  int     `json:"offset"`
+	Total   int     `json:"total"`
+	Final   bool    `json:"final"`
+	Message message `json:"message"`
 }
 
 type generation struct {
@@ -105,10 +119,10 @@ func credentials(connection *net.UnixConn) (*unix.Ucred, error) {
 	return credential, controlErr
 }
 
-func receive(connection *net.UnixConn) (message, []*os.File, error) {
-	var decoded message
+func receivePacket(connection *net.UnixConn) (packet, []*os.File, error) {
+	var decoded packet
 	data := make([]byte, maximumMessage)
-	oob := make([]byte, unix.CmsgSpace(MaximumFiles*4))
+	oob := make([]byte, unix.CmsgSpace(maximumPacketFiles*4))
 	n, ancillary, flags, _, err := connection.ReadMsgUnix(data, oob)
 	if err != nil {
 		return decoded, nil, err
@@ -129,17 +143,76 @@ func receive(connection *net.UnixConn) (message, []*os.File, error) {
 			files = append(files, os.NewFile(uintptr(fd), "epoch-retained file"))
 		}
 	}
-	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || len(files) > MaximumFiles || json.Unmarshal(data[:n], &decoded) != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data[:n]))
+	decoder.DisallowUnknownFields()
+	var trailing any
+	if flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || len(files) > maximumPacketFiles ||
+		decoder.Decode(&decoded) != nil || decoder.Decode(&trailing) != io.EOF ||
+		decoded.Version != TransferVersion || decoded.Offset < 0 || decoded.Total < decoded.Offset ||
+		len(files) > decoded.Total-decoded.Offset || len(decoded.Message.Names) != len(files) ||
+		decoded.Final != (len(files) == decoded.Total-decoded.Offset) || (!decoded.Final && len(files) == 0) {
 		closeFiles(files)
 		return decoded, nil, fmt.Errorf("invalid or truncated retained-file request")
 	}
 	return decoded, files, nil
 }
 
-func send(connection *net.UnixConn, value message, files []*os.File) error {
-	data, err := json.Marshal(value)
-	if err != nil || len(data) > maximumMessage || len(files) > MaximumFiles {
-		return fmt.Errorf("retained-file response exceeds bounds")
+// Budget the actual process descriptor table, not a single SCM_RIGHTS packet.
+// Leave control-plane descriptors available even when a generation is large.
+func admitAdditionalFiles(count int) error {
+	var limit unix.Rlimit
+	if count < 0 || unix.Getrlimit(unix.RLIMIT_NOFILE, &limit) != nil {
+		return fmt.Errorf("retained-file descriptor budget is unavailable")
+	}
+	open, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return fmt.Errorf("retained-file descriptor usage is unavailable")
+	}
+	reserved := uint64(len(open)) + descriptorControlReserve
+	if limit.Cur < reserved || uint64(count) > limit.Cur-reserved {
+		return fmt.Errorf("retained-file set exceeds the process descriptor budget")
+	}
+	return nil
+}
+
+func receive(connection *net.UnixConn) (message, []*os.File, error) {
+	first, files, err := receivePacket(connection)
+	if err != nil {
+		return message{}, nil, err
+	}
+	fail := func(err error) (message, []*os.File, error) {
+		closeFiles(files)
+		return message{}, nil, err
+	}
+	if first.Offset != 0 {
+		return fail(fmt.Errorf("retained-file transfer does not start at its original offset"))
+	}
+	if err := admitAdditionalFiles(first.Total - len(files)); err != nil {
+		return fail(err)
+	}
+	result := first.Message
+	for !first.Final {
+		next, received, err := receivePacket(connection)
+		if err != nil {
+			return fail(err)
+		}
+		if next.Offset != len(files) || next.Total != first.Total ||
+			next.Message.Operation != result.Operation || next.Message.Key != result.Key ||
+			next.Message.Error != result.Error {
+			closeFiles(received)
+			return fail(fmt.Errorf("retained-file continuation differs from its original transfer"))
+		}
+		files = append(files, received...)
+		result.Names = append(result.Names, next.Message.Names...)
+		result.Directories = append(result.Directories, next.Message.Directories...)
+		first = next
+	}
+	return result, files, nil
+}
+
+func sendPacket(connection *net.UnixConn, data []byte, files []*os.File) error {
+	if len(data) > maximumMessage || len(files) > maximumPacketFiles {
+		return fmt.Errorf("retained-file packet exceeds bounds")
 	}
 	var fds []int
 	for _, file := range files {
@@ -159,10 +232,59 @@ func send(connection *net.UnixConn, value message, files []*os.File) error {
 	return nil
 }
 
-func validNames(names []string) bool {
-	if len(names) > MaximumFiles {
-		return false
+func send(connection *net.UnixConn, value message, files []*os.File) error {
+	if len(value.Names) != len(files) {
+		return fmt.Errorf("retained-file response differs from its descriptors")
 	}
+	known := make(map[string]bool, len(value.Names))
+	for _, name := range value.Names {
+		known[name] = true
+	}
+	for _, directory := range value.Directories {
+		if !known[directory.Name] {
+			return fmt.Errorf("retained-file directory has no matching descriptor")
+		}
+	}
+	for offset := 0; ; {
+		end := min(offset+maximumPacketFiles, len(files))
+		var data []byte
+		for {
+			part := message{Operation: value.Operation, Key: value.Key, Error: value.Error,
+				Names: value.Names[offset:end]}
+			selected := make(map[string]bool, end-offset)
+			for _, name := range part.Names {
+				selected[name] = true
+			}
+			for _, directory := range value.Directories {
+				if selected[directory.Name] {
+					part.Directories = append(part.Directories, directory)
+				}
+			}
+			var err error
+			data, err = json.Marshal(packet{Version: TransferVersion, Offset: offset, Total: len(files),
+				Final: end == len(files), Message: part})
+			if err != nil {
+				return err
+			}
+			if len(data) <= maximumMessage {
+				break
+			}
+			if end-offset <= 1 {
+				return fmt.Errorf("retained-file packet metadata exceeds bounds")
+			}
+			end = offset + (end-offset)/2
+		}
+		if err := sendPacket(connection, data, files[offset:end]); err != nil {
+			return err
+		}
+		if end == len(files) {
+			return nil
+		}
+		offset = end
+	}
+}
+
+func validNames(names []string) bool {
 	seen := map[string]bool{}
 	for _, name := range names {
 		if (!namePattern.MatchString(name) && name != SourceRootName) || seen[name] {

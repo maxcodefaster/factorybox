@@ -61,6 +61,30 @@ class WorkerBuildInputs(unittest.TestCase):
             "Id":"sha256:fixture", "Os":"linux", "Architecture":"amd64",
             "RootFS":{"Layers":["sha256:layer"]}}])).start()
 
+    def test_completed_build_holds_only_its_exact_image_without_starting_or_allocating_volumes(self):
+        state = {"owner": "a" * 32, "image": "owned@sha256:" + "b" * 64,
+                 "image_id": "sha256:" + "b" * 64}
+        calls = []
+
+        def docker(arguments):
+            calls.append(arguments)
+            if arguments[:2] == ["image", "inspect"]:
+                return json.dumps([{"Id": state["image_id"], "Config": {"Volumes": {"/data": {}}}}])
+            self.assertEqual(arguments[0], "create")
+            retained = json.loads((self.artifact / "intent.json").read_text())
+            self.assertEqual(retained["image_hold"]["name"], "factorybox-build-input-" + state["owner"])
+            self.assertEqual(retained["image_hold"]["image_id"], state["image_id"])
+            self.assertIn("--network=none", arguments)
+            self.assertIn("/data:rw,size=16m", arguments)
+            self.assertIn("/bin/true", arguments)
+            self.assertEqual(arguments[-1], state["image"])
+            return "c" * 64
+
+        with patch.object(reference, "docker", side_effect=docker):
+            build_worker.retain_built_image(self.artifact, state)
+        self.assertEqual([command[0] for command in calls], ["image", "create"])
+        self.assertEqual(state["image_hold"]["container_id"], "c" * 64)
+
     def test_arm64_package_and_image_use_the_same_explicit_platform(self):
         result_file = self.artifact / "result.json"
         result = json.loads(result_file.read_text())

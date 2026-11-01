@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an ordered CRIU shared-description or namespace-validation delta."""
+"""Build an ordered CRIU shared-description, namespace or packet delta."""
 import argparse
 import json
 import os
@@ -17,19 +17,26 @@ import sources
 
 PATCH = reference.ROOT / 'upstream/patches/criu-shared-fds-candidate.patch'
 NAMESPACE_PATCH = reference.ROOT / 'upstream/patches/criu-userns-validation-handles.patch'
+PACKETS_PATCH = criu_candidate.DESCRIPTOR_TRANSFER_PATCH
 
 
-def delta_recipe(namespace_access, previous):
-    patch = NAMESPACE_PATCH if namespace_access else PATCH
-    delta = 'namespace-access' if namespace_access else 'shared-fds'
-    targets = 1 if namespace_access else 8
+def delta_recipe(namespace_access, previous, descriptor_packets=False):
+    if namespace_access and descriptor_packets:
+        raise ValueError('ordered CRIU deltas cannot be combined')
+    patch = PACKETS_PATCH if descriptor_packets else NAMESPACE_PATCH if namespace_access else PATCH
+    delta = 'shared-fds-packets' if descriptor_packets else 'namespace-access' if namespace_access else 'shared-fds'
+    targets = 2 if descriptor_packets else 1 if namespace_access else 8
     changed = [line.removeprefix('+++ b/') for line in patch.read_text().splitlines() if line.startswith('+++ b/')]
     if (len(changed) != targets or len(set(changed)) != targets or
             any(not value.startswith('criu/') or '..' in Path(value).parts for value in changed) or
-            namespace_access and changed != ['criu/namespaces.c']):
+            namespace_access and changed != ['criu/namespaces.c'] or
+            descriptor_packets and changed != ['criu/files.c', 'criu/crtools.c']):
         raise ValueError('ordered CRIU delta changed an undeclared source boundary')
     if namespace_access and previous.get('candidate_patch_sha256', {}).get('shared-fds.patch') != reference.sha(PATCH):
         raise ValueError('namespace validation requires the exact existing shared-description delta')
+    if descriptor_packets and any(previous.get('candidate_patch_sha256', {}).get(name) != reference.sha(path)
+                                  for name, path in [('shared-fds.patch', PATCH), ('namespace-access.patch', NAMESPACE_PATCH)]):
+        raise ValueError('descriptor packets require the exact existing shared-description and namespace deltas')
     return patch, delta, changed
 
 
@@ -38,12 +45,17 @@ def main():
     parser.add_argument('--base-candidate', required=True)
     parser.add_argument('--base-lock', type=Path,
                         help='Exact immutable selected-base lock; its CRIU component must match the current recipe')
-    parser.add_argument('--namespace-access', action='store_true',
-                        help='After shared descriptions, pin namespace validation handles before dropping authority')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--namespace-access', action='store_true',
+                      help='After shared descriptions, pin namespace validation handles before dropping authority')
+    mode.add_argument('--descriptor-packets', action='store_true',
+                      help='After namespace validation, receive complete multi-packet descriptor generations')
+    parser.add_argument('--native-base-build',
+                        help='Explicit verified compiler base for the same native platform; completed inputs stay unchanged')
     parser.add_argument('--prepared', help='One new, unbuilt preparation from this task; never a completed input')
     args = parser.parse_args()
     original, previous, _, _ = criu_candidate.load(args.base_candidate, base_lock=args.base_lock)
-    patch, delta, changed = delta_recipe(args.namespace_access, previous)
+    patch, delta, changed = delta_recipe(args.namespace_access, previous, args.descriptor_packets)
     filename = delta + '.patch'
     if args.prepared:
         if not re.fullmatch(r'factorybox-build-criu-retained-[0-9a-f]{32}', args.prepared):
@@ -122,7 +134,10 @@ def main():
     declaration = {'schema': 1, 'before_sha256': before, 'after_sha256': after,
                    'patch_sha256': reference.sha(patch), 'upstream_assertions_unchanged': True}
     (artifact / (delta + '-source.json')).write_text(json.dumps(declaration, indent=2) + '\n')
-    builder, base = native_base.load(previous['native_base_build'], for_build=True)
+    native_base_build = args.native_base_build or previous['native_base_build']
+    builder, base = native_base.load(native_base_build, for_build=True,
+                                    candidate_platform=previous.get('platform', 'linux/arm64'))
+    native_base.require_native_host(base['platform'], json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     owner = artifact.name.rsplit('-', 1)[1]
     epoch = json.loads((artifact / 'criu-build.json').read_text())['source_date_epoch']
     command = [*reference.DOCKER, 'run', '--pull=never', '--name', artifact.name,
@@ -141,7 +156,7 @@ def main():
     result = {'schema': 1, 'owner': owner, 'passed': False, 'cleanup': False, 'diagnostic_only': True,
               'production_qualified': False, 'native_lifecycle_qualified': False, 'platform': base['platform'],
               'base_candidate': original.name, 'base_candidate_result_sha256': reference.sha(original / 'result.json'),
-              'native_base_build': previous['native_base_build'], 'builder': builder, 'command': command,
+              'native_base_build': native_base_build, 'builder': builder, 'command': command,
               'base_source_lock_sha256': previous['base_source_lock_sha256'],
               'source_lock_sha256': reference.sha(artifact / 'source-lock.json'),
               'patch_sha256': reference.sha(artifact / 'retained.patch'),
@@ -168,6 +183,8 @@ def main():
             raise ValueError('shared-description builder exceeded its memory bound')
         result['scope_gate_passed'] = 'owned-scope-cases=31 failures=0' in (artifact / 'owned-scope.log').read_text()
         result['features'] = json.loads((artifact / 'features.json').read_text())
+        if args.descriptor_packets:
+            criu_candidate.require_descriptor_transfer(result)
         result['inputs_unchanged'] = (sources.tree_sha(artifact / 'context') == result['context_sha256'] and
                                       sources.tree_sha(original / 'context') == previous['context_sha256'])
         if not result['scope_gate_passed'] or not result['inputs_unchanged'] or result['features'].get('shared_file_descriptions') is not True:

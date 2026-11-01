@@ -14,6 +14,7 @@ import uuid
 
 import build_config
 import criu_candidate
+import descriptor_transfer_proof
 import native_base
 import reference
 import reference_lifecycle
@@ -131,6 +132,27 @@ def write_build_recipe(bundle, recipe):
     reference_lifecycle.write_json(Path(bundle) / "build.json", delivered)
 
 
+def retain_built_image(artifact, result):
+    inspected = json.loads(reference.docker(["image", "inspect", result["image"]]))[0]
+    if inspected["Id"] != result["image_id"]:
+        raise ValueError("built image changed before its qualification hold")
+    volumes = inspected["Config"].get("Volumes") or {}
+    if any(not re.fullmatch(r"/[A-Za-z0-9_./-]+", path) or path == "/" for path in volumes):
+        raise ValueError("built image declares an invalid hold volume")
+    name = "factorybox-build-input-" + result["owner"]
+    command = ["create", "--pull=never", "--name", name,
+               "--label", "com.factorybox.run=" + result["owner"],
+               "--network=none", "--read-only", "--cpus=.1", "--memory=16m", "--pids-limit=8",
+               "--cap-drop=ALL", "--security-opt=no-new-privileges",
+               *[argument for path in volumes for argument in ["--tmpfs", path + ":rw,size=16m"]],
+               "--entrypoint", "/bin/true", result["image"]]
+    # Inspecting an image is not a lease. Retain the completed input through
+    # node image GC until its qualification/release owner explicitly retires it.
+    result["image_hold"] = {"name": name, "image_id": result["image_id"], "command": command}
+    reference_lifecycle.write_json(artifact / "intent.json", result)
+    result["image_hold"]["container_id"] = reference.docker(command)
+
+
 def load(name):
     if not name.startswith("factorybox-build-worker-") or Path(name).name != name:
         raise ValueError("expected one exact completed worker build")
@@ -158,6 +180,13 @@ def load(name):
             raise ValueError("completed worker input changed: " + path)
     if upstream_unit.context_manifest(artifact / "source") != result["source_context"]:
         raise ValueError("completed worker source context changed")
+    if "descriptor_transfer_proof" in result or "descriptor_transfer_proof_sha256" in result:
+        proof, _ = descriptor_transfer_proof.load(
+            result.get("descriptor_transfer_proof", ""), platform=result["platform"],
+            criu_name=result["criu_build"], native_base_build=result["native_base_build"],
+            source_root=artifact / "source")
+        if reference.sha(proof / "result.json") != result.get("descriptor_transfer_proof_sha256"):
+            raise ValueError("worker descriptor interoperability receipt changed")
     recipe = json.loads((bundle / "build.json").read_text())
     if "version" in result:
         if (result["version"] != source_version(artifact / "source") or
@@ -235,6 +264,8 @@ def main():
     parser.add_argument("--native-base-build", required=True)
     parser.add_argument("--sysbox-build", required=True)
     parser.add_argument("--retained-candidate", required=True)
+    parser.add_argument("--descriptor-proof",
+                        help="Exact successful native Go/CRIU interoperability proof; required for release qualification")
     parser.add_argument("--criu-base-lock", type=Path, help="Exact immutable selected-base lock for the retained CRIU build; current CRIU component must match in full")
     parser.add_argument("--compare", help="Require an identical package and image from a separate no-cache build")
     parser.add_argument("--discard-compiler-scratch", action="store_true", help="After a successful verified build, retain its generated compiler-cache inventory and remove only that new build's optional scratch cache")
@@ -252,6 +283,11 @@ def main():
     criu_path, criu, criu_component, _ = criu_candidate.load(options.retained_candidate, base_lock=options.criu_base_lock)
     if not options.native_candidate:
         criu_candidate.require_recovery_corrections(criu, criu_component)
+    criu_candidate.require_descriptor_transfer(criu)
+    proof = (descriptor_transfer_proof.load(
+        options.descriptor_proof, platform=options.platform,
+        criu_name=options.retained_candidate, native_base_build=options.native_base_build,
+        source_root=reference.ROOT) if options.descriptor_proof else None)
     architecture = build_config.require_platform(options.platform, base, sysbox, criu)
     comparison = load(options.compare)[1] if options.compare else None
     component_input = load(options.component_input_worker) if options.component_input_worker else None
@@ -294,6 +330,11 @@ def main():
                        "No installation, publishing, platform or lifecycle qualification. Base includes its pinned "
                        "build/test utilities; this does not qualify a reduced production image."}
     result['component_input_worker'] = options.component_input_worker
+    if proof is not None:
+        if descriptor_transfer_proof.go_source_context(source) != proof[1]["goSourceContext"]:
+            raise ValueError("worker source differs from its native descriptor interoperability proof")
+        result["descriptor_transfer_proof"] = options.descriptor_proof
+        result["descriptor_transfer_proof_sha256"] = reference.sha(proof[0] / "result.json")
     result['shared_component_roles'] = []
     if candidate is not None:
         result["native_candidate"] = candidate
@@ -434,6 +475,7 @@ def main():
             raise ValueError("worker Go inputs changed")
         if comparison and any(result[key] != comparison[key] for key in ["package_sha256", "image_id", "layers"]):
             raise ValueError("independent worker package/image differs from the comparison")
+        retain_built_image(artifact, result)
         if options.discard_compiler_scratch:
             cache = artifact / "go-cache"
             cache_manifest = upstream_unit.context_manifest(cache)
@@ -448,6 +490,9 @@ def main():
         result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
+        if "image_hold" in result:
+            reference.owned_delete("container", result["image_hold"]["name"], owner)
+            result["failed_image_hold_cleaned"] = True
         raise
     finally:
         reference_lifecycle.write_json(artifact / "result.json", result)

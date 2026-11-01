@@ -10,13 +10,16 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"factorybox/internal/fdstore"
 )
 
 type Features struct {
-	Schema                  int  `json:"schema"`
-	RootOwnedTimeNamespaces bool `json:"root_owned_time_namespaces"`
-	SharedFileDescriptions  bool `json:"shared_file_descriptions,omitempty"`
-	SharedSourceDirectories bool `json:"shared_source_directories,omitempty"`
+	Schema                    int  `json:"schema"`
+	RootOwnedTimeNamespaces   bool `json:"root_owned_time_namespaces"`
+	SharedFileDescriptions    bool `json:"shared_file_descriptions,omitempty"`
+	SharedSourceDirectories   bool `json:"shared_source_directories,omitempty"`
+	SharedFileTransferVersion int  `json:"shared_file_transfer_version,omitempty"`
 }
 
 type featureOutput struct {
@@ -53,6 +56,10 @@ func InspectFeatures(ctx context.Context, binary *os.File) Features {
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&features) != nil || decoder.Decode(new(any)) != io.EOF || features.Schema != 1 {
 		return Features{}
+	}
+	if features.SharedFileTransferVersion != fdstore.TransferVersion {
+		features.SharedFileDescriptions = false
+		features.SharedSourceDirectories = false
 	}
 	return features
 }

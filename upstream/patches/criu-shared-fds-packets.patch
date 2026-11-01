@@ -1,0 +1,388 @@
+--- a/criu/files.c
++++ b/criu/files.c
+@@ -11,6 +11,8 @@
+ #include <sys/stat.h>
+ #include <sys/socket.h>
+ #include <sys/time.h>
++#include <sys/resource.h>
++#include <dirent.h>
+ #include <stddef.h>
+ #include <sys/un.h>
+ #include <stdlib.h>
+@@ -1720,24 +1722,100 @@
+ /* Same-worker resources are received before restore enters the sandbox's
+  * namespaces. The endpoint must be root PID 1 in this worker, not a file path
+  * from the sandbox or a replacement service. No resource is reopened by name. */
+-static struct {
++static struct factorybox_directory {
+ 	unsigned int id;
+-	char path[PATH_MAX];
+-} factorybox_directories[128];
+-static int factorybox_directory_count;
++	char *path;
++} *factorybox_directories;
++static unsigned int factorybox_directory_count, factorybox_directory_capacity;
+ 
+ const char *factorybox_directory_path(struct file_desc *d)
+ {
+-	int i;
++	unsigned int i;
+ 	for (i = 0; i < factorybox_directory_count; i++)
+ 		if (factorybox_directories[i].id == d->id && d->ops->type == FD_TYPES__REG)
+ 			return factorybox_directories[i].path;
+ 	return NULL;
+ }
+ 
++static int factorybox_count(const char **cursor, const char *prefix, unsigned int *value)
++{
++	char *end;
++	unsigned long parsed;
++	size_t length = strlen(prefix);
++	if (strncmp(*cursor, prefix, length))
++		return -1;
++	*cursor += length;
++	if (**cursor < '0' || **cursor > '9')
++		return -1;
++	errno = 0;
++	parsed = strtoul(*cursor, &end, 10);
++	if (errno || parsed > UINT_MAX)
++		return -1;
++	*cursor = end;
++	*value = parsed;
++	return 0;
++}
++
++static int factorybox_descriptor_budget(unsigned int additional)
++{
++	struct rlimit limit;
++	struct dirent *entry;
++	DIR *directory;
++	unsigned long long open = 0;
++	if (getrlimit(RLIMIT_NOFILE, &limit))
++		return -1;
++	directory = opendir("/proc/self/fd");
++	if (!directory)
++		return -1;
++	while ((entry = readdir(directory)))
++		if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, ".."))
++			open++;
++	closedir(directory);
++	/* Keep the same control-plane reserve as the original worker store. */
++	return limit.rlim_cur < open + 64 || additional > limit.rlim_cur - open - 64 ? -1 : 0;
++}
++
++static int factorybox_add_directory(unsigned int id, const char *encoded)
++{
++	size_t length = strlen(encoded), index;
++	char *path;
++	if (!length || length % 2 || length / 2 >= PATH_MAX ||
++	    strspn(encoded, "0123456789abcdef") != length)
++		return -1;
++	path = xmalloc(length / 2 + 1);
++	if (!path)
++		return -1;
++	for (index = 0; index < length; index += 2) {
++		char pair[3] = { encoded[index], encoded[index + 1], 0 };
++		path[index / 2] = strtoul(pair, NULL, 16);
++		if (!path[index / 2])
++			goto error;
++	}
++	path[length / 2] = 0;
++	if (path[0] != '/')
++		goto error;
++	if (factorybox_directory_count == factorybox_directory_capacity) {
++		unsigned int capacity = factorybox_directory_capacity ? factorybox_directory_capacity * 2 : 32;
++		struct factorybox_directory *grown;
++		if (capacity < factorybox_directory_capacity)
++			goto error;
++		grown = xrealloc(factorybox_directories, (size_t)capacity * sizeof(*grown));
++		if (!grown)
++			goto error;
++		factorybox_directories = grown;
++		factorybox_directory_capacity = capacity;
++	}
++	factorybox_directories[factorybox_directory_count].id = id;
++	factorybox_directories[factorybox_directory_count++].path = path;
++	return 0;
++error:
++	xfree(path);
++	return -1;
++}
++
+ int factorybox_load_fds(void)
+ {
+-	char request[256], prefix[256], reply[32768], name[PATH_MAX * 2 + 64];
++	char request[256], prefix[256], reply[32769], name[PATH_MAX * 2 + 64];
+ 	struct sockaddr_un address = { .sun_family = AF_UNIX };
+ 	struct ucred peer;
+ 	socklen_t peer_size = sizeof(peer);
+@@ -1747,11 +1825,13 @@
+ 		char data[CMSG_SPACE(128 * sizeof(int))];
+ 	} control;
+ 	struct iovec iov = { .iov_base = reply, .iov_len = sizeof(reply) - 1 };
+-	struct msghdr message = { .msg_iov = &iov, .msg_iovlen = 1,
+-		.msg_control = control.data, .msg_controllen = sizeof(control.data) };
++	struct msghdr message;
+ 	struct cmsghdr *cmsg;
+ 	const char *key, *cursor, *end;
+-	int socket_fd = -1, fds[128], count = 0, names = 0, size, result = -1, i;
++	char **identities = NULL;
++	int socket_fd = -1, packet_fds[128], *fds = NULL, packet_count = 0, size, result = -1, i;
++	unsigned int count = 0, expected_total = 0;
++	bool first = true;
+ 	ssize_t received;
+ 
+ 	if (!opts.factorybox_fdstore)
+@@ -1773,109 +1853,160 @@
+ 	    connect(socket_fd, (struct sockaddr *)&address, sizeof(address)) ||
+ 	    getsockopt(socket_fd, SOL_SOCKET, SO_PEERCRED, &peer, &peer_size) || peer.uid != 0 || peer.pid != 1)
+ 		goto out;
+-	size = snprintf(request, sizeof(request), "{\"operation\":\"restore\",\"key\":\"%s\"}", key);
++	size = snprintf(request, sizeof(request),
++			"{\"version\":2,\"offset\":0,\"total\":0,\"final\":true,"
++			"\"message\":{\"operation\":\"restore\",\"key\":\"%s\",\"names\":[]}}", key);
+ 	if (size < 0 || size >= (int)sizeof(request) || send(socket_fd, request, size, MSG_NOSIGNAL) != size)
+ 		goto out;
+-	received = recvmsg(socket_fd, &message, MSG_CMSG_CLOEXEC);
+-	if (received < 0)
+-		goto out;
+-	for (cmsg = CMSG_FIRSTHDR(&message); cmsg; cmsg = CMSG_NXTHDR(&message, cmsg)) {
+-		size_t bytes;
+-		if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS || cmsg->cmsg_len < CMSG_LEN(0))
++	for (;;) {
++		unsigned int version, offset, total, names = 0, packet_start = count;
++		bool final;
++		message = (struct msghdr){ .msg_iov = &iov, .msg_iovlen = 1,
++			.msg_control = control.data, .msg_controllen = sizeof(control.data) };
++		packet_count = 0;
++		received = recvmsg(socket_fd, &message, MSG_CMSG_CLOEXEC);
++		if (received < 0)
+ 			goto out;
+-		bytes = cmsg->cmsg_len - CMSG_LEN(0);
+-		if (bytes % sizeof(int) || bytes / sizeof(int) > (size_t)(128 - count))
++		for (cmsg = CMSG_FIRSTHDR(&message); cmsg; cmsg = CMSG_NXTHDR(&message, cmsg)) {
++			size_t bytes;
++			if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS || cmsg->cmsg_len < CMSG_LEN(0))
++				goto out;
++			bytes = cmsg->cmsg_len - CMSG_LEN(0);
++			if (bytes % sizeof(int) || bytes / sizeof(int) > (size_t)(128 - packet_count))
++				goto out;
++			memcpy(packet_fds + packet_count, CMSG_DATA(cmsg), bytes);
++			packet_count += bytes / sizeof(int);
++		}
++		if (message.msg_flags & (MSG_TRUNC | MSG_CTRUNC) || memchr(reply, 0, received))
+ 			goto out;
+-		memcpy(fds + count, CMSG_DATA(cmsg), bytes);
+-		count += bytes / sizeof(int);
+-	}
+-	if (message.msg_flags & (MSG_TRUNC | MSG_CTRUNC))
+-		goto out;
+-	reply[received] = 0;
+-	size = snprintf(prefix, sizeof(prefix), "{\"operation\":\"restore\",\"key\":\"%s\",\"names\":[", key);
+-	if (size < 0 || strncmp(reply, prefix, size))
+-		goto out;
+-	cursor = reply + size;
+-	while (*cursor != ']') {
+-		unsigned long long id;
+-		const char *digits;
+-		char *directory_path = NULL;
+-		if (*cursor != '"' || names >= count)
++		reply[received] = 0;
++		cursor = reply;
++		if (factorybox_count(&cursor, "{\"version\":", &version) || version != 2 ||
++		    factorybox_count(&cursor, ",\"offset\":", &offset) || offset != count ||
++		    factorybox_count(&cursor, ",\"total\":", &total) || total < count ||
++		    (unsigned int)packet_count > total - count)
+ 			goto out;
+-		end = strchr(++cursor, '"');
+-		if (!end || end - cursor >= (ptrdiff_t)sizeof(name))
++		if (!strncmp(cursor, ",\"final\":true,\"message\":", strlen(",\"final\":true,\"message\":"))) {
++			final = true;
++			cursor += strlen(",\"final\":true,\"message\":");
++		} else if (!strncmp(cursor, ",\"final\":false,\"message\":", strlen(",\"final\":false,\"message\":"))) {
++			final = false;
++			cursor += strlen(",\"final\":false,\"message\":");
++		} else
+ 			goto out;
+-		memcpy(name, cursor, end - cursor);
+-		name[end - cursor] = 0;
+-		if (!strcmp(name, "factorybox-source-root:1")) {
+-			close(fds[names]);
+-			fds[names] = -1;
+-			goto next_name;
+-		}
+-		if (!strncmp(name, "factorybox-reg:", 15))
+-			digits = name + 15;
+-		else if (!strncmp(name, "factorybox-dir:", 15)) {
+-			char *separator = strchr(name + 15, ':');
+-			if (!separator || factorybox_directory_count >= 128)
++		if (final != ((unsigned int)packet_count == total - count) || (!final && !packet_count))
++			goto out;
++		if (first) {
++			if (factorybox_descriptor_budget(total - packet_count))
+ 				goto out;
+-			*separator = 0;
+-			directory_path = separator + 1;
+-			digits = name + 15;
+-		}
+-		else if (!strncmp(name, "factorybox-inotify:", 19))
+-			digits = name + 19;
+-		else if (!strncmp(name, "factorybox-fanotify:", 20))
+-			digits = name + 20;
+-		else
++			expected_total = total;
++			if (total) {
++				fds = xmalloc((size_t)total * sizeof(*fds));
++				identities = xmalloc((size_t)total * sizeof(*identities));
++				if (!fds || !identities)
++					goto out;
++				memset(identities, 0, (size_t)total * sizeof(*identities));
++			}
++			first = false;
++		} else if (total != expected_total)
+ 			goto out;
+-		if (!*digits || strspn(digits, "0123456789") != strlen(digits))
++		size = snprintf(prefix, sizeof(prefix), "{\"operation\":\"restore\",\"key\":\"%s\",\"names\":[", key);
++		if (size < 0 || strncmp(cursor, prefix, size))
+ 			goto out;
+-		errno = 0;
+-		id = strtoull(digits, NULL, 10);
+-		if (errno || !id || id > UINT32_MAX)
+-			goto out;
+-		if (directory_path) {
+-			size_t length = strlen(directory_path), index;
+-			char *path = factorybox_directories[factorybox_directory_count].path;
+-			if (!length || length % 2 || length / 2 >= PATH_MAX || strspn(directory_path, "0123456789abcdef") != length)
++		cursor += size;
++		if (packet_count)
++			memcpy(fds + count, packet_fds, packet_count * sizeof(int));
++		count += packet_count;
++		packet_count = 0;
++		while (*cursor != ']') {
++			unsigned long long id;
++			const char *digits;
++			char *directory_path = NULL;
++			if (*cursor != '"' || names >= count - packet_start)
+ 				goto out;
+-			for (index = 0; index < length; index += 2) {
+-				char pair[3] = { directory_path[index], directory_path[index + 1], 0 };
+-				path[index / 2] = strtoul(pair, NULL, 16);
+-				if (!path[index / 2])
++			end = strchr(++cursor, '"');
++			if (!end || end - cursor >= (ptrdiff_t)sizeof(name))
++				goto out;
++			memcpy(name, cursor, end - cursor);
++			name[end - cursor] = 0;
++			if (!strcmp(name, "factorybox-source-root:1")) {
++				close(fds[packet_start + names]);
++				fds[packet_start + names] = -1;
++				goto next_name;
++			}
++			if (!strncmp(name, "factorybox-reg:", 15))
++				digits = name + 15;
++			else if (!strncmp(name, "factorybox-dir:", 15)) {
++				char *separator = strchr(name + 15, ':');
++				if (!separator)
++					goto out;
++				*separator = 0;
++				directory_path = separator + 1;
++				digits = name + 15;
++			}
++			else if (!strncmp(name, "factorybox-inotify:", 19))
++				digits = name + 19;
++			else if (!strncmp(name, "factorybox-fanotify:", 20))
++				digits = name + 20;
++			else
++				goto out;
++			if (!*digits || strspn(digits, "0123456789") != strlen(digits))
++				goto out;
++			errno = 0;
++			id = strtoull(digits, NULL, 10);
++			if (errno || !id || id > UINT32_MAX)
++				goto out;
++			if (directory_path) {
++				if (factorybox_add_directory(id, directory_path))
++					goto out;
++				snprintf(name, sizeof(name), "factorybox-reg:%u", (unsigned int)id);
++			}
++			identities[packet_start + names] = xstrdup(name);
++			if (!identities[packet_start + names])
++				goto out;
++	next_name:
++			names++;
++			cursor = end + 1;
++			if (*cursor == ',') {
++				cursor++;
++				if (*cursor != '"')
+ 					goto out;
+ 			}
+-			path[length / 2] = 0;
+-			if (path[0] != '/')
+-				goto out;
+-			factorybox_directories[factorybox_directory_count++].id = id;
+-			snprintf(name, sizeof(name), "factorybox-reg:%u", (unsigned int)id);
+-		}
+-		if (inherit_fd_add(fds[names], name))
+-			goto out;
+-next_name:
+-		names++;
+-		cursor = end + 1;
+-		if (*cursor == ',') {
+-			cursor++;
+-			if (*cursor != '"')
++			else if (*cursor != ']')
+ 				goto out;
+ 		}
+-		else if (*cursor != ']')
++		if (strcmp(cursor, "]}}") || names != count - packet_start)
+ 			goto out;
+-	}
+-	if (strcmp(cursor, "]}") || names != count)
+-		goto out;
+-	pr_info("Factorybox retained %d original shared file descriptions\n", count);
++		if (final)
++			break;
++	}
++	/* No descriptor enters CRIU's restore inventory before the complete
++	 * generation and every packet boundary have been validated. */
++	for (unsigned int index = 0; index < count; index++)
++		if (fds[index] >= 0 && inherit_fd_add(fds[index], identities[index]))
++			goto out;
++	pr_info("Factorybox retained %u original shared file descriptions\n", count);
+ 	result = 0;
+ out:
+ 	if (socket_fd >= 0)
+ 		close(socket_fd);
+ 	if (result) {
+-		for (i = 0; i < count; i++)
+-			close(fds[i]);
++		for (i = 0; i < packet_count; i++)
++			close(packet_fds[i]);
++		for (unsigned int index = 0; index < count; index++)
++			if (fds[index] >= 0)
++				close(fds[index]);
++		for (unsigned int index = 0; index < factorybox_directory_count; index++)
++			xfree(factorybox_directories[index].path);
++		xfree(factorybox_directories);
++		factorybox_directories = NULL;
++		factorybox_directory_count = factorybox_directory_capacity = 0;
+ 		pr_err("Factorybox live shared-file generation is unavailable or changed\n");
+ 	}
++	for (unsigned int index = 0; index < count; index++)
++		xfree(identities[index]);
++	xfree(identities);
++	xfree(fds);
+ 	return result;
+ }
+ 
+--- a/criu/crtools.c
++++ b/criu/crtools.c
+@@ -136,7 +136,7 @@
+ 
+ 	/* Read-only ABI probe for the hash-pinned Factorybox caller. */
+ 	if (argc == 2 && !strcmp(argv[1], "factorybox-features")) {
+-		puts("{\"schema\":1,\"root_owned_time_namespaces\":true,\"shared_file_descriptions\":true,\"shared_source_directories\":true}");
++		puts("{\"schema\":1,\"root_owned_time_namespaces\":true,\"shared_file_descriptions\":true,\"shared_source_directories\":true,\"shared_file_transfer_version\":2}");
+ 		return 0;
+ 	}
+ 

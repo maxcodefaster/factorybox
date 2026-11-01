@@ -13,6 +13,19 @@ import release_native
 
 
 class NativeReleaseQualificationTests(unittest.TestCase):
+    def test_release_requires_a_bound_native_descriptor_interoperability_receipt(self):
+        complete = {
+            "descriptor_transfer_proof": "factorybox-fdstore-criu-" + "a" * 32,
+            "descriptor_transfer_proof_sha256": "b" * 64,
+        }
+        release_native.require_descriptor_proof(complete)
+        for changed in [
+                {}, {**complete, "descriptor_transfer_proof": "other-proof"},
+                {**complete, "descriptor_transfer_proof_sha256": "unconfirmed"},
+                {**complete, "descriptor_transfer_proof": None}]:
+            with self.assertRaisesRegex(ValueError, "native descriptor interoperability"):
+                release_native.require_descriptor_proof(changed)
+
     def test_selected_images_remain_referenced_through_every_gate_and_release_only_owned_holds(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
@@ -30,7 +43,9 @@ class NativeReleaseQualificationTests(unittest.TestCase):
             worker = {**images["worker"], "image_id": images["worker"]["image_config"],
                       "native_base_build": "owned-base", "sysbox_build": "owned-sysbox",
                       "criu_build": "owned-criu", "bundle_sha256": {"factorybox": "e" * 64},
-                      "original_license_sha256": "f" * 64}
+                      "original_license_sha256": "f" * 64,
+                      "descriptor_transfer_proof": "factorybox-fdstore-criu-" + "a" * 32,
+                      "descriptor_transfer_proof_sha256": "b" * 64}
             consumer = {"images": {role: images[role] for role in ["runtime", "hub"]}}
             containers = {}
             mutations = []

@@ -91,7 +91,7 @@ func TestClientRejectsEndpointOutsideOriginalRootPID1(t *testing.T) {
 func TestRetainedNamesAreBoundedAndUnique(t *testing.T) {
 	for _, names := range [][]string{
 		{"factorybox-reg:0"}, {"factorybox-reg:1", "factorybox-reg:1"}, {"/project/file"},
-		{"factorybox-reg:1\n"}, make([]string, MaximumFiles+1),
+		{"factorybox-reg:1\n"}, {strings.Repeat("x", maximumMessage+1)},
 	} {
 		if validNames(names) {
 			t.Fatal("admitted invalid retained-file identities", names)

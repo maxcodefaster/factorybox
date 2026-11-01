@@ -13,7 +13,8 @@ class WorkerPipelineTests(unittest.TestCase):
         for platform in ["linux/arm64", "linux/amd64"]:
             options = argparse.Namespace(platform=platform, network="host", builder="owned-builder",
                                          bounded_build=True, native_base_build="exact-base")
-            commands = build_worker_pipeline.commands(options, "exact-sysbox", "exact-criu")
+            commands = build_worker_pipeline.commands(
+                options, "exact-sysbox", "exact-criu", "exact-proof")
             self.assertIn(platform, commands["sysbox"])
             self.assertIn(platform, commands["worker"])
             self.assertIn("exact-base", commands["criu"])
@@ -25,6 +26,14 @@ class WorkerPipelineTests(unittest.TestCase):
             self.assertEqual(commands["namespace-access"][1:],
                              ["tools/build_criu_shared_fds.py", "--base-candidate", "exact-criu",
                               "--namespace-access"])
+            self.assertEqual(commands["descriptor-packets"][1:],
+                             ["tools/build_criu_shared_fds.py", "--base-candidate", "exact-criu",
+                              "--descriptor-packets", "--native-base-build", "exact-base"])
+            self.assertEqual(commands["descriptor-proof"][1:], [
+                "tests/fdstore-criu-client/run.py", "--criu-candidate", "exact-criu",
+                "--native-base-build", "exact-base"])
+            self.assertIn("--descriptor-proof", commands["worker"])
+            self.assertIn("exact-proof", commands["worker"])
             self.assertIn("--bounded-build", commands["sysbox"])
             self.assertIn("owned-builder", commands["sysbox"])
             self.assertIn("--discard-compiler-scratch", commands["worker"])
@@ -92,3 +101,23 @@ class WorkerPipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "namespace-validation"):
             build_worker_pipeline.namespace_access_input(
                 "changed", {"candidate_patch_sha256": {"namespace-access.patch": "0" * 64}})
+
+    def test_worker_requires_both_the_exact_packet_patch_and_its_protocol_feature(self):
+        complete = {
+            "candidate_patch_sha256": {"shared-fds-packets.patch": reference.sha(build_criu_shared_fds.PACKETS_PATCH)},
+            "features": {"schema": 1, "shared_file_transfer_version": 2,
+                         "shared_file_descriptions": True, "shared_source_directories": True},
+        }
+        self.assertEqual(build_worker_pipeline.descriptor_packets_input("exact", complete), "exact")
+        self.assertIsNone(build_worker_pipeline.descriptor_packets_input("old", {}))
+        for version in [None, 1, 3, True, 2.0, "2"]:
+            changed = {**complete, "features": {**complete["features"], "shared_file_transfer_version": version}}
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, "packet protocol"):
+                criu_candidate.require_descriptor_transfer(changed)
+        for changed in [
+                {**complete, "candidate_patch_sha256": {}},
+                {**complete, "candidate_patch_sha256": {"shared-fds-packets.patch": "0" * 64}},
+                {**complete, "features": {**complete["features"], "shared_source_directories": False}},
+                {**complete, "features": {**complete["features"], "schema": True}}]:
+            with self.assertRaisesRegex(ValueError, "packet protocol"):
+                criu_candidate.require_descriptor_transfer(changed)

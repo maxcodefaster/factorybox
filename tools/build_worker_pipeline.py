@@ -11,12 +11,13 @@ import build_config
 import build_criu_shared_fds
 import build_worker
 import criu_candidate
+import descriptor_transfer_proof
 import native_base
 import reference
 import reference_lifecycle
 
 
-def commands(options, sysbox, criu):
+def commands(options, sysbox, criu, descriptor_proof=None):
     common = [sys.executable]
     return {
         "sysbox": [*common, "tools/build_sysbox.py", "--platform", options.platform,
@@ -32,10 +33,17 @@ def commands(options, sysbox, criu):
                        "--base-candidate", criu],
         "namespace-access": [*common, "tools/build_criu_shared_fds.py",
                              "--base-candidate", criu, "--namespace-access"],
+        "descriptor-packets": [*common, "tools/build_criu_shared_fds.py",
+                               "--base-candidate", criu, "--descriptor-packets",
+                               "--native-base-build", options.native_base_build],
+        "descriptor-proof": [*common, "tests/fdstore-criu-client/run.py",
+                             "--criu-candidate", criu,
+                             "--native-base-build", options.native_base_build],
         "worker": [*common, "tools/build_worker.py", "--platform", options.platform,
                    "--native-base-build", options.native_base_build,
                    "--sysbox-build", sysbox, "--retained-candidate", criu,
-                   "--discard-compiler-scratch", "--compress-package"],
+                   "--discard-compiler-scratch", "--compress-package",
+                   *(["--descriptor-proof", descriptor_proof] if descriptor_proof else [])],
     }
 
 
@@ -61,6 +69,13 @@ def namespace_access_input(name, result):
     return name
 
 
+def descriptor_packets_input(name, result):
+    if "shared-fds-packets.patch" not in result.get("candidate_patch_sha256", {}):
+        return None
+    criu_candidate.require_descriptor_transfer(result)
+    return name
+
+
 def completed_output(stdout):
     for line in reversed(stdout.splitlines()):
         try:
@@ -79,6 +94,8 @@ def main():
                         help="Exact completed native-base build for this target")
     parser.add_argument("--sysbox-build", help="Reuse one exact verified component build")
     parser.add_argument("--retained-candidate", help="Reuse one exact verified CRIU build")
+    parser.add_argument("--descriptor-proof",
+                        help="Reuse one exact native descriptor proof for the same Go/CRIU/base/platform inputs")
     options = parser.parse_args()
     _, base = native_base.load(options.native_base_build, for_build=True,
                                candidate_platform=options.platform)
@@ -104,12 +121,16 @@ def main():
             supplied = evidence.name
         if role == "sysbox":
             _, loaded = reference_lifecycle.component_build(supplied, "factorybox-build-sysbox-")
-        elif role in {"criu", "recovery", "shared-fds", "namespace-access"}:
+        elif role in {"criu", "recovery", "shared-fds", "namespace-access", "descriptor-packets"}:
             _, loaded, component, _ = criu_candidate.load(supplied)
             if role == "criu":
                 criu_candidate.require_base_failure_correction(component)
             else:
                 criu_candidate.require_recovery_corrections(loaded, component)
+        elif role == "descriptor-proof":
+            _, loaded = descriptor_transfer_proof.load(
+                supplied, platform=options.platform, criu_name=criu,
+                native_base_build=options.native_base_build, source_root=reference.ROOT)
         else:
             _, loaded = build_worker.load(supplied)
         build_config.require_platform(options.platform, base, loaded)
@@ -131,7 +152,13 @@ def main():
                                  namespace_access_input(criu, loaded_criu))
         if namespace_access_input(criu, loaded_criu) != criu:
             raise ValueError("worker pipeline requires the exact namespace-validation CRIU component")
-        worker, built = step("worker", commands(options, sysbox, criu)["worker"])
+        criu, loaded_criu = step("descriptor-packets", commands(options, sysbox, criu)["descriptor-packets"],
+                                 descriptor_packets_input(criu, loaded_criu))
+        if descriptor_packets_input(criu, loaded_criu) != criu:
+            raise ValueError("worker pipeline requires the exact CRIU descriptor packet protocol")
+        proof, _ = step("descriptor-proof", commands(options, sysbox, criu)["descriptor-proof"],
+                        options.descriptor_proof)
+        worker, built = step("worker", commands(options, sysbox, criu, proof)["worker"])
         result["worker_build"] = worker
         result["image"] = built["image"]
         result["executable_sha256"] = built["bundle_sha256"]["factorybox"]

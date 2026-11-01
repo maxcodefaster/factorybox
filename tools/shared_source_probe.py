@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -12,12 +13,21 @@ import time
 import uuid
 
 import build_worker
+import build_config
 import consumer_worker_loss
 import criu_candidate
 import devx_inputs
 import native_base
 import reference
 import upstream_unit
+
+
+def require_large_descriptions(observed, count, previous=None):
+    if (observed.get("count") != count or
+            not isinstance(observed.get("sha256"), str) or
+            not re.fullmatch(r"[a-f0-9]{64}", observed["sha256"]) or
+            previous is not None and observed != previous):
+        raise ValueError("large shared-source descriptions or independent positions changed")
 
 
 def main():
@@ -32,7 +42,11 @@ def main():
     parser.add_argument('--consumer-inputs', help='Use the retained complete consumer rootfs instead of the small contract fixture')
     parser.add_argument('--docker-child', action='store_true', help='Run the workload in a real private Docker bridge network using the complete consumer rootfs')
     parser.add_argument('--factory-preparation-repo', type=Path, help='Use the frozen Factory consumer preparer with its real rootfs; the workload remains this contract fixture')
+    parser.add_argument('--retained-descriptions', type=int, default=0,
+                        help='Keep this many independent source descriptions and file positions through every Pause/Resume')
     args = parser.parse_args()
+    if args.retained_descriptions < 0:
+        parser.error('--retained-descriptions cannot be negative')
     sandbox_id = 'runtime' if args.factory_preparation_repo else 'source'
     if args.diagnostic_criu_build and not args.diagnostic_runtime:
         raise ValueError('a CRIU override requires the explicitly unqualified diagnostic runtime')
@@ -43,13 +57,14 @@ def main():
     if args.factory_preparation_repo and not args.docker_child:
         raise ValueError('Factory preparation proof requires the complete private Docker contract fixture')
     worker_root, worker = build_worker.load(args.worker_build)
-    native_base.require_native_host('linux/amd64', json.loads(reference.docker(['info', '--format', '{{json .}}'])))
+    platform = worker['platform']
+    native_base.require_native_host(platform, json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     current = {directory + '/' + key: value for directory in ['internal', 'cmd/factorybox']
                for key, value in upstream_unit.context_manifest(reference.ROOT / directory).items()}
     current.update({file: {'sha256': reference.sha(reference.ROOT / file)} for file in ['go.mod', 'go.sum']})
     if not args.diagnostic_runtime and current != worker['source_context']:
         raise ValueError('shared-source probe requires the exact current implementation')
-    inputs, consumer = devx_inputs.load(args.consumer_inputs, rootfs=True, platform='linux/amd64') if args.consumer_inputs else (None, None)
+    inputs, consumer = devx_inputs.load(args.consumer_inputs, rootfs=True, platform=platform) if args.consumer_inputs else (None, None)
     owner = uuid.uuid4().hex
     name = 'factorybox-shared-source-' + owner
     artifact = reference.new_artifact(name)
@@ -72,6 +87,9 @@ def main():
     result['rename_directory'] = args.rename_directory
     result['outbound_network'] = args.outbound_network
     result['docker_child'] = args.docker_child
+    result['platform'] = platform
+    result['retained_descriptions'] = args.retained_descriptions
+    result['store_capacity_range'] = {'minimum_bytes': 1 << 30, 'maximum_bytes': 8 << 30}
     factory_preparer = None
     if args.factory_preparation_repo:
         factory_preparer = artifact / 'factory-prepare.py'
@@ -87,8 +105,9 @@ def main():
     server_attempted = False
     live_pid = None
     deadline = time.monotonic() + 420
-    before = consumer_worker_loss.sysctls()
-    before['net/ipv4/ip_forward'] = Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()
+    before = consumer_worker_loss.sysctls(
+        docker_image=worker['native_base_image'], owner=owner, artifact=artifact,
+        phase='before', factory_network=True)
     result['global_sysctls_before'] = before
 
     def run(arguments, *, timeout=30, failure=False):
@@ -100,7 +119,7 @@ def main():
             raise ValueError('native shared-source outcome differed: ' + completed.stderr[-4096:])
         return completed.stdout
 
-    def actor(method='GET'):
+    def actor(method='GET', socket_name='.shared-source.sock'):
         script = '''import http.client,json,socket
 class Local(http.client.HTTPConnection):
  def connect(self):
@@ -111,7 +130,7 @@ response=connection.getresponse();body=response.read()
 assert response.status==200,(response.status,body)
 print(body.decode())
 '''
-        script = 'socket_path=' + repr('/proc/' + str(live_pid) + '/root/workspace/.shared-source.sock') + '\nmethod=' + repr(method) + '\n' + script
+        script = 'socket_path=' + repr('/proc/' + str(live_pid) + '/root/workspace/' + socket_name) + '\nmethod=' + repr(method) + '\n' + script
         return json.loads(run(['exec', identity, 'python3', '-c', script]))
 
     def exact():
@@ -123,6 +142,15 @@ print(body.decode())
                 limits['NanoCpus'] != 3_000_000_000 or limits['CgroupnsMode'] != 'private' or
                 limits['NetworkMode'] != 'none' or not limits['Privileged']):
             raise ValueError('owned shared-source worker differs from its immutable request')
+        return saved
+
+    def observe_failure():
+        saved = exact()
+        observed = subprocess.run(
+            [*reference.DOCKER, 'logs', '--tail=200', identity],
+            capture_output=True, text=True, timeout=15)
+        result['failed_worker_state'] = saved['State']
+        result['worker_log'] = observed.stdout + observed.stderr
         return saved
 
     try:
@@ -157,7 +185,7 @@ print(body.decode())
                 break
             if not reused:
                 subprocess.run(['go', 'build', '-trimpath', '-buildvcs=false', '-o', str(runtime_binary), './cmd/factorybox'],
-                               cwd=source, env=dict(os.environ, CGO_ENABLED='0', GOPROXY='off', GOSUMDB='off'), check=True, timeout=120)
+                               cwd=source, env=dict(os.environ, GOOS='linux', GOARCH=platform.split('/')[1], CGO_ENABLED='0', GOPROXY='off', GOSUMDB='off'), check=True, timeout=120)
                 runtime_binary.chmod(0o555)
             elif runtime_binary.stat().st_mode & 0o111 == 0:
                 raise ValueError('retained diagnostic runtime is not executable')
@@ -188,12 +216,17 @@ print(body.decode())
                 continue
             if reference.sha(binary) != previous.get('actor_sha256'):
                 raise ValueError('closed diagnostic actor changed')
+            try:
+                build_config.require_elf(binary, platform)
+            except ValueError:
+                continue
             os.link(binary, actor_binary)
             result['actor_reused_from'] = {'file': str(binary), 'result_sha256': reference.sha(previous_path)}
             break
         else:
             subprocess.run(['go', 'build', '-trimpath', '-buildvcs=false', '-o', str(actor_binary), './tests/shared-source-actor'],
-                           cwd=source, env=dict(os.environ, CGO_ENABLED='0'), check=True, timeout=120)
+                           cwd=source, env=dict(os.environ, GOOS='linux', GOARCH=platform.split('/')[1], CGO_ENABLED='0'), check=True, timeout=120)
+        build_config.require_elf(actor_binary, platform)
         result['actor_sha256'] = reference.sha(actor_binary)
         if args.outbound_network:
             server_script = artifact / 'network-server.py'
@@ -216,11 +249,13 @@ print(body.decode())
                         '--mount', f'type=volume,source={name},target=/var/lib/sysbox',
                         '--mount', f'type=volume,source={name}-source,target=/factory-source', *runtime_mount, *runtime_entrypoint, worker['image'], *runtime_command,
                         '--store-id', owner, '--bounded-root', '/var/lib/sysbox/fixed-store',
-                        '--bounded-bytes', str(8 << 30), '--health-listen', '127.0.0.1:8081']).strip()
+                        '--bounded-bytes', str(8 << 30), '--bounded-min-bytes', str(1 << 30),
+                        '--health-listen', '127.0.0.1:8081']).strip()
         result['container_id'] = identity
         started = time.monotonic()
         while True:
             if not exact()['State']['Running']:
+                observe_failure()
                 raise ValueError('shared-source worker exited before readiness')
             try:
                 status = json.loads(reference.docker(['logs', '--tail=5', identity]))
@@ -298,6 +333,8 @@ ca=pathlib.Path('/factory/registry-ca');ca.mkdir(parents=True);(ca/'ca.crt').wri
             run(['exec',identity,'python3','-c','pod='+repr(identity)+'\nowner='+repr(owner)+'\nimage='+repr(image)+'\nrootfs_sha='+repr(consumer['rootfs_tar_sha256'])+'\n'+seed])
             status = result['status']
             bootstrap = 'export FACTORYBOX_NETWORK_URL=http://'+result['network_server_ip']+':18181/\n'
+            if args.retained_descriptions:
+                bootstrap += 'export FACTORYBOX_SHARED_SOURCE_RETAINED_DESCRIPTIONS='+str(args.retained_descriptions)+'\n'
             if args.rename_directory:
                 bootstrap += 'export FACTORYBOX_SHARED_SOURCE_SUBDIRECTORY=1\n'
             bootstrap += 'exec /opt/factorybox-example-actor --docker-parent\n'
@@ -322,6 +359,16 @@ ca=pathlib.Path('/factory/registry-ca');ca.mkdir(parents=True);(ca/'ca.crt').wri
             bundle = '/var/lib/sysbox/fixed-store/data/store/input/bundle'
         mount_helper = artifact / 'input-mounts.py'
         shutil.copyfile(reference.ROOT / 'examples/worker/bundle_mounts.py', mount_helper)
+        original_mounts = subprocess.check_output(
+            ['git', 'show', 'HEAD:examples/worker/bundle_mounts.py'], cwd=reference.ROOT)
+        (artifact / 'input-mounts.before.py').write_bytes(original_mounts)
+        result['mount_fixture_compatibility'] = {
+            'file': 'examples/worker/bundle_mounts.py',
+            'before_sha256': reference.sha(artifact / 'input-mounts.before.py'),
+            'after_sha256': reference.sha(mount_helper),
+            'assertions_preserved': True,
+            'scope': 'Require effective index=off, including a kernel-omitted off default. Canonical paths, lower/upper/work identity, read-only base, exact mount equality and release assertions remain enforced.',
+        }
         mount_script = mount_helper.read_text()
         result['input_mounts'] = json.loads(run(['exec', identity, 'python3', '-c', mount_script, 'inspect', bundle]))
         configure = '''import json,os,pathlib
@@ -378,6 +425,9 @@ for name in ['bounding','effective','permitted']:
   if capability not in spec['process']['capabilities'][name]:spec['process']['capabilities'][name].append(capability)
 path.write_text(json.dumps(spec))
 '''
+        if args.retained_descriptions:
+            configure += "\nspec['process']['env'].append(" + repr(
+                'FACTORYBOX_SHARED_SOURCE_RETAINED_DESCRIPTIONS=' + str(args.retained_descriptions)) + ")\npath.write_text(json.dumps(spec))\n"
         if factory_preparer:
             configure = '''import os,pathlib
 project=pathlib.Path('/factory-source/project')
@@ -425,6 +475,9 @@ for name,content in [('current.txt','before'),('held.txt','original-held---'*256
         cases = ['closed-file-edit', 'open-file-atomic-replacement', 'closed-file-edit'] if args.case == 'repeat' else [args.case]
         for kind in cases:
             phase = {'kind': kind, 'before': actor(), 'snapshot_id': uuid.uuid4().hex}
+            if args.retained_descriptions:
+                phase['descriptions_before'] = actor(socket_name='.large-descriptions.sock')
+                require_large_descriptions(phase['descriptions_before'], args.retained_descriptions)
             result['phases'].append(phase)
             phase['pause'] = json.loads(run([*ctl, 'pause', '--snapshot-id', phase['snapshot_id'], sandbox_id], timeout=90))
             edit = '''import os,pathlib
@@ -469,6 +522,11 @@ print(json.dumps(result))
             phase['resume'] = json.loads(run([*ctl, 'resume', '--snapshot-id', phase['snapshot_id'], sandbox_id], timeout=90))
             live_pid = phase['resume']['runtime']['pid']
             phase['after'] = actor()
+            if args.retained_descriptions:
+                phase['descriptions_after'] = actor(socket_name='.large-descriptions.sock')
+                require_large_descriptions(
+                    phase['descriptions_after'], args.retained_descriptions,
+                    phase['descriptions_before'])
             if args.docker_child:
                 phase['docker_after'] = docker_observation()
                 if phase['docker_after'] != result['docker_first_use']:
@@ -513,7 +571,9 @@ print(json.dumps(result))
         result['error'] = str(error)
         if identity:
             try:
-                exact()
+                saved = observe_failure()
+                if not saved['State']['Running']:
+                    raise ValueError('worker is stopped; its original exit and logs are retained')
                 if args.outbound_network:
                     result['failed_worker_network'] = {'links':json.loads(run(['exec',identity,'ip','-j','-d','link','show'])),
                         'routes':json.loads(run(['exec',identity,'ip','-j','route','show']))}
@@ -551,8 +611,9 @@ subprocess.run(arguments,check=True,timeout=45)
             for volume in reversed(created):
                 reference.owned_delete('volume', volume, owner)
             result['cleanup'] = True
-            result['global_sysctls_after'] = consumer_worker_loss.sysctls()
-            result['global_sysctls_after']['net/ipv4/ip_forward'] = Path('/proc/sys/net/ipv4/ip_forward').read_text().strip()
+            result['global_sysctls_after'] = consumer_worker_loss.sysctls(
+                docker_image=worker['native_base_image'], owner=owner, artifact=artifact,
+                phase='after', factory_network=True)
             if result['global_sysctls_after'] != before:
                 result['passed'] = False
                 raise ValueError('global sysctls changed during shared-source proof')
@@ -568,6 +629,9 @@ subprocess.run(arguments,check=True,timeout=45)
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(server_script)==result['network_server_sha256']
             if args.alias_mount and 'alias_binary_sha256' in result:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(alias_binary)==result['alias_binary_sha256']
+            if 'mount_fixture_compatibility' in result:
+                result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(
+                    mount_helper) == result['mount_fixture_compatibility']['after_sha256']
             if factory_preparer is not None:
                 result['inputs_unchanged'] = result['inputs_unchanged'] and reference.sha(factory_preparer)==result['factory_preparer_sha256']
             result['passed'] = result['passed'] and result['cleanup']

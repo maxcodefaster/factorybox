@@ -8,6 +8,7 @@ import sources
 
 
 PSTREE_CORRECTION = reference.ROOT / "upstream/patches/criu-pstree-error-propagation-candidate.patch"
+DESCRIPTOR_TRANSFER_PATCH = reference.ROOT / "upstream/patches/criu-shared-fds-packets.patch"
 RECOVERY_CORRECTIONS = {
     name + ".patch": reference.ROOT / ("upstream/patches/criu-" + name + "-candidate.patch")
     for name in ["pid-collision-diagnostics", "pid-collision-references",
@@ -27,6 +28,18 @@ def require_recovery_corrections(result, component):
     patches = result.get("candidate_patch_sha256", {})
     if any(patches.get(name) != reference.sha(path) for name, path in RECOVERY_CORRECTIONS.items()):
         raise ValueError("worker requires the exact complete CRIU recovery corrections")
+
+
+def require_descriptor_transfer(result):
+    patches = result.get("candidate_patch_sha256", {})
+    features = result.get("features", {})
+    if (patches.get("shared-fds-packets.patch") != reference.sha(DESCRIPTOR_TRANSFER_PATCH) or
+            type(features.get("schema")) is not int or features.get("schema") != 1 or
+            type(features.get("shared_file_transfer_version")) is not int or
+            features.get("shared_file_transfer_version") != 2 or
+            any(features.get(name) is not True for name in
+                ["shared_file_descriptions", "shared_source_directories"])):
+        raise ValueError("worker requires the exact CRIU descriptor packet protocol")
 
 
 def supports_exit_hold(result):
@@ -68,7 +81,7 @@ def load(name, *, base_lock=None):
                         "nested-overlay-shared-root.patch", "pid-collision-diagnostics.patch",
                         "pid-collision-references.patch", "nested-pid-counter.patch",
                         "pstree-error-propagation.patch", "nested-zombie-peer-pidns.patch", "shared-fds.patch",
-                        "namespace-access.patch"} or reference.sha(path / file) != expected:
+                        "namespace-access.patch", "shared-fds-packets.patch"} or reference.sha(path / file) != expected:
             raise ValueError("retained-context candidate patch input changed")
     for file, expected in result.get("candidate_overlay_sha256", {}).items():
         if file != "exit-observer.h" or reference.sha(path / file) != expected:

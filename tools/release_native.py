@@ -27,6 +27,15 @@ RUNTIME_SUITES = [
 ]
 
 
+def require_descriptor_proof(worker):
+    name = worker.get("descriptor_transfer_proof")
+    digest = worker.get("descriptor_transfer_proof_sha256")
+    if (not isinstance(name, str) or
+            not re.fullmatch(r"factorybox-fdstore-criu-[0-9a-f]{32}", name) or
+            not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+        raise ValueError("release requires the worker's bound native descriptor interoperability proof")
+
+
 def native_commands(options, worker, bats_images):
     python = sys.executable
     upstream_target = ["--candidate-platform", "linux/amd64"] if options.platform == "linux/amd64" else []
@@ -160,6 +169,7 @@ def main():
     if worker["platform"] != options.platform or worker.get("native_candidate") is not None:
         raise ValueError("release qualification refuses cross-target or unqualified candidate workers")
     require_original_license(worker)
+    require_descriptor_proof(worker)
     _, base = native_base.load(worker["native_base_build"], candidate_platform=options.platform)
     _, consumer = factory_consumer_native.load_consumer(options.consumer_build, options.platform)
     options.bounded_build = True

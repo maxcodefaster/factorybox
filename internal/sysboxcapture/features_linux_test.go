@@ -13,17 +13,22 @@ import (
 
 func TestCriuFeatures(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		body string
-		exit int
-		want bool
+		name       string
+		body       string
+		exit       int
+		want       bool
+		wantShared bool
 	}{
-		{"legacy", "unknown command", 1, false},
-		{"supported", `{"schema":1,"root_owned_time_namespaces":true}`, 0, true},
-		{"unknown-schema", `{"schema":2,"root_owned_time_namespaces":true}`, 0, false},
-		{"unknown-field", `{"schema":1,"root_owned_time_namespaces":true,"future":true}`, 0, false},
-		{"trailing-data", `{"schema":1,"root_owned_time_namespaces":true}{}`, 0, false},
-		{"oversized", strings.Repeat("x", 5000), 0, false},
+		{"legacy", "unknown command", 1, false, false},
+		{"supported", `{"schema":1,"root_owned_time_namespaces":true}`, 0, true, false},
+		{"packet-protocol", `{"schema":1,"root_owned_time_namespaces":true,"shared_file_descriptions":true,"shared_source_directories":true,"shared_file_transfer_version":2}`, 0, true, true},
+		{"missing-packet-protocol", `{"schema":1,"root_owned_time_namespaces":true,"shared_file_descriptions":true,"shared_source_directories":true}`, 0, true, false},
+		{"different-packet-protocol", `{"schema":1,"root_owned_time_namespaces":true,"shared_file_descriptions":true,"shared_source_directories":true,"shared_file_transfer_version":3}`, 0, true, false},
+		{"invalid-packet-protocol-type", `{"schema":1,"root_owned_time_namespaces":true,"shared_file_transfer_version":true}`, 0, false, false},
+		{"unknown-schema", `{"schema":2,"root_owned_time_namespaces":true}`, 0, false, false},
+		{"unknown-field", `{"schema":1,"root_owned_time_namespaces":true,"future":true}`, 0, false, false},
+		{"trailing-data", `{"schema":1,"root_owned_time_namespaces":true}{}`, 0, false, false},
+		{"oversized", strings.Repeat("x", 5000), 0, false, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "probe")
@@ -37,7 +42,8 @@ func TestCriuFeatures(t *testing.T) {
 			}
 			defer file.Close()
 			result := InspectFeatures(context.Background(), file)
-			if result.RootOwnedTimeNamespaces != test.want {
+			if result.RootOwnedTimeNamespaces != test.want ||
+				result.SharedFileDescriptions != test.wantShared || result.SharedSourceDirectories != test.wantShared {
 				t.Fatalf("unexpected feature admission: %+v", result)
 			}
 		})

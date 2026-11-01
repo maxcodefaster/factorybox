@@ -129,16 +129,35 @@ mise exec -- python3 tests/criu-retained-candidate/build.py \
   --native-base-build "$base_build" --exit-hold --exit-hold-socket \
   --nested-overlay --nested-overlay-stable-paths --nested-overlay-shared-root
 mise exec -- python3 tools/build_criu_recovery.py --base-candidate "$retained_build"
+mise exec -- python3 tools/build_criu_shared_fds.py --base-candidate "$recovery_build"
+mise exec -- python3 tools/build_criu_shared_fds.py \
+  --base-candidate "$shared_build" --namespace-access
+mise exec -- python3 tools/build_criu_shared_fds.py \
+  --base-candidate "$namespace_build" --descriptor-packets --native-base-build "$base_build"
+mise exec -- python3 tests/fdstore-criu-client/run.py \
+  --criu-candidate "$criu_build" --native-base-build "$base_build"
 mise exec -- python3 tools/build_worker.py \
   --platform linux/amd64 \
   --native-base-build "$base_build" --sysbox-build "$sysbox_build" \
-  --retained-candidate "$criu_build"
+  --retained-candidate "$criu_build" --descriptor-proof "$descriptor_proof"
 ```
 
 Set the variables to the exact successful artifact names printed by the
 preceding builds. On the tested host the Docker tools use
 `FACTORYBOX_DOCKER_CONTEXT=default FACTORYBOX_DOCKER_ELEVATION=sudo`.
 These commands build local containers and install no host runtime.
+The worker pipeline runs the descriptor proof before assembly. It exercises the exact patched
+CRIU receiver against the native root-PID-1 Go store, including multi-packet file/directory sets,
+rejected incomplete transfers, descriptor cleanup and protocol-version feature admission. The
+proof retains frozen Go/C inputs and binds the exact CRIU build, native platform and base.
+Worker assembly preserves that receipt without putting run-specific hashes in distributed bytes.
+Release qualification refuses a worker without the bound proof. This component gate does not
+replace native Pause/Resume, recovery, upstream or consumer qualification.
+Each completed local worker build keeps one never-started, owned image-reference container so
+node image GC cannot remove the selected input between build and qualification. It runs no
+worker, allocates no anonymous volume and grants no runtime admission. The build receipt records
+its exact name, image and owner. Retire that hold only after the input is no longer selected;
+verify its recorded ownership rather than pruning unrelated images or disabling node cleanup.
 Independent offline rebuilds reproduced all three Sysbox executables, CRIU,
 the complete worker package and image. They reuse verified toolchains and
 dependency inputs; future network/package availability is a separate concern.

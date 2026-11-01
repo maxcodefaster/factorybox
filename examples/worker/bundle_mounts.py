@@ -22,6 +22,19 @@ def mount_rows(paths):
     return rows
 
 
+def index_disabled(options):
+    if "index=on" in options:
+        return False
+    if "index=off" in options:
+        return True
+    # mountinfo can omit a value equal to the kernel's current default.
+    # An unreadable or unfamiliar default is not evidence that indexing is off.
+    try:
+        return Path("/sys/module/overlay/parameters/index").read_text().strip() == "N"
+    except OSError:
+        return False
+
+
 def inventory(bundle):
     root = Path(bundle)
     if str(root.resolve()) != bundle or not root.is_absolute():
@@ -34,8 +47,10 @@ def inventory(bundle):
     options = set(overlay[2].split(","))
     if overlay[0] != "overlay" or not {
             "lowerdir=" + paths[1], "upperdir=" + str(root / "upper"),
-            "workdir=" + str(root / "work"), "index=off"} <= options:
-        raise ValueError("input overlay recipe differs")
+            "workdir=" + str(root / "work")} <= options:
+        raise ValueError("input overlay recipe differs: " + repr(sorted(options)))
+    if not index_disabled(options):
+        raise ValueError("input overlay indexing is not confirmed off")
     if "ro" not in rows[paths[1]]["mountinfo"].split()[5].split(","):
         raise ValueError("input base alias is not read-only")
     return {"schema": 1, "bundle": bundle, "mounts": rows}

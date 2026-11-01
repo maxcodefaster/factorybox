@@ -331,9 +331,6 @@ func retainSharedFiles(request Request) ([]RetainedFile, error) {
 			}
 		}
 		files[reference.id] = file
-		if len(files) > fdstore.MaximumFiles {
-			return fmt.Errorf("shared source requires more than %d retained descriptions", fdstore.MaximumFiles)
-		}
 		return nil
 	}
 	for _, pid := range threads {
