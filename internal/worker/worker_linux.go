@@ -506,13 +506,17 @@ func Run(ctx context.Context, config Config) (runErr error) {
 		return err
 	}
 	var bounded *storefs.Active
+	var exitStatus Status
+	acceptedExit := false
 	if config.BoundedRoot != "" {
 		attachment, outerLease, err := attachBounded(ctx, config)
 		if err != nil {
 			return err
 		}
 		defer outerLease.Close()
-		defer func() { runErr = errors.Join(runErr, attachment.Close()) }()
+		defer func() {
+			runErr = closeBoundedForExit(attachment, config.BoundedRoot, exitStatus, acceptedExit, runErr)
+		}()
 		bounded = &attachment.Active
 	}
 	for _, path := range []string{config.Store, config.RunRoot} {
@@ -676,6 +680,7 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	}
 	engine.Close()
 	status.ReadyAt = time.Now().UTC().Format(time.RFC3339Nano)
+	exitStatus = status
 	if err := writeNew(config.RunRoot+"/worker.json", status); err != nil {
 		return err
 	}
@@ -727,7 +732,9 @@ func Run(ctx context.Context, config Config) (runErr error) {
 				// for this bounded verification and both service shutdowns.
 				exitContext, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
-				return errors.Join(engine.ReleaseDeletedEpochBases(exitContext), engine.Close())
+				err = errors.Join(engine.ReleaseDeletedEpochBases(exitContext), engine.Close())
+				acceptedExit = err == nil
+				return err
 			}
 			return nil
 		case <-ticker.C:

@@ -20,6 +20,7 @@ import devx_inputs
 import native_base
 import reference
 import upstream_unit
+import worker_storage_release
 
 
 def require_large_descriptions(observed, count, previous=None):
@@ -566,6 +567,7 @@ print(json.dumps(result))
         result['worker_log'] = run(['logs', identity])
         if result['final_state']['Running'] or result['final_state']['ExitCode'] != 0 or result['final_state']['OOMKilled']:
             raise ValueError('shared-source worker did not drain cleanly')
+        result['storage_release'] = worker_storage_release.verify(worker, name, owner, status, artifact)
         result['passed'] = True
     except Exception as error:
         result['error'] = str(error)

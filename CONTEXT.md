@@ -17,6 +17,10 @@ Its lifetime is separate from the lifetimes of the environments it preserves.
 One identified worker lifetime. Replacing a worker starts a new epoch without
 making an old live process identity reusable.
 
+**Worker storage release**:
+Confirmed withdrawal of a worker's storage attachments after its execution has
+ended. It preserves persistent data and is distinct from worker process exit.
+
 **Persistent store**:
 The owned data required to preserve and recover environments after supported
 worker replacement. Deleting a sandbox does not imply retiring its stored data.

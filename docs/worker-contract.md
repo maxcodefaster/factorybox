@@ -168,6 +168,27 @@ new size nor resizes, reformats or reinterprets an existing fixed-size store.
 Omitting the new flag retains the original fixed-size contract. Earlier fixed-size
 qualification does not qualify this automatic selection path or a new worker image.
 
+Orderly worker shutdown and kernel storage release are separate outcomes. After
+an accepted successful shutdown, PID 1 can retain an exact pending-release receipt
+outside the data filesystem when its own mount and loop descriptor are closed but
+the container manager still holds a namespace reference. This is not a completed
+release or permission to detach, delete or reuse the image.
+
+After the original worker has stopped, an independently owned helper using the
+same image and original storage can run:
+
+```sh
+/opt/factorybox/factorybox worker-reconcile-storage \
+  --bounded-root /var/lib/sysbox/fixed-store --store-id ORIGINAL_STORE_ID
+```
+
+It verifies the exact saved image, requires both exclusive leases and refuses any
+remaining association to that inode before recording release. Existing data is
+never mounted, formatted or deleted by this command. Fresh worker admission
+completes the same pending receipts before attaching the image. Native release
+gates require this post-exit proof in addition to the original clean-exit and
+Pause/Resume assertions. See [the namespace-exit decision](adr/0005-confirm-worker-storage-release-after-namespace-exit.md).
+
 ## Local commands and responses
 
 Administrative clients execute the image's own binary inside the worker:

@@ -297,6 +297,15 @@ func TestNativeStoreFSRetainsLeaseUntilAutoclear(t *testing.T) {
 	})
 	if err := attachment.Close(); err == nil || !strings.Contains(err.Error(), "release is unconfirmed") {
 		t.Fatal("association with an extra descriptor was considered released", err)
+	} else {
+		var pending *PendingReleaseError
+		if !errors.As(err, &pending) || pending.Active != attachment.Active ||
+			pending.Status == nil || pending.Status.Inode != image.Inode {
+			t.Fatal("pending release lost its exact original attachment", err)
+		}
+	}
+	if err := VerifyReleased(image); err == nil {
+		t.Fatal("external release verification ignored the held image lease")
 	}
 	if unexpected, err := Attach(image, target); err == nil || !strings.Contains(err.Error(), "already has an owner") {
 		if unexpected != nil {
@@ -311,6 +320,9 @@ func TestNativeStoreFSRetainsLeaseUntilAutoclear(t *testing.T) {
 	if err := attachment.Close(); err != nil {
 		t.Fatal("exact cleanup could not finish after last external reference closed", err)
 	}
+	if err := VerifyReleased(image); err != nil {
+		t.Fatal("independent release verification rejected the released original image", err)
+	}
 	attachment, err = Attach(image, target)
 	if err != nil {
 		t.Fatal("confirmed release did not permit exact reopen", err)
@@ -319,7 +331,8 @@ func TestNativeStoreFSRetainsLeaseUntilAutoclear(t *testing.T) {
 		t.Fatal(err)
 	}
 	saveProof(t, "autoclear", map[string]any{"image": image, "unconfirmed_release_refused": true,
-		"lease_retained_until_release": true, "cleanup_retry_completed": true, "exact_reopen": true})
+		"lease_retained_until_release": true, "cleanup_retry_completed": true, "exact_reopen": true,
+		"external_release_lease_refused": true, "independent_release_verified": true})
 }
 
 func TestCreateRefusesUnprivilegedProcess(t *testing.T) {

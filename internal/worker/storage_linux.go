@@ -154,6 +154,9 @@ func attachBounded(ctx context.Context, config Config) (_ *storefs.Attachment, _
 	if err := makePrivate(config.BoundedRoot + "/data"); err != nil {
 		return nil, nil, err
 	}
+	if _, err := completeBoundedExits(config.BoundedRoot, identity.Image); err != nil {
+		return nil, nil, err
+	}
 	attachment, err := storefs.Attach(identity.Image, config.BoundedRoot+"/data")
 	if err != nil {
 		return nil, nil, err

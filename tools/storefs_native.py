@@ -47,7 +47,7 @@ def main():
               "runner_sha256": reference.sha(artifact / "runner.py"),
               "global_sysctls_before": consumer_worker_loss.sysctls(
                   docker_image=worker["native_base_image"], owner=owner, artifact=artifact, phase="before"),
-              "scope": "New runtime component, built from its frozen source with vet. Actual fixed-size filesystem ENOSPC, reserve rollback, data persistence, changed image/mount refusal, duplicate/orphan association refusal and last-reference autoclear lease. Existing exact native image supplies tools/libraries only. Not a delivered-worker, Sysbox lifecycle, worker-replacement or production qualification."}
+              "scope": "Fixed-filesystem component built from frozen source with vet, in an isolated child mount namespace. Actual ENOSPC, reserve rollback, remount persistence, changed image/mount refusal, duplicate association refusal and last-reference autoclear lease assertions remain required before child exit. Independent release verification must refuse a held lease. Delivered PID-1 shutdown and post-exit kernel release require their separate worker proofs. Existing native image supplies only tools/libraries; not worker or production qualification."}
     reference_lifecycle.write_json(artifact / "intent.json", result)
     volume = container = preserve = False
     identity = None
@@ -68,8 +68,13 @@ def main():
                    "--mount", f"type=volume,source={name},target=/store",
                    "--mount", f"type=bind,source={binary},target=/probe.test,readonly",
                    "--mount", f"type=bind,source={output},target=/output",
-                   "--entrypoint", "/probe.test", worker["image"],
-                   "-test.v", "-test.run=^TestNativeStoreFS", "-test.timeout=410s"]
+                   "--entrypoint", "python3", worker["image"], "-c",
+                   "import os,subprocess,sys;"
+                   "before=os.readlink('/proc/self/ns/mnt');"
+                   "child=subprocess.run(['unshare','--mount','--propagation','private',"
+                   "'/probe.test','-test.v','-test.run=^TestNativeStoreFS','-test.timeout=410s']);"
+                   "assert before==os.readlink('/proc/self/ns/mnt');"
+                   "sys.exit(child.returncode)"]
         result["command"] = command
         container = True
         identity = reference.docker(command)
@@ -96,7 +101,8 @@ def main():
             "identity": ["second_owner_refused", "shared_inode_refused", "symlink_substitution_refused",
                          "existing_kernel_association_refused", "changed_mount_preserved", "original_data_preserved", "exact_autoclear_cleanup",
                          "unheld_image_lease_refused", "independent_changed_mount_refused"],
-            "autoclear": ["unconfirmed_release_refused", "lease_retained_until_release", "cleanup_retry_completed", "exact_reopen"],
+            "autoclear": ["unconfirmed_release_refused", "lease_retained_until_release", "cleanup_retry_completed", "exact_reopen",
+                          "external_release_lease_refused", "independent_release_verified"],
             "initialization": ["wrong_formatter_refused_before_creation", "failed_initialization_retained", "uncertain_image_not_reformatted",
                                "uninitialized_attachment_refused", "retained_image_unchanged"],
         }

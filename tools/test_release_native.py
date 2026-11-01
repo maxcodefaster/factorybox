@@ -211,8 +211,12 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                 "timer-remainder-protection", "timer-orphan", "timer-guard-loss",
             })
             for required in ["criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd",
-                             "recovery-planned", "recovery-abrupt", "factory-source", "factory-reserve"]:
+                             "recovery-planned", "recovery-abrupt", "factory-source", "factory-reserve",
+                             "storefs", "worker-storage-exit", "shared-source-large"]:
                 self.assertIn(required, roles)
+            shared_source = dict(commands)["shared-source-large"]
+            self.assertIn("--retained-descriptions", shared_source)
+            self.assertEqual(shared_source[shared_source.index("--retained-descriptions") + 1], "257")
             for role, command in commands:
                 self.assertNotIn("--native-candidate", command)
                 self.assertNotIn("--push", command)

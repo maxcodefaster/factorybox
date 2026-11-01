@@ -15,12 +15,16 @@ import (
 )
 
 func runWorker(args []string) (bool, error) {
-	if len(args) == 0 || (args[0] != "worker" && args[0] != "worker-status") {
+	if len(args) == 0 || (args[0] != "worker" && args[0] != "worker-status" && args[0] != "worker-reconcile-storage") {
 		return false, nil
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	var config worker.Config
 	flags.StringVar(&config.RunRoot, "run-root", "/run/factorybox", "private ephemeral worker readiness directory")
+	if args[0] == "worker-reconcile-storage" {
+		flags.StringVar(&config.BoundedRoot, "bounded-root", "", "original private fixed-store directory")
+		flags.StringVar(&config.StoreID, "store-id", "", "original immutable persistent store identity")
+	}
 	if args[0] == "worker" {
 		flags.StringVar(&config.Store, "store", "", "exclusively owned persistent store (default /var/lib/sysbox/store, or bounded-root/data/store)")
 		flags.StringVar(&config.BoundedRoot, "bounded-root", "", "experimental private directory owning a fixed-size store image")
@@ -43,6 +47,13 @@ func runWorker(args []string) (bool, error) {
 			return true, err
 		}
 		return true, json.NewEncoder(os.Stdout).Encode(status)
+	}
+	if args[0] == "worker-reconcile-storage" {
+		result, err := worker.ReconcileBoundedStorage(config.BoundedRoot, config.StoreID)
+		if err != nil {
+			return true, err
+		}
+		return true, json.NewEncoder(os.Stdout).Encode(result)
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()

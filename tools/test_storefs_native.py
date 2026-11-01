@@ -29,7 +29,8 @@ class StorefsRunnerTests(unittest.TestCase):
                 "identity": ["second_owner_refused", "shared_inode_refused", "symlink_substitution_refused",
                              "existing_kernel_association_refused", "changed_mount_preserved", "original_data_preserved", "exact_autoclear_cleanup",
                              "unheld_image_lease_refused", "independent_changed_mount_refused"],
-                "autoclear": ["unconfirmed_release_refused", "lease_retained_until_release", "cleanup_retry_completed", "exact_reopen"],
+                "autoclear": ["unconfirmed_release_refused", "lease_retained_until_release", "cleanup_retry_completed", "exact_reopen",
+                              "external_release_lease_refused", "independent_release_verified"],
                 "initialization": ["wrong_formatter_refused_before_creation", "failed_initialization_retained", "uncertain_image_not_reformatted",
                                    "uninitialized_attachment_refused", "retained_image_unchanged"],
             }
@@ -42,6 +43,8 @@ class StorefsRunnerTests(unittest.TestCase):
                 if arguments[:2] == ["volume", "create"]:
                     return arguments[-1]
                 if arguments[0] == "create":
+                    self.assertIn("python3", arguments)
+                    self.assertIn("['unshare','--mount','--propagation','private'", arguments[-1])
                     state["name"] = arguments[arguments.index("--name") + 1]
                     state["owner"] = arguments[arguments.index("--label") + 1].split("=", 1)[1]
                     return state["identity"]

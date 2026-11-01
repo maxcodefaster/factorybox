@@ -369,8 +369,11 @@ func (attachment *Attachment) Close() error {
 		if released {
 			break
 		}
-		if statusErr != nil || !time.Now().Before(deadline) {
+		if statusErr != nil {
 			return fmt.Errorf("original loop release is unconfirmed; no association detached: status=%+v error=%v", info, statusErr)
+		}
+		if !time.Now().Before(deadline) {
+			return &PendingReleaseError{Active: attachment.Active, Status: info}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
