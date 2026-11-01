@@ -69,9 +69,24 @@ def exact(name, identity):
     return consumer_worker_loss.exact_worker(name, OWNER, identity)
 
 
+def run_owned(name, command):
+    row = {"name": name}
+    created.append(row)
+    result["containers"] = created
+    (ARTIFACT / "intent.json").write_text(json.dumps(result, indent=2))
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("Original storage-exit lifecycle deadline expired")
+    # A slow Docker response does not establish that create did nothing.
+    # Register ownership before dispatch and retain the normal creation window.
+    row["identity"] = reference.docker(command, timeout=min(65, remaining))
+    (ARTIFACT / "intent.json").write_text(json.dumps(result, indent=2))
+    return row["identity"]
+
+
 def start_epoch(number):
     name = NAME + "-" + str(number)
-    identity = reference.docker([
+    identity = run_owned(name, [
         "run", "--detach", "--pull=never", "--name", name, "--label", "com.factorybox.run=" + OWNER,
         "--privileged", "--cgroupns=private", "--network=none", "--stop-timeout=45",
         "--cpus=3", "--memory=3g", "--pids-limit=512", "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB",
@@ -79,7 +94,6 @@ def start_epoch(number):
         worker["image"], "--store-id", OWNER, "--bounded-root", "/var/lib/sysbox/fixed-store",
         "--bounded-bytes", str(512 << 20), "--health-listen", "127.0.0.1:8081",
     ])
-    created.append((name, identity))
     ready = consumer_worker_loss.ready(name, OWNER, identity, deadline)
     result["epochs"].append(ready["status"])
     return name, identity, ready["status"]
@@ -107,8 +121,8 @@ def expect_release_refusal(status, phase, fragment):
 
 
 try:
-    reference.docker(["volume", "create", "--label", "com.factorybox.run=" + OWNER, NAME])
     volume = True
+    reference.docker(["volume", "create", "--label", "com.factorybox.run=" + OWNER, NAME])
     first_name, first, status = start_epoch(1)
     reference.docker(["exec", first, "python3", "-c",
         "import os,pathlib; p=pathlib.Path('/var/lib/sysbox/fixed-store/data/store/canary');"
@@ -117,7 +131,7 @@ try:
     expect_release_refusal(status, "live-refusal", "bounded store still has a worker")
     result["liveWorkerRefused"] = True
     holder_name = NAME + "-holder"
-    holder = reference.docker([
+    holder = run_owned(holder_name, [
         "run", "--detach", "--pull=never", "--name", holder_name, "--label", "com.factorybox.run=" + OWNER,
         "--privileged", "--network=none", "--read-only", "--cpus=.25", "--memory=64m", "--pids-limit=32",
         "--tmpfs", "/var/lib/sysbox:rw,size=16m,mode=700",
@@ -125,7 +139,6 @@ try:
         "--entrypoint=python3", worker["image"],
         "-u", "-c", held_program, json.dumps({"owner": OWNER, "number": status["lifecycle"]["bounded_store"]["loop_number"], "image": image}),
     ])
-    created.append((holder_name, holder))
     while True:
         if not exact(holder_name, holder)["State"]["Running"]:
             raise ValueError("Exact held-reference control exited before readiness")
@@ -175,11 +188,18 @@ try:
 except Exception as error:
     result["error"] = str(error)
 finally:
-    for name, identity in reversed(created):
-        state = exact(name, identity)["State"]
-        log = subprocess.run([*reference.DOCKER, "logs", identity], capture_output=True, text=True)
-        (ARTIFACT / (name + ".log")).write_text(log.stdout + log.stderr)
-        reference.owned_delete("container", name, OWNER)
+    for row in reversed(created):
+        name, identity = row["name"], row.get("identity")
+        try:
+            if identity:
+                exact(name, identity)
+            log = subprocess.run([*reference.DOCKER, "logs", identity or name],
+                                 capture_output=True, text=True, timeout=15)
+            (ARTIFACT / (name + ".log")).write_text(log.stdout + log.stderr)
+            reference.owned_delete("container", name, OWNER)
+        except Exception as error:
+            result.setdefault("cleanupErrors", []).append(str(error))
+            preserve = True
     if volume and not result["passed"]:
         try:
             upstream_bats.archive_stopped_volumes(ARTIFACT, NAME, OWNER, [NAME], worker["image"], result,
@@ -190,6 +210,7 @@ finally:
     if volume and not preserve:
         reference.owned_delete("volume", NAME, OWNER)
     result["cleanup"] = not preserve
+    result["passed"] = result["passed"] and result["cleanup"]
     (ARTIFACT / "result.json").write_text(json.dumps(result, indent=2))
     print(json.dumps({"evidence": str(ARTIFACT), **{
         key: value for key, value in result.items() if key not in ["epochs", "firstRelease", "finalRelease"]}}), flush=True)
