@@ -15,6 +15,9 @@ import (
 
 func deletedFailedCaptureDependency(t *testing.T) (*Engine, *epochRetirementForest, Record, string) {
 	t.Helper()
+	if os.Geteuid() != 0 {
+		t.Skip("requires root-owned controller metadata; exercised in the explicit metadata lane")
+	}
 	current, currentRecord := managerDependencyFixture(t, "current", strings.Repeat("a", 32), "deleted", "")
 	peer, record := managerDependencyFixture(t, "peer", strings.Repeat("b", 32), "deleted", "")
 	var filesystem unix.Stat_t

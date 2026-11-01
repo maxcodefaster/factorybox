@@ -2,6 +2,7 @@
 """Run portable checks with retained results and disk-backed temporary fixtures."""
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,20 @@ import time
 import uuid
 
 import reference
+
+ROOT_METADATA_CASES = (
+    "TestEpochRejectedCaptureIsRetainedMetadataWithoutCheckpoint",
+    "TestEpochRejectedCaptureRequiresClosedHistoryAndSafeGuard",
+    "TestEpochDependenciesPreserveConfirmedDeletedFailedCapture",
+    "TestEpochDependenciesRejectUnprovedFailedCapture",
+)
+
+
+def require_root_metadata_checks(output):
+    for name in ROOT_METADATA_CASES:
+        if (not re.search(r"^--- PASS: " + re.escape(name) + r" \(", output, re.MULTILINE) or
+                re.search(r"^\s*--- (?:SKIP|FAIL): " + re.escape(name) + r"(?:/| \()", output, re.MULTILINE)):
+            raise ValueError("root-owned metadata assertions were missing, skipped or failed: " + name)
 
 
 def go_commands(packages):

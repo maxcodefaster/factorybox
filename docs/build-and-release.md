@@ -209,6 +209,11 @@ The [Linux CI workflow](../.github/workflows/ci.yaml) runs portable checks on pu
 requests and pushes to `main`, avoiding duplicate runs on feature-branch pushes.
 It uses GitHub's `ubuntu-24.04` AMD64 and
 `ubuntu-24.04-arm` ARM64 runners. Each job runs the Linux Go and Python suites,
+including the unprivileged ownership refusals. A separate lifecycle-metadata pass runs
+as root on that disposable VM and requires the named retirement assertions to execute
+without skipped subcases. The normal user pass cannot substitute user-owned fixtures
+for the runtime's root-owned metadata contract. Neither pass runs privileged lifecycle operations.
+Each job
 verifies the immutable reference, then compiles and executes the ordinary CLI
 on that architecture. Downloadable artifacts contain the executable, SHA-256,
 frozen Go inputs and test logs. On disposable GitHub-hosted X64 VMs, the job

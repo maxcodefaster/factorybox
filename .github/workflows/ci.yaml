@@ -63,6 +63,22 @@ jobs:
           mise exec -- python3 tools/release_native.py --check-host --platform "linux/$ARCH" \
             > artifacts/ci-host-preflight.json
           cat artifacts/ci-host-preflight.json
+      - name: Check root-owned controller metadata on the disposable VM
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/ci-root-metadata-tmp
+          CGO_ENABLED=0 mise exec -- go test -c -mod=readonly -trimpath -buildvcs=false \
+            -o artifacts/ci-lifecycle-metadata.test ./internal/lifecycle
+          sha256sum artifacts/ci-lifecycle-metadata.test > artifacts/ci-root-metadata.sha256
+          sudo -n env TMPDIR="$(realpath artifacts/ci-root-metadata-tmp)" \
+            "$(realpath artifacts/ci-lifecycle-metadata.test)" -test.v \
+            | tee artifacts/ci-root-metadata.stdout
+          mise exec -- python3 - <<'PY'
+          import pathlib, sys
+          sys.path.insert(0, 'tools')
+          import check
+          check.require_root_metadata_checks(pathlib.Path('artifacts/ci-root-metadata.stdout').read_text())
+          PY
       - name: Run Go, Python and immutable reference checks
         run: |
           set -euo pipefail
@@ -88,6 +104,8 @@ jobs:
           path: |
             artifacts/ci-checks.jsonl
             artifacts/ci-host-preflight.json
+            artifacts/ci-root-metadata.stdout
+            artifacts/ci-root-metadata.sha256
             artifacts/factorybox-checks-*/result.json
             artifacts/factorybox-checks-*/*.stdout
             artifacts/factorybox-checks-*/*.stderr
