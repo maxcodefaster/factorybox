@@ -287,7 +287,7 @@ def main():
     cgroup_observer = output/'cgroup-observer.py'
     shutil.copyfile(reference.ROOT/'tools/consumer_cgroup_observer.py', cgroup_observer)
     frozen = output/'factory';frozen.mkdir()
-    for file in ['prepare.py','prepare_test.py','export-rootfs.sh','bootstrap.sh','reserve-bootstrap.sh']:
+    for file in ['prepare.py','prepare_test.py','retire-export.py','export-rootfs.sh','bootstrap.sh','reserve-bootstrap.sh']:
         shutil.copyfile(repo/'packages/runtime-kubernetes/src/factorybox'/file,frozen/file)
     hub = output/'hub.js'
     subprocess.run(['mise','exec','--','bun','build','scripts/runtime/factorybox-consumer-hub.ts',
@@ -503,6 +503,7 @@ def main():
             run(['cp',str(cgroup_observer),worker_id+':/tmp/factorybox-cgroup-observer.py'])
         probe = '/var/lib/sysbox/native-fixture-prepare.py'
         run(['cp',str(frozen/'prepare.py'),worker_id+':'+probe])
+        run(['cp',str(frozen/'retire-export.py'),worker_id+':/var/lib/sysbox/retire-export.py'])
         run(['exec',worker_id,'python3','-c',(frozen/'prepare_test.py').read_text(),probe])
         result['preparation_ownership_controls_passed'] = True
         def ip(pid, arguments):
