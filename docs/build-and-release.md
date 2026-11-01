@@ -424,7 +424,12 @@ mise exec -- python3 tools/build_factory_consumer.py \
 
 The build freezes the Dockerfile, Connector sources and tool pins. It checks the
 delivered ELF architecture, image digests and Bun version. It does not install
-Factory or publish an image. On macOS the proof bundles JavaScript locally but
+Factory or publish an image. Each completed image keeps a never-started, owned
+container reference until its input owner explicitly retires it. These build
+references survive a failed qualification attempt and prevent node image GC
+from removing the selected input between attempts. The build receipt records
+their names, immutable identities and ownership; failed builds clean up only
+their own references. On macOS the proof bundles JavaScript locally but
 executes it with the native Linux Bun image, never a mounted macOS executable.
 
 Run `tools/factory_consumer_native.py` with the exact `--worker-build`,

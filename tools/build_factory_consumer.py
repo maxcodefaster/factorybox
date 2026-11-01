@@ -66,6 +66,29 @@ def build_command(options, role, tag, context, metadata):
             "--metadata-file", str(metadata), str(context)]
 
 
+def retain_built_image(artifact, result, role, inspected):
+    row = result["images"][role]
+    if inspected["Id"] != row["image_id"]:
+        raise ValueError("consumer image changed before its qualification hold")
+    volumes = inspected["Config"].get("Volumes") or {}
+    if any(not re.fullmatch(r"/[A-Za-z0-9_./-]+", path) or path == "/" for path in volumes):
+        raise ValueError("consumer image declares an invalid hold volume")
+    name = "factorybox-consumer-input-" + result["owner"] + "-" + role
+    command = ["create", "--pull=never", "--name", name,
+               "--label", "com.factorybox.run=" + result["owner"],
+               "--network=none", "--read-only", "--cpus=.1", "--memory=16m", "--pids-limit=8",
+               "--cap-drop=ALL", "--security-opt=no-new-privileges",
+               *[argument for path in volumes for argument in ["--tmpfs", path + ":rw,size=16m"]],
+               "--entrypoint", "/bin/true", row["image"]]
+    # Keep selected inputs across failed qualification attempts, not just
+    # while the release runner owns its temporary inspection containers.
+    hold = {"name": name, "image": row["image"], "image_id": row["image_id"], "command": command}
+    result.setdefault("image_holds", {})[role] = hold
+    reference_lifecycle.write_json(artifact / "intent.json", result)
+    hold["container_id"] = reference.docker(command)
+    reference_lifecycle.write_json(artifact / "intent.json", result)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     build_config.add_arguments(parser, required_platform=True)
@@ -112,6 +135,7 @@ def main():
             inspected = json.loads(reference.docker(["image", "inspect", row["image"]]))[0]
             native_base.bind_image_identity(row, metadata, inspected)
             row["image_id"] = inspected["Id"]
+            retain_built_image(archive, result, role, inspected)
             binary = "/usr/local/bin/factory-runtime-connector" if role == "runtime" else BUN
             helper = "factorybox-consumer-inspect-" + owner + "-" + role
             script = "set -eu; sha256sum " + binary + "; head -c 20 " + binary + " | od -An -tx1"
@@ -161,6 +185,9 @@ def main():
         result["error"] = str(error)
         raise
     finally:
+        if not result["passed"]:
+            for hold in result.get("image_holds", {}).values():
+                helpers.add(hold["name"])
         for helper in list(helpers):
             try:
                 reference.owned_delete("container", helper, owner)
