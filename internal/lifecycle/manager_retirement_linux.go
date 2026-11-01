@@ -101,8 +101,15 @@ type managerBackingIntent struct {
 // beside the original bounded image, on its already-admitted private backing
 // volume, never in the guest-writable image or in canonical Source.
 func (e *Engine) managerRetirementJournal(record Record) (*Engine, string, error) {
+	return e.privateBackingJournal(record, "manager")
+}
+
+func (e *Engine) privateBackingJournal(record Record, kind string) (*Engine, string, error) {
+	if kind != "manager" && kind != "failed-capture" {
+		return nil, "", fmt.Errorf("unknown private backing journal")
+	}
 	if e.config.BoundedStore == nil {
-		return nil, "", fmt.Errorf("manager retirement requires the original bounded store")
+		return nil, "", fmt.Errorf("private backing retirement requires the original bounded store")
 	}
 	parent := filepath.Dir(e.config.BoundedStore.Image.Path)
 	if err := canonical(parent); err != nil {
@@ -111,7 +118,7 @@ func (e *Engine) managerRetirementJournal(record Record) (*Engine, string, error
 	if err := privateDirectory(parent); err != nil {
 		return nil, "", err
 	}
-	journals := parent + "/manager-retirements"
+	journals := parent + "/" + kind + "-retirements"
 	if err := os.Mkdir(journals, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 		return nil, "", err
 	}

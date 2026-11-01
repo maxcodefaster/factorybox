@@ -41,6 +41,10 @@ operation when ordinary storage allocation is refused.
 A durable complete saved state from which the source environment can be resumed
 after the supported loss of its worker.
 
+**Failed capture**:
+An attempted save that never produced a committed checkpoint. It provides no
+supported recovery state and remains distinct from a committed pause.
+
 **Recovery selection**:
 A particular saved state deliberately retained as an input for recovery. Its
 retention ends only when that selection is explicitly released. Worker

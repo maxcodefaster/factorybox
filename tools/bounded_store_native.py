@@ -154,7 +154,8 @@ def main():
     parser.add_argument('--native-candidate', action='store_true',
                         help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'resume-retirement', 'backing-retirement', 'network-fork', 'network-resume', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'resume-retirement', 'backing-retirement', 'failed-capture-retirement', 'network-fork', 'network-resume', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
+    parser.add_argument('--retirement-cli', help='Exact standalone cleanup CLI; failed-capture-retirement only, without replacing the worker executable')
     parser.add_argument('--nested-exec-consumer', help='Exact existing consumer image supplying nested runc for the standby-exec control')
     parser.add_argument('--exec-trace-inputs', help='Optional exact owned diagnostic strace acquisition; standby-exec only')
     parser.add_argument('--peer-source', action='store_true',
@@ -197,6 +198,9 @@ def main():
     standby_peers = args.suite == 'standby-peers'
     resume_retirement = args.suite == 'resume-retirement'
     backing_retirement = args.suite == 'backing-retirement'
+    failed_capture_retirement = args.suite == 'failed-capture-retirement'
+    if args.retirement_cli and not failed_capture_retirement:
+        parser.error('--retirement-cli requires failed-capture-retirement')
     network_fork = args.suite == 'network-fork'
     network_resume = args.suite == 'network-resume'
     if (args.peer_source or args.peer_network or args.peer_common_base or args.peer_release or args.peer_docker) and not standby_peers:
@@ -223,7 +227,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or resume_retirement or backing_retirement or network_fork or network_resume or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
+    retirement = args.suite.startswith('retirement') or resume_retirement or backing_retirement or failed_capture_retirement or network_fork or network_resume or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -433,6 +437,20 @@ def main():
                         '--env', 'FACTORYBOX_NATIVE_IMPORT_MOUNT_INTERRUPTION=1',
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^(' + '|'.join(
                             ['TestNativeSandboxBackingRetirement', *BACKING_RETIREMENT_UNIT_TESTS]) + ')$']
+        if failed_capture_retirement:
+            command += ['--env', 'FACTORYBOX_NATIVE_FAILED_CAPTURE_RETIREMENT=1',
+                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeFailedCaptureBackingRetirement$']
+            if args.retirement_cli:
+                executable = Path(args.retirement_cli).absolute()
+                if executable.resolve() != executable or not executable.is_file():
+                    raise ValueError('cleanup CLI is absent or redirected')
+                selected = artifact / 'retirement-cli'
+                shutil.copyfile(executable, selected)
+                selected.chmod(0o755)
+                result['retirement_cli'] = {'path': str(executable), 'sha256': reference.sha(selected),
+                    'scope': 'Standalone cleanup CLI on the unchanged admitted worker, not a worker replacement or lifecycle qualification'}
+                command += ['--mount', f'type=bind,source={selected},target=/retirement-cli,readonly',
+                            '--env', 'FACTORYBOX_RETIREMENT_CLI=/retirement-cli']
         if network_fork:
             command += ['--env', 'FACTORYBOX_NATIVE_NETWORK_FORK=1',
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeNetworkFork$']
@@ -536,14 +554,25 @@ def main():
         state = consumer_worker_loss.exact_worker(name, owner, identity)['State']
         result['state'] = state
         log = (artifact / 'stdout.txt').read_text()
-        prefix = 'TestNativeExternalTCPResume' if network_resume else 'TestNativeNetworkFork' if network_fork else 'TestNativeSandboxBackingRetirement' if backing_retirement else 'TestNativeResumeImageRetirement' if resume_retirement else 'TestNativeStandbyPeers' if standby_peers else 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
+        prefix = 'TestNativeFailedCaptureBackingRetirement' if failed_capture_retirement else 'TestNativeExternalTCPResume' if network_resume else 'TestNativeNetworkFork' if network_fork else 'TestNativeSandboxBackingRetirement' if backing_retirement else 'TestNativeResumeImageRetirement' if resume_retirement else 'TestNativeStandbyPeers' if standby_peers else 'TestNativeStandbyRepeat' if standby_repeat else 'TestNativeStandbyExec' if standby_exec else 'TestNativeStandbyCgroup' if standby_cgroup else 'TestNativeArm64TimerFreezerABI' if freezer_abi else 'TestNativeStoppedMemoryAccounting' if stopped_memory else 'TestNativeWorkerMetadataBaseAdmission' if worker_metadata else 'TestNativeRecordMetadataResumeAdmission' if record_metadata else 'TestNativeTimerGuardLoss' if timer_guard_loss else 'TestNativeTimerOrphan' if timer_orphan else 'TestNativeRestoreHold' if restore_hold else 'TestNativeTimerRemainderProtection' if protection else 'TestNativeTimerRemainder' if remainder else 'TestNativeTimerAdmissionSignal' if admission_signal else 'TestNativeTimerSignalBoundary' if signal_boundary else 'TestNativeTimerDetachCompletion' if detach else 'TestNativeTimerExitGuard' if exit_guard else 'TestNativeTimerAdmission' if admission_reader else 'TestNativeTimerReader' if reader_only else 'TestNativeTimerRestartPrototype' if prototype else 'TestNativeCheckpointRetirement' if retirement else 'TestNativeBoundedWorkerStore'
         count = (3 if worker['platform'] == 'linux/arm64' else 2) if admission_reader else 1 if prototype or natural_timer or freezer_abi or reader_only or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or timer_orphan or timer_guard_loss or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers else 8 if args.suite == 'retirement' else 2 if args.timer_probe else 1
         if restore_hold:
             count = 2
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
-        if network_resume:
+        if failed_capture_retirement:
+            proof_path = output / 'failed-capture-retirement.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'actual_guarded_failed_writer',
+                    'confirmed_delete', 'ordinary_cleanup_removed_failed_images', 'failed_evidence_preserved',
+                    'exact_completion_replayed', 'foreign_successor_preserved', 'retained_record_unchanged',
+                    'actual_enospc_before_cleanup', 'same_write_succeeded_after_cleanup',
+                    'missing_admission_refused', 'published_generation_preserved',
+                    'foreign_hardlink_preserved', 'foreign_mount_refused', 'mapped_guest_images_retired']):
+                raise ValueError('failed-capture retirement omitted cleanup or preservation assertions')
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif network_resume:
             proof_path = output / 'network-resume.json'
             proof = json.loads(proof_path.read_text())
             if any(proof.get(key) is not True for key in ['passed', 'same_nonce', 'same_external_tcp_connection',
@@ -858,6 +887,9 @@ def main():
             result['inputs_unchanged'] = (upstream_unit.context_manifest(source) == manifest and
                                           reference.sha(artifact / 'runner.py') == result['runner_sha256'] and
                                           reference.sha(artifact / 'setup.sh') == result['setup_sha256'])
+            if result.get('retirement_cli'):
+                result['inputs_unchanged'] = (result['inputs_unchanged'] and
+                    reference.sha(artifact / 'retirement-cli') == result['retirement_cli']['sha256'])
             if (standby_exec or standby_peers) and result.get('nested_exec_input'):
                 result['inputs_unchanged'] = (result['inputs_unchanged'] and
                     reference.sha(artifact / 'nested-runc') == result['nested_exec_input']['runc_sha256'])

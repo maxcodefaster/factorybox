@@ -20,15 +20,26 @@ import (
 // invented. Its exit abandons exactly the state Delete must handle.
 func failedPauseDeleteFixture(t *testing.T, root string) {
 	t.Helper()
-	engine, err := Open(Config{Root: root, Runtime: "/out/sysbox-runc",
+	config := Config{Root: root, Runtime: "/out/sysbox-runc",
 		RuntimeSHA256: os.Getenv("FACTORYBOX_RUNTIME_SHA256"),
 		Criu:          "/out/criu", CriuSHA256: strings.Repeat("a", 64),
-		ManagerRoot: "/var/lib/sysbox/manager"})
+		ManagerRoot: "/var/lib/sysbox/manager"}
+	if os.Getenv("FACTORYBOX_NATIVE_FAILED_CAPTURE_RETIREMENT") == "1" {
+		config = boundedLossStatusNow(t).Lifecycle
+		if config.Root != root {
+			t.Fatal("failed capture fixture targets another bounded worker")
+		}
+	}
+	engine, err := Open(config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer engine.Close()
-	record, err := engine.read("workspace")
+	id := "workspace"
+	if os.Getenv("FACTORYBOX_NATIVE_FAILED_CAPTURE_RETIREMENT") == "1" {
+		id = "failed-capture"
+	}
+	record, err := engine.read(id)
 	if err != nil {
 		t.Fatal(err)
 	}

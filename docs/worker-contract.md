@@ -371,6 +371,19 @@ older overlay-only receipt, without rewriting that receipt or inventory.
 recovery of such historical data. These operations are part of the worker
 package; an older pinned executable does not acquire the new behavior.
 
+New cleanup builds also retire the last failed, unpublished capture's private
+`images` through ordinary `retire-sandbox`, after its exact failed-capture Delete
+admission and unchanged guard/writer/source-state evidence are verified. The
+separate `failed-capture-backing` journal is beside the bounded image so guest
+ENOSPC cannot prevent its preparation. Exact replay can finish this stage for an
+older overlay-only receipt without rewriting that receipt. The original failed
+Pause, deletion admission, diagnostic metadata and request identities stay intact.
+Missing proof, newly published state, live references, foreign mounts, hardlinks
+and successor payloads refuse reclamation. This never retires a usable checkpoint
+or an unresolved capture. See [the retention decision](adr/0004-retire-failed-capture-backing-after-confirmed-delete.md).
+Native proof and deployment of these new cleanup bytes remain separate from
+source implementation and the qualification of an earlier worker package.
+
 Before publishing a new intent, an exact retry can discard an interrupted
 private inventory, allocation reserve or publication temporary. It inspects
 the complete remaining metadata afresh and removes only known, root-owned,
