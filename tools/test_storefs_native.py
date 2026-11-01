@@ -8,13 +8,14 @@ import tempfile
 import unittest
 from unittest import mock
 
+import release_native
 import storefs_native
 
 
 class StorefsRunnerTests(unittest.TestCase):
     def exercise_passed_fixture(self, runner, native_count=4, platform="linux/amd64"):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             (root / "internal/storefs").mkdir(parents=True)
             (root / "internal/storefs/source.go").write_text("package storefs\n")
             for name in ["go.mod", "go.sum"]:
@@ -72,6 +73,7 @@ class StorefsRunnerTests(unittest.TestCase):
                     self.fail("unexpected subprocess: " + repr(command))
                 return subprocess.CompletedProcess(command, 0)
 
+            emitted = io.StringIO()
             with contextlib.ExitStack() as patches:
                 patches.enter_context(mock.patch.object(runner.reference, "ROOT", root))
                 patches.enter_context(mock.patch.object(runner.reference, "DOCKER", ["docker"]))
@@ -88,7 +90,7 @@ class StorefsRunnerTests(unittest.TestCase):
                 patches.enter_context(mock.patch.object(runner.consumer_worker_loss, "exact_worker", side_effect=exact))
                 patches.enter_context(mock.patch.object(runner.subprocess, "run", side_effect=execute))
                 patches.enter_context(mock.patch("sys.argv", ["storefs-native", "--worker-build", "synthetic-image"]))
-                patches.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                patches.enter_context(contextlib.redirect_stdout(emitted))
                 runner.main()
             native_host.assert_called_once_with(platform, {})
             self.assertEqual(sysctls.call_count, 2)
@@ -104,6 +106,10 @@ class StorefsRunnerTests(unittest.TestCase):
             self.assertFalse(saved["production_qualified"])
             self.assertEqual(saved["passed_tests"], native_count)
             self.assertEqual(saved["platform"], platform)
+            log = root / "stage.stdout"
+            log.write_text(emitted.getvalue())
+            with mock.patch.object(runner.reference, "ROOT", root):
+                self.assertEqual(release_native.completed_receipt(log), (artifact, saved))
 
     def test_passed_proofs_keep_exact_container_identity_through_cleanup(self):
         self.exercise_passed_fixture(storefs_native)

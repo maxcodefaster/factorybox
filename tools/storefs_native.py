@@ -141,7 +141,8 @@ def main():
                                 result["global_sysctls_after"] == result["global_sysctls_before"])
             result["outer_seconds"] = time.monotonic() - started
             reference_lifecycle.write_json(artifact / "result.json", result)
-            print(json.dumps({"evidence": str(artifact), "passed": result["passed"], "tests": result.get("passed_tests"),
+            print(json.dumps({"evidence": str(artifact), "passed": result["passed"], "cleanup": result["cleanup"],
+                              "tests": result.get("passed_tests"),
                               "error": result.get("error")}), flush=True)
     if not result["passed"]:
         raise SystemExit(1)
