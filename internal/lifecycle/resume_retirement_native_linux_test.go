@@ -65,6 +65,7 @@ func TestNativeResumeImageRetirement(t *testing.T) {
 	if err != nil || len(files) < 2 {
 		t.Fatal("Resume fixture lacks its complete image inventory", err)
 	}
+	retirementExclusivePayload(t, images)
 	linked := status.Store + "/resume-foreign-hardlink"
 	if err := os.Link(images+"/"+files[0].Name(), linked); err != nil {
 		t.Fatal(err)
@@ -170,6 +171,7 @@ func TestNativeResumeImageRetirement(t *testing.T) {
 	boundedLossActor(t, source, original.State)
 	boundedLossActor(t, boundedLossView(t, "state", "peer"), original.State)
 	boundedLossAction(t, "delete", "source")
+	retirementExclusivePayload(t, status.Lifecycle.Root+"/objects/source/resumes/"+third+"/images")
 	last := CheckpointRequest{"source", third, source.Record.Owner, source.Record.Pause.CheckpointSHA256}
 	var deleted CheckpointRetirement
 	if err := json.Unmarshal(boundedLossAction(t, retirementArgs("retire-resume", last, "")...), &deleted); err != nil ||

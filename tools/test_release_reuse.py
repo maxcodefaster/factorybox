@@ -31,23 +31,28 @@ class NativeReceiptReuseTests(unittest.TestCase):
                 release_reuse.require_bats_source(archive, root)
 
     def test_continuation_rejects_changed_commands_receipts_and_foreign_workers(self):
+        for role, prefix in [("capture-budget", "capture-budget-native"), ("filesystem-cow", "filesystem-cow")]:
+            with self.subTest(role=role):
+                self._check_continuation_guards(role, prefix)
+
+    def _check_continuation_guards(self, role, prefix):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
             parent = root / "artifacts" / ("factorybox-release-native-" + "a" * 32)
-            leaf = root / "artifacts" / ("factorybox-capture-budget-native-" + "b" * 32)
+            leaf = root / "artifacts" / ("factorybox-" + prefix + "-" + "b" * 32)
             parent.mkdir(parents=True)
             leaf.mkdir()
             result = {"passed": True, "cleanup": True, "worker_build": "worker"}
             (leaf / "result.json").write_text(json.dumps(result))
-            row = {"role": "capture-budget", "passed": True, "command": ["exact"],
+            row = {"role": role, "passed": True, "command": ["exact"],
                    "evidence": leaf.name, "result_sha256": reference.sha(leaf / "result.json")}
             original = {"passed": False, "cleanup": True, "worker_build": "worker",
                         "image_id": "sha256:exact", "stages": [row]}
             (parent / "result.json").write_text(json.dumps(original))
             with patch.object(reference, "ROOT", root):
                 good = release_reuse.continuation(
-                    parent.name, "worker", {"image_id": "sha256:exact"}, {"capture-budget": ["exact"]})
-                self.assertEqual(set(good), {"capture-budget"})
+                    parent.name, "worker", {"image_id": "sha256:exact"}, {role: ["exact"]})
+                self.assertEqual(set(good), {role})
                 for change in [
                         {"worker_build": "other"}, {"image_id": "sha256:other"}, {"cleanup": False},
                         {"stages": [{**row, "command": ["changed"]}]},
@@ -55,13 +60,13 @@ class NativeReceiptReuseTests(unittest.TestCase):
                     (parent / "result.json").write_text(json.dumps({**original, **change}))
                     with self.subTest(change=change), self.assertRaises(ValueError):
                         release_reuse.continuation(
-                            parent.name, "worker", {"image_id": "sha256:exact"}, {"capture-budget": ["exact"]})
+                            parent.name, "worker", {"image_id": "sha256:exact"}, {role: ["exact"]})
                 (leaf / "result.json").write_text(json.dumps({**result, "worker_build": "foreign"}))
                 (parent / "result.json").write_text(json.dumps({
                     **original, "stages": [{**row, "result_sha256": reference.sha(leaf / "result.json")}]}))
                 with self.assertRaisesRegex(ValueError, "worker"):
                     release_reuse.continuation(
-                        parent.name, "worker", {"image_id": "sha256:exact"}, {"capture-budget": ["exact"]})
+                        parent.name, "worker", {"image_id": "sha256:exact"}, {role: ["exact"]})
 
     def test_continuation_leaves_upstream_roles_for_separate_component_verification(self):
         with tempfile.TemporaryDirectory() as temporary:

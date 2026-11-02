@@ -203,7 +203,7 @@ def continuation(name, worker_name, worker, commands):
             continue
         evidence, result = load(row["evidence"], ["factorybox-" + suffix for suffix in [
             "criu-shared-filemap", "capture-budget-native",
-            "storefs-native", "storage-exit-native", "shared-source", "criu-core",
+            "storefs-native", "filesystem-cow", "storage-exit-native", "shared-source", "criu-core",
             "checkpoint-retirement", "bounded-store", "bounded-loss", "bounded-store-loss",
             "factory-consumer",
         ]])

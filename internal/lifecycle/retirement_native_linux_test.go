@@ -5,8 +5,10 @@ package lifecycle
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"reflect"
@@ -33,6 +35,74 @@ func retirementRefused(t *testing.T, request CheckpointRequest, contains string)
 	if err == nil || !strings.Contains(err.Error(), contains) {
 		t.Fatal("retirement did not refuse safely", contains, err)
 	}
+}
+
+// A physical reclamation assertion needs exclusive extents. Ordinary CoW peers
+// deliberately keep shared bytes allocated after another copy is retired.
+// Unshare only this fixture's original payload, preserving its inode and bytes.
+func retirementExclusivePayload(t *testing.T, images string) {
+	t.Helper()
+	var filesystem unix.Statfs_t
+	if err := unix.Statfs(images, &filesystem); err != nil {
+		t.Fatal(err)
+	}
+	if filesystem.Type != unix.BTRFS_SUPER_MAGIC {
+		return
+	}
+	entries, err := os.ReadDir(images)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var largest os.FileInfo
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().IsRegular() && (largest == nil || info.Size() > largest.Size()) {
+			largest = info
+		}
+	}
+	if largest == nil || largest.Size() < 8<<20 {
+		t.Fatal("physical reclamation control lacks a large owned image")
+	}
+	fd, err := unix.Open(images+"/"+largest.Name(), unix.O_RDWR|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := os.NewFile(uintptr(fd), largest.Name())
+	defer file.Close()
+	original, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := sha256.Sum256(original)
+	if count, err := file.WriteAt(original, 0); err != nil || count != len(original) {
+		t.Fatal("allocate the fixture's exclusive physical reclamation control", err)
+	}
+	if err := file.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Syncfs(fd); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		t.Fatal(err)
+	}
+	after, err := file.Stat()
+	if err != nil || !os.SameFile(largest, after) || largest.Size() != after.Size() || !bytes.Equal(before[:], hash.Sum(nil)) {
+		t.Fatal("exclusive allocation changed checkpoint bytes or inode", err)
+	}
+	var allocated unix.Statfs_t
+	if err := unix.Fstatfs(fd, &allocated); err != nil ||
+		uint64(allocated.Bavail)*uint64(allocated.Bsize)+(8<<20) > uint64(filesystem.Bavail)*uint64(filesystem.Bsize) {
+		t.Fatal("reclamation control did not allocate real exclusive storage", err)
+	}
+	t.Logf("exclusive physical reclamation control: %d bytes, original inode and SHA256 preserved", largest.Size())
 }
 
 func TestNativeCheckpointRetirement(t *testing.T) {
@@ -111,6 +181,7 @@ func TestNativeCheckpointRetirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	foreignMounted = false
+	retirementExclusivePayload(t, generation+"/images")
 	var first CheckpointRetirement
 	retired := boundedLossAction(t, retirementArgs("retire-checkpoint", request, "")...)
 	if err := json.Unmarshal(retired, &first); err != nil || first.CompletedAt == "" || first.After.AvailableBytes <= first.Before.AvailableBytes {

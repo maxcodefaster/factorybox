@@ -116,6 +116,7 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 		t.Fatal("running Sandbox backing was retired")
 	}
 	boundedLossAction(t, "delete", "victim")
+	retirementExclusivePayload(t, status.Lifecycle.Root+"/forks/victim/materialized/images")
 	bundle := victim.Record.InputBundle
 	renamed := bundle + "-original"
 	if err := os.Rename(bundle, renamed); err != nil {
