@@ -49,8 +49,12 @@ func sandboxBackingRecord(record Record, request SandboxBackingRequest) error {
 		record.ID != request.SandboxID || record.Owner != request.SandboxOwner || record.InputSHA256 != request.InputSHA256 {
 		return fmt.Errorf("Sandbox backing retirement differs from its immutable owner/input")
 	}
+	// Delete can settle an originally created runtime before Start records its
+	// final acknowledgement. Keep that creation identity and the completed
+	// Delete as authority; an unattempted or unknown create remains protected.
+	created := record.Start.CompletedAt != "" || (record.Start.Attempted && record.RuntimeCreated != "")
 	if record.Phase != "deleted" || record.Delete == nil || !record.Delete.Attempted ||
-		record.Delete.CompletedAt == "" || record.Delete.Error != "" || record.Start.CompletedAt == "" {
+		record.Delete.CompletedAt == "" || record.Delete.Error != "" || !created {
 		return fmt.Errorf("Sandbox backing retirement requires confirmed Delete")
 	}
 	if record.InputDirectory == nil || record.InputDirectory.Inode == 0 ||

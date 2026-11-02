@@ -45,6 +45,7 @@ BACKING_RETIREMENT_PROOFS = [
 
 BACKING_RETIREMENT_UNIT_TESTS = [
     'TestSandboxBackingRetirementAdmission',
+    'TestSandboxBackingRetirementAfterDeletedIncompleteStart',
     'TestRetainedMetadataKeepsRecoveryRecipeStrict',
     'TestRetainedMetadataCannotExecuteLifecycle',
     'TestRecoveryStoreEpochIdentity',
@@ -440,7 +441,8 @@ def main():
             command += ['--env', 'FACTORYBOX_NATIVE_BACKING_RETIREMENT=1',
                         '--env', 'FACTORYBOX_NATIVE_IMPORT_MOUNT_INTERRUPTION=1',
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^(' + '|'.join(
-                            ['TestNativeSandboxBackingRetirement', *BACKING_RETIREMENT_UNIT_TESTS]) + ')$']
+                            ['TestNativeSandboxBackingRetirement', 'TestNativeDeletedIncompleteStartBackingRetirement',
+                             *BACKING_RETIREMENT_UNIT_TESTS]) + ')$']
         if failed_capture_retirement:
             command += ['--env', 'FACTORYBOX_NATIVE_FAILED_CAPTURE_RETIREMENT=1',
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeFailedCaptureBackingRetirement$']
@@ -599,6 +601,15 @@ def main():
             proof = json.loads(proof_path.read_text())
             require_backing_retirement_coverage(proof, log)
             result['proof_sha256'] = reference.sha(proof_path)
+            incomplete_path = output / 'incomplete-start-backing-retirement.json'
+            incomplete = json.loads(incomplete_path.read_text())
+            if ('--- PASS: TestNativeDeletedIncompleteStartBackingRetirement ' not in log or
+                    any(incomplete.get(key) is not True for key in [
+                        'passed', 'actual_native_start_attempt', 'missing_start_acknowledgement_preserved',
+                        'actual_native_delete', 'unconfirmed_delete_refused',
+                        'actual_capacity_returned', 'exact_completion_replayed'])):
+                raise ValueError('incomplete Start omitted actual Delete, capacity or preserved acknowledgement evidence')
+            result['incomplete_start_proof_sha256'] = reference.sha(incomplete_path)
         elif resume_retirement:
             proof_path = output / 'resume-retirement.json'
             proof = json.loads(proof_path.read_text())

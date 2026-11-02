@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "source_commit": "5c10db7",
+  "previous_manifest": "tests/compatibility/mixed-criu-backing-retirement.json",
+  "previous_manifest_sha256": "f7e470d2d45931b980825a78d1072a7faef4997f302d14157d4f290d02342482",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Keep the original complete native backing-retirement test byte for byte. Add a separate ordinary Start fixture whose real init keeps inherited stdout open, producing an actual unfinished Start acknowledgement while the native runtime is running. Native Delete must observe and retain that exact creation identity. Require unchanged incomplete-Start evidence, genuine completed Delete, returned capacity and exact retirement replay. Keep all original capacity, ownership, interruption, foreign-entry, successor and peer assertions, resource limits and the 420-second lifecycle. No operation metadata, retained installation, upstream assertion or immutable reference is rewritten.",
+  "files": {
+    "tools/bounded_store_native.py": {
+      "before_sha256": "10d9b7e72f5a472d7332b238e871040e0444350f024e3429822532d58b8e588b",
+      "after_sha256": "28f52b7ef29e71de0676ac2ddd708c848d2cc2853d00d36939c81825cc3997ad"
+    },
+    "internal/lifecycle/sandbox_retirement_incomplete_start_native_linux_test.go": {
+      "before_sha256": null,
+      "after_sha256": "94c52a5443723cd6030dd397ed403d8564dec98862b8846a01e2fcbbff68ebc5"
+    }
+  },
+  "regressions": [
+    "TestSandboxBackingRetirementAdmission",
+    "TestSandboxBackingRetirementAfterDeletedIncompleteStart",
+    "TestNativeSandboxBackingRetirement",
+    "TestNativeDeletedIncompleteStartBackingRetirement",
+    "test_capacity_fixture_declaration_preserves_original_assertion_bytes"
+  ]
+}

@@ -438,6 +438,12 @@ operation receipts and the bundle anchor. It does not unmount caller-owned mount
 or reclaim checkpoint/Resume generations implicitly. Retire those with their own
 exact requests. Native Delete by itself still retains all this backing.
 
+An originally created runtime can be deleted before Start records its final
+acknowledgement. That incomplete Start does not prevent backing retirement when
+its native creation identity, attempted Start and completed Delete are retained.
+An unattempted or unknown create, unfinished Delete or changed owner/input still
+refuses retirement. Runtime absence and original directory checks remain required.
+
 Manager retirement uses only the pinned Sysbox kinds and the exact `fbx-<owner>`
 runtime directory. All retained controller epochs are locked and checked for
 owners, bind references, registered bases and incomplete descendants. Foreign

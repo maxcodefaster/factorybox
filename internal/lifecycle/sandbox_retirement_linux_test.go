@@ -36,3 +36,39 @@ func TestSandboxBackingRetirementAdmission(t *testing.T) {
 		})
 	}
 }
+
+func TestSandboxBackingRetirementAfterDeletedIncompleteStart(t *testing.T) {
+	request := SandboxBackingRequest{"source", strings.Repeat("a", 32), strings.Repeat("b", 64)}
+	record := Record{
+		ID: request.SandboxID, Owner: request.SandboxOwner, InputSHA256: request.InputSHA256,
+		InputBundle: "/store/input/source", Rootfs: "/store/input/source/rootfs",
+		InputDirectory: &KernelObject{Inode: 1}, Phase: "deleted",
+		Start: Operation{Attempted: true}, RuntimeCreated: "2026-11-02T15:31:37Z",
+		Delete: &Operation{Attempted: true, CompletedAt: "2026-11-02T15:31:39Z"},
+	}
+	if err := sandboxBackingRecord(record, request); err != nil {
+		t.Fatal("confirmed Delete must allow retirement after the original runtime was created but Start did not finish", err)
+	}
+	for name, change := range map[string]func(*Record){
+		"unattempted-start": func(r *Record) { r.Start.Attempted = false },
+		"unknown-create":    func(r *Record) { r.RuntimeCreated = "" },
+		"unattempted-delete": func(r *Record) {
+			r.Delete = &Operation{CompletedAt: record.Delete.CompletedAt}
+		},
+		"unconfirmed-delete": func(r *Record) { r.Delete = &Operation{Attempted: true} },
+		"failed-delete": func(r *Record) {
+			r.Delete = &Operation{Attempted: true, CompletedAt: record.Delete.CompletedAt, Error: "unconfirmed"}
+		},
+		"still-deleting": func(r *Record) { r.Phase = "deleting" },
+		"foreign-owner":  func(r *Record) { r.Owner = strings.Repeat("c", 32) },
+		"foreign-input":  func(r *Record) { r.InputSHA256 = strings.Repeat("c", 64) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := record
+			change(&changed)
+			if sandboxBackingRecord(changed, request) == nil {
+				t.Fatal("incomplete or foreign native ownership must not authorize backing retirement")
+			}
+		})
+	}
+}
