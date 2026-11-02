@@ -197,6 +197,10 @@ def continuation(name, worker_name, worker, commands):
         role = row.get("role")
         if role not in commands or row.get("command") != commands[role]:
             raise ValueError("continued gate command or required role changed")
+        if role in UPSTREAM_ROLES.values():
+            # Component proofs require upstream_receipt's complete current
+            # host/source/assertion checks, not same-worker continuation.
+            continue
         evidence, result = load(row["evidence"], ["factorybox-" + suffix for suffix in [
             "criu-shared-filemap", "capture-budget-native",
             "storefs-native", "storage-exit-native", "shared-source", "criu-core",

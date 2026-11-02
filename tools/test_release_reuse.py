@@ -63,6 +63,32 @@ class NativeReceiptReuseTests(unittest.TestCase):
                     release_reuse.continuation(
                         parent.name, "worker", {"image_id": "sha256:exact"}, {"capture-budget": ["exact"]})
 
+    def test_continuation_leaves_upstream_roles_for_separate_component_verification(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            parent = root / "artifacts" / ("factorybox-release-native-" + "a" * 32)
+            parent.mkdir(parents=True)
+            commands = {role: ["exact", role] for role in release_reuse.UPSTREAM_ROLES.values()}
+            rows = [
+                {"role": role, "passed": True, "reused": True, "command": command,
+                 "evidence": "factorybox-upstream-" + "b" * 32, "result_sha256": "unverified"}
+                for role, command in commands.items()
+            ]
+            original = {"passed": False, "cleanup": True, "worker_build": "worker",
+                        "image_id": "sha256:exact", "stages": rows}
+            receipt = parent / "result.json"
+            receipt.write_text(json.dumps(original))
+            with patch.object(reference, "ROOT", root):
+                # Continuation must neither reject nor accept these component
+                # proofs. Explicit upstream reuse verifies their full inputs.
+                self.assertEqual(release_reuse.continuation(
+                    parent.name, "worker", {"image_id": "sha256:exact"}, commands), {})
+                receipt.write_text(json.dumps({
+                    **original, "stages": [{**rows[0], "command": ["changed"]}]}))
+                with self.assertRaisesRegex(ValueError, "command"):
+                    release_reuse.continuation(
+                        parent.name, "worker", {"image_id": "sha256:exact"}, commands)
+
     def test_upstream_reuse_rejects_failed_partial_changed_host_or_harness(self):
         expected = {"component_build": "exact", "host": {"KernelVersion": "native"},
                     "test_script_sha256": "unchanged"}
