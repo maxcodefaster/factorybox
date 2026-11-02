@@ -68,16 +68,32 @@ exec /usr/bin/cp "$@"
          "import pathlib;pathlib.Path('/usr/local/bin/cp').write_text('#!/bin/sh\\nexec /usr/bin/cp \"$@\"\\n')"])
     pressure = status["store"] + "/resume-preparation-pressure"
     budget = json.loads(run(["exec", identity, "python3", "-c", """
-import json,os,pathlib,sys
+import ctypes,json,os,pathlib,sys
 capture,relative,pressure=sys.argv[1:]
 files=json.loads((pathlib.Path(capture)/'checkpoint.json').read_bytes())['files']
 total=sum(p['bytes'] for p in files)
 present=sum((pathlib.Path(relative)/p['name']).stat().st_size for p in files if (pathlib.Path(relative)/p['name']).exists())
-remaining=total-present;floor=(64+128)<<20;target=floor+remaining+(1<<20)
+remaining=total-present;floor=(64+128)<<20;target=floor+(remaining+total)//2
 fs=os.statvfs(capture);allocation=fs.f_bavail*fs.f_frsize-target
 assert allocation>0 and target<floor+total
 fd=os.open(pressure,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
-try:os.posix_fallocate(fd,0,allocation);os.fsync(fd);owned=os.fstat(fd)
+try:
+ libc=ctypes.CDLL(None,use_errno=True)
+ observations=set()
+ while True:
+  # Extent metadata need not charge exactly the requested file length.
+  # Keep the original measured admission window on both ext4 and Btrfs.
+  if allocation<os.fstat(fd).st_size:os.ftruncate(fd,allocation)
+  os.posix_fallocate(fd,0,allocation);os.fsync(fd)
+  if libc.syncfs(fd)!=0:raise OSError(ctypes.get_errno(),'sync exact owned pressure filesystem')
+  fs=os.statvfs(capture);available=fs.f_bavail*fs.f_frsize
+  if floor+remaining<=available<floor+total:break
+  observation=(allocation,available)
+  assert observation not in observations,'pressure allocation did not converge'
+  observations.add(observation)
+  allocation+=available-target
+  assert allocation>0,'pressure calibration escaped its exact owned file'
+ owned=os.fstat(fd)
 finally:os.close(fd)
 fs=os.statvfs(capture);available=fs.f_bavail*fs.f_frsize
 assert floor+remaining<=available<floor+total
