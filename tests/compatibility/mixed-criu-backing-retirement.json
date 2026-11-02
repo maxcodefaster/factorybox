@@ -5,7 +5,7 @@
   "previous_manifest_sha256": "968b13ba7666eb8003ffe930d62cc5a5bde1b2c9feae067baca987c17bf3e6a9",
   "assertions_preserved": true,
   "upstream_assertions_modified": false,
-  "scope": "Extend the owned backing-retirement fixture with retained metadata recording a different CRIU digest. Require its live dependency to block cleanup, then its confirmed deletion to permit ordinary cleanup. Keep every existing capacity, interruption, ownership, successor and peer assertion, vet, resource ceiling and lifecycle deadline. Add metadata-only admission and execution-refusal tests while retaining all original recovery identity refusals.",
+  "scope": "Extend the owned backing-retirement fixture with retained metadata recording a different CRIU digest. Require its live dependency to block cleanup, then its confirmed deletion to permit ordinary cleanup. Preserve an unrelated interrupted old Pause byte for byte while inventorying its complete original inputs. Current uncertain work, changed or incomplete identities and actual old bind dependencies still refuse cleanup. Keep every existing capacity, interruption, ownership, successor and peer assertion, vet, resource ceiling and lifecycle deadline. Add metadata-only admission and execution-refusal tests while retaining all original recovery identity refusals.",
   "files": {
     "tools/bounded_store_native.py": {
       "before_sha256": "3314ea89ca4ea2c7aa1b265f828015b555ebfb71d62728953981c3f051b550c4",
@@ -13,11 +13,15 @@
     },
     "internal/lifecycle/sandbox_retirement_native_linux_test.go": {
       "before_sha256": "1b244b1153569ec134fe0056e839aedbce956e439e11b9690519c16b5a7f8b69",
-      "after_sha256": "d9356945f1c85793d348c96301ca312df6d861bd55f4c620d7492c5f4623b638"
+      "after_sha256": "633f2de0914e14ac058be573311fae57a2c8470fa6af869b33b94f9d3220d052"
     },
     "internal/lifecycle/retained_metadata_linux_test.go": {
       "before_sha256": null,
       "after_sha256": "0a22e911b653263df13b3a75ba5fe018dabe239af97e59a7d2c2670edda7a3bf"
+    },
+    "internal/lifecycle/manager_retirement_linux_test.go": {
+      "before_sha256": "44738cf6b325df4a9a660e8366c2c6e969bda1207c3bd8aa9eb0b09a3a000e88",
+      "after_sha256": "e13ee420e9d61a0544824603f3c1b87a99cb933392d4519baac4f1ec0dd33697"
     }
   },
   "regressions": [

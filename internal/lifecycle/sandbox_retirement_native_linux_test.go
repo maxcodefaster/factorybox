@@ -66,6 +66,24 @@ func backingRetirementOldRecipe(t *testing.T, status boundedLossStatus, victim R
 	if err := old.write(record); err != nil {
 		t.Fatal(err)
 	}
+	// A failed old capture is not deletion authority for that old Sandbox,
+	// but must not block an unrelated owner's cleanup forever.
+	record.ID, record.Owner = "old-pause", strings.Repeat("a", 32)
+	record.RuntimeID, record.Phase = "fbx-"+record.Owner, "pausing"
+	record.InputBundle, record.Rootfs = config.Root+"/old-input", config.Root+"/old-input/rootfs"
+	record.Start = Operation{Attempted: true, CompletedAt: "started"}
+	record.Pause = &PauseOperation{SnapshotID: strings.Repeat("b", 32), RequestedAt: "pause-requested"}
+	spec = []byte(`{"mounts":[]}`)
+	record.ConfigSHA256 = sum(spec)
+	if err := root.Mkdir("objects/old-pause", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.WriteFile("objects/old-pause/config.json", spec, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.write(record); err != nil {
+		t.Fatal(err)
+	}
 	return config.Root
 }
 
@@ -129,6 +147,10 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldRoot := backingRetirementOldRecipe(t, status, victim.Record)
+	retainedPause, err := os.ReadFile(oldRoot + "/objects/old-pause/record.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	requested := append([]string{"--worker-run-root", "/run/factorybox"}, backingRetirementArgs(request)...)
 	if output, err := boundedLossCommand(requested...); err == nil ||
 		!strings.Contains(err.Error(), "live Sandbox binds retiring private backing") {
@@ -240,6 +262,10 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 	}
 	if replay := boundedLossAction(t, backingRetirementArgs(request)...); !bytes.Equal(response, replay) {
 		t.Fatal("exact backing retirement replay changed")
+	}
+	if after, err := os.ReadFile(oldRoot + "/objects/old-pause/record.json"); err != nil ||
+		!bytes.Equal(after, retainedPause) {
+		t.Fatal("unrelated failed old Pause was changed or declared deleted", err)
 	}
 	if err := os.Mkdir(bundle+"/upper", 0700); err != nil {
 		t.Fatal(err)

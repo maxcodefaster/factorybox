@@ -392,6 +392,11 @@ boot, Sysbox runtime, controller paths and storage attachment identities. These
 metadata handles cannot execute lifecycle or runtime commands. Recovery,
 checkpoint inspection and epoch retirement keep their existing strict CRIU
 recipe checks; cleanup does not make an old RAM snapshot recoverable.
+An interrupted old Pause with its confirmed original Start and complete immutable
+OCI inputs participates in those reference checks without becoming a successful
+Pause or confirmed Delete. Its original data and failure records stay intact.
+Current uncertain work and incomplete or changed retained inputs still refuse
+cleanup, as do actual references from the old Sandbox to the selected backing.
 
 Ordinary `retire-sandbox` also completes this manager stage when replaying an
 older overlay-only receipt, without rewriting that receipt or inventory.

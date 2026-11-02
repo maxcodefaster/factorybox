@@ -48,7 +48,12 @@ func TestManagerBackingChecksOtherEpochOwnersAndBindings(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("requires root ownership; exercised in the native worker lane")
 	}
-	for _, mode := range []string{"independent", "same-owner", "live-bind", "unresolved-bind"} {
+	for _, mode := range []string{"independent", "same-owner", "live-bind", "unresolved-bind",
+		"retained-pausing-independent", "retained-pausing-bind", "current-pausing-independent",
+		"retained-pausing-no-start", "retained-pausing-unattempted", "retained-pausing-no-intent",
+		"retained-pausing-bad-snapshot", "retained-pausing-unrequested", "retained-pausing-completed",
+		"retained-pausing-resuming", "retained-pausing-deleting", "retained-pausing-relative",
+		"retained-pausing-changed-root"} {
 		t.Run(mode, func(t *testing.T) {
 			engine, record := managerDependencyFixture(t, "source", strings.Repeat("a", 32), "deleted", "")
 			owner, phase, bind := strings.Repeat("b", 32), "running", "/unrelated"
@@ -59,13 +64,50 @@ func TestManagerBackingChecksOtherEpochOwnersAndBindings(t *testing.T) {
 				bind = engine.config.ManagerRoot + "/docker/" + record.RuntimeID
 			case "unresolved-bind":
 				phase, bind = "starting", engine.config.ManagerRoot+"/docker/"+record.RuntimeID
+			case "retained-pausing-independent", "current-pausing-independent":
+				phase = "pausing"
+			case "retained-pausing-bind":
+				phase, bind = "pausing", engine.config.ManagerRoot+"/docker/"+record.RuntimeID
 			}
-			other, _ := managerDependencyFixture(t, "peer", owner, phase, bind)
+			if strings.Contains(mode, "pausing") {
+				phase = "pausing"
+			}
+			other, peer := managerDependencyFixture(t, "peer", owner, phase, bind)
+			if phase == "pausing" {
+				other.metadataOnly = strings.HasPrefix(mode, "retained-")
+				peer.Start = Operation{Attempted: true, CompletedAt: "started"}
+				peer.Pause = &PauseOperation{SnapshotID: strings.Repeat("c", 32), RequestedAt: "pause-requested"}
+				switch mode {
+				case "retained-pausing-no-start":
+					peer.Start.CompletedAt = ""
+				case "retained-pausing-unattempted":
+					peer.Start.Attempted = false
+				case "retained-pausing-no-intent":
+					peer.Pause = nil
+				case "retained-pausing-bad-snapshot":
+					peer.Pause.SnapshotID = "unknown"
+				case "retained-pausing-unrequested":
+					peer.Pause.RequestedAt = ""
+				case "retained-pausing-completed":
+					peer.Pause.CompletedAt = "completed"
+				case "retained-pausing-resuming":
+					peer.Pause.Resume = &Operation{Attempted: true}
+				case "retained-pausing-deleting":
+					peer.Delete = &Operation{Attempted: true}
+				case "retained-pausing-relative":
+					peer.InputBundle = "relative"
+				case "retained-pausing-changed-root":
+					peer.Rootfs += "-other"
+				}
+				if err := other.write(peer); err != nil {
+					t.Fatal(err)
+				}
+			}
 			forest := &epochRetirementForest{controllers: map[string]*Engine{
 				engine.config.Root: engine, other.config.Root: other,
 			}}
 			err := engine.managerBackingDependencies(context.Background(), forest, record, []string{"docker/" + record.RuntimeID})
-			if (err == nil) != (mode == "independent") {
+			if (err == nil) != (mode == "independent" || mode == "retained-pausing-independent") {
 				t.Fatal("retained epoch dependency result is wrong", err)
 			}
 		})

@@ -124,8 +124,18 @@ func (e *Engine) retirementPathDependencies(ctx context.Context, retiring string
 		if record.Phase == "deleted" && record.Delete != nil && record.Delete.CompletedAt != "" {
 			continue
 		}
-		if record.Phase != "running" && record.Phase != "paused" {
-			return fmt.Errorf("unresolved Sandbox blocks private-backing retirement")
+		// Pause never changes the original OCI inputs. A retained old epoch
+		// may have lost its worker before publishing completion; inventory its
+		// exact configuration below, without declaring that Pause successful,
+		// deleting its data or granting the metadata reader execution authority.
+		retainedPause := e.metadataOnly && record.Phase == "pausing" &&
+			record.Start.Attempted && record.Start.CompletedAt != "" && record.Delete == nil &&
+			record.Pause != nil && tokenID.MatchString(record.Pause.SnapshotID) &&
+			record.Pause.RequestedAt != "" && record.Pause.CompletedAt == "" && record.Pause.Resume == nil &&
+			filepath.IsAbs(record.InputBundle) && filepath.Clean(record.InputBundle) == record.InputBundle &&
+			record.Rootfs == record.InputBundle+"/rootfs"
+		if record.Phase != "running" && record.Phase != "paused" && !retainedPause {
+			return fmt.Errorf("unresolved Sandbox blocks private-backing retirement: %s (%s)", record.ID, record.Phase)
 		}
 		if overlaps(record.InputBundle) || overlaps(record.Rootfs) ||
 			record.Base != nil && record.Base.Immutable != nil && overlaps(record.Base.Immutable.Root) {
