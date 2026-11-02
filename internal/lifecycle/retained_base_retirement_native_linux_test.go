@@ -52,6 +52,7 @@ func TestNativeRetainedBaseRecover(t *testing.T) {
 		"request-guards":     TestRetainedBaseRetirementRejectsUnboundRequests,
 		"checkpoint-guards":  TestRetainedBaseRetirementProtectsCheckpointAndUncertainCapture,
 		"deleted-checkpoint": TestRetainedBaseRetirementDoesNotWithdrawDeletedCheckpoint,
+		"uncaptured-source":  TestRetainedBaseAllowsUnrelatedRunningSourceWithoutCaptures,
 	} {
 		if !t.Run(name, test) {
 			t.FailNow()

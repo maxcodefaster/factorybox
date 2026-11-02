@@ -121,8 +121,14 @@ func (e *Engine) baseCheckpointDependencies(ctx context.Context, retiring string
 			}
 		}
 		captures, err := e.exitEntries("objects/" + record.ID + "/captures")
-		if errors.Is(err, os.ErrNotExist) && record.Phase == "deleted" {
-			continue
+		if errors.Is(err, os.ErrNotExist) {
+			// Captures are created lazily. An unrelated running source with no
+			// Pause history need not have this directory. Its actual input/base
+			// bindings remain guarded by retirementPathDependencies above.
+			if record.Phase == "deleted" ||
+				record.Phase == "running" && record.Pause == nil && len(record.PauseHistory) == 0 {
+				continue
+			}
 		}
 		if err != nil {
 			return err

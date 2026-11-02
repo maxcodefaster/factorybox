@@ -5,6 +5,7 @@ package lifecycle
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,5 +114,36 @@ func TestRetainedBaseRetirementDoesNotWithdrawDeletedCheckpoint(t *testing.T) {
 	after, _ := json.Marshal(current)
 	if err != nil || string(original) != string(after) {
 		t.Fatal("retirement observation changed deleted history", err)
+	}
+}
+
+func TestRetainedBaseAllowsUnrelatedRunningSourceWithoutCaptures(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("root-owned metadata; run in the native Linux lane")
+	}
+	for _, matching := range []bool{false, true} {
+		t.Run(fmt.Sprint("matching-base-", matching), func(t *testing.T) {
+			engine, record := managerDependencyFixture(t, "source", strings.Repeat("a", 32), "running", "/unrelated")
+			engine.metadataOnly = true
+			engine.config.BoundedStore = &storefs.Active{}
+			target := "/private/epochs/base/rootfs"
+			root := "/another/epochs/base/rootfs"
+			if matching {
+				root = target
+			}
+			record.Base = &sysboxcapture.FilesystemTree{Immutable: &sysboxcapture.ImmutableTree{Root: root}}
+			if err := engine.write(record); err != nil {
+				t.Fatal(err)
+			}
+			forest := &epochRetirementForest{controllers: map[string]*Engine{engine.config.Root: engine}}
+			base := Base{Tree: sysboxcapture.FilesystemTree{Saved: target}}
+			err := engine.retainedBaseDependencies(context.Background(), forest, base)
+			if (err == nil) == matching {
+				t.Fatalf("never-captured source matching=%v error=%v", matching, err)
+			}
+			if _, err := engine.root.Lstat("objects/source/captures"); !os.IsNotExist(err) {
+				t.Fatal("dependency observation manufactured checkpoint metadata", err)
+			}
+		})
 	}
 }
