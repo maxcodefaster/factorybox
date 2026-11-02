@@ -84,6 +84,9 @@ func (e *Engine) RetireRetainedDeletedBacking(ctx context.Context, sourceRoot st
 	if err != nil || !reflect.DeepEqual(plan.Paths, intent.Payloads) {
 		return SandboxBackingRetirement{}, errors.Join(err, fmt.Errorf("retained original retirement inventory changed"))
 	}
+	if err := old.retireDeletedFailedCaptureBacking(ctx, record, request, forest); err != nil {
+		return SandboxBackingRetirement{}, err
+	}
 	if err := old.retireRecoveredCaptureBacking(ctx, record, request, forest); err != nil {
 		return SandboxBackingRetirement{}, err
 	}

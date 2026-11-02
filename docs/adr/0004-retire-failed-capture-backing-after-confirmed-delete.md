@@ -36,3 +36,6 @@ capture stage completes. The original receipt and lifecycle record remain
 unchanged, and no old runtime or CRIU recipe executes. Registered bases and
 canonical Source are not payloads. This avoids either resetting retained data
 or leaving multi-gigabyte partial copies permanently charged to the store.
+The same retained command also completes an abandoned capture's already
+confirmed failed-Delete admission; it does not require that failure to have
+returned the source to useful work before Delete.
