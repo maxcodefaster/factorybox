@@ -160,7 +160,13 @@ func (e *Engine) ReleaseDeletedEpochBases(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := sysboxcapture.RetireImmutableAlias(tree.Saved, tree); err != nil {
+		var err error
+		if tree.Alias == nil {
+			err = sysboxcapture.ReleaseFilesystemAliasMount(tree)
+		} else {
+			err = sysboxcapture.RetireImmutableAlias(tree.Saved, tree)
+		}
+		if err != nil {
 			return fmt.Errorf("release capture base alias: %w", err)
 		}
 	}
@@ -217,6 +223,31 @@ func (e *Engine) exitCaptureAliases(ctx context.Context, record Record, bases []
 			continue
 		}
 		saved, err := e.publishedCheckpointMetadata(ctx, record, entry.Name(), relative)
+		if errors.Is(err, os.ErrNotExist) {
+			if rejected, proofErr := e.epochRejectedCapture(record, entry.Name(), relative); proofErr != nil {
+				return nil, proofErr
+			} else if rejected {
+				continue
+			}
+			if deleted, proofErr := e.deletedFailedPauseCapture(record, entry.Name()); proofErr != nil {
+				return nil, proofErr
+			} else if deleted {
+				continue
+			}
+			recovered, alias, proofErr := e.exitRecoveredFailedCapture(record, entry.Name(), relative)
+			if proofErr != nil {
+				return nil, proofErr
+			}
+			if recovered {
+				if alias != nil {
+					if err := exitKnownAlias(*alias, bases); err != nil {
+						return nil, err
+					}
+					aliases = append(aliases, *alias)
+				}
+				continue
+			}
+		}
 		if err != nil {
 			return nil, fmt.Errorf("worker exit refuses an unconfirmed capture %s: %w", relative, err)
 		}
@@ -257,6 +288,9 @@ func exitKnownAlias(tree sysboxcapture.FilesystemTree, bases []sysboxcapture.Fil
 	}
 	if !matched {
 		return fmt.Errorf("worker exit alias lacks its exact completed base")
+	}
+	if tree.Alias == nil {
+		return sysboxcapture.VerifyImmutableTree(tree.Saved, tree)
 	}
 	_, err := sysboxcapture.CheckImmutableAliasRetirement(tree.Saved, tree)
 	return err

@@ -346,6 +346,21 @@ func ReleaseFilesystemBaseMount(tree FilesystemTree) error {
 	return unix.Unmount(tree.Saved, 0)
 }
 
+// ReleaseFilesystemAliasMount uncovers only an exact live read-only alias.
+// Incomplete filesystem copies have no completed manifest with the original
+// empty mountpoint identity, so they cannot use checkpoint retirement. Worker
+// exit fences all operations first and retains the partial backing unchanged.
+// An unmounted or changed path is never inferred to be the original alias.
+func ReleaseFilesystemAliasMount(tree FilesystemTree) error {
+	if tree.Immutable == nil || tree.Alias != nil || tree.Saved == tree.Immutable.Root {
+		return fmt.Errorf("alias release requires an exact incomplete capture alias")
+	}
+	if err := VerifyImmutableTree(tree.Saved, tree); err != nil {
+		return err
+	}
+	return unix.Unmount(tree.Saved, 0)
+}
+
 func noImmutableDescendantMounts(path string) error {
 	file, err := os.Open("/proc/self/mountinfo")
 	if err != nil {

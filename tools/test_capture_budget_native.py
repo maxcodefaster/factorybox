@@ -40,6 +40,35 @@ class CaptureBudgetNativeTests(unittest.TestCase):
             self.assertEqual(commands["capture-budget"][1:], [
                 "tools/capture_budget_native.py", "--worker-build", "exact-worker",
             ])
+            self.assertEqual(commands["failed-capture-exit"][1:], [
+                "tools/capture_budget_native.py", "--worker-build", "exact-worker", "--failed-copy",
+            ])
+
+    def test_failed_capture_exit_requires_every_preservation_and_release_gate(self):
+        complete = dict.fromkeys([
+            "failed_copy_observed", "recovered_failed_pause", "same_ram_after_failed_capture",
+            "useful_after_failed_capture", "incomplete_alias_mounted", "failed_payload_preserved",
+            "sandbox_deleted", "worker_stopped_cleanly", "kernel_storage_released",
+            "same_store_new_epoch", "successor_storage_released", "host_sysctls_unchanged", "inputs_unchanged",
+        ], True)
+        capture_budget_native.require_failed_capture_complete(complete)
+        for key in complete:
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ValueError, "failed capture exit omitted"):
+                    capture_budget_native.require_failed_capture_complete({**complete, key: False})
+
+    def test_only_a_definite_original_kernel_owner_refusal_can_be_reobserved(self):
+        diagnostic = "fixed filesystem still has an image owner: resource temporarily unavailable\n"
+        receipt = {"passed": False, "cleanup": True, "helper_exit": {
+            "command_exit": 1, "running": False, "exit_code": 1, "oom_killed": False,
+        }}
+        self.assertTrue(capture_budget_native.pending_kernel_owner(receipt, diagnostic))
+        for field, value in [("command_exit", None), ("command_exit", 0), ("running", True),
+                             ("exit_code", 0), ("oom_killed", True)]:
+            changed = {**receipt, "helper_exit": {**receipt["helper_exit"], field: value}}
+            self.assertFalse(capture_budget_native.pending_kernel_owner(changed, diagnostic))
+        self.assertFalse(capture_budget_native.pending_kernel_owner({**receipt, "passed": True}, diagnostic))
+        self.assertFalse(capture_budget_native.pending_kernel_owner(receipt, "unconfirmed other identity"))
 
 
 if __name__ == "__main__":

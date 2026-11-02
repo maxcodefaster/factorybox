@@ -43,6 +43,8 @@ def verify(worker, volume, owner, status, artifact):
         path.with_suffix(".stdout").write_text(done.stdout)
         path.with_suffix(".stderr").write_text(done.stderr)
         state = consumer_worker_loss.exact_worker(name, owner, identity)["State"]
+        receipt["helper_exit"] = {"command_exit": done.returncode, "running": state["Running"],
+                                "exit_code": state["ExitCode"], "oom_killed": state["OOMKilled"]}
         if done.returncode or state["Running"] or state["ExitCode"] != 0 or state["OOMKilled"]:
             raise ValueError("post-exit storage release is unconfirmed")
         observed = json.loads(done.stdout)

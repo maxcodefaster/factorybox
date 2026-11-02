@@ -181,6 +181,16 @@ outside the data filesystem when its own mount and loop descriptor are closed bu
 the container manager still holds a namespace reference. This is not a completed
 release or permission to detach, delete or reuse the image.
 
+A failed capture does not itself prevent orderly exit after its source is
+confirmed deleted or committed paused. Exit recognizes an exact pre-capture
+rejection, an admitted failed-capture Delete, or a retained failed Pause with
+matching abort, process-completion and recovered-source evidence. It rejects
+changed, live or unresolved outcomes. Partial RAM and filesystem bytes remain
+diagnostic backing, not a usable checkpoint or permission to retire an epoch.
+If mutable copying failed after binding an immutable lower, exit releases only
+that verified read-only alias after publishing its worker fence. It neither
+deletes the partial copy nor invents a completed filesystem manifest.
+
 After the original worker has stopped, an independently owned helper using the
 same image and original storage can run:
 

@@ -251,32 +251,8 @@ func (e *Engine) reconcileAbortedCheckpoint(record Record, id, relative string) 
 		!reflect.DeepEqual(config.Source, record) {
 		return fmt.Errorf("checkpoint abort guard differs from its original source")
 	}
-	var intent checkpointIntent
-	if err := e.readCheckpointJSON(relative+"/checkpoint-intent.json", &intent); err != nil {
+	if err := e.verifyAbortedCheckpointMetadata(record, id, relative, config); err != nil {
 		return err
-	}
-	if intent.Version != 1 || intent.ID != id || intent.SourceID != record.ID ||
-		intent.Owner != record.Owner || intent.RuntimeID != record.RuntimeID || intent.BootID != record.BootID ||
-		intent.ConfigSHA256 != record.ConfigSHA256 || intent.RuntimeSHA256 != record.RuntimeSHA256 ||
-		intent.CriuSHA256 != e.config.CriuSHA256 || intent.ManagerRoot != e.config.ManagerRoot ||
-		intent.StopSource != config.StopSource || intent.RequestedAt == "" {
-		return fmt.Errorf("checkpoint abort has a different pinned intent")
-	}
-	var outcome struct {
-		Config          captureGuardConfig `json:"config"`
-		Reason          string             `json:"reason"`
-		Status          string             `json:"status"`
-		CaptureInFlight bool               `json:"capture_in_flight"`
-		Passed          bool               `json:"passed"`
-		Error           string             `json:"error,omitempty"`
-	}
-	err = e.readCheckpointJSON(relative+"/guard/guard-outcome.json", &outcome)
-	if errors.Is(err, os.ErrNotExist) {
-		err = e.readCheckpointJSON(relative+"/guard/guard-controller-outcome.json", &outcome)
-	}
-	if err != nil || !outcome.Passed || outcome.CaptureInFlight || !reflect.DeepEqual(outcome.Config, config) ||
-		(outcome.Status != "original_source_thawed" && outcome.Status != "source_already_running") {
-		return fmt.Errorf("checkpoint abort has no proved running source outcome: %v", err)
 	}
 	anchors := captureGuardAnchors{}
 	defer func() { resultErr = errors.Join(resultErr, anchors.close()) }()
@@ -312,6 +288,37 @@ func (e *Engine) reconcileAbortedCheckpoint(record Record, id, relative string) 
 		return fmt.Errorf("aborted capture source is no longer confirmed running: %v", err)
 	}
 	return &checkpointCaptureError{cause: errors.New(abort.Error), failedAt: abort.FailedAt, recovered: true}
+}
+
+func (e *Engine) verifyAbortedCheckpointMetadata(record Record, id, relative string, config captureGuardConfig) error {
+	var intent checkpointIntent
+	if err := e.readCheckpointJSON(relative+"/checkpoint-intent.json", &intent); err != nil {
+		return err
+	}
+	if intent.Version != 1 || intent.ID != id || intent.SourceID != record.ID ||
+		intent.Owner != record.Owner || intent.RuntimeID != record.RuntimeID || intent.BootID != record.BootID ||
+		intent.ConfigSHA256 != record.ConfigSHA256 || intent.RuntimeSHA256 != record.RuntimeSHA256 ||
+		intent.CriuSHA256 != e.config.CriuSHA256 || intent.ManagerRoot != e.config.ManagerRoot ||
+		intent.StopSource != config.StopSource || intent.RequestedAt == "" {
+		return fmt.Errorf("checkpoint abort has a different pinned intent")
+	}
+	var outcome struct {
+		Config          captureGuardConfig `json:"config"`
+		Reason          string             `json:"reason"`
+		Status          string             `json:"status"`
+		CaptureInFlight bool               `json:"capture_in_flight"`
+		Passed          bool               `json:"passed"`
+		Error           string             `json:"error,omitempty"`
+	}
+	err := e.readCheckpointJSON(relative+"/guard/guard-outcome.json", &outcome)
+	if errors.Is(err, os.ErrNotExist) {
+		err = e.readCheckpointJSON(relative+"/guard/guard-controller-outcome.json", &outcome)
+	}
+	if err != nil || !outcome.Passed || outcome.CaptureInFlight || outcome.Error != "" || !reflect.DeepEqual(outcome.Config, config) ||
+		(outcome.Status != "original_source_thawed" && outcome.Status != "source_already_running") {
+		return fmt.Errorf("checkpoint abort has no proved running source outcome: %v", err)
+	}
+	return nil
 }
 
 type checkpointCaptureError struct {

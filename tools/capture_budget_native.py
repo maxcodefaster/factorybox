@@ -22,6 +22,17 @@ import worker_storage_release
 COPY_DELAY_SECONDS = 65
 
 
+def pending_kernel_owner(receipt, diagnostic):
+    observed = receipt.get("helper_exit", {})
+    return (
+        receipt.get("cleanup") is True and receipt.get("passed") is False and
+        observed.get("running") is False and observed.get("oom_killed") is False and
+        isinstance(observed.get("command_exit"), int) and observed["command_exit"] != 0 and
+        isinstance(observed.get("exit_code"), int) and observed["exit_code"] != 0 and
+        diagnostic.strip() == "fixed filesystem still has an image owner: resource temporarily unavailable"
+    )
+
+
 def require_complete(result):
     required = [
         "copy_delay_observed", "committed_pause", "anonymous_memory_released",
@@ -34,10 +45,22 @@ def require_complete(result):
             result.get("pause_seconds", 0) < COPY_DELAY_SECONDS):
         raise ValueError("capture budget omitted the delayed filesystem, RAM or cleanup proof")
 
+def require_failed_capture_complete(result):
+    required = [
+        "failed_copy_observed", "recovered_failed_pause", "same_ram_after_failed_capture",
+        "useful_after_failed_capture", "incomplete_alias_mounted", "failed_payload_preserved",
+        "sandbox_deleted", "worker_stopped_cleanly", "kernel_storage_released",
+        "same_store_new_epoch", "successor_storage_released", "host_sysctls_unchanged", "inputs_unchanged",
+    ]
+    if any(result.get(key) is not True for key in required):
+        raise ValueError("failed capture exit omitted recovery, retained bytes or clean storage release")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build", required=True)
+    parser.add_argument("--failed-copy", action="store_true",
+                        help="Fail mutable copying after real RAM capture and immutable alias binding; require safe rollback and clean worker exit")
     options = parser.parse_args()
     _, worker = build_worker.load(options.worker_build)
     native_base.require_native_host(worker["platform"], json.loads(reference.docker(["info", "--format", "{{json .}}"])))
@@ -69,15 +92,20 @@ def main():
         "schema": 1, "owner": owner, "worker_build": options.worker_build, "image": worker["image"],
         "executable_sha256": worker["bundle_sha256"]["factorybox"], "platform": worker["platform"],
         "passed": False, "cleanup": False, "production_qualified": False,
-        "copy_delay_seconds": COPY_DELAY_SECONDS, "runner_sha256": reference.sha(artifact / "runner.py"),
+        "copy_delay_seconds": 0 if options.failed_copy else COPY_DELAY_SECONDS,
+        "runner_sha256": reference.sha(artifact / "runner.py"),
         "actor_sha256": reference.sha(actor), "rootfs_sha256": rootfs["sha256"],
-        "scope": "Exact delivered CLI with real Sysbox/CRIU, a private Go workload and a controlled 65-second filesystem-copy stall after RAM capture. Require committed Pause, released anonymous RAM, identical restored RAM and useful work. The upstream cp executable is unchanged. No retained installation, provider calls or host settings.",
+        "scope": ("Exact delivered CLI with real Sysbox/CRIU and an immutable base. Fail only the owned mutable copy after real RAM capture, require original-process rollback, useful work, clean worker exit and retained failed bytes across same-store restart. No retained installation, provider calls or host settings."
+                  if options.failed_copy else
+                  "Exact delivered CLI with real Sysbox/CRIU, a private Go workload and a controlled 65-second filesystem-copy stall after RAM capture. Require committed Pause, released anonymous RAM, identical restored RAM and useful work. The upstream cp executable is unchanged. No retained installation, provider calls or host settings."),
     }
     deadline = time.monotonic() + 420
     identity = None
     status = None
     runtime_pid = None
     volume = attempted = False
+    worker_name = name
+    attempted_names = []
 
     def save():
         (artifact / "result.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -99,7 +127,7 @@ def main():
         print(json.dumps({"evidence": str(artifact), "stage": stage}), flush=True)
 
     def exact():
-        consumer_worker_loss.exact_worker(name, owner, identity)
+        consumer_worker_loss.exact_worker(worker_name, owner, identity)
 
     def cli(*arguments):
         exact()
@@ -122,6 +150,26 @@ print(response.read().decode())
         return json.loads(run(["exec", identity, "python3", "-c", program,
                                json.dumps({"socket": f"/proc/{runtime_pid}/root/workspace/.minimal.sock", "body": payload})]))
 
+    def release_storage(original, destination):
+        observation = 0
+        while True:
+            selected = destination if observation == 0 else destination / ("pending-owner-" + str(observation))
+            selected.mkdir(exist_ok=True)
+            try:
+                return worker_storage_release.verify(worker, name, owner, original, selected)
+            except ValueError:
+                path = selected / ("storage-release-" + original["epoch"])
+                receipt = json.loads(path.with_suffix(".json").read_text())
+                diagnostic = path.with_suffix(".stderr").read_text()
+                if not pending_kernel_owner(receipt, diagnostic) or time.monotonic() >= deadline:
+                    raise
+                # The exact helper exited with a known lease refusal. Observe
+                # namespace teardown within the same 420-second native deadline,
+                # preserving every refusal; never detach or promote it to success.
+                observation += 1
+                result.setdefault("pending_kernel_owner_observations", []).append(str(selected.relative_to(artifact)))
+                time.sleep(.02)
+
     try:
         before = consumer_worker_loss.sysctls(docker_image=worker["native_base_image"],
                                               owner=owner, artifact=artifact, phase="before")
@@ -141,6 +189,7 @@ print(response.read().decode())
         result["command"] = command
         save()
         attempted = True
+        attempted_names.append(name)
         identity = run(command)
         result["container_id"] = identity
         status = consumer_worker_loss.ready(name, owner, identity, deadline)["status"]
@@ -161,6 +210,18 @@ config['linux']['resources']={'pids':{'limit':128},'devices':[{'allow':True,'acc
 open(path,'w').write(json.dumps(config))
 """
         run(["exec", identity, "python3", "-c", program, bundle, status["lifecycle"]["runtime"]])
+        if options.failed_copy:
+            base = cli("prepare-base", "--source", bundle + "/lower", "failed-copy-base")
+            run(["exec", identity, "python3", "-c", """
+import json,os,subprocess,sys
+bundle,base=sys.argv[1:];subprocess.run(['umount',bundle+'/rootfs'],check=True)
+os.rename(bundle+'/lower',bundle+'/lower-input');os.mkdir(bundle+'/lower',0o700)
+subprocess.run(['mount','--bind',base,bundle+'/lower'],check=True)
+subprocess.run(['mount','-o','remount,bind,ro',bundle+'/lower'],check=True)
+subprocess.run(['mount','-t','overlay','overlay','-o','index=off,lowerdir='+bundle+'/lower,upperdir='+bundle+'/upper,workdir='+bundle+'/work',bundle+'/rootfs'],check=True)
+path=bundle+'/config.json';config=json.load(open(path));config.setdefault('annotations',{})['io.factorybox.base']='failed-copy-base'
+open(path,'w').write(json.dumps(config))
+""", bundle, base["tree"]["saved"]])
         started = cli("start", "--bundle", bundle, "budget-source")
         runtime_pid = started["runtime"]["pid"]
         while True:
@@ -178,59 +239,122 @@ open(path,'w').write(json.dumps(config))
         wrapper = ("#!/bin/sh\n"
                    'target=$(/usr/bin/readlink "/proc/$$/fd/4") || exit 91\n'
                    f'if [ "$target" = "{target}" ]; then\n'
-                   f'  printf \'%s\\n\' \'{owner}\' > /output/copy-delay-observed\n'
-                   f"  /usr/bin/sleep {COPY_DELAY_SECONDS}\nfi\n"
+                   f'  printf \'%s\\n\' \'{owner}\' > /output/copy-delay-observed\n' +
+                   ("  exit 74\n" if options.failed_copy else f"  /usr/bin/sleep {COPY_DELAY_SECONDS}\n") +
+                   "fi\n"
                    'exec /usr/bin/cp "$@"\n')
         run(["exec", identity, "python3", "-c",
              "import os,sys;p='/usr/local/bin/cp';f=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o700);os.write(f,sys.argv[1].encode());os.close(f)",
              wrapper])
-        phase("pause-with-delayed-filesystem")
+        phase("pause-with-failed-filesystem" if options.failed_copy else "pause-with-delayed-filesystem")
         began = time.monotonic()
         try:
-            paused = cli("pause", "--snapshot-id", snapshot, "budget-source")
+            try:
+                paused = cli("pause", "--snapshot-id", snapshot, "budget-source")
+            except ValueError as error:
+                if not options.failed_copy or "incomplete checkpoint after source process recovery" not in str(error):
+                    raise
+                paused = cli("state", "budget-source")
         finally:
             result["pause_seconds"] = time.monotonic() - began
             marker = output / "copy-delay-observed"
             result["copy_delay_observed"] = marker.is_file() and marker.read_text().strip() == owner
         (output / "pause.json").write_text(json.dumps(paused, indent=2) + "\n")
-        pause = paused["record"]["pause"]
-        result["committed_pause"] = paused["record"]["phase"] == "paused" and bool(pause.get("completed_at"))
-        result["anonymous_memory_released"] = pause["before"]["anon"] >= 32 << 20 and pause["after"]["anon"] == 0
-        phase("resume-and-use-original-state")
-        resumed = cli("resume", "--snapshot-id", snapshot, "budget-source")
-        runtime_pid = resumed["runtime"]["pid"]
+        capture = status["lifecycle"]["root"] + "/objects/budget-source/captures/" + snapshot
+        if options.failed_copy:
+            history = paused["record"].get("pause_history", [])
+            result["failed_copy_observed"] = result["copy_delay_observed"]
+            result["recovered_failed_pause"] = (
+                paused["record"]["phase"] == "running" and not paused["record"].get("pause") and
+                len(history) == 1 and history[0]["snapshot_id"] == snapshot and
+                bool(history[0].get("rejected_at")) and not history[0].get("completed_at"))
+            before_failure = json.loads(run(["exec", identity, "python3", "-c", """
+import hashlib,json,pathlib,sys
+root=pathlib.Path(sys.argv[1])
+assert not (root/'checkpoint.json').exists()
+paths=[root/'source-state.json',root/'guard/capture-abort-intent.json',root/'guard/guard-capture-aborted.json']
+paths+=sorted((root/'images').iterdir())
+hashes={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths if p.is_file()}
+mounted=any(str(root/'filesystem/lower')==line.split()[4] for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines())
+print(json.dumps({'hashes':hashes,'alias_mounted':mounted}))
+""", capture]))
+            result["incomplete_alias_mounted"] = before_failure["alias_mounted"]
+            result["failed_capture_hashes"] = before_failure["hashes"]
+        else:
+            pause = paused["record"]["pause"]
+            result["committed_pause"] = paused["record"]["phase"] == "paused" and bool(pause.get("completed_at"))
+            result["anonymous_memory_released"] = pause["before"]["anon"] >= 32 << 20 and pause["after"]["anon"] == 0
+            phase("resume-and-use-original-state")
+            resumed = cli("resume", "--snapshot-id", snapshot, "budget-source")
+            runtime_pid = resumed["runtime"]["pid"]
         restored = observe()
-        result["same_ram_after_resume"] = restored == initial and resumed["record"]["phase"] == "running"
+        result["same_ram_after_failed_capture" if options.failed_copy else "same_ram_after_resume"] = (
+            restored == initial and (options.failed_copy or resumed["record"]["phase"] == "running"))
         changed = observe({"marker": "resumed"})
-        result["useful_after_resume"] = (
+        result["useful_after_failed_capture" if options.failed_copy else "useful_after_resume"] = (
             changed["marker"] == "resumed" and changed["counter"] == initial["counter"] + 1 and
             changed["ram_bytes"] == initial["ram_bytes"] and changed["ram_sha256"] != initial["ram_sha256"])
         deleted = cli("delete", "budget-source")
         result["sandbox_deleted"] = deleted["record"]["phase"] == "deleted"
         run(["exec", identity, "umount", bundle + "/rootfs"])
+        if options.failed_copy:
+            run(["exec", identity, "umount", bundle + "/lower"])
         run(["stop", "--timeout=45", identity])
         state = consumer_worker_loss.exact_worker(name, owner, identity)["State"]
         result["worker_stopped_cleanly"] = not state["Running"] and not state["OOMKilled"] and state["ExitCode"] == 0
-        release = worker_storage_release.verify(worker, name, owner, status, artifact)
+        if not result["worker_stopped_cleanly"]:
+            raise ValueError(f"owned worker exit was not clean: exit={state['ExitCode']}, oom={state['OOMKilled']}")
+        release = release_storage(status, artifact)
         result["kernel_storage_released"] = release.get("passed") is True
+        if options.failed_copy:
+            worker_name = name + "-preservation"
+            replacement_command = list(command)
+            replacement_command[replacement_command.index(name)] = worker_name
+            result["preservation_command"] = replacement_command
+            attempted_names.append(worker_name)
+            identity = run(replacement_command)
+            result["preservation_container_id"] = identity
+            successor = consumer_worker_loss.ready(worker_name, owner, identity, deadline)["status"]
+            if successor["epoch"] == status["epoch"] or successor["store_id"] != status["store_id"]:
+                raise ValueError("failed-capture preservation requires the same retained store and a new epoch")
+            result["same_store_new_epoch"] = True
+            result["failed_payload_preserved"] = json.loads(run(["exec", identity, "python3", "-c", """
+import hashlib,json,pathlib,sys
+root=pathlib.Path(sys.argv[1]);expected=json.loads(sys.argv[2])
+assert not (root/'checkpoint.json').exists()
+actual={name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in expected}
+print(json.dumps(actual==expected))
+""", capture, json.dumps(result["failed_capture_hashes"])]))
+            run(["stop", "--timeout=45", identity])
+            final = consumer_worker_loss.exact_worker(worker_name, owner, identity)["State"]
+            if final["Running"] or final["OOMKilled"] or final["ExitCode"] != 0:
+                raise ValueError("preservation epoch did not stop cleanly")
+            successor_output = artifact / "successor-release"
+            successor_output.mkdir()
+            result["successor_storage_release"] = release_storage(successor, successor_output)
+            result["successor_storage_released"] = result["successor_storage_release"].get("passed") is True
         after = consumer_worker_loss.sysctls(docker_image=worker["native_base_image"],
                                              owner=owner, artifact=artifact, phase="after")
         result["host_sysctls_unchanged"] = before == after
         result["inputs_unchanged"] = (
             reference.sha(Path(__file__)) == result["runner_sha256"] and
             reference.sha(actor) == result["actor_sha256"] and reference.sha(archive) == result["rootfs_sha256"])
-        require_complete(result)
+        if options.failed_copy:
+            require_failed_capture_complete(result)
+        else:
+            require_complete(result)
         result["passed"] = True
     except (Exception, KeyboardInterrupt) as error:
         result["error"] = str(error)
     finally:
         try:
-            if attempted:
-                logs = subprocess.run([*reference.DOCKER, "logs", name], capture_output=True, text=True)
-                (artifact / "worker.log").write_text(logs.stdout + logs.stderr)
+            for created_name in reversed(attempted_names):
+                logs = subprocess.run([*reference.DOCKER, "logs", created_name], capture_output=True, text=True)
+                filename = "worker.log" if created_name == name else "preservation-worker.log"
+                (artifact / filename).write_text(logs.stdout + logs.stderr)
                 # Only this fixture's checked owner can be removed. Stop every
                 # writer before archiving; preserve the volume if archival fails.
-                reference.owned_delete("container", name, owner)
+                reference.owned_delete("container", created_name, owner)
             if not result["passed"] and volume:
                 upstream_bats.archive_stopped_volumes(
                     artifact, name, owner, [name], worker["image"], result, compressed=True)

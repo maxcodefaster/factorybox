@@ -12,6 +12,9 @@ import uuid
 import reference
 
 ROOT_METADATA_CASES = (
+    "TestWorkerExitPreservesRecoveredFailedCapture",
+    "TestWorkerExitPreservesOtherClosedFailedCaptures",
+    "TestWorkerExitRejectsUnprovedRecoveredCapture",
     "TestEpochRejectedCaptureIsRetainedMetadataWithoutCheckpoint",
     "TestEpochRejectedCaptureRequiresClosedHistoryAndSafeGuard",
     "TestEpochDependenciesPreserveConfirmedDeletedFailedCapture",
