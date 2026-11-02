@@ -561,12 +561,9 @@ func (e *Engine) recoverCheckpointSource(relative string, record Record, id stri
 }
 
 func (e *Engine) checkpointFiles(ctx context.Context, relative string) ([]CheckpointFile, error) {
+	// List only runtime inputs copied by Resume. Capture ownership and guard
+	// journals remain separate evidence, not additional restore images.
 	names := []string{"criu.conf", "filesystem.json", "source-state.json", "sysbox-state.json"}
-	if _, err := e.root.Lstat(relative + "/" + sysboxcapture.CaptureLowerAliasIntent); err == nil {
-		names = append(names, sysboxcapture.CaptureLowerAliasIntent)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
 	images, err := e.root.Open(relative + "/images")
 	if err != nil {
 		return nil, err
