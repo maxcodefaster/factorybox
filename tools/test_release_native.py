@@ -217,7 +217,7 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                     "--worker-build", "exact-worker", "--suite", suite])
             for required in ["criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd",
                              "recovery-planned", "recovery-abrupt", "factory-source", "factory-reserve",
-                             "storefs", "worker-storage-exit", "shared-source-large", "shared-filemap",
+                             "storefs", "filesystem-cow", "worker-storage-exit", "shared-source-large", "shared-filemap",
                              "failed-resume-delete", "retained-base-retirement"]:
                 self.assertIn(required, roles)
             self.assertEqual(dict(commands)["retained-base-retirement"][1:], [
