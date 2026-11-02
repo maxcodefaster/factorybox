@@ -40,10 +40,14 @@ BACKING_RETIREMENT_PROOFS = [
     'epoch_metadata_accepts_completed_retirement', 'manager_partial_unlink_interrupted',
     'foreign_manager_entry_preserved', 'manager_automatically_retired',
     'unaccepted_preparation_automatically_recovered',
+    'mixed_criu_metadata_inventoried', 'mixed_criu_live_dependency_preserved',
 ]
 
 BACKING_RETIREMENT_UNIT_TESTS = [
     'TestSandboxBackingRetirementAdmission',
+    'TestRetainedMetadataKeepsRecoveryRecipeStrict',
+    'TestRetainedMetadataCannotExecuteLifecycle',
+    'TestRecoveryStoreEpochIdentity',
     'TestManagerBackingChecksOtherEpochOwnersAndBindings',
     'TestManagerBackingPathsAreBoundToOneNativeOwner',
     'TestManagerBackingRejectsSymlinkKindsAndPayloads',

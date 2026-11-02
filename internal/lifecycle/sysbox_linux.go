@@ -80,6 +80,9 @@ func (e *Engine) command(ctx context.Context, lock *os.File, args ...string) ([]
 }
 
 func (e *Engine) commandFiles(ctx context.Context, lock *os.File, files []*os.File, args ...string) ([]byte, error) {
+	if e.metadataOnly {
+		return nil, fmt.Errorf("retained metadata handle cannot execute runtime commands")
+	}
 	if err := e.validateRoot(); err != nil {
 		return nil, err
 	}

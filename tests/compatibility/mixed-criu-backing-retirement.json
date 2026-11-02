@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "source_commit": "333faa5",
+  "previous_manifest": "tests/compatibility/failed-capture-retirement.json",
+  "previous_manifest_sha256": "968b13ba7666eb8003ffe930d62cc5a5bde1b2c9feae067baca987c17bf3e6a9",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Extend the owned backing-retirement fixture with retained metadata recording a different CRIU digest. Require its live dependency to block cleanup, then its confirmed deletion to permit ordinary cleanup. Keep every existing capacity, interruption, ownership, successor and peer assertion, vet, resource ceiling and lifecycle deadline. Add metadata-only admission and execution-refusal tests while retaining all original recovery identity refusals.",
+  "files": {
+    "tools/bounded_store_native.py": {
+      "before_sha256": "3314ea89ca4ea2c7aa1b265f828015b555ebfb71d62728953981c3f051b550c4",
+      "after_sha256": "10d9b7e72f5a472d7332b238e871040e0444350f024e3429822532d58b8e588b"
+    },
+    "internal/lifecycle/sandbox_retirement_native_linux_test.go": {
+      "before_sha256": "1b244b1153569ec134fe0056e839aedbce956e439e11b9690519c16b5a7f8b69",
+      "after_sha256": "d9356945f1c85793d348c96301ca312df6d861bd55f4c620d7492c5f4623b638"
+    },
+    "internal/lifecycle/retained_metadata_linux_test.go": {
+      "before_sha256": null,
+      "after_sha256": "0a22e911b653263df13b3a75ba5fe018dabe239af97e59a7d2c2670edda7a3bf"
+    }
+  },
+  "regressions": [
+    "TestNativeSandboxBackingRetirement",
+    "TestRetainedMetadataKeepsRecoveryRecipeStrict",
+    "TestRetainedMetadataCannotExecuteLifecycle",
+    "TestRecoveryStoreEpochIdentity",
+    "test_capacity_fixture_declaration_preserves_original_assertion_bytes"
+  ]
+}

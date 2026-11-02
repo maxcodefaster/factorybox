@@ -18,6 +18,57 @@ func backingRetirementArgs(request SandboxBackingRequest) []string {
 	return []string{"retire-sandbox", "--sandbox-owner", request.SandboxOwner, "--input-sha256", request.InputSHA256, request.SandboxID}
 }
 
+// This metadata belongs only to the fixture's owned store. No old process or
+// recoverable checkpoint is invented. A worker upgrade may leave just such a
+// closed epoch behind, and it must still participate in dependency checks.
+func backingRetirementOldRecipe(t *testing.T, status boundedLossStatus, victim Record) string {
+	t.Helper()
+	epochID := strings.Repeat("e", 32)
+	parent := status.Store + "/epochs/" + epochID
+	config := status.Lifecycle
+	config.Root = parent + "/controller"
+	config.CriuSHA256 = strings.Repeat("f", 64)
+	if config.CriuSHA256 == status.Lifecycle.CriuSHA256 {
+		t.Fatal("fixture must use a different CRIU recipe")
+	}
+	for _, path := range []string{parent, config.Root, config.Root + "/objects/old-peer",
+		config.Root + "/runtime", config.Root + "/forks", config.Root + "/bases"} {
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(config.Root+"/.lock", nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	header := map[string]any{"schema": 1, "store": status.Store, "store_id": status.StoreID,
+		"epoch": epochID, "boot_id": status.BootID, "lifecycle": config}
+	data, _ := json.Marshal(header)
+	if err := os.WriteFile(parent+"/worker.json", data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(config.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	old := &Engine{config: config, boot: status.BootID, root: root}
+	spec, _ := json.Marshal(map[string]any{"mounts": []map[string]string{
+		{"source": status.Lifecycle.ManagerRoot + "/docker/" + victim.RuntimeID},
+	}})
+	// A live reference in another recipe must still refuse deletion.
+	record := Record{Version: 1, ID: "old-peer", Owner: strings.Repeat("d", 32),
+		RuntimeID: "fbx-" + strings.Repeat("d", 32), BootID: status.BootID,
+		RuntimeSHA256: config.RuntimeSHA256, ConfigSHA256: sum(spec), Phase: "running",
+		InputBundle: "/old/input", Rootfs: "/old/input/rootfs"}
+	if err := root.WriteFile("objects/old-peer/config.json", spec, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := old.write(record); err != nil {
+		t.Fatal(err)
+	}
+	return config.Root
+}
+
 func TestNativeSandboxBackingRetirement(t *testing.T) {
 	if os.Getenv("FACTORYBOX_NATIVE_BACKING_RETIREMENT") != "1" {
 		t.Skip("owned Sandbox backing retirement fixture only")
@@ -76,6 +127,28 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 	managerWindow := manager + "/zz-retirement-window"
 	if err := os.WriteFile(managerWindow, []byte("private stopped manager data\n"), 0600); err != nil {
 		t.Fatal(err)
+	}
+	oldRoot := backingRetirementOldRecipe(t, status, victim.Record)
+	requested := append([]string{"--worker-run-root", "/run/factorybox"}, backingRetirementArgs(request)...)
+	if output, err := boundedLossCommand(requested...); err == nil ||
+		!strings.Contains(err.Error(), "live Sandbox binds retiring private backing") {
+		t.Fatal("old CRIU metadata was not inventoried for its live dependency", string(output), err)
+	}
+	// Retain the old metadata but complete its reference, as a stopped old
+	// worker would. The ordinary cleanup must now succeed with both recipes.
+	root, err := os.OpenRoot(oldRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := &Engine{config: status.Lifecycle, boot: status.BootID, root: root}
+	old.config.Root = oldRoot
+	oldRecord, err := old.read("old-peer")
+	if err == nil {
+		oldRecord.Phase, oldRecord.Delete = "deleted", &Operation{Attempted: true, CompletedAt: "deleted"}
+		err = old.write(oldRecord)
+	}
+	if closeErr := root.Close(); err != nil || closeErr != nil {
+		t.Fatal("close fixture's old dependency", err, closeErr)
 	}
 	managerCancel := cancelResumeRemoval{Context: context.Background(), files: []string{managerWindow}}
 	if _, err := engine.RetireDeletedManagerBacking(managerCancel, request); !errors.Is(err, context.Canceled) {
@@ -219,5 +292,6 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 		"epoch_metadata_accepts_completed_retirement": true,
 		"manager_partial_unlink_interrupted":          true, "foreign_manager_entry_preserved": true,
 		"manager_automatically_retired": true, "unaccepted_preparation_automatically_recovered": true,
+		"mixed_criu_metadata_inventoried": true, "mixed_criu_live_dependency_preserved": true,
 	})
 }

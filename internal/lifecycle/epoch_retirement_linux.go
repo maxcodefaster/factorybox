@@ -50,6 +50,10 @@ func (f *epochRetirementForest) close() {
 }
 
 func (e *Engine) retirementForest() (_ *epochRetirementForest, resultErr error) {
+	return e.retirementForestUsing(e.openRetainedController)
+}
+
+func (e *Engine) retirementForestUsing(open func(string) (*Engine, error)) (_ *epochRetirementForest, resultErr error) {
 	forest := &epochRetirementForest{controllers: map[string]*Engine{e.config.Root: e}}
 	defer func() {
 		if resultErr != nil {
@@ -88,7 +92,7 @@ func (e *Engine) retirementForest() (_ *epochRetirementForest, resultErr error) 
 		if root == e.config.Root {
 			continue
 		}
-		old, err := e.openRetainedController(root)
+		old, err := open(root)
 		if err != nil {
 			return nil, err
 		}

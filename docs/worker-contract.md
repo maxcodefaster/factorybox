@@ -386,6 +386,13 @@ receipt and inventory live beside the bounded image on the original private
 backing volume, so a guest-full image does not prevent reclamation. This does
 not enlarge the guest store or replace worker admission.
 
+Private backing cleanup inventories retained metadata even when an older epoch
+records a different valid CRIU digest. It still requires the exact store image,
+boot, Sysbox runtime, controller paths and storage attachment identities. These
+metadata handles cannot execute lifecycle or runtime commands. Recovery,
+checkpoint inspection and epoch retirement keep their existing strict CRIU
+recipe checks; cleanup does not make an old RAM snapshot recoverable.
+
 Ordinary `retire-sandbox` also completes this manager stage when replaying an
 older overlay-only receipt, without rewriting that receipt or inventory.
 `retire-manager` accepts the same exact owner/input arguments for isolated

@@ -43,6 +43,20 @@ func validateRecoveryStoreEpoch(config Config, boot string, source Record, epoch
 // config names the retained controller but carries the currently verified
 // attachment. Only its old mount/loop identity may differ across replacement.
 func validateRetainedStoreEpoch(config Config, boot string, epoch recoveryStoreEpoch) (storefs.Active, error) {
+	old, err := validateRetainedStoreMetadata(config, boot, epoch)
+	if err != nil {
+		return storefs.Active{}, err
+	}
+	if epoch.Lifecycle.CriuSHA256 != config.CriuSHA256 {
+		return storefs.Active{}, fmt.Errorf("bounded recovery source epoch or retained image identity changed")
+	}
+	return old, nil
+}
+
+// Dependency inventory does not restore RAM or run an old capture recipe.
+// A valid recorded CRIU digest may differ after an upgrade. Every storage,
+// runtime and boot identity remains required; recovery still requires equality.
+func validateRetainedStoreMetadata(config Config, boot string, epoch recoveryStoreEpoch) (storefs.Active, error) {
 	current, old := config.BoundedStore, epoch.Lifecycle.BoundedStore
 	if current == nil || old == nil {
 		return storefs.Active{}, fmt.Errorf("retained epoch requires complete bounded store identities")
@@ -53,7 +67,8 @@ func validateRetainedStoreEpoch(config Config, boot string, epoch recoveryStoreE
 		config.Root != store+"/epochs/"+epoch.Epoch+"/controller" || epoch.Lifecycle.Root != config.Root ||
 		epoch.Lifecycle.ManagerRoot != config.ManagerRoot || epoch.Lifecycle.Runtime != config.Runtime ||
 		epoch.Lifecycle.RuntimeSHA256 != config.RuntimeSHA256 ||
-		epoch.Lifecycle.Criu != config.Criu || epoch.Lifecycle.CriuSHA256 != config.CriuSHA256 ||
+		epoch.Lifecycle.Criu != config.Criu || !digest.MatchString(epoch.Lifecycle.CriuSHA256) ||
+		!digest.MatchString(config.CriuSHA256) ||
 		old.Image != current.Image || old.Target != current.Target || !old.DirectIO ||
 		old.FilesystemMax != current.FilesystemMax || old.LoopNumber < 0 ||
 		old.BlockDevice != uint64(unix.Mkdev(7, uint32(old.LoopNumber))) ||

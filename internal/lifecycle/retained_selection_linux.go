@@ -30,6 +30,14 @@ func retainedControllerPath(config Config, source string) error {
 }
 
 func (e *Engine) openRetainedController(source string) (_ *Engine, resultErr error) {
+	return e.openRetained(source, false)
+}
+
+func (e *Engine) openRetainedMetadata(source string) (*Engine, error) {
+	return e.openRetained(source, true)
+}
+
+func (e *Engine) openRetained(source string, metadataOnly bool) (_ *Engine, resultErr error) {
 	if err := retainedControllerPath(e.config, source); err != nil {
 		return nil, err
 	}
@@ -58,14 +66,22 @@ func (e *Engine) openRetainedController(source string) (_ *Engine, resultErr err
 	}
 	config := e.config
 	config.Root = source
-	if _, err := validateRetainedStoreEpoch(config, e.boot, epoch); err != nil {
+	validate := validateRetainedStoreEpoch
+	if metadataOnly {
+		validate = validateRetainedStoreMetadata
+	}
+	if _, err := validate(config, e.boot, epoch); err != nil {
 		return nil, err
+	}
+	if metadataOnly {
+		// Preserve historical evidence comparisons, never execute this recipe.
+		config.CriuSHA256 = epoch.Lifecycle.CriuSHA256
 	}
 	retained, err := os.OpenRoot(source)
 	if err != nil {
 		return nil, err
 	}
-	old := &Engine{config: config, boot: e.boot, root: retained}
+	old := &Engine{config: config, boot: e.boot, root: retained, metadataOnly: metadataOnly}
 	defer func() {
 		if resultErr != nil {
 			old.Close()

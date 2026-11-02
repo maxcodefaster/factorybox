@@ -94,6 +94,8 @@ type Engine struct {
 	config Config
 	boot   string
 	root   *os.Root
+	// Historical dependency readers have no lifecycle execution authority.
+	metadataOnly bool
 }
 
 func Open(config Config) (_ *Engine, resultErr error) {
@@ -201,6 +203,9 @@ func privateDirectory(path string) error {
 }
 
 func (e *Engine) lock() (*os.File, error) {
+	if e.metadataOnly {
+		return nil, fmt.Errorf("retained metadata handle cannot execute lifecycle operations")
+	}
 	file, err := e.lockRoot()
 	if err != nil {
 		return nil, err

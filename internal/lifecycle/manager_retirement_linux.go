@@ -160,7 +160,9 @@ func (e *Engine) deletedBackingForest() (*epochRetirementForest, error) {
 	if e.config.BoundedStore == nil {
 		return nil, fmt.Errorf("Sandbox backing retirement requires the explicit bounded-store profile")
 	}
-	forest, err := e.retirementForest()
+	// Private backing cleanup inventories old dependencies but cannot recover
+	// their processes. Old CRIU recipes do not invalidate this metadata.
+	forest, err := e.retirementForestUsing(e.openRetainedMetadata)
 	if err != nil {
 		return nil, err
 	}
