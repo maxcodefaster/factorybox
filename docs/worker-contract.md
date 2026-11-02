@@ -155,6 +155,17 @@ hardlinks, symlinks, mounts and prepared or attempted outcomes refuse continuati
 This keeps a failed copy recoverable without resetting a Pause or repeating an
 uncertain native restore.
 
+An explicit Delete may stop a recorded failed native Resume before its
+pre-activation hold. It requires the unchanged original checkpoint, complete
+private preparation and exact restore recipe, without a held or completed
+restore receipt. Under the original exclusive operation lock, the controller
+also verifies the original stopped runtime and empty, unfrozen cgroup. It
+persists that admission before deletion. Error text or a timeout alone grants
+no authority. The failed Resume, complete checkpoint, private restore inputs
+and failure diagnostics remain unchanged. Exact Delete replay is idempotent;
+later epoch retirement recognizes the admission without inventing a successful
+Resume. Deleting execution does not retire its saved backing.
+
 The host preflight observation does not reserve 4 GiB, cap guest writes or
 guarantee space throughout an operation. The selected bounded filesystem below
 separately limits its own backing and applies its own admission policy. This

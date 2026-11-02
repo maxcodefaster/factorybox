@@ -14,9 +14,11 @@ import uuid
 
 import build_worker
 import build_config
+import capture_budget_native
 import consumer_worker_loss
 import criu_candidate
 import devx_inputs
+import failed_resume_delete
 import native_base
 import reference
 import upstream_unit
@@ -57,11 +59,15 @@ def main():
                         help='Keep this many independent source descriptions and file positions through every Pause/Resume')
     parser.add_argument('--writable-mapping', action='store_true',
                         help='Keep a closed-FD writable shared mapping across Pause/Resume and an independent editor replacement')
+    parser.add_argument('--failed-resume-delete', action='store_true',
+                        help='Use the pinned pre-correction CRIU in this private failure fixture, then require exact Stop without another restore')
     args = parser.parse_args()
     if args.retained_descriptions < 0:
         parser.error('--retained-descriptions cannot be negative')
+    if args.failed_resume_delete and (not args.writable_mapping or args.case != 'closed-file-edit'):
+        parser.error('--failed-resume-delete requires --writable-mapping --case closed-file-edit')
     sandbox_id = 'runtime' if args.factory_preparation_repo else 'source'
-    if args.diagnostic_criu_build and not args.diagnostic_runtime:
+    if args.diagnostic_criu_build and not args.diagnostic_runtime and not args.failed_resume_delete:
         raise ValueError('a CRIU override requires the explicitly unqualified diagnostic runtime')
     if args.alias_mount and args.consumer_inputs:
         raise ValueError('the alias fixture requires the small explicitly owned rootfs')
@@ -70,6 +76,17 @@ def main():
     if args.factory_preparation_repo and not args.docker_child:
         raise ValueError('Factory preparation proof requires the complete private Docker contract fixture')
     worker_root, worker = build_worker.load(args.worker_build)
+    if args.failed_resume_delete and not args.diagnostic_criu_build:
+        _, selected, _, _ = criu_candidate.load(worker['criu_build'])
+        if 'shared-filemap-access.patch' in selected.get('candidate_patch_sha256', {}):
+            criu_candidate.require_mapping_access(selected)
+            predecessor = selected['base_candidate']
+            previous_root, previous, _, _ = criu_candidate.load(predecessor)
+            if (reference.sha(previous_root / 'result.json') != selected['base_candidate_result_sha256'] or
+                    'shared-filemap-access.patch' in previous.get('candidate_patch_sha256', {})):
+                raise ValueError('failed Resume fixture requires the exact pinned pre-correction CRIU')
+            criu_candidate.require_descriptor_transfer(previous)
+            args.diagnostic_criu_build = predecessor
     platform = worker['platform']
     native_base.require_native_host(platform, json.loads(reference.docker(['info', '--format', '{{json .}}'])))
     current = {directory + '/' + key: value for directory in ['internal', 'cmd/factorybox']
@@ -103,6 +120,7 @@ def main():
     result['platform'] = platform
     result['retained_descriptions'] = args.retained_descriptions
     result['writable_mapping'] = args.writable_mapping
+    result['failed_resume_delete'] = args.failed_resume_delete
     result['store_capacity_range'] = {'minimum_bytes': 1 << 30, 'maximum_bytes': 8 << 30}
     factory_preparer = None
     if args.factory_preparation_repo:
@@ -553,6 +571,10 @@ print(json.dumps(result))
                     raise ValueError('foreign network peer refusal changed the pause or unrelated interface')
                 run(['exec',identity,'ip','link','delete',peer])
                 phase['foreign_peer_refused_before_resume_transition'] = True
+            if args.failed_resume_delete:
+                run([*ctl, 'resume', '--snapshot-id', phase['snapshot_id'], sandbox_id], timeout=90, failure=True)
+                result['failed_resume_delete_proof'] = failed_resume_delete.settle(run, ctl, sandbox_id, identity)
+                break
             phase['resume'] = json.loads(run([*ctl, 'resume', '--snapshot-id', phase['snapshot_id'], sandbox_id], timeout=90))
             live_pid = phase['resume']['runtime']['pid']
             phase['after'] = actor()
@@ -595,7 +617,7 @@ print(json.dumps({'inode':p.stat().st_ino,'sha256':hashlib.sha256(p.read_bytes()
             phase['watch_after_resume'] = actor()
             if phase['watch_after_resume']['watch_bytes'] <= 0:
                 raise ValueError('restored source directory watcher did not observe new edits')
-        if not all(phase['queued_watch_preserved'] for phase in result['phases']):
+        if not args.failed_resume_delete and not all(phase['queued_watch_preserved'] for phase in result['phases']):
             raise ValueError('Resume lost the source watch events queued during the pause')
         result['delete'] = json.loads(run([*ctl, 'delete', sandbox_id], timeout=60))
         if args.outbound_network:
@@ -617,7 +639,26 @@ print(json.dumps({'inode':p.stat().st_ino,'sha256':hashlib.sha256(p.read_bytes()
         result['worker_log'] = run(['logs', identity])
         if result['final_state']['Running'] or result['final_state']['ExitCode'] != 0 or result['final_state']['OOMKilled']:
             raise ValueError('shared-source worker did not drain cleanly')
-        result['storage_release'] = worker_storage_release.verify(worker, name, owner, status, artifact)
+        observation = 0
+        while True:
+            selected = artifact / 'storage-release' / str(observation)
+            selected.mkdir(parents=True)
+            try:
+                result['storage_release'] = worker_storage_release.verify(worker, name, owner, status, selected)
+                result['storage_release_observations'] = observation + 1
+                break
+            except ValueError:
+                receipt = selected / ('storage-release-' + status['epoch'])
+                if (not capture_budget_native.pending_kernel_owner(
+                        json.loads(receipt.with_suffix('.json').read_text()),
+                        receipt.with_suffix('.stderr').read_text()) or
+                        time.monotonic() >= deadline):
+                    raise
+                # The worker is already confirmed exited. Reobserve only its
+                # original kernel attachment; never restart the Sandbox or
+                # rewrite an earlier failed storage-release observation.
+                observation += 1
+                time.sleep(.02)
         result['passed'] = True
     except Exception as error:
         result['error'] = str(error)

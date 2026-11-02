@@ -447,7 +447,14 @@ func (b *epochInventoryBuilder) resumes(record Record) error {
 	b.keep(parent, unix.S_IFDIR|0700)
 	for _, entry := range entries {
 		pause, found := pauses[entry.Name()]
-		if !found || !tokenID.MatchString(entry.Name()) || pause.Resume == nil || !pause.Resume.Attempted || pause.Resume.CompletedAt == "" || pause.Resume.Error != "" {
+		if !found || !tokenID.MatchString(entry.Name()) || pause.Resume == nil || !pause.Resume.Attempted {
+			return fmt.Errorf("epoch resume is unfinished or has no original pause")
+		}
+		cancelled, err := b.engine.deletedFailedResume(b.ctx, record, pause)
+		if err != nil {
+			return err
+		}
+		if !cancelled && (pause.Resume.CompletedAt == "" || pause.Resume.Error != "") {
 			return fmt.Errorf("epoch resume is unfinished or has no original pause")
 		}
 		seen[entry.Name()] = true
@@ -462,8 +469,10 @@ func (b *epochInventoryBuilder) resumes(record Record) error {
 		if intent.Version != 1 || intent.Request != request || intent.SnapshotSHA != pause.CheckpointSHA256 || intent.CriuSHA256 != b.engine.config.CriuSHA256 || intent.RuntimeSHA256 != b.engine.config.RuntimeSHA256 {
 			return fmt.Errorf("epoch resume intent differs from its immutable request")
 		}
-		if err := epochRestoreReceipt(b.engine, relative+"/resume", record, request, pause.Resume.CompletedAt); err != nil {
-			return err
+		if !cancelled {
+			if err := epochRestoreReceipt(b.engine, relative+"/resume", record, request, pause.Resume.CompletedAt); err != nil {
+				return err
+			}
 		}
 		var prepared []CheckpointFile
 		if err := b.engine.readCheckpointJSON(relative+"/resume-prepared.json", &prepared); err != nil {
@@ -482,8 +491,14 @@ func (b *epochInventoryBuilder) resumes(record Record) error {
 				return err
 			}
 		}
-		for _, name := range []string{"resume-intent.json", "resume-prepared.json", "resume-held.json", "resume-result.json", "filesystem.json", "source-state.json", "sysbox-state.json", "criu.conf"} {
+		for _, name := range []string{"resume-intent.json", "resume-prepared.json", "filesystem.json", "source-state.json", "sysbox-state.json", "criu.conf"} {
 			b.file(relative + "/" + name)
+		}
+		if cancelled {
+			b.file(relative + "/resume-delete-admission.json")
+		} else {
+			b.file(relative + "/resume-held.json")
+			b.file(relative + "/resume-result.json")
 		}
 	}
 	for snapshot, pause := range pauses {

@@ -23,6 +23,9 @@ ROOT_METADATA_CASES = (
     "TestEpochRejectedCaptureRequiresClosedHistoryAndSafeGuard",
     "TestEpochDependenciesPreserveConfirmedDeletedFailedCapture",
     "TestEpochDependenciesRejectUnprovedFailedCapture",
+    "TestFailedResumeDeleteRequiresOriginalTerminalFailure",
+    "TestDeletedFailedResumePreservesOriginalInputs",
+    "TestDeletedFailedResumeRejectsChangedOrUnfinishedEvidence",
 )
 
 

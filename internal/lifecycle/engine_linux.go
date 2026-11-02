@@ -690,7 +690,9 @@ func (e *Engine) Delete(ctx context.Context, id string) (View, error) {
 			return View{Record: record}, fmt.Errorf("pause/resume is unresolved; deletion requires its exact failed-capture proof: %w", err)
 		}
 	} else if record.Phase == "resuming" {
-		return View{Record: record}, fmt.Errorf("pause/resume is unresolved; repeat its exact resume request before deleting")
+		if err := e.admitFailedResumeDelete(ctx, lock, record); err != nil {
+			return View{Record: record}, fmt.Errorf("pause/resume is unresolved; deletion requires its exact failed-Resume proof: %w", err)
+		}
 	}
 	state, err := e.state(ctx, record, lock)
 	if err != nil {

@@ -217,12 +217,16 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                     "--worker-build", "exact-worker", "--suite", suite])
             for required in ["criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd",
                              "recovery-planned", "recovery-abrupt", "factory-source", "factory-reserve",
-                             "storefs", "worker-storage-exit", "shared-source-large", "shared-filemap"]:
+                             "storefs", "worker-storage-exit", "shared-source-large", "shared-filemap",
+                             "failed-resume-delete"]:
                 self.assertIn(required, roles)
             shared_source = dict(commands)["shared-source-large"]
             self.assertIn("--retained-descriptions", shared_source)
             self.assertEqual(shared_source[shared_source.index("--retained-descriptions") + 1], "257")
             self.assertIn("--writable-mapping", shared_source)
+            self.assertEqual(dict(commands)["failed-resume-delete"][1:], [
+                "tools/shared_source_probe.py", "--worker-build", "exact-worker",
+                "--case", "closed-file-edit", "--writable-mapping", "--failed-resume-delete"])
             for role, command in commands:
                 self.assertNotIn("--native-candidate", command)
                 self.assertNotIn("--push", command)

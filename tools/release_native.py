@@ -58,6 +58,8 @@ def native_commands(options, worker, bats_images):
         ("shared-source-large", [python, "tools/shared_source_probe.py", "--worker-build", options.worker_build,
                                  "--case", "open-file-atomic-replacement", "--alias-mount",
                                  "--retained-descriptions", "257", "--writable-mapping"]),
+        ("failed-resume-delete", [python, "tools/shared_source_probe.py", "--worker-build", options.worker_build,
+                                  "--case", "closed-file-edit", "--writable-mapping", "--failed-resume-delete"]),
         ("criu-core", [python, "tools/criu_core.py", *base,
                        "--retained-candidate", worker["criu_build"], *criu_base, *upstream_target]),
         ("sysbox-unit", [python, "tools/upstream_unit.py", *sysbox, "--suite", "all",

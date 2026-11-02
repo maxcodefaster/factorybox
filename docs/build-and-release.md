@@ -168,6 +168,11 @@ gate also uses `--writable-mapping`, retaining the original writable mapping
 through Pause/Resume while an editor independently replaces its pathname. It
 requires useful writes to the original mapping and unchanged replacement bytes,
 alongside the existing 257-description and alias-mount assertions.
+The `failed-resume-delete` gate uses that worker's delivered CLI and its pinned
+pre-correction CRIU only inside an owned negative-control container. It requires
+a real writable-mapping restore failure, confirmed Stop and exact Delete replay,
+unchanged Source and checkpoint bytes, clean worker exit and kernel storage
+release. It never substitutes a component in a retained installation.
 
 Each completed local worker build keeps one never-started, owned image-reference container so
 node image GC cannot remove the selected input between build and qualification. It runs no
