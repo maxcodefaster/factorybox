@@ -436,6 +436,55 @@ sys.stdout.buffer.write(b'b'*(1<<20))
             self.assertTrue(record["whole_decompressed_payload_verified"])
 
     @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
+    def test_explicit_archive_codec_round_trips_with_its_recorded_decode_window(self):
+        import subprocess
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifacts/closed-source"
+            archive.mkdir(parents=True)
+            raw = archive / "cold-store.tar"
+            command = [sys.executable, "-B", "-S", "-c",
+                       "import sys;sys.stdout.buffer.write(b'complete retained source\\n'*1000)"]
+            original, codecs = artifact_storage.subprocess.Popen, []
+            def launch(args, **kwargs):
+                if args[0] == "zstd":
+                    codecs.append(args)
+                return original(args, **kwargs)
+            with (archive / "log").open("xb") as log, \
+                    mock.patch.object(artifact_storage.subprocess, "Popen", side_effect=launch):
+                record = artifact_storage.archive_stream(
+                    command, raw, root, log, maximum=8 << 20, timeout=30,
+                    compression_level=9, window_log=31)
+                self.assertEqual(record["codec_parameters"], ["-T1", "-9", "--long=31"])
+                self.assertTrue(record["whole_decompressed_payload_verified"])
+                self.assertEqual(artifact_storage.verify_compacted(raw, record["original"]),
+                                 record["encoded"])
+            self.assertTrue(any("-9" in args and "--long=31" in args for args in codecs))
+            decoders = [args for args in codecs if "-dc" in args]
+            self.assertEqual(len(decoders), 2)
+            self.assertTrue(all("--long=31" in args for args in decoders))
+            self.assertFalse(raw.exists())
+            self.assertIn("--long=31", record["reconstruct"])
+            subprocess.run(record["reconstruct"], check=True, capture_output=True)
+            self.assertEqual(raw.read_bytes(), b"complete retained source\n" * 1000)
+
+    def test_archive_codec_rejects_unbounded_or_ambiguous_options_before_creation(self):
+        for options in [
+                {"compression_level": True}, {"compression_level": "9"},
+                {"compression_level": 22}, {"window_log": True},
+                {"window_log": "31"}, {"window_log": 32}]:
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                archive = root / "artifacts/closed-source"
+                archive.mkdir(parents=True)
+                with self.assertRaisesRegex(ValueError, "archive codec"):
+                    artifact_storage.archive_stream(
+                        [], archive / "cold-store.tar", root, None,
+                        maximum=8 << 20, timeout=30, **options)
+                self.assertEqual(list(archive.iterdir()), [])
+
+    @unittest.skipUnless(shutil.which("zstd"), "stream archiving requires zstd")
     def test_stream_archive_preserves_more_raw_data_than_its_storage_budget_without_a_raw_copy(self):
         import hashlib
         import subprocess

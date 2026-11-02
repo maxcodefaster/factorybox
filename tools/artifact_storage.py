@@ -143,7 +143,8 @@ def verify_compacted(path, expected):
             raise ValueError("encoded payload no longer matches its receipt")
         digest = hashlib.sha256()
         count = 0
-        with subprocess.Popen(["zstd", "-q", "-dc", *(["--long=31"] if repacked else []),
+        with subprocess.Popen(["zstd", "-q", "-dc",
+                               *(["--long=31"] if repacked or "--long=31" in record.get("codec_parameters", []) else []),
                                "--", str(payload)],
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as process:
             try:
@@ -379,8 +380,13 @@ def compact_closed_run(directory, root):
     return report
 
 
-def archive_stream(command, path, root, log, *, maximum, timeout, decoded_limit=None):
+def archive_stream(command, path, root, log, *, maximum, timeout, decoded_limit=None,
+                   compression_level=1, window_log=27):
     """Save a stopped source's complete tar stream without a raw disk copy."""
+    if (type(compression_level) is not int or compression_level not in (1, 9, 19) or
+            type(window_log) is not int or window_log not in (27, 31)):
+        raise ValueError("unsupported bounded archive codec options")
+    codec_parameters = ["-T1", "-" + str(compression_level), "--long=" + str(window_log)]
     if decoded_limit is None:
         decoded_limit = ARTIFACT_LIMIT
     if type(decoded_limit) is not int or not 0 < decoded_limit <= 64 << 30:
@@ -448,10 +454,10 @@ def archive_stream(command, path, root, log, *, maximum, timeout, decoded_limit=
         }) + "\n").encode())
     try:
         with partial.open("xb") as output:
-            encoder = launch(["zstd", "-q", "-T1", "-1", "--long=27", "--stdout"],
+            encoder = launch(["zstd", "-q", *codec_parameters, "--stdout"],
                              stdin=subprocess.PIPE, stdout=output, stderr=log,
                              preexec_fn=cap_encoder)
-            decoder = launch(["zstd", "-q", "-dc"], stdin=subprocess.PIPE,
+            decoder = launch(["zstd", "-q", "-dc", "--long=" + str(window_log)], stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=log)
             def decode_stored_bytes():
                 # Read the actual encoded file while its single bounded writer
@@ -532,12 +538,14 @@ def archive_stream(command, path, root, log, *, maximum, timeout, decoded_limit=
             "schema": 1,
             "original": {"file": path.name, "bytes": count, "sha256": digest.hexdigest()},
             "encoded": {"file": encoded.name, "bytes": partial.stat().st_size, "sha256": encoded_sha},
-            "codec_parameters": ["-T1", "-1", "--long=27"],
+            "codec_parameters": codec_parameters,
             "decoded_limit_bytes": decoded_limit,
             "whole_decompressed_payload_verified": True,
             "original_stream_hashed": True, "pipelined_disk_verification": True,
             "seconds": time.monotonic() - started,
-            "reconstruct": ["zstd", "-d", "--keep", str(encoded), "-o", str(path)],
+            "reconstruct": ["zstd", "-d", "--keep",
+                            *(["--long=31"] if window_log == 31 else []),
+                            str(encoded), "-o", str(path)],
         }
         os.rename(partial, encoded)
         with receipt.open("x") as output:
