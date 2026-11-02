@@ -137,6 +137,9 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 	if err := e.retireDeletedFailedCaptureBacking(ctx, record, request, forest); err != nil {
 		return result, fmt.Errorf("retire original failed capture backing: %w", err)
 	}
+	if err := e.retireRecoveredCaptureBacking(ctx, record, request, forest); err != nil {
+		return result, fmt.Errorf("retire recovered failed capture backing: %w", err)
+	}
 	// Complete even on an old overlay-only receipt. Manager data has its own
 	// immutable journal; no historical overlay inventory or receipt is rewritten.
 	if _, err := e.retireDeletedManagerBacking(ctx, request, forest); err != nil {

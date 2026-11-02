@@ -49,6 +49,14 @@ after the supported loss of its worker.
 An attempted save that never produced a committed checkpoint. It provides no
 supported recovery state and remains distinct from a committed pause.
 
+**Capture rollback**:
+Confirmed recovery of the original running source after an unsuccessful capture.
+It is not recovery from a saved checkpoint.
+
+**Failed-capture backing retirement**:
+Withdrawal of a failed capture's disposable RAM and filesystem payload after its
+source has been confirmed deleted. Its request, failure and rollback evidence remain retained.
+
 **Recovery selection**:
 A particular saved state deliberately retained as an input for recovery. Its
 retention ends only when that selection is explicitly released. Worker

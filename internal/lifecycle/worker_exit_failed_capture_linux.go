@@ -15,9 +15,9 @@ import (
 // closed, its exact failed Pause and completed guard can remain as diagnostics
 // without preventing worker exit. This observes metadata only: it never thaws,
 // deletes backing, manufactures a checkpoint or authorizes epoch retirement.
-func (e *Engine) exitRecoveredFailedCapture(record Record, id, relative string) (bool, *sysboxcapture.FilesystemTree, error) {
+func (e *Engine) recoveredFailedCapture(record Record, id, relative string) (bool, error) {
 	if epochClosedRecord(record) != nil {
-		return false, nil, nil
+		return false, nil
 	}
 	var acknowledgement struct {
 		Token           string `json:"token"`
@@ -25,31 +25,31 @@ func (e *Engine) exitRecoveredFailedCapture(record Record, id, relative string) 
 	}
 	err := e.readCheckpointJSON(relative+"/guard/guard-capture-aborted.json", &acknowledgement)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil, nil
+		return false, nil
 	}
 	if err != nil || acknowledgement.Token != id || acknowledgement.CaptureInFlight {
-		return false, nil, fmt.Errorf("worker exit capture abort acknowledgement changed: %v", err)
+		return false, fmt.Errorf("capture abort acknowledgement changed: %v", err)
 	}
 	index := -1
 	for i, pause := range record.PauseHistory {
 		if pause.SnapshotID == id {
 			if index != -1 {
-				return false, nil, fmt.Errorf("worker exit failed capture has duplicate Pause history")
+				return false, fmt.Errorf("failed capture has duplicate Pause history")
 			}
 			index = i
 		}
 	}
 	if index == -1 {
-		return false, nil, fmt.Errorf("worker exit failed capture lacks its retained Pause")
+		return false, fmt.Errorf("failed capture lacks its retained Pause")
 	}
 	pause := record.PauseHistory[index]
 	if pause.RejectedAt == "" || pause.Error == "" || pause.SourcePID <= 1 ||
 		pause.CompletedAt != "" || pause.CheckpointSHA256 != "" || pause.Resume != nil {
-		return false, nil, fmt.Errorf("worker exit failed capture is not an unpublished recovered Pause")
+		return false, fmt.Errorf("failed capture is not an unpublished recovered Pause")
 	}
 	var config captureGuardConfig
 	if err := e.readCheckpointJSON(relative+"/guard/guard-intent.json", &config); err != nil {
-		return false, nil, err
+		return false, err
 	}
 	original := record
 	original.Phase, original.Delete = "pausing", nil
@@ -61,38 +61,46 @@ func (e *Engine) exitRecoveredFailedCapture(record Record, id, relative string) 
 		!config.StopSource || config.PID != pause.SourcePID || config.Criu != e.config.Criu ||
 		config.CriuSHA256 != e.config.CriuSHA256 || !reflect.DeepEqual(config.Source, original) ||
 		config.RecordSHA != sum(append(data, '\n')) {
-		return false, nil, fmt.Errorf("worker exit failed capture original source changed: %v", err)
+		return false, fmt.Errorf("failed capture original source changed: %v", err)
 	}
 	// Reuse the pinned intent, outcome and original process-completion checks.
 	// Unlike live reconciliation, do not reopen the now-deleted source/cgroup.
 	if err := e.verifyAbortedCheckpointMetadata(original, id, relative, config); err != nil {
-		return false, nil, err
+		return false, err
 	}
 	anchors := captureGuardAnchors{}
 	anchors.root, err = e.root.Open(".")
 	if err != nil {
-		return false, nil, err
+		return false, err
 	}
 	defer anchors.root.Close()
 	anchors.evidence, err = e.root.Open(relative + "/guard")
 	if err != nil {
-		return false, nil, err
+		return false, err
 	}
 	defer anchors.evidence.Close()
 	if err := captureGuardProcessReceipt(config, anchors); err != nil {
-		return false, nil, err
+		return false, err
 	}
 	abort, err := captureGuardAbortIntent(config, anchors)
 	failure := &checkpointCaptureError{cause: errors.New(abort.Error)}
 	retained := record.PauseHistory[index]
 	if err != nil || abort.FailedAt != retained.RejectedAt ||
 		sandboxErrorSummary(failure.Error()) != retained.Error {
-		return false, nil, fmt.Errorf("worker exit failed capture differs from its retained failure: %v", err)
+		return false, fmt.Errorf("failed capture differs from its retained failure: %v", err)
 	}
 	for _, path := range []string{"checkpoint.json", "capture-result.json", "filesystem.json"} {
 		if _, err := e.root.Lstat(relative + "/" + path); !errors.Is(err, os.ErrNotExist) {
-			return false, nil, fmt.Errorf("worker exit failed capture gained published backing: %s: %v", path, err)
+			return false, fmt.Errorf("failed capture gained published backing: %s: %v", path, err)
 		}
+	}
+	return true, nil
+}
+
+func (e *Engine) exitRecoveredFailedCapture(record Record, id, relative string) (bool, *sysboxcapture.FilesystemTree, error) {
+	recovered, err := e.recoveredFailedCapture(record, id, relative)
+	if err != nil || !recovered {
+		return recovered, nil, err
 	}
 	if record.Base == nil || record.Base.Immutable == nil {
 		return true, nil, nil

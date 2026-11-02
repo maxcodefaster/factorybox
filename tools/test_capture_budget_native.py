@@ -43,6 +43,9 @@ class CaptureBudgetNativeTests(unittest.TestCase):
             self.assertEqual(commands["failed-capture-exit"][1:], [
                 "tools/capture_budget_native.py", "--worker-build", "exact-worker", "--failed-copy",
             ])
+            self.assertEqual(commands["recovered-capture-retirement"][1:], [
+                "tools/capture_budget_native.py", "--worker-build", "exact-worker", "--failed-copy", "--retire-recovered",
+            ])
 
     def test_failed_capture_exit_requires_every_preservation_and_release_gate(self):
         complete = dict.fromkeys([
@@ -69,6 +72,40 @@ class CaptureBudgetNativeTests(unittest.TestCase):
             self.assertFalse(capture_budget_native.pending_kernel_owner(changed, diagnostic))
         self.assertFalse(capture_budget_native.pending_kernel_owner({**receipt, "passed": True}, diagnostic))
         self.assertFalse(capture_budget_native.pending_kernel_owner(receipt, "unconfirmed other identity"))
+
+    def test_recovered_retirement_cannot_substitute_preservation_for_actual_cleanup(self):
+        complete = dict.fromkeys([
+            "failed_copy_observed", "recovered_failed_pause", "same_ram_after_failed_capture",
+            "useful_after_failed_capture", "incomplete_alias_mounted", "sandbox_deleted",
+            "worker_stopped_cleanly", "kernel_storage_released", "same_store_new_epoch",
+            "successor_storage_released", "host_sysctls_unchanged", "inputs_unchanged",
+            "failed_payload_retired", "cleanup_evidence_preserved", "retirement_replay_exact",
+            "registered_base_preserved", "foreign_successor_preserved", "invalid_abort_refused",
+            "published_generation_refused", "foreign_hardlink_refused", "foreign_mount_refused",
+        ], True)
+        complete["retire_recovered"] = True
+        capture_budget_native.require_failed_capture_complete(complete)
+        for key in complete:
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ValueError, "failed capture exit omitted"):
+                    capture_budget_native.require_failed_capture_complete({**complete, key: False})
+
+    def test_retained_retirement_requires_old_identity_and_unchanged_record(self):
+        complete = dict.fromkeys([
+            "failed_copy_observed", "recovered_failed_pause", "same_ram_after_failed_capture",
+            "useful_after_failed_capture", "incomplete_alias_mounted", "sandbox_deleted",
+            "worker_stopped_cleanly", "kernel_storage_released", "same_store_new_epoch",
+            "successor_storage_released", "host_sysctls_unchanged", "inputs_unchanged",
+            "failed_payload_retired", "retained_cleanup_replay_exact", "retained_original_receipt_preserved",
+            "retained_wrong_owner_refused", "retained_current_epoch_refused", "retained_record_unchanged",
+            "registered_base_preserved",
+        ], True)
+        complete["retire_retained_recovered"] = True
+        capture_budget_native.require_failed_capture_complete(complete)
+        for key in complete:
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ValueError, "failed capture exit omitted"):
+                    capture_budget_native.require_failed_capture_complete({**complete, key: False})
 
 
 if __name__ == "__main__":

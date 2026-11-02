@@ -105,7 +105,7 @@ func (e *Engine) managerRetirementJournal(record Record) (*Engine, string, error
 }
 
 func (e *Engine) privateBackingJournal(record Record, kind string) (*Engine, string, error) {
-	if kind != "manager" && kind != "failed-capture" {
+	if kind != "manager" && kind != "failed-capture" && kind != "recovered-capture" {
 		return nil, "", fmt.Errorf("unknown private backing journal")
 	}
 	if e.config.BoundedStore == nil {

@@ -39,6 +39,24 @@ type FilesystemSnapshot struct {
 	RetainedFiles []RetainedFile   `json:"retained_files,omitempty"`
 }
 
+const CaptureLowerAliasIntent = "filesystem-lower-alias-intent.json"
+
+func recordCaptureLowerAlias(destination string, tree FilesystemTree) error {
+	data, err := json.MarshalIndent(tree, "", "  ")
+	if err != nil {
+		return err
+	}
+	parent := filepath.Dir(destination)
+	if err := writePrivate(filepath.Join(parent, CaptureLowerAliasIntent), append(data, '\n')); err != nil {
+		return err
+	}
+	directory, err := os.Open(parent)
+	if err != nil {
+		return err
+	}
+	return errors.Join(directory.Sync(), directory.Close())
+}
+
 type FilesystemTree struct {
 	Name         string          `json:"name"`
 	Source       string          `json:"source"`
@@ -268,7 +286,8 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 			if root.Name != "lower" {
 				return nil, fmt.Errorf("only the prepared immutable lower may be shared")
 			}
-			tree, err := bindImmutableTree(root.Source, destination+"/"+root.Name, *root.Expected)
+			tree, err := bindImmutableTreeRecorded(root.Source, destination+"/"+root.Name, *root.Expected,
+				func(tree FilesystemTree) error { return recordCaptureLowerAlias(destination, tree) })
 			if err != nil {
 				return nil, err
 			}

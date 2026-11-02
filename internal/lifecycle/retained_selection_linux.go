@@ -70,7 +70,8 @@ func (e *Engine) openRetained(source string, metadataOnly bool) (_ *Engine, resu
 	if metadataOnly {
 		validate = validateRetainedStoreMetadata
 	}
-	if _, err := validate(config, e.boot, epoch); err != nil {
+	previous, err := validate(config, e.boot, epoch)
+	if err != nil {
 		return nil, err
 	}
 	if metadataOnly {
@@ -82,6 +83,9 @@ func (e *Engine) openRetained(source string, metadataOnly bool) (_ *Engine, resu
 		return nil, err
 	}
 	old := &Engine{config: config, boot: e.boot, root: retained, metadataOnly: metadataOnly}
+	if metadataOnly {
+		old.retainedStorage = &previous
+	}
 	defer func() {
 		if resultErr != nil {
 			old.Close()

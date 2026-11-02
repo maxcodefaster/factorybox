@@ -12,6 +12,10 @@ import uuid
 import reference
 
 ROOT_METADATA_CASES = (
+    "TestRetainedBackingRequiresExactOriginalStoreTranslation",
+    "TestRecoveredCaptureRetirementProofPreservesOriginalMetadata",
+    "TestRecoveredCaptureRetirementProofRejectsChangedOrUnclosedSources",
+    "TestRecoveredCaptureBackingRequiresExplicitConfirmedDelete",
     "TestWorkerExitPreservesRecoveredFailedCapture",
     "TestWorkerExitPreservesOtherClosedFailedCaptures",
     "TestWorkerExitRejectsUnprovedRecoveredCapture",

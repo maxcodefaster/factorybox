@@ -434,6 +434,22 @@ or an unresolved capture. See [the retention decision](adr/0004-retire-failed-ca
 Native proof and deployment of these new cleanup bytes remain separate from
 source implementation and the qualification of an earlier worker package.
 
+Capture rollback may move a failed Pause into history before a later Delete.
+Ordinary retirement also checks each such generation and withdraws its partial
+`images` and `filesystem` through separate, per-generation journals. The writer
+persists the original lower-alias mountpoint before binding it. Cleanup records
+its release before preparing the deletion inventory. Missing evidence, active
+references and successor payloads still refuse reclamation.
+
+After worker replacement, an already completed Sandbox retirement can finish
+this capture-only stage with `retire-sandbox --source-root OLD_CONTROLLER`
+and the original Sandbox ID, `--sandbox-owner` and `--input-sha256`, through
+`--worker-run-root`. This requires the exact retained image and source epoch,
+confirmed original Delete, absent runtime/cgroup and unchanged original
+retirement receipt/inventory. A changed store, owner, inode or attachment
+refuses cleanup. The old receipt and lifecycle record are not rewritten;
+the metadata handle cannot execute the old runtime or CRIU recipe.
+
 Before publishing a new intent, an exact retry can discard an interrupted
 private inventory, allocation reserve or publication temporary. It inspects
 the complete remaining metadata afresh and removes only known, root-owned,

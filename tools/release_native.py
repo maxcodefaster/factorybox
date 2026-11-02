@@ -48,6 +48,7 @@ def native_commands(options, worker, bats_images):
     commands = [
         ("capture-budget", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build]),
         ("failed-capture-exit", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build, "--failed-copy"]),
+        ("recovered-capture-retirement", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build, "--failed-copy", "--retire-recovered"]),
         ("storefs", [python, "tools/storefs_native.py", "--worker-build", options.worker_build]),
         ("worker-storage-exit", [python, "tools/worker_storage_exit_native.py", "--worker-build", options.worker_build]),
         ("shared-source-large", [python, "tools/shared_source_probe.py", "--worker-build", options.worker_build,

@@ -48,10 +48,21 @@ def require_complete(result):
 def require_failed_capture_complete(result):
     required = [
         "failed_copy_observed", "recovered_failed_pause", "same_ram_after_failed_capture",
-        "useful_after_failed_capture", "incomplete_alias_mounted", "failed_payload_preserved",
+        "useful_after_failed_capture", "incomplete_alias_mounted",
         "sandbox_deleted", "worker_stopped_cleanly", "kernel_storage_released",
         "same_store_new_epoch", "successor_storage_released", "host_sysctls_unchanged", "inputs_unchanged",
     ]
+    required += ([
+        "failed_payload_retired", "cleanup_evidence_preserved", "retirement_replay_exact",
+        "registered_base_preserved", "foreign_successor_preserved", "invalid_abort_refused",
+        "published_generation_refused", "foreign_hardlink_refused", "foreign_mount_refused",
+    ] if result.get("retire_recovered") else [
+        "failed_payload_retired", "retained_cleanup_replay_exact", "retained_original_receipt_preserved",
+        "retained_wrong_owner_refused", "retained_current_epoch_refused", "retained_record_unchanged",
+        "registered_base_preserved",
+    ] if result.get("retire_retained_recovered") else ["failed_payload_preserved"])
+    if result.get("standalone_cleanup_cli"):
+        required.append("worker_executable_preserved")
     if any(result.get(key) is not True for key in required):
         raise ValueError("failed capture exit omitted recovery, retained bytes or clean storage release")
 
@@ -61,8 +72,31 @@ def main():
     parser.add_argument("--worker-build", required=True)
     parser.add_argument("--failed-copy", action="store_true",
                         help="Fail mutable copying after real RAM capture and immutable alias binding; require safe rollback and clean worker exit")
+    parser.add_argument("--retire-recovered", action="store_true",
+                        help="After proved rollback/Delete, require ordinary exact retirement of partial RAM/filesystem backing")
+    parser.add_argument("--retire-retained-recovered", action="store_true",
+                        help="After replacing an older worker, require exact retained capture cleanup without rewriting its old retirement")
+    parser.add_argument("--predecessor-worker-build", help="Exact older worker for retained cleanup qualification")
+    parser.add_argument("--retirement-cli", type=Path,
+                        help="Exact selected-build cleanup CLI, run without replacing the older worker executable")
     options = parser.parse_args()
+    if options.retire_recovered and not options.failed_copy:
+        parser.error("--retire-recovered requires --failed-copy")
+    if options.retire_retained_recovered and (not options.failed_copy or options.retire_recovered or not options.predecessor_worker_build):
+        parser.error("--retire-retained-recovered requires --failed-copy and --predecessor-worker-build, without --retire-recovered")
+    if options.retirement_cli and not options.retire_retained_recovered:
+        parser.error("--retirement-cli requires --retire-retained-recovered")
     _, worker = build_worker.load(options.worker_build)
+    predecessor = build_worker.load(options.predecessor_worker_build)[1] if options.predecessor_worker_build else worker
+    if predecessor["platform"] != worker["platform"] or any(
+            predecessor["bundle_sha256"][name] != value for name, value in worker["bundle_sha256"].items()
+            if name not in {"factorybox", "build.json"}):
+        raise ValueError("retained cleanup requires identical pinned native components and architecture")
+    if options.retirement_cli:
+        cli_path = options.retirement_cli.resolve()
+        if not cli_path.is_relative_to(reference.ROOT / "artifacts") or reference.sha(cli_path) != worker["bundle_sha256"]["factorybox"]:
+            raise ValueError("cleanup CLI differs from the exact selected native build")
+        build_config.require_elf(cli_path, worker["platform"])
     native_base.require_native_host(worker["platform"], json.loads(reference.docker(["info", "--format", "{{json .}}"])))
     if worker.get("native_candidate") is not None:
         raise ValueError("capture budget requires the ordinary delivered native image")
@@ -93,6 +127,10 @@ def main():
         "executable_sha256": worker["bundle_sha256"]["factorybox"], "platform": worker["platform"],
         "passed": False, "cleanup": False, "production_qualified": False,
         "copy_delay_seconds": 0 if options.failed_copy else COPY_DELAY_SECONDS,
+        "retire_recovered": options.retire_recovered,
+        "retire_retained_recovered": options.retire_retained_recovered,
+        "predecessor_worker_build": options.predecessor_worker_build,
+        "standalone_cleanup_cli": bool(options.retirement_cli),
         "runner_sha256": reference.sha(artifact / "runner.py"),
         "actor_sha256": reference.sha(actor), "rootfs_sha256": rootfs["sha256"],
         "scope": ("Exact delivered CLI with real Sysbox/CRIU and an immutable base. Fail only the owned mutable copy after real RAM capture, require original-process rollback, useful work, clean worker exit and retained failed bytes across same-store restart. No retained installation, provider calls or host settings."
@@ -133,6 +171,11 @@ def main():
         exact()
         return json.loads(run(["exec", identity, "/opt/factorybox/factorybox",
                                "--worker-run-root", "/run/factorybox", *arguments]))
+
+    def retained_cli(*arguments):
+        exact()
+        executable = "/input/retirement-cli" if options.retirement_cli else "/opt/factorybox/factorybox"
+        return json.loads(run(["exec", identity, executable, "--worker-run-root", "/run/factorybox", *arguments]))
 
     def observe(payload=None):
         exact()
@@ -183,9 +226,13 @@ print(response.read().decode())
             "--mount", f"type=bind,source={archive},target=/input/rootfs.tar.gz,readonly",
             "--mount", f"type=bind,source={actor},target=/input/minimal-actor,readonly",
             "--mount", f"type=bind,source={output},target=/output",
-            worker["image"], "--store-id", owner, "--bounded-root", "/var/lib/sysbox/fixed-store",
+            predecessor["image"], "--store-id", owner, "--bounded-root", "/var/lib/sysbox/fixed-store",
             "--bounded-bytes", str(512 << 20),
         ]
+        if options.retirement_cli:
+            image_index = command.index(predecessor["image"])
+            command[image_index:image_index] = ["--mount",
+                f"type=bind,source={cli_path},target=/input/retirement-cli,readonly"]
         result["command"] = command
         save()
         attempted = True
@@ -299,6 +346,74 @@ print(json.dumps({'hashes':hashes,'alias_mounted':mounted}))
         run(["exec", identity, "umount", bundle + "/rootfs"])
         if options.failed_copy:
             run(["exec", identity, "umount", bundle + "/lower"])
+        if options.retire_retained_recovered:
+            original_retirement = cli("retire-sandbox", "--sandbox-owner", deleted["record"]["owner"],
+                "--input-sha256", deleted["record"]["input_sha256"], "budget-source")
+            metadata = {key: value for key, value in result["failed_capture_hashes"].items()
+                        if not key.startswith("images/")}
+            result["predecessor_retirement"] = original_retirement
+            base_canary = base["tree"]["saved"] + "/bin/minimal-actor"
+            original_base_sha = run(["exec", identity, "sha256sum", base_canary]).split()[0]
+            old_record = status["lifecycle"]["root"] + "/objects/budget-source/record.json"
+            old_record_sha = run(["exec", identity, "sha256sum", old_record]).split()[0]
+        if options.retire_recovered:
+            phase("ordinary-recovered-capture-retirement")
+            arguments = ("retire-sandbox", "--sandbox-owner", deleted["record"]["owner"],
+                         "--input-sha256", deleted["record"]["input_sha256"], "budget-source")
+            metadata = {key: value for key, value in result["failed_capture_hashes"].items()
+                        if not key.startswith("images/")}
+            base_canary = base["tree"]["saved"] + "/bin/minimal-actor"
+            original_base_sha = run(["exec", identity, "sha256sum", base_canary]).split()[0]
+
+            def refused():
+                try:
+                    cli(*arguments)
+                except ValueError:
+                    return True
+                raise ValueError("unproved recovered-capture retirement was accepted")
+
+            run(["exec", identity, "python3", "-c",
+                 "import pathlib,sys;p=pathlib.Path(sys.argv[1]);"
+                 "original=p.read_bytes();p.with_suffix('.original').write_bytes(original);"
+                 "p.write_text('{\"token\":\"foreign\",\"capture_in_flight\":false}')",
+                 capture + "/guard/guard-capture-aborted.json"])
+            result["invalid_abort_refused"] = refused()
+            run(["exec", identity, "python3", "-c",
+                 "import pathlib,sys;p=pathlib.Path(sys.argv[1]);"
+                 "p.write_bytes(p.with_suffix('.original').read_bytes());p.with_suffix('.original').unlink()",
+                 capture + "/guard/guard-capture-aborted.json"])
+            run(["exec", identity, "python3", "-c",
+                 "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text('{}')", capture + "/checkpoint.json"])
+            result["published_generation_refused"] = refused()
+            run(["exec", identity, "rm", capture + "/checkpoint.json"])
+            first_image = next(key for key in result["failed_capture_hashes"] if key.startswith("images/") and key.endswith(".img"))
+            foreign_link = status["store"] + "/foreign-recovered-capture-link"
+            run(["exec", identity, "ln", capture + "/" + first_image, foreign_link])
+            result["foreign_hardlink_refused"] = refused()
+            run(["exec", identity, "rm", foreign_link])
+            run(["exec", identity, "mount", "-t", "tmpfs", "-o", "size=1m,mode=0700",
+                 "tmpfs", capture + "/filesystem/upper"])
+            result["foreign_mount_refused"] = refused()
+            run(["exec", identity, "umount", capture + "/filesystem/upper"])
+            retired = cli(*arguments)
+            replay = cli(*arguments)
+            result["retirement_replay_exact"] = retired == replay
+            result["registered_base_preserved"] = run(["exec", identity, "sha256sum", base_canary]).split()[0] == original_base_sha
+            result["cleanup_evidence_preserved"] = json.loads(run(["exec", identity, "python3", "-c", """
+import hashlib,json,pathlib,sys
+root=pathlib.Path(sys.argv[1]);expected=json.loads(sys.argv[2])
+assert not (root/'checkpoint.json').exists()
+actual={name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in expected}
+print(json.dumps(actual==expected and not (root/'images').exists() and not (root/'filesystem').exists()))
+""", capture, json.dumps(metadata)]))
+            run(["exec", identity, "python3", "-c",
+                 "import pathlib,sys;p=pathlib.Path(sys.argv[1]);p.mkdir(mode=0o700);"
+                 "(p/'foreign-successor').write_text('preserve foreign successor')", capture + "/images"])
+            refused()
+            result["foreign_successor_preserved"] = run(["exec", identity, "cat",
+                capture + "/images/foreign-successor"]) == "preserve foreign successor"
+            run(["exec", identity, "rm", capture + "/images/foreign-successor"])
+            run(["exec", identity, "rmdir", capture + "/images"])
         run(["stop", "--timeout=45", identity])
         state = consumer_worker_loss.exact_worker(name, owner, identity)["State"]
         result["worker_stopped_cleanly"] = not state["Running"] and not state["OOMKilled"] and state["ExitCode"] == 0
@@ -310,6 +425,8 @@ print(json.dumps({'hashes':hashes,'alias_mounted':mounted}))
             worker_name = name + "-preservation"
             replacement_command = list(command)
             replacement_command[replacement_command.index(name)] = worker_name
+            replacement_command[replacement_command.index(predecessor["image"])] = (
+                predecessor["image"] if options.retirement_cli else worker["image"])
             result["preservation_command"] = replacement_command
             attempted_names.append(worker_name)
             identity = run(replacement_command)
@@ -318,13 +435,43 @@ print(json.dumps({'hashes':hashes,'alias_mounted':mounted}))
             if successor["epoch"] == status["epoch"] or successor["store_id"] != status["store_id"]:
                 raise ValueError("failed-capture preservation requires the same retained store and a new epoch")
             result["same_store_new_epoch"] = True
-            result["failed_payload_preserved"] = json.loads(run(["exec", identity, "python3", "-c", """
+            if options.retire_retained_recovered:
+                phase("retained-recovered-capture-retirement")
+                arguments = ("retire-sandbox", "--source-root", status["lifecycle"]["root"],
+                             "--sandbox-owner", deleted["record"]["owner"],
+                             "--input-sha256", deleted["record"]["input_sha256"], "budget-source")
+                try:
+                    retained_cli(*[value if value != deleted["record"]["owner"] else "f"*32 for value in arguments])
+                except ValueError:
+                    result["retained_wrong_owner_refused"] = True
+                else:
+                    raise ValueError("retained cleanup accepted another original owner")
+                try:
+                    retained_cli(*[value if value != status["lifecycle"]["root"] else successor["lifecycle"]["root"]
+                          for value in arguments])
+                except ValueError:
+                    result["retained_current_epoch_refused"] = True
+                else:
+                    raise ValueError("retained cleanup adopted the current controller epoch")
+                retired = retained_cli(*arguments)
+                result["retained_original_receipt_preserved"] = retired == original_retirement
+                result["retained_cleanup_replay_exact"] = retained_cli(*arguments) == retired
+                result["retained_record_unchanged"] = run(["exec", identity, "sha256sum", old_record]).split()[0] == old_record_sha
+                result["registered_base_preserved"] = run(["exec", identity, "sha256sum", base_canary]).split()[0] == original_base_sha
+                if options.retirement_cli:
+                    result["worker_executable_preserved"] = (
+                        successor["supervisor_sha256"] == predecessor["bundle_sha256"]["factorybox"] and
+                        run(["exec", identity, "sha256sum", "/proc/1/exe"]).split()[0] ==
+                        predecessor["bundle_sha256"]["factorybox"])
+            retired_mode = options.retire_recovered or options.retire_retained_recovered
+            result["failed_payload_retired" if retired_mode else "failed_payload_preserved"] = json.loads(run(["exec", identity, "python3", "-c", """
 import hashlib,json,pathlib,sys
-root=pathlib.Path(sys.argv[1]);expected=json.loads(sys.argv[2])
+root=pathlib.Path(sys.argv[1]);expected=json.loads(sys.argv[2]);retired=sys.argv[3]=='true'
 assert not (root/'checkpoint.json').exists()
 actual={name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in expected}
-print(json.dumps(actual==expected))
-""", capture, json.dumps(result["failed_capture_hashes"])]))
+print(json.dumps(actual==expected and (not retired or not (root/'images').exists() and not (root/'filesystem').exists())))
+""", capture, json.dumps(metadata if retired_mode else result["failed_capture_hashes"]),
+                json.dumps(retired_mode)]))
             run(["stop", "--timeout=45", identity])
             final = consumer_worker_loss.exact_worker(worker_name, owner, identity)["State"]
             if final["Running"] or final["OOMKilled"] or final["ExitCode"] != 0:

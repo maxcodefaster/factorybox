@@ -96,6 +96,9 @@ type Engine struct {
 	root   *os.Root
 	// Historical dependency readers have no lifecycle execution authority.
 	metadataOnly bool
+	// Validated original attachment of this same store, for metadata-only
+	// private-backing cleanup. It grants no old process or lifecycle authority.
+	retainedStorage *storefs.Active
 }
 
 func Open(config Config) (_ *Engine, resultErr error) {

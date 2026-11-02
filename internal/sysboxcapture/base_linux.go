@@ -397,6 +397,10 @@ func readonlyBind(source, destination string) error {
 }
 
 func bindImmutableTree(source, destination string, tree FilesystemTree) (FilesystemTree, error) {
+	return bindImmutableTreeRecorded(source, destination, tree, nil)
+}
+
+func bindImmutableTreeRecorded(source, destination string, tree FilesystemTree, beforeMount func(FilesystemTree) error) (FilesystemTree, error) {
 	if err := VerifyImmutableTree(source, tree); err != nil {
 		return tree, err
 	}
@@ -420,6 +424,13 @@ func bindImmutableTree(source, destination string, tree FilesystemTree) (Filesys
 		return tree, fmt.Errorf("immutable alias has no original mount identity")
 	}
 	tree.Alias = &ImmutableAlias{Device: uint64(stat.Dev), Inode: stat.Ino, MountID: extended.Mnt_id}
+	if beforeMount != nil {
+		intent := tree
+		intent.Name, intent.Source, intent.Saved = "lower", source, destination
+		if err := beforeMount(intent); err != nil {
+			return tree, err
+		}
+	}
 	if err := readonlyBind(tree.Immutable.Root, destination); err != nil {
 		return tree, err
 	}

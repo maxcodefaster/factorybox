@@ -381,7 +381,7 @@ func (b *epochInventoryBuilder) captures(record Record) error {
 			}
 			pauseFound = true
 		}
-		for _, name := range []string{"checkpoint.json", "capture-result.json", "checkpoint-intent.json", "filesystem.json", "source-state.json", "sysbox-state.json", "criu.conf", "network-before.json", "sockets-before.json", "checkpoint-reconciled.json"} {
+		for _, name := range []string{"checkpoint.json", "capture-result.json", "checkpoint-intent.json", "filesystem.json", "source-state.json", "sysbox-state.json", "criu.conf", "network-before.json", "sockets-before.json", "checkpoint-reconciled.json", sysboxcapture.CaptureLowerAliasIntent} {
 			b.file(relative + "/" + name)
 		}
 		children, err := b.engine.exitEntries(relative)

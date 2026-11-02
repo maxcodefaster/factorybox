@@ -153,12 +153,18 @@ func runLifecycle(args []string) error {
 		operation := flag.NewFlagSet(command, flag.ContinueOnError)
 		operation.StringVar(&backingRequest.SandboxOwner, "sandbox-owner", "", "exact deleted Sandbox owner")
 		operation.StringVar(&backingRequest.InputSHA256, "input-sha256", "", "exact original OCI input SHA-256")
+		if command == "retire-sandbox" {
+			operation.StringVar(&retainedRoot, "source-root", "", "complete capture cleanup for this exact already-retired controller epoch")
+		}
 		if err := operation.Parse(remaining); err != nil {
 			return err
 		}
 		remaining = operation.Args()
 		if backingRequest.SandboxOwner == "" || backingRequest.InputSHA256 == "" {
 			return fmt.Errorf("%s requires exact Sandbox owner and input hash", command)
+		}
+		if retainedRoot != "" && workerRunRoot == "" {
+			return fmt.Errorf("retained backing cleanup requires --worker-run-root and --source-root")
 		}
 	} else if command == "start" {
 		start := flag.NewFlagSet("start", flag.ContinueOnError)
@@ -256,6 +262,8 @@ func runLifecycle(args []string) error {
 		var err error
 		if command == "retire-manager" {
 			result, err = engine.RetireDeletedManagerBacking(ctx, backingRequest)
+		} else if retainedRoot != "" {
+			result, err = engine.RetireRetainedDeletedBacking(ctx, retainedRoot, backingRequest)
 		} else {
 			result, err = engine.RetireDeletedBacking(ctx, backingRequest)
 		}
