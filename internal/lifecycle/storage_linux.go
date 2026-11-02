@@ -159,6 +159,12 @@ func (e *Engine) Capacity() (StorageCapacity, error) {
 // Call under the existing controller operation lock, before new backing or a
 // transition is published. Completed replays and deletion remain possible.
 func (e *Engine) admitStorageWrite() error {
+	return e.admitStorageAllocation(0)
+}
+
+// Account for known additional bytes, not just the generic write floor. This is
+// an admission observation, not a reservation against concurrent guest writes.
+func (e *Engine) admitStorageAllocation(bytes uint64) error {
 	if e.config.MinFreeBytes == 0 && e.config.WriteReserve == 0 {
 		return nil // Legacy explicit-controller fixtures have no admission policy.
 	}
@@ -166,13 +172,18 @@ func (e *Engine) admitStorageWrite() error {
 	if err != nil {
 		return errors.Join(err, fmt.Errorf("new storage writes refused: capacity could not be verified"))
 	}
-	if !report.WriteAdmitted {
-		if report.Host != nil && report.Host.AvailableBytes < report.Host.MinFreeBytes+report.Host.WriteReserve {
-			return fmt.Errorf("new storage writes refused: host available=%d bytes, required free floor=%d plus write reserve=%d",
-				report.Host.AvailableBytes, report.Host.MinFreeBytes, report.Host.WriteReserve)
-		}
-		return fmt.Errorf("new storage writes refused: filesystem available=%d bytes, required free floor=%d plus write reserve=%d",
-			report.AvailableBytes, report.MinFreeBytes, report.WriteReserve)
+	admitted := func(available, floor, reserve, allocation uint64) bool {
+		return floor <= available && reserve <= available-floor && allocation <= available-floor-reserve
+	}
+	// The bounded image was fully allocated at creation. Its internal copy
+	// consumes guest blocks, not another allocation of those bytes on the host.
+	if report.Host != nil && !admitted(report.Host.AvailableBytes, report.Host.MinFreeBytes, report.Host.WriteReserve, 0) {
+		return fmt.Errorf("new storage writes refused: host available=%d bytes, required free floor=%d plus write reserve=%d",
+			report.Host.AvailableBytes, report.Host.MinFreeBytes, report.Host.WriteReserve)
+	}
+	if !admitted(report.AvailableBytes, report.MinFreeBytes, report.WriteReserve, bytes) {
+		return fmt.Errorf("new storage writes refused: filesystem available=%d bytes, required allocation=%d bytes plus free floor=%d and write reserve=%d",
+			report.AvailableBytes, bytes, report.MinFreeBytes, report.WriteReserve)
 	}
 	return nil
 }

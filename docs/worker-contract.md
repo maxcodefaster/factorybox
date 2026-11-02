@@ -132,6 +132,17 @@ This candidate behavior is outside the frozen pilot profile.
 Operations that still write completion/deletion metadata can fail if the
 filesystem has no space at all; the admission exemption is not a success promise.
 
+New Resume admission also charges the complete checkpoint file inventory for its
+independent writable image set on the destination filesystem. The already
+allocated bounded image is not charged a second time on the host; its ordinary
+host floor still applies.
+Insufficient space refuses before changing the completed Pause or creating
+Resume backing. A complete existing preparation is verified, not copied or
+charged twice. The controller checks the ordinary write floor again after
+preparation and before attempting the native restore. This is a known-allocation
+check, not a reservation against guest writes or a complete estimate of every
+later restore allocation.
+
 The host preflight observation does not reserve 4 GiB, cap guest writes or
 guarantee space throughout an operation. The selected bounded filesystem below
 separately limits its own backing and applies its own admission policy. This

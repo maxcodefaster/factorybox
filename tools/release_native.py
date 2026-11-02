@@ -47,6 +47,7 @@ def native_commands(options, worker, bats_images):
                  if "criu_base_source_lock_sha256" in worker else [])
     commands = [
         ("capture-budget", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build]),
+        ("resume-capacity", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build, "--resume-capacity"]),
         ("failed-capture-exit", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build, "--failed-copy"]),
         ("recovered-capture-retirement", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build, "--failed-copy", "--retire-recovered"]),
         ("storefs", [python, "tools/storefs_native.py", "--worker-build", options.worker_build]),

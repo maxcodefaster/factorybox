@@ -40,9 +40,15 @@ def require_complete(result):
         "worker_stopped_cleanly", "kernel_storage_released", "host_sysctls_unchanged",
         "inputs_unchanged",
     ]
+    delay = 0 if result.get("resume_capacity") else COPY_DELAY_SECONDS
+    if result.get("resume_capacity"):
+        required += [
+            "resume_capacity_refused", "pause_record_preserved", "pause_checkpoint_preserved",
+            "resume_backing_not_created", "pressure_released", "generic_write_admitted",
+        ]
     if (any(result.get(key) is not True for key in required) or
-            result.get("copy_delay_seconds") != COPY_DELAY_SECONDS or
-            result.get("pause_seconds", 0) < COPY_DELAY_SECONDS):
+            result.get("copy_delay_seconds") != delay or
+            result.get("pause_seconds", 0) < delay):
         raise ValueError("capture budget omitted the delayed filesystem, RAM or cleanup proof")
 
 def require_failed_capture_complete(result):
@@ -72,6 +78,8 @@ def main():
     parser.add_argument("--worker-build", required=True)
     parser.add_argument("--failed-copy", action="store_true",
                         help="Fail mutable copying after real RAM capture and immutable alias binding; require safe rollback and clean worker exit")
+    parser.add_argument("--resume-capacity", action="store_true",
+                        help="Refuse insufficient Resume working space before changing the paused source, then release only owned pressure and resume useful work")
     parser.add_argument("--retire-recovered", action="store_true",
                         help="After proved rollback/Delete, require ordinary exact retirement of partial RAM/filesystem backing")
     parser.add_argument("--retire-retained-recovered", action="store_true",
@@ -80,6 +88,8 @@ def main():
     parser.add_argument("--retirement-cli", type=Path,
                         help="Exact selected-build cleanup CLI, run without replacing the older worker executable")
     options = parser.parse_args()
+    if options.resume_capacity and options.failed_copy:
+        parser.error("--resume-capacity cannot be combined with --failed-copy")
     if options.retire_recovered and not options.failed_copy:
         parser.error("--retire-recovered requires --failed-copy")
     if options.retire_retained_recovered and (not options.failed_copy or options.retire_recovered or not options.predecessor_worker_build):
@@ -126,14 +136,17 @@ def main():
         "schema": 1, "owner": owner, "worker_build": options.worker_build, "image": worker["image"],
         "executable_sha256": worker["bundle_sha256"]["factorybox"], "platform": worker["platform"],
         "passed": False, "cleanup": False, "production_qualified": False,
-        "copy_delay_seconds": 0 if options.failed_copy else COPY_DELAY_SECONDS,
+        "copy_delay_seconds": 0 if options.failed_copy or options.resume_capacity else COPY_DELAY_SECONDS,
+        "resume_capacity": options.resume_capacity,
         "retire_recovered": options.retire_recovered,
         "retire_retained_recovered": options.retire_retained_recovered,
         "predecessor_worker_build": options.predecessor_worker_build,
         "standalone_cleanup_cli": bool(options.retirement_cli),
         "runner_sha256": reference.sha(artifact / "runner.py"),
         "actor_sha256": reference.sha(actor), "rootfs_sha256": rootfs["sha256"],
-        "scope": ("Exact delivered CLI with real Sysbox/CRIU and an immutable base. Fail only the owned mutable copy after real RAM capture, require original-process rollback, useful work, clean worker exit and retained failed bytes across same-store restart. No retained installation, provider calls or host settings."
+        "scope": ("Exact delivered CLI with real Sysbox/CRIU and an owned bounded store. Establish a committed Pause, leave more than the generic write floor but less than the complete Resume image requirement, and require refusal before changing the paused source. Release only exact owned pressure and require useful preserved RAM after Resume. No retained installation, provider calls or host settings."
+                  if options.resume_capacity else
+                  "Exact delivered CLI with real Sysbox/CRIU and an immutable base. Fail only the owned mutable copy after real RAM capture, require original-process rollback, useful work, clean worker exit and retained failed bytes across same-store restart. No retained installation, provider calls or host settings."
                   if options.failed_copy else
                   "Exact delivered CLI with real Sysbox/CRIU, a private Go workload and a controlled 65-second filesystem-copy stall after RAM capture. Require committed Pause, released anonymous RAM, identical restored RAM and useful work. The upstream cp executable is unchanged. No retained installation, provider calls or host settings."),
     }
@@ -287,13 +300,15 @@ open(path,'w').write(json.dumps(config))
                    'target=$(/usr/bin/readlink "/proc/$$/fd/4") || exit 91\n'
                    f'if [ "$target" = "{target}" ]; then\n'
                    f'  printf \'%s\\n\' \'{owner}\' > /output/copy-delay-observed\n' +
-                   ("  exit 74\n" if options.failed_copy else f"  /usr/bin/sleep {COPY_DELAY_SECONDS}\n") +
+                   ("  exit 74\n" if options.failed_copy else
+                    "" if options.resume_capacity else f"  /usr/bin/sleep {COPY_DELAY_SECONDS}\n") +
                    "fi\n"
                    'exec /usr/bin/cp "$@"\n')
         run(["exec", identity, "python3", "-c",
              "import os,sys;p='/usr/local/bin/cp';f=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o700);os.write(f,sys.argv[1].encode());os.close(f)",
              wrapper])
-        phase("pause-with-failed-filesystem" if options.failed_copy else "pause-with-delayed-filesystem")
+        phase("pause-with-failed-filesystem" if options.failed_copy else
+              "pause-for-resume-capacity" if options.resume_capacity else "pause-with-delayed-filesystem")
         began = time.monotonic()
         try:
             try:
@@ -331,6 +346,63 @@ print(json.dumps({'hashes':hashes,'alias_mounted':mounted}))
             pause = paused["record"]["pause"]
             result["committed_pause"] = paused["record"]["phase"] == "paused" and bool(pause.get("completed_at"))
             result["anonymous_memory_released"] = pause["before"]["anon"] >= 32 << 20 and pause["after"]["anon"] == 0
+            if options.resume_capacity:
+                phase("refuse-insufficient-resume-working-space")
+                pressure = status["store"] + "/resume-pressure-" + owner
+                observed = json.loads(run(["exec", identity, "python3", "-c", """
+import hashlib,json,os,pathlib,sys
+capture,record,pressure=sys.argv[1:]
+manifest=pathlib.Path(capture)/'checkpoint.json'
+needed=sum(entry['bytes'] for entry in json.loads(manifest.read_bytes())['files'])
+floor=(64+128)<<20
+assert needed>2<<20
+target=floor+needed//2
+fs=os.statvfs(capture)
+allocation=fs.f_bavail*fs.f_frsize-target
+assert allocation>0
+fd=os.open(pressure,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+try:
+ os.posix_fallocate(fd,0,allocation);os.fsync(fd);owned=os.fstat(fd)
+finally:os.close(fd)
+fs=os.statvfs(capture);available=fs.f_bavail*fs.f_frsize
+assert floor<=available<floor+needed
+print(json.dumps({'record_sha256':hashlib.sha256(pathlib.Path(record).read_bytes()).hexdigest(),
+ 'checkpoint_sha256':hashlib.sha256(manifest.read_bytes()).hexdigest(),
+ 'pressure_device':owned.st_dev,'pressure_inode':owned.st_ino,'pressure_bytes':owned.st_size,
+ 'available_bytes':available,'required_images_bytes':needed,'floor_and_reserve_bytes':floor}))
+""", capture, status["lifecycle"]["root"] + "/objects/budget-source/record.json", pressure]))
+                result["resume_capacity_observation"] = observed
+                result["generic_write_admitted"] = cli("capacity")["new_write_admitted"] is True
+                try:
+                    cli("resume", "--snapshot-id", snapshot, "budget-source")
+                except ValueError as error:
+                    if "new storage writes refused" not in str(error):
+                        raise
+                    result["resume_capacity_refused"] = True
+                else:
+                    raise ValueError("insufficient Resume working space was admitted instead of preserving the paused source")
+                unchanged = cli("state", "budget-source")
+                result["pause_record_preserved"] = unchanged["record"] == paused["record"]
+                preserved = json.loads(run(["exec", identity, "python3", "-c", """
+import hashlib,json,os,pathlib,sys
+capture,record,pressure,relative=sys.argv[1:5];expected=json.loads(sys.argv[5])
+path=pathlib.Path(pressure);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+try:
+ actual=os.fstat(fd)
+ assert (actual.st_dev,actual.st_ino,actual.st_size)==(expected['pressure_device'],expected['pressure_inode'],expected['pressure_bytes'])
+ assert actual.st_nlink==1 and actual.st_uid==0
+ os.unlink(path)
+finally:os.close(fd)
+print(json.dumps({'record':hashlib.sha256(pathlib.Path(record).read_bytes()).hexdigest()==expected['record_sha256'],
+ 'checkpoint':hashlib.sha256((pathlib.Path(capture)/'checkpoint.json').read_bytes()).hexdigest()==expected['checkpoint_sha256'],
+ 'no_resume_backing':not pathlib.Path(relative).exists(),'released':not path.exists()}))
+""", capture, status["lifecycle"]["root"] + "/objects/budget-source/record.json", pressure,
+                    status["lifecycle"]["root"] + "/objects/budget-source/resumes/" + snapshot,
+                    json.dumps(observed)]))
+                result["pause_record_preserved"] = result["pause_record_preserved"] and preserved["record"]
+                result["pause_checkpoint_preserved"] = preserved["checkpoint"]
+                result["resume_backing_not_created"] = preserved["no_resume_backing"]
+                result["pressure_released"] = preserved["released"]
             phase("resume-and-use-original-state")
             resumed = cli("resume", "--snapshot-id", snapshot, "budget-source")
             runtime_pid = resumed["runtime"]["pid"]

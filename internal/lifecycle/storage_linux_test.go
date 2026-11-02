@@ -77,6 +77,34 @@ func TestStoragePolicyRejectsPartialOrOverflowedLimits(t *testing.T) {
 	}
 }
 
+func TestStorageAllocationPreservesFreeFloorAndRecoveryReserve(t *testing.T) {
+	path := t.TempDir()
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	engine := &Engine{root: root, config: Config{Root: path, MinFreeBytes: 1, WriteReserve: 1}}
+	report, err := engine.storageCapacity()
+	if err != nil || !report.WriteAdmitted || report.AvailableBytes < 3 {
+		t.Fatal("fixture has no generic write admission", report, err)
+	}
+	if err := engine.admitStorageAllocation(1); err != nil {
+		t.Fatal("small complete allocation refused", err)
+	}
+	for _, bytes := range []uint64{report.AvailableBytes, math.MaxUint64} {
+		if err := engine.admitStorageAllocation(bytes); err == nil ||
+			!strings.Contains(err.Error(), "new storage writes refused") ||
+			!strings.Contains(err.Error(), "required allocation=") {
+			t.Fatal("known allocation consumed the free floor/recovery reserve or overflowed", bytes, err)
+		}
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil || len(entries) != 0 {
+		t.Fatal("refused allocation changed backing", entries, err)
+	}
+}
+
 func TestStorageAdmissionDoesNotFollowReplacedRoot(t *testing.T) {
 	base := t.TempDir()
 	path := filepath.Join(base, "controller")

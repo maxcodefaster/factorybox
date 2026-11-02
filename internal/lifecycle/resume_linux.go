@@ -78,7 +78,7 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 		if err := e.admitWorkerMetadata(ctx, workerMetadataDelta{Record: &active}); err != nil {
 			return View{Record: record}, err
 		}
-		if err := e.admitStorageWrite(); err != nil {
+		if err := e.admitResumeStorage(record); err != nil {
 			return View{Record: record}, err
 		}
 		if err := e.requireEmptyCgroup(record); err != nil {
@@ -106,13 +106,16 @@ func (e *Engine) Resume(ctx context.Context, id, snapshot string) (View, error) 
 	request := e.resumeRequest(record)
 	relative := "objects/" + id + "/resumes/" + snapshot
 	if !record.Pause.Resume.Attempted {
-		if err := e.admitStorageWrite(); err != nil {
+		if err := e.admitResumeStorage(record); err != nil {
 			return View{Record: record}, err
 		}
 		if err := e.requireEmptyCgroup(record); err != nil {
 			return View{Record: record}, err
 		}
 		if err := e.prepareResume(ctx, lock, record, relative, request); err != nil {
+			return View{Record: record}, err
+		}
+		if err := e.admitStorageWrite(); err != nil {
 			return View{Record: record}, err
 		}
 		if record.Network != nil {

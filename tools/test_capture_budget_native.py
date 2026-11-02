@@ -40,6 +40,9 @@ class CaptureBudgetNativeTests(unittest.TestCase):
             self.assertEqual(commands["capture-budget"][1:], [
                 "tools/capture_budget_native.py", "--worker-build", "exact-worker",
             ])
+            self.assertEqual(commands["resume-capacity"][1:], [
+                "tools/capture_budget_native.py", "--worker-build", "exact-worker", "--resume-capacity",
+            ])
             self.assertEqual(commands["failed-capture-exit"][1:], [
                 "tools/capture_budget_native.py", "--worker-build", "exact-worker", "--failed-copy",
             ])
@@ -59,6 +62,20 @@ class CaptureBudgetNativeTests(unittest.TestCase):
             with self.subTest(key=key):
                 with self.assertRaisesRegex(ValueError, "failed capture exit omitted"):
                     capture_budget_native.require_failed_capture_complete({**complete, key: False})
+
+    def test_resume_capacity_requires_pre_transition_refusal_and_useful_recovery(self):
+        complete = {
+            **self.complete(), "resume_capacity": True, "copy_delay_seconds": 0,
+            "resume_capacity_refused": True, "pause_record_preserved": True,
+            "pause_checkpoint_preserved": True, "resume_backing_not_created": True,
+            "pressure_released": True, "generic_write_admitted": True,
+        }
+        capture_budget_native.require_complete(complete)
+        for key, value in complete.items():
+            if isinstance(value, bool):
+                with self.subTest(key=key):
+                    with self.assertRaisesRegex(ValueError, "capture budget omitted"):
+                        capture_budget_native.require_complete({**complete, key: False})
 
     def test_only_a_definite_original_kernel_owner_refusal_can_be_reobserved(self):
         diagnostic = "fixed filesystem still has an image owner: resource temporarily unavailable\n"
