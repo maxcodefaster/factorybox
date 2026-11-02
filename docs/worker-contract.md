@@ -143,6 +143,18 @@ preparation and before attempting the native restore. This is a known-allocation
 check, not a reservation against guest writes or a complete estimate of every
 later restore allocation.
 
+A failed private Resume copy may continue while its original native restore is
+explicitly unattempted. The controller verifies the original intent and complete
+checkpoint, checks every existing destination against its exact source prefix,
+then admits only the still-missing bytes. It appends those bytes without replacing
+or removing existing files, completes unfinished initial root ownership on the
+verified files and the same image directory's mapped ownership and mode, syncs
+and verifies the complete input set, and only then publishes
+preparation and attempts restore. Changed prefixes, extra images,
+hardlinks, symlinks, mounts and prepared or attempted outcomes refuse continuation.
+This keeps a failed copy recoverable without resetting a Pause or repeating an
+uncertain native restore.
+
 The host preflight observation does not reserve 4 GiB, cap guest writes or
 guarantee space throughout an operation. The selected bounded filesystem below
 separately limits its own backing and applies its own admission policy. This

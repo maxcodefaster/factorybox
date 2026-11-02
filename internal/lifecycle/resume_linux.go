@@ -201,10 +201,17 @@ func (e *Engine) prepareResume(ctx context.Context, lock *os.File, record Record
 			// No restore was attempted yet. A lost publication can leave all
 			// complete input files without their preparation receipt. Verify
 			// against the immutable pause generation and sync them again before
-			// publishing. Never overwrite partial or damaged backing here.
+			// publishing. An unattempted partial copy may only append the
+			// missing original bytes after every retained prefix is verified.
 			files, err := e.checkpointFiles(ctx, relative)
 			if err != nil || !reflect.DeepEqual(files, saved.Files) {
-				return fmt.Errorf("resume backing remains incomplete; refusing overwrite: %v", err)
+				if err := e.continueResumeBacking(ctx, record, generation, relative, saved.Files); err != nil {
+					return fmt.Errorf("resume backing remains incomplete; refusing overwrite: %w", err)
+				}
+				files, err = e.checkpointFiles(ctx, relative)
+				if err != nil || !reflect.DeepEqual(files, saved.Files) {
+					return fmt.Errorf("continued Resume backing differs from its checkpoint: %v", err)
+				}
 			}
 			if err := e.syncResumeBacking(ctx, relative, files); err != nil {
 				return err

@@ -15,6 +15,7 @@ import build_worker
 import consumer_worker_loss
 import native_base
 import reference
+import resume_preparation_native
 import upstream_bats
 import worker_storage_release
 
@@ -40,11 +41,22 @@ def require_complete(result):
         "worker_stopped_cleanly", "kernel_storage_released", "host_sysctls_unchanged",
         "inputs_unchanged",
     ]
-    delay = 0 if result.get("resume_capacity") else COPY_DELAY_SECONDS
+    delay = 0 if result.get("resume_capacity") or result.get("resume_preparation") else COPY_DELAY_SECONDS
     if result.get("resume_capacity"):
         required += [
             "resume_capacity_refused", "pause_record_preserved", "pause_checkpoint_preserved",
             "resume_backing_not_created", "pressure_released", "generic_write_admitted",
+        ]
+    if result.get("resume_preparation"):
+        required += [
+            "resume_copy_failure_observed", "resume_copy_was_unattempted",
+            "resume_request_preserved", "resume_checkpoint_preserved",
+            "resume_partial_inode_preserved", "resume_only_missing_bytes_required",
+            "resume_image_directory_preserved",
+            "resume_copied_file_ownership_completed",
+            "resume_owned_pressure_released", "resume_foreign_entry_refused",
+            "resume_foreign_link_refused", "resume_changed_prefix_refused",
+            "resume_foreign_mount_refused",
         ]
     if (any(result.get(key) is not True for key in required) or
             result.get("copy_delay_seconds") != delay or
@@ -80,6 +92,8 @@ def main():
                         help="Fail mutable copying after real RAM capture and immutable alias binding; require safe rollback and clean worker exit")
     parser.add_argument("--resume-capacity", action="store_true",
                         help="Refuse insufficient Resume working space before changing the paused source, then release only owned pressure and resume useful work")
+    parser.add_argument("--resume-preparation", action="store_true",
+                        help="Recover one incomplete private image copy without replaying native restore or changing the committed Pause")
     parser.add_argument("--retire-recovered", action="store_true",
                         help="After proved rollback/Delete, require ordinary exact retirement of partial RAM/filesystem backing")
     parser.add_argument("--retire-retained-recovered", action="store_true",
@@ -88,8 +102,8 @@ def main():
     parser.add_argument("--retirement-cli", type=Path,
                         help="Exact selected-build cleanup CLI, run without replacing the older worker executable")
     options = parser.parse_args()
-    if options.resume_capacity and options.failed_copy:
-        parser.error("--resume-capacity cannot be combined with --failed-copy")
+    if sum([options.resume_capacity, options.resume_preparation, options.failed_copy]) > 1:
+        parser.error("select only one Resume fault or failed-copy mode")
     if options.retire_recovered and not options.failed_copy:
         parser.error("--retire-recovered requires --failed-copy")
     if options.retire_retained_recovered and (not options.failed_copy or options.retire_recovered or not options.predecessor_worker_build):
@@ -115,6 +129,8 @@ def main():
     artifact = reference.new_artifact(name)
     artifact.mkdir(mode=0o700)
     shutil.copyfile(__file__, artifact / "runner.py")
+    if options.resume_preparation:
+        shutil.copyfile(resume_preparation_native.__file__, artifact / "resume-preparation-runner.py")
     output = artifact / "output"
     output.mkdir()
     architecture = build_config.architecture(worker["platform"])
@@ -136,15 +152,20 @@ def main():
         "schema": 1, "owner": owner, "worker_build": options.worker_build, "image": worker["image"],
         "executable_sha256": worker["bundle_sha256"]["factorybox"], "platform": worker["platform"],
         "passed": False, "cleanup": False, "production_qualified": False,
-        "copy_delay_seconds": 0 if options.failed_copy or options.resume_capacity else COPY_DELAY_SECONDS,
+        "copy_delay_seconds": 0 if options.failed_copy or options.resume_capacity or options.resume_preparation else COPY_DELAY_SECONDS,
         "resume_capacity": options.resume_capacity,
+        "resume_preparation": options.resume_preparation,
+        "resume_preparation_runner_sha256": (
+            reference.sha(artifact / "resume-preparation-runner.py") if options.resume_preparation else None),
         "retire_recovered": options.retire_recovered,
         "retire_retained_recovered": options.retire_retained_recovered,
         "predecessor_worker_build": options.predecessor_worker_build,
         "standalone_cleanup_cli": bool(options.retirement_cli),
         "runner_sha256": reference.sha(artifact / "runner.py"),
         "actor_sha256": reference.sha(actor), "rootfs_sha256": rootfs["sha256"],
-        "scope": ("Exact delivered CLI with real Sysbox/CRIU and an owned bounded store. Establish a committed Pause, leave more than the generic write floor but less than the complete Resume image requirement, and require refusal before changing the paused source. Release only exact owned pressure and require useful preserved RAM after Resume. No retained installation, provider calls or host settings."
+        "scope": ("Exact delivered CLI with real Sysbox/CRIU and an owned bounded store. Fail only a private Resume image copy after writing a real RAM prefix. Require unchanged request/checkpoint, no first native restore attempt, then exact Resume and useful preserved RAM. No retained installation, provider calls or host settings."
+                  if options.resume_preparation else
+                  "Exact delivered CLI with real Sysbox/CRIU and an owned bounded store. Establish a committed Pause, leave more than the generic write floor but less than the complete Resume image requirement, and require refusal before changing the paused source. Release only exact owned pressure and require useful preserved RAM after Resume. No retained installation, provider calls or host settings."
                   if options.resume_capacity else
                   "Exact delivered CLI with real Sysbox/CRIU and an immutable base. Fail only the owned mutable copy after real RAM capture, require original-process rollback, useful work, clean worker exit and retained failed bytes across same-store restart. No retained installation, provider calls or host settings."
                   if options.failed_copy else
@@ -301,14 +322,15 @@ open(path,'w').write(json.dumps(config))
                    f'if [ "$target" = "{target}" ]; then\n'
                    f'  printf \'%s\\n\' \'{owner}\' > /output/copy-delay-observed\n' +
                    ("  exit 74\n" if options.failed_copy else
-                    "" if options.resume_capacity else f"  /usr/bin/sleep {COPY_DELAY_SECONDS}\n") +
+                    "" if options.resume_capacity or options.resume_preparation else f"  /usr/bin/sleep {COPY_DELAY_SECONDS}\n") +
                    "fi\n"
                    'exec /usr/bin/cp "$@"\n')
         run(["exec", identity, "python3", "-c",
              "import os,sys;p='/usr/local/bin/cp';f=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o700);os.write(f,sys.argv[1].encode());os.close(f)",
              wrapper])
         phase("pause-with-failed-filesystem" if options.failed_copy else
-              "pause-for-resume-capacity" if options.resume_capacity else "pause-with-delayed-filesystem")
+              "pause-for-resume-capacity" if options.resume_capacity else
+              "pause-for-resume-preparation" if options.resume_preparation else "pause-with-delayed-filesystem")
         began = time.monotonic()
         try:
             try:
@@ -404,7 +426,10 @@ print(json.dumps({'record':hashlib.sha256(pathlib.Path(record).read_bytes()).hex
                 result["resume_backing_not_created"] = preserved["no_resume_backing"]
                 result["pressure_released"] = preserved["released"]
             phase("resume-and-use-original-state")
-            resumed = cli("resume", "--snapshot-id", snapshot, "budget-source")
+            resumed = (resume_preparation_native.exercise(
+                run=run, cli=cli, identity=identity, status=status, snapshot=snapshot,
+                output=output, result=result) if options.resume_preparation else
+                cli("resume", "--snapshot-id", snapshot, "budget-source"))
             runtime_pid = resumed["runtime"]["pid"]
         restored = observe()
         result["same_ram_after_failed_capture" if options.failed_copy else "same_ram_after_resume"] = (
@@ -557,7 +582,9 @@ print(json.dumps(actual==expected and (not retired or not (root/'images').exists
         result["host_sysctls_unchanged"] = before == after
         result["inputs_unchanged"] = (
             reference.sha(Path(__file__)) == result["runner_sha256"] and
-            reference.sha(actor) == result["actor_sha256"] and reference.sha(archive) == result["rootfs_sha256"])
+            reference.sha(actor) == result["actor_sha256"] and reference.sha(archive) == result["rootfs_sha256"] and
+            (not options.resume_preparation or
+             reference.sha(Path(resume_preparation_native.__file__)) == result["resume_preparation_runner_sha256"]))
         if options.failed_copy:
             require_failed_capture_complete(result)
         else:

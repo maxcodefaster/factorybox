@@ -43,6 +43,9 @@ class CaptureBudgetNativeTests(unittest.TestCase):
             self.assertEqual(commands["resume-capacity"][1:], [
                 "tools/capture_budget_native.py", "--worker-build", "exact-worker", "--resume-capacity",
             ])
+            self.assertEqual(commands["resume-preparation"][1:], [
+                "tools/capture_budget_native.py", "--worker-build", "exact-worker", "--resume-preparation",
+            ])
             self.assertEqual(commands["failed-capture-exit"][1:], [
                 "tools/capture_budget_native.py", "--worker-build", "exact-worker", "--failed-copy",
             ])
@@ -69,6 +72,25 @@ class CaptureBudgetNativeTests(unittest.TestCase):
             "resume_capacity_refused": True, "pause_record_preserved": True,
             "pause_checkpoint_preserved": True, "resume_backing_not_created": True,
             "pressure_released": True, "generic_write_admitted": True,
+        }
+        capture_budget_native.require_complete(complete)
+        for key, value in complete.items():
+            if isinstance(value, bool):
+                with self.subTest(key=key):
+                    with self.assertRaisesRegex(ValueError, "capture budget omitted"):
+                        capture_budget_native.require_complete({**complete, key: False})
+
+    def test_resume_preparation_requires_unattempted_copy_and_original_ram(self):
+        complete = {
+            **self.complete(), "resume_preparation": True, "copy_delay_seconds": 0,
+            "resume_copy_failure_observed": True, "resume_copy_was_unattempted": True,
+            "resume_request_preserved": True, "resume_checkpoint_preserved": True,
+            "resume_partial_inode_preserved": True, "resume_only_missing_bytes_required": True,
+            "resume_image_directory_preserved": True,
+            "resume_copied_file_ownership_completed": True,
+            "resume_owned_pressure_released": True, "resume_foreign_entry_refused": True,
+            "resume_foreign_link_refused": True, "resume_changed_prefix_refused": True,
+            "resume_foreign_mount_refused": True,
         }
         capture_budget_native.require_complete(complete)
         for key, value in complete.items():
