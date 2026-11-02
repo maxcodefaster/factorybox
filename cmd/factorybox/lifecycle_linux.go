@@ -80,6 +80,7 @@ func runLifecycle(args []string) error {
 	var recovery lifecycle.RecoveryRequest
 	var checkpointRequest lifecycle.CheckpointRequest
 	var backingRequest lifecycle.SandboxBackingRequest
+	var baseRequest lifecycle.RetainedBaseRequest
 	var selectionID string
 	var retainedRoot string
 	var epochRequest lifecycle.EpochRetirementRequest
@@ -148,6 +149,17 @@ func runLifecycle(args []string) error {
 		}
 		if err := errors.Join(decodeErr, file.Close()); err != nil {
 			return err
+		}
+	} else if command == "retire-base" {
+		operation := flag.NewFlagSet(command, flag.ContinueOnError)
+		operation.StringVar(&baseRequest.SourceRoot, "source-root", "", "exact earlier worker controller")
+		operation.StringVar(&baseRequest.BaseSHA256, "base-sha256", "", "SHA-256 of the original base.json bytes")
+		if err := operation.Parse(remaining); err != nil {
+			return err
+		}
+		remaining = operation.Args()
+		if workerRunRoot == "" || baseRequest.SourceRoot == "" || baseRequest.BaseSHA256 == "" {
+			return fmt.Errorf("retire-base requires --worker-run-root, --source-root and --base-sha256")
 		}
 	} else if command == "retire-sandbox" || command == "retire-manager" {
 		operation := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -256,6 +268,14 @@ func runLifecycle(args []string) error {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+	if command == "retire-base" {
+		baseRequest.BaseID = remaining[0]
+		result, err := engine.RetireRetainedBase(ctx, baseRequest)
+		if result.Version != 0 {
+			err = errors.Join(err, json.NewEncoder(os.Stdout).Encode(result))
+		}
+		return err
+	}
 	if command == "retire-sandbox" || command == "retire-manager" {
 		backingRequest.SandboxID = remaining[0]
 		var result lifecycle.SandboxBackingRetirement

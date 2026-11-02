@@ -100,6 +100,12 @@ func verifyRetainedAlias(ctx context.Context, tree FilesystemTree, verify BaseRe
 	return nil
 }
 
+// VerifyRetainedFilesystemAlias checks the original uncovered mountpoint without
+// requiring base bytes already withdrawn by a separately verified retirement.
+func VerifyRetainedFilesystemAlias(ctx context.Context, tree FilesystemTree, verify BaseRecoveryVerifier) error {
+	return verifyRetainedAlias(ctx, tree, verify)
+}
+
 // VerifyRetainedFilesystemSnapshot reads a complete saved generation after its
 // worker mounts are gone. Immutable lower data are checked at their original
 // canonical base, and the uncovered alias must be the exact empty original

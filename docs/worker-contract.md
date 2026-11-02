@@ -971,6 +971,25 @@ That evidence does not qualify the full public retirement protocol below.
 
 ## Manual epoch retirement candidate
 
+Before retiring an entire epoch, `retire-base` can withdraw one unused canonical
+base from an earlier worker on the same verified bounded store. Drain the current
+worker's execution first. Pass the exact earlier `--source-root`, positional base
+ID and `--base-sha256`, the SHA-256 of that base's original `base.json` bytes,
+through the current `--worker-run-root`. This does not execute the old CRIU recipe.
+All controller epochs remain locked while original imports, live bindings,
+retained checkpoints and incomplete preparations are checked. A deleted Sandbox
+does not withdraw a still-usable checkpoint. Unknown dependencies refuse removal.
+
+The original base directory, complete contents and store attachment must verify.
+Only its `rootfs` payload enters the durable owned deletion inventory. Original
+import metadata, Sandbox records, caller inputs and failure evidence stay intact.
+The exact request can continue after an interrupted unlink; changed entries,
+external hardlinks, covering mounts and replacement directories remain guards.
+A completed replay verifies the retained receipt and payload absence. Epoch
+inventory recognizes completed base retirement without inventing a new import
+or replacing its original immutable identity. This is explicit maintenance,
+not automatic base eviction or authority to discard an unresolved Sandbox.
+
 The bounded-store candidate provides `begin-epoch-retirement` and `retire-epoch`.
 They require the current verified `--worker-run-root` and an exact JSON
 `--request-file`, without positional sandbox arguments. Bounded actor cases

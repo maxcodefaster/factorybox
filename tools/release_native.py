@@ -79,6 +79,8 @@ def native_commands(options, worker, bats_images):
     for loss in ["planned", "abrupt"]:
         commands.append(("recovery-" + loss, [python, "tools/bounded_store_loss.py",
             "--worker-build", options.worker_build, "--loss", loss]))
+    commands.append(("retained-base-retirement", [python, "tools/bounded_store_loss.py",
+        "--worker-build", options.worker_build, "--loss", "planned", "--base-retirement"]))
     for role, reserve in [("factory-source", []), ("factory-reserve", ["--reserve"])]:
         commands.append((role, [python, "tools/factory_consumer_native.py",
             "--worker-build", options.worker_build, "--consumer-build", options.consumer_build,

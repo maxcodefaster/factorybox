@@ -28,13 +28,14 @@ type epochPayloadInventory struct {
 }
 
 type epochInventoryBuilder struct {
-	engine   *Engine
-	ctx      context.Context
-	previous storefs.Active
-	allowed  map[string]uint32
-	payloads []string
-	records  map[string]Record
-	bases    map[string]sysboxcapture.FilesystemTree
+	engine       *Engine
+	ctx          context.Context
+	previous     storefs.Active
+	allowed      map[string]uint32
+	payloads     []string
+	records      map[string]Record
+	bases        map[string]sysboxcapture.FilesystemTree
+	retiredBases map[string]bool
 }
 
 func below(name, root string) bool { return name == root || strings.HasPrefix(name, root+"/") }
@@ -615,7 +616,13 @@ func (b *epochInventoryBuilder) fork(record Record, backingRetired bool) error {
 		}
 		seen[tree.Name] = true
 		if tree.Name == "lower" && (!backingRetired || tree.Immutable != nil) {
-			if err := sysboxcapture.VerifyRetainedFilesystemTree(b.ctx, tree, b.translate); err != nil {
+			var err error
+			if backingRetired && tree.Immutable != nil && b.retiredBases[tree.Immutable.Root] {
+				err = sysboxcapture.VerifyRetainedFilesystemAlias(b.ctx, tree, b.translate)
+			} else {
+				err = sysboxcapture.VerifyRetainedFilesystemTree(b.ctx, tree, b.translate)
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -792,6 +799,21 @@ func (e *Engine) inventoryEpochPayloads(ctx context.Context) (epochPayloadInvent
 		b.bases[base.Tree.Immutable.Root] = base.Tree
 		b.file("bases/" + base.ID + "/intent.json")
 		b.file("bases/" + base.ID + "/base.json")
+		if _, err := e.root.Lstat(baseRetirementPath(base.ID)); err == nil {
+			if _, _, err := e.baseRetirementProof(base); err != nil {
+				return result, fmt.Errorf("retained base retirement is incomplete or changed: %w", err)
+			}
+			if b.retiredBases == nil {
+				b.retiredBases = map[string]bool{}
+			}
+			b.retiredBases[base.Tree.Saved] = true
+			for _, name := range []string{"retirement-intent.json", "retirement-complete.json", "retirement-payload.json.gz", ".retirement-reserve"} {
+				b.file(baseRetirementPath(base.ID) + "/" + name)
+			}
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return result, err
+		}
 		if err := b.payload(base.Tree.Saved); err != nil {
 			return result, err
 		}
@@ -830,6 +852,9 @@ func (e *Engine) inventoryEpochPayloads(ctx context.Context) (epochPayloadInvent
 		}
 	}
 	for _, tree := range b.bases {
+		if b.retiredBases[tree.Saved] {
+			continue
+		}
 		if err := sysboxcapture.VerifyRetainedFilesystemBase(ctx, tree, b.translate); err != nil {
 			return result, err
 		}

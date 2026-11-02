@@ -94,18 +94,23 @@ def main():
                         help='retain every original assertion, then test durable retirement protection across another worker loss')
     parser.add_argument('--epoch-retirement', action='store_true',
                         help='full public epoch admission, exact partial deletion, worker loss and completion with useful successor')
+    parser.add_argument('--base-retirement', action='store_true',
+                        help='retire one unreferenced retained base after every original recovery assertion')
     parser.add_argument('--initial-import-pressure', action='store_true',
                         help='actual initial journal ENOSPC at zero free inodes, public explicit cancellation, then every original recovery assertion')
     parser.add_argument('--mounted-import-interruption', action='store_true',
                         help='interrupt actual import after immutable mounts exist, fence its worker, cancel through a third worker, then every original recovery assertion')
     args = parser.parse_args()
+    if args.base_retirement and any([args.retirement_fence, args.epoch_retirement,
+                                    args.initial_import_pressure, args.mounted_import_interruption]):
+        raise ValueError('retained base retirement owns a separate complete recovery fixture')
     if args.initial_import_pressure and (args.retained_selection or args.retirement_fence or args.epoch_retirement):
         raise ValueError('initial import pressure is a complete basic recovery fixture without unrelated retirement extensions')
     if args.mounted_import_interruption and (args.initial_import_pressure or args.retained_selection or args.retirement_fence or args.epoch_retirement):
         raise ValueError('mounted import interruption is a separate complete basic recovery fixture')
     if args.epoch_retirement and args.retirement_fence:
         raise ValueError('choose full epoch retirement or the internal fence fixture')
-    args.retained_selection = args.retained_selection or args.retirement_fence or args.epoch_retirement
+    args.retained_selection = args.retained_selection or args.retirement_fence or args.epoch_retirement or args.base_retirement
     _, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
     bounded_store_native.worker_compile_options(worker, host, native_candidate=args.native_candidate)
@@ -123,6 +128,8 @@ def main():
         shutil.copyfile(reference.ROOT / file, source / file)
     shutil.copyfile(__file__, artifact / 'runner.py')
     setup = 'retained-selection-setup.sh' if args.retained_selection else 'bounded-loss-setup.sh'
+    if args.base_retirement:
+        setup = 'retained-base-retirement-setup.sh'
     if args.mounted_import_interruption:
         setup = 'recovery-import-mounted-setup.sh'
     if args.retirement_fence or args.epoch_retirement:
@@ -145,6 +152,7 @@ def main():
               'loss': args.loss, 'retained_selection': args.retained_selection,
               'retirement_fence': args.retirement_fence,
               'epoch_retirement': args.epoch_retirement,
+              'base_retirement': args.base_retirement,
               'initial_import_pressure': args.initial_import_pressure,
               'mounted_import_interruption': args.mounted_import_interruption,
               'runner_sha256': reference.sha(artifact / 'runner.py'),
@@ -215,6 +223,8 @@ def main():
                 test = 'TestNativeEpochRetirementFence'
             if args.epoch_retirement:
                 test = 'TestNativeEpochRetirement'
+            if args.base_retirement:
+                test = 'TestNativeRetainedBase'
             if stage == 'Interrupt':
                 test = 'TestNativeRecoveryImportMounted'
             if (done.returncode or state['OOMKilled'] or not state['Running'] or
@@ -293,6 +303,19 @@ def main():
                     selection.get('old_lifecycle_fence_preserved') != (args.loss == 'planned')):
                 raise ValueError('retained selection release proof incomplete')
             result['retained_selection_sha256'] = reference.sha(selection_file)
+        if args.base_retirement:
+            path = output / 'retained-base-retired.json'
+            base = json.loads(path.read_text())
+            required = ['passed', 'metadata_guard_tests_passed', 'wrong_metadata_refused', 'current_running_protected',
+                        'foreign_mount_preserved', 'foreign_hardlink_preserved',
+                        'public_unlink_interrupted', 'foreign_partial_entry_preserved',
+                        'exact_partial_continuation', 'actual_capacity_returned',
+                        'original_metadata_preserved', 'caller_input_preserved',
+                        'unrelated_checkpoint_preserved', 'epoch_inventory_verified',
+                        'exact_completion_replayed', 'foreign_successor_preserved']
+            if any(base.get(key) is not True for key in required):
+                raise ValueError('retained base retirement omitted a capacity or preservation proof')
+            result['retained_base_retirement_sha256'] = reference.sha(path)
         if args.retirement_fence or args.epoch_retirement:
             # The accepted fence, not a still-running process or flock, must
             # protect every successor while its owning worker disappears.

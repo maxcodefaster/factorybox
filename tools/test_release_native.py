@@ -218,8 +218,11 @@ class NativeReleaseQualificationTests(unittest.TestCase):
             for required in ["criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd",
                              "recovery-planned", "recovery-abrupt", "factory-source", "factory-reserve",
                              "storefs", "worker-storage-exit", "shared-source-large", "shared-filemap",
-                             "failed-resume-delete"]:
+                             "failed-resume-delete", "retained-base-retirement"]:
                 self.assertIn(required, roles)
+            self.assertEqual(dict(commands)["retained-base-retirement"][1:], [
+                "tools/bounded_store_loss.py", "--worker-build", "exact-worker",
+                "--loss", "planned", "--base-retirement"])
             shared_source = dict(commands)["shared-source-large"]
             self.assertIn("--retained-descriptions", shared_source)
             self.assertEqual(shared_source[shared_source.index("--retained-descriptions") + 1], "257")
