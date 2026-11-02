@@ -110,7 +110,7 @@ func attachBounded(ctx context.Context, config Config) (_ *storefs.Attachment, _
 				return nil, nil, fmt.Errorf("refusing unidentified or interrupted bounded-store initialization")
 			}
 		}
-		formatter, err := filepath.EvalSymlinks("/usr/sbin/mkfs.ext4")
+		formatter, err := filepath.EvalSymlinks("/usr/sbin/mkfs.btrfs")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -135,7 +135,7 @@ func attachBounded(ctx context.Context, config Config) (_ *storefs.Attachment, _
 			}
 		}
 		image, err := storefs.Create(ctx, config.BoundedRoot+"/store.img", capacity, config.StoreID,
-			storefs.FormatTool{Path: formatter, SHA256: hash})
+			storefs.FormatTool{Path: formatter, SHA256: hash, Schema: 2})
 		if err != nil {
 			return nil, nil, err
 		}

@@ -88,10 +88,7 @@ func validateBoundedExit(root, epoch string, image storefs.Image, plan boundedEx
 		!bootIdentity.MatchString(plan.BootID) || plan.Supervisor.PID != 1 || !processBirth.MatchString(plan.Supervisor.Birth) ||
 		!mountNamespace.MatchString(plan.Namespace) || active.Image != image ||
 		image.Path != root+"/store.img" || active.Target != root+"/data" ||
-		active.LoopNumber < 0 || active.LoopNumber > 1<<20 ||
-		active.BlockDevice != unix.Mkdev(7, uint32(active.LoopNumber)) ||
-		active.Mount.Device != active.BlockDevice || active.Mount.Inode == 0 || active.Mount.MountID == 0 ||
-		active.FilesystemMax == 0 || active.FilesystemMax > uint64(image.Bytes) || !active.DirectIO {
+		storefs.ValidateAttachmentIdentity(active) != nil {
 		return fmt.Errorf("bounded exit differs from its original worker or attachment")
 	}
 	return nil

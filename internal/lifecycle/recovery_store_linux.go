@@ -11,7 +11,6 @@ import (
 
 	"factorybox/internal/storefs"
 	"factorybox/internal/sysboxcapture"
-	"golang.org/x/sys/unix"
 )
 
 // The persistent worker envelope also carries ephemeral process/peer fields.
@@ -70,9 +69,7 @@ func validateRetainedStoreMetadata(config Config, boot string, epoch recoverySto
 		epoch.Lifecycle.Criu != config.Criu || !digest.MatchString(epoch.Lifecycle.CriuSHA256) ||
 		!digest.MatchString(config.CriuSHA256) ||
 		old.Image != current.Image || old.Target != current.Target || !old.DirectIO ||
-		old.FilesystemMax != current.FilesystemMax || old.LoopNumber < 0 ||
-		old.BlockDevice != uint64(unix.Mkdev(7, uint32(old.LoopNumber))) ||
-		old.Mount.Device != old.BlockDevice || old.Mount.MountID == 0 || old.Mount.Inode == 0 {
+		old.FilesystemMax != current.FilesystemMax || storefs.ValidateAttachmentIdentity(*old) != nil {
 		return storefs.Active{}, fmt.Errorf("bounded recovery source epoch or retained image identity changed")
 	}
 	return *old, nil

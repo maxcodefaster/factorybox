@@ -29,6 +29,14 @@ worker replacement. Deleting a sandbox does not imply retiring its stored data.
 The maximum storage assigned to the persistent store, including its own recovery
 space. It is distinct from the free space available elsewhere on the host.
 
+**Store format**:
+An immutable property of a persistent store's identity. Recognising an existing
+format does not authorise conversion, replacement or a capacity change.
+
+**Independent fork backing**:
+Private writable state that may share unchanged storage with its saved source
+without sharing subsequent writes.
+
 **Storage admission range**:
 The acceptable minimum and requested maximum for a new persistent store.
 Admission fixes one store capacity within that range; later availability does not resize it.

@@ -15,7 +15,6 @@ import (
 
 	"factorybox/internal/ownedtree"
 	"factorybox/internal/storefs"
-	"golang.org/x/sys/unix"
 )
 
 const epochRetirementDirectory = ".epoch-retirement"
@@ -177,10 +176,9 @@ func (e *Engine) epochRetirementPreparation(source *Engine, expected string) (ep
 // used only after independent same-image verification under the store lease.
 func rebindEpochRetirementPlan(plan ownedtree.Plan, previous, current storefs.Active) (ownedtree.Plan, error) {
 	if previous.Image != current.Image || previous.Target != current.Target || !previous.DirectIO || !current.DirectIO ||
-		previous.FilesystemMax != current.FilesystemMax || previous.LoopNumber < 0 ||
-		previous.BlockDevice != uint64(unix.Mkdev(7, uint32(previous.LoopNumber))) || previous.Mount.Device != previous.BlockDevice ||
+		previous.FilesystemMax != current.FilesystemMax || storefs.ValidateAttachmentIdentity(previous) != nil ||
 		previous.Mount.Inode != current.Mount.Inode || previous.Mount.MountID == 0 || current.Mount.MountID == 0 ||
-		current.LoopNumber < 0 || current.BlockDevice != uint64(unix.Mkdev(7, uint32(current.LoopNumber))) || current.Mount.Device != current.BlockDevice {
+		storefs.ValidateAttachmentIdentity(current) != nil {
 		return ownedtree.Plan{}, fmt.Errorf("epoch retirement attachment changed its persistent identity")
 	}
 	translate := func(object *ownedtree.Object) error {

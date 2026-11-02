@@ -13,7 +13,7 @@ import storefs_native
 
 
 class StorefsRunnerTests(unittest.TestCase):
-    def exercise_passed_fixture(self, runner, native_count=4, platform="linux/amd64"):
+    def exercise_passed_fixture(self, runner, native_count=5, platform="linux/amd64"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             (root / "internal/storefs").mkdir(parents=True)
@@ -34,6 +34,10 @@ class StorefsRunnerTests(unittest.TestCase):
                               "external_release_lease_refused", "independent_release_verified"],
                 "initialization": ["wrong_formatter_refused_before_creation", "failed_initialization_retained", "uncertain_image_not_reformatted",
                                    "uninitialized_attachment_refused", "retained_image_unchanged"],
+                "cow": ["kernel_reflink", "private_clone_mutation", "fixed_capacity",
+                        "rollback_after_reserve_release", "remount_persistence", "exact_autoclear_cleanup",
+                        "independent_verification", "second_owner_refused", "subvolume_inside_capacity",
+                        "owned_subvolume_cleanup"],
             }
 
             def docker(arguments):
@@ -66,7 +70,10 @@ class StorefsRunnerTests(unittest.TestCase):
                 elif command[:3] == ["docker", "start", "--attach"]:
                     self.assertEqual(command[-1], state["identity"])
                     options["stdout"].write("\n".join("--- PASS: TestNativeStoreFS" + suffix for suffix in [
-                        "CapacityAndRemount", "IdentityAndLeaseRefusals", "RetainsLeaseUntilAutoclear", "UncertainInitializationRefused"][:native_count]) + "\n")
+                        "CapacityAndRemount", "IdentityAndLeaseRefusals", "RetainsLeaseUntilAutoclear",
+                        "UncertainInitializationRefused", "CopyOnWrite"][:native_count]) + "\n"
+                        "--- PASS: TestCopyOnWriteImageKeepsItsOwnFormatAndGeometry (0.00s)\n"
+                        "--- PASS: TestCopyOnWriteAttachmentSeparatesFilesystemAndLoopIdentities (0.00s)\n")
                     for name, keys in proofs.items():
                         (artifact / "output" / (name + ".json")).write_text(json.dumps({"passed": True, **dict.fromkeys(keys, True)}))
                 else:

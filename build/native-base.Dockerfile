@@ -16,3 +16,8 @@ RUN rm -f /etc/apt/sources.list.d/* \
       > /opt/factorybox-native-packages.tsv \
     && cp /etc/apt/sources.list /opt/factorybox-native-sources.list \
     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends btrfs-progs \
+    && dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' \
+      > /opt/factorybox-native-packages.tsv \
+    && rm -rf /var/lib/apt/lists/*

@@ -64,7 +64,7 @@ func TestEpochRetirementFenceCannotBeBypassedByExplicitRoot(t *testing.T) {
 }
 
 func TestEpochRetirementPlanTranslationPreservesOriginalEvidence(t *testing.T) {
-	previous := storefs.Active{Image: storefs.Image{Owner: strings.Repeat("a", 32), Inode: 91},
+	previous := storefs.Active{Image: storefs.Image{Schema: 1, Owner: strings.Repeat("a", 32), Inode: 91, Bytes: 1 << 30},
 		Target: "/fixed/data", DirectIO: true, FilesystemMax: 1 << 30,
 		LoopNumber: 0, BlockDevice: uint64(unix.Mkdev(7, 0)), Mount: storefs.Object{Device: uint64(unix.Mkdev(7, 0)), Inode: 2, MountID: 100}}
 	current := previous

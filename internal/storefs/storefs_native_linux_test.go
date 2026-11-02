@@ -385,7 +385,7 @@ func TestNativeStoreFSUncertainInitializationRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal("uncertain initialization was discarded", err)
 	}
-	identity, identityErr := imageIdentity(file, path, owner, 96<<20)
+	identity, identityErr := imageIdentity(file, path, owner, 96<<20, 1)
 	var before [120]byte
 	_, readErr := file.ReadAt(before[:], 1024)
 	closeErr := file.Close()
@@ -414,7 +414,7 @@ func TestNativeStoreFSUncertainInitializationRefused(t *testing.T) {
 	}
 	var after [120]byte
 	_, readErr = file.ReadAt(after[:], 1024)
-	actual, identityErr := imageIdentity(file, path, owner, 96<<20)
+	actual, identityErr := imageIdentity(file, path, owner, 96<<20, 1)
 	closeErr = file.Close()
 	if err := errors.Join(readErr, identityErr, closeErr); err != nil || actual != identity || before != after {
 		t.Fatal("refused uncertain initialization changed its retained image", err)

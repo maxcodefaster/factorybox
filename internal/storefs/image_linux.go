@@ -38,6 +38,9 @@ type Image struct {
 type FormatTool struct {
 	Path   string
 	SHA256 string
+	// Schema 2 selects the fixed-size copy-on-write format. Zero retains
+	// schema 1 for explicit ext4 component fixtures and existing callers.
+	Schema int
 }
 
 func privateDirectory(path string) error {
@@ -69,8 +72,8 @@ func validateImageRequest(path string, size int64, owner string) error {
 	return nil
 }
 
-func imageIdentity(file *os.File, path, owner string, size int64) (Image, error) {
-	image := Image{Schema: 1, Owner: owner, Path: path, Bytes: size, UUID: owner}
+func imageIdentity(file *os.File, path, owner string, size int64, schema int) (Image, error) {
+	image := Image{Schema: schema, Owner: owner, Path: path, Bytes: size, UUID: owner}
 	var stat unix.Stat_t
 	if err := unix.Fstat(int(file.Fd()), &stat); err != nil {
 		return image, err
@@ -83,6 +86,22 @@ func imageIdentity(file *os.File, path, owner string, size int64) (Image, error)
 }
 
 func verifySuperblock(file *os.File, expected Image) error {
+	if expected.Schema == 2 {
+		var header [160]byte
+		if _, err := file.ReadAt(header[:], 64<<10); err != nil {
+			return err
+		}
+		if string(header[64:72]) != "_BHRfS_M" ||
+			hex.EncodeToString(header[32:48]) != expected.UUID ||
+			binary.LittleEndian.Uint64(header[112:120]) != uint64(expected.Bytes) ||
+			binary.LittleEndian.Uint64(header[136:144]) != 1 {
+			return fmt.Errorf("copy-on-write filesystem magic, owner UUID or fixed single-device geometry differs")
+		}
+		return nil
+	}
+	if expected.Schema != 1 {
+		return fmt.Errorf("unknown fixed filesystem format")
+	}
 	var header [120]byte
 	if _, err := file.ReadAt(header[:], 1024); err != nil {
 		return err
@@ -97,7 +116,8 @@ func openImage(expected Image) (_ *os.File, resultErr error) {
 	if err := validateImageRequest(expected.Path, expected.Bytes, expected.Owner); err != nil {
 		return nil, err
 	}
-	if expected.Schema != 1 || expected.UUID != expected.Owner || expected.Device == 0 || expected.Inode == 0 {
+	if (expected.Schema != 1 && expected.Schema != 2) ||
+		expected.UUID != expected.Owner || expected.Device == 0 || expected.Inode == 0 {
 		return nil, fmt.Errorf("invalid saved fixed filesystem identity")
 	}
 	if err := privateDirectory(filepath.Dir(expected.Path)); err != nil {
@@ -113,7 +133,7 @@ func openImage(expected Image) (_ *os.File, resultErr error) {
 			file.Close()
 		}
 	}()
-	actual, err := imageIdentity(file, expected.Path, expected.Owner, expected.Bytes)
+	actual, err := imageIdentity(file, expected.Path, expected.Owner, expected.Bytes, expected.Schema)
 	if err != nil || actual != expected {
 		return nil, fmt.Errorf("fixed image identity differs: %v", err)
 	}
@@ -145,6 +165,13 @@ func Create(ctx context.Context, path string, size int64, owner string, tool For
 	}
 	if err := validateImageRequest(path, size, owner); err != nil {
 		return empty, err
+	}
+	schema := tool.Schema
+	if schema == 0 {
+		schema = 1
+	}
+	if (schema != 1 && schema != 2) || (schema == 2 && size < 256<<20) {
+		return empty, fmt.Errorf("requires a known fixed filesystem format and at least 256 MiB for copy-on-write")
 	}
 	if err := privateDirectory(filepath.Dir(path)); err != nil {
 		return empty, err
@@ -182,8 +209,14 @@ func Create(ctx context.Context, path string, size int64, owner string, tool For
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	uuid := owner[:8] + "-" + owner[8:12] + "-" + owner[12:16] + "-" + owner[16:20] + "-" + owner[20:]
-	command := exec.CommandContext(ctx, "/proc/self/fd/3", "-t", "ext4", "-F", "-q", "-m", "0", "-U", uuid,
-		"-E", "nodiscard,lazy_itable_init=0,lazy_journal_init=0", "/proc/self/fd/4")
+	arguments := []string{"-t", "ext4", "-F", "-q", "-m", "0", "-U", uuid,
+		"-E", "nodiscard,lazy_itable_init=0,lazy_journal_init=0", "/proc/self/fd/4"}
+	if schema == 2 {
+		arguments = []string{"--force", "--quiet", "--nodiscard", "--uuid", uuid,
+			"--data", "single", "--metadata", "dup", "--sectorsize", "4096",
+			"--nodesize", "16384", "/proc/self/fd/4"}
+	}
+	command := exec.CommandContext(ctx, "/proc/self/fd/3", arguments...)
 	command.ExtraFiles = []*os.File{formatter, image}
 	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "HOME=/root"}
 	command.WaitDelay = 2 * time.Second
@@ -195,7 +228,7 @@ func Create(ctx context.Context, path string, size int64, owner string, tool For
 	if err := errors.Join(unix.Fallocate(fd, 0, 0, size), image.Sync()); err != nil {
 		return empty, err
 	}
-	identity, err := imageIdentity(image, path, owner, size)
+	identity, err := imageIdentity(image, path, owner, size, schema)
 	if err != nil {
 		return empty, err
 	}

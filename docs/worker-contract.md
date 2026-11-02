@@ -182,6 +182,14 @@ headroom, separate from the host's 12 GiB plus 4 GiB checks. Both observations
 appear in `capacity`. All admitted disk-backed bundle layers and bind sources
 must reside in the bounded filesystem; initially read-only external binds are
 also refused. This profile requires existing loop/ext4 support and direct I/O.
+The new source candidate creates image schema 2 with a physically fixed Btrfs
+filesystem so prepared copies can use kernel reflinks. Existing schema-1 ext4
+images retain their exact format and identity; no existing store is converted.
+The virtual filesystem device and its physical loop device are verified
+separately. Component checks cover independent CoW writes, additional-subvolume
+capacity, real ENOSPC, rollback reserve use, remount persistence and exact loop
+release. These checks do not replace the required new-worker lifecycle and
+consumer qualification. See [the format decision](adr/0006-bound-copy-on-write-store-format.md).
 The current package passes native capacity, retained-recovery and admission
 tests plus all four complete Minimal/Factory pressure consumers after planned
 or abrupt same-host worker loss. It also refuses duplicate ownership, changed

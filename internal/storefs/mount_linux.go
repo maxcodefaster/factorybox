@@ -240,14 +240,18 @@ func Attach(expected Image, target string) (_ *Attachment, resultErr error) {
 		return nil, err
 	}
 	attachment.Active.LoopNumber = number
-	attachment.Active.BlockDevice = unix.Mkdev(7, uint32(number))
 	attachment.Active.DirectIO = true
-	if err := unix.Mount(attachment.node.path, target, "ext4", unix.MS_NODEV, "data=ordered,nodiscard"); err != nil {
+	filesystem, options := "ext4", "data=ordered,nodiscard"
+	if expected.Schema == 2 {
+		filesystem, options = "btrfs", "nodiscard"
+	}
+	if err := unix.Mount(attachment.node.path, target, filesystem, unix.MS_NODEV, options); err != nil {
 		return nil, err
 	}
 	mounted = true
 	attachment.Active.Mount, attachment.Active.FilesystemMax, err = targetIdentity(target)
-	if err != nil || attachment.Active.Mount.Device != attachment.Active.BlockDevice ||
+	attachment.Active.BlockDevice = attachment.Active.Mount.Device
+	if err != nil || (expected.Schema == 1 && attachment.Active.BlockDevice != unix.Mkdev(7, uint32(number))) ||
 		attachment.Active.FilesystemMax == 0 || attachment.Active.FilesystemMax > uint64(expected.Bytes) {
 		return nil, fmt.Errorf("mounted fixed filesystem identity or capacity differs: %v", err)
 	}
@@ -279,11 +283,8 @@ func (attachment *Attachment) Check() error {
 }
 
 func verifyMount(active Active) error {
-	if !active.DirectIO || active.LoopNumber < 0 || active.LoopNumber > 1<<20 ||
-		active.BlockDevice != unix.Mkdev(7, uint32(active.LoopNumber)) || active.Mount.Device != active.BlockDevice ||
-		active.Mount.Inode == 0 || active.Mount.MountID == 0 || active.FilesystemMax == 0 ||
-		active.FilesystemMax > uint64(active.Image.Bytes) {
-		return fmt.Errorf("invalid active fixed filesystem identity")
+	if err := ValidateAttachmentIdentity(active); err != nil {
+		return err
 	}
 	if err := privateDirectory(active.Target); err != nil {
 		return err
@@ -291,6 +292,9 @@ func verifyMount(active Active) error {
 	actual, capacity, err := targetIdentity(active.Target)
 	if err != nil || actual != active.Mount || capacity != active.FilesystemMax {
 		return fmt.Errorf("fixed filesystem mount changed: %v", err)
+	}
+	if active.Image.Schema == 2 {
+		return verifyCopyOnWriteMount(active)
 	}
 	return nil
 }

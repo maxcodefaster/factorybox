@@ -20,12 +20,19 @@ import upstream_unit
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--worker-build", required=True, help="Exact existing native image supplying the formatter and libraries")
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--worker-build", help="Exact existing native image supplying the formatter and libraries")
+    inputs.add_argument("--native-base-build", help="Exact native tools image for new-format component verification")
     args = parser.parse_args()
-    _, worker = build_worker.load(args.worker_build)
+    host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
+    if args.worker_build:
+        _, worker = build_worker.load(args.worker_build)
+    else:
+        image, base = native_base.load(args.native_base_build, candidate_platform=native_base.native_platform(host))
+        worker = {"image": image, "image_id": image, "native_base_image": image, "platform": base["platform"]}
     platform = worker["platform"]
     architecture = build_config.architecture(platform)
-    native_base.require_native_host(platform, json.loads(reference.docker(["info", "--format", "{{json .}}"])))
+    native_base.require_native_host(platform, host)
     if reference.docker(["ps", "--filter", "label=com.factorybox.run", "--format", "{{.ID}}"]):
         raise ValueError("other Factorybox runs must finish before this serialized storage test")
     owner = uuid.uuid4().hex
@@ -43,7 +50,8 @@ def main():
     result = {"schema": 1, "owner": owner, "passed": False, "cleanup": False,
               "platform": platform,
               "production_qualified": False, "source_context": manifest,
-              "runtime_image_build": args.worker_build, "image_id": worker["image_id"],
+              "runtime_image_build": args.worker_build, "native_base_build": args.native_base_build,
+              "image_id": worker["image_id"],
               "runner_sha256": reference.sha(artifact / "runner.py"),
               "global_sysctls_before": consumer_worker_loss.sysctls(
                   docker_image=worker["native_base_image"], owner=owner, artifact=artifact, phase="before"),
@@ -64,7 +72,8 @@ def main():
         reference.docker(["volume", "create", "--label", "com.factorybox.run=" + owner, name])
         command = ["create", "--pull=never", "--name", name, "--label", "com.factorybox.run=" + owner,
                    "--privileged", "--cgroupns=private", "--cpus=3", "--memory=3g", "--pids-limit=128", "--network=none", "--read-only",
-                   "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB", "--env", "FACTORYBOX_NATIVE_STOREFS=1",
+                   "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB", "--env", "TMPDIR=/store",
+                   "--env", "FACTORYBOX_NATIVE_STOREFS=1",
                    "--mount", f"type=volume,source={name},target=/store",
                    "--mount", f"type=bind,source={binary},target=/probe.test,readonly",
                    "--mount", f"type=bind,source={output},target=/output",
@@ -72,7 +81,7 @@ def main():
                    "import os,subprocess,sys;"
                    "before=os.readlink('/proc/self/ns/mnt');"
                    "child=subprocess.run(['unshare','--mount','--propagation','private',"
-                   "'/probe.test','-test.v','-test.run=^TestNativeStoreFS','-test.timeout=410s']);"
+                   "'/probe.test','-test.v','-test.run=^Test(NativeStoreFS|CopyOnWrite)','-test.timeout=410s']);"
                    "assert before==os.readlink('/proc/self/ns/mnt');"
                    "sys.exit(child.returncode)"]
         result["command"] = command
@@ -92,7 +101,9 @@ def main():
         result["failed_tests"] = sum(line.startswith("--- FAIL:") for line in log.splitlines())
         result["skipped_tests"] = sum(line.startswith("--- SKIP:") for line in log.splitlines())
         if (done.returncode or state["Running"] or state["OOMKilled"] or state["ExitCode"] != 0 or
-                result["passed_tests"] != 4 or result["failed_tests"] or result["skipped_tests"]):
+                result["passed_tests"] != 5 or result["failed_tests"] or result["skipped_tests"] or
+                "--- PASS: TestCopyOnWriteImageKeepsItsOwnFormatAndGeometry " not in log or
+                "--- PASS: TestCopyOnWriteAttachmentSeparatesFilesystemAndLoopIdentities " not in log):
             raise ValueError("native fixed-filesystem assertions failed or were skipped")
         required = {
             "capacity": ["real_enospc", "boundary_canary_enospc", "rollback_after_reserve_release", "retained_unchanged",
@@ -105,6 +116,10 @@ def main():
                           "external_release_lease_refused", "independent_release_verified"],
             "initialization": ["wrong_formatter_refused_before_creation", "failed_initialization_retained", "uncertain_image_not_reformatted",
                                "uninitialized_attachment_refused", "retained_image_unchanged"],
+            "cow": ["kernel_reflink", "private_clone_mutation", "fixed_capacity",
+                    "rollback_after_reserve_release", "remount_persistence", "exact_autoclear_cleanup",
+                    "independent_verification", "second_owner_refused", "subvolume_inside_capacity",
+                    "owned_subvolume_cleanup"],
         }
         result["proof_sha256"] = {}
         for proof_name, keys in required.items():
