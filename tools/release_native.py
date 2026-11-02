@@ -16,6 +16,7 @@ import factory_consumer_native
 import native_base
 import reference
 import reference_lifecycle
+import release_reuse
 import upstream_bats
 
 
@@ -167,6 +168,10 @@ def main():
     parser.add_argument("--factory-repo", type=Path)
     parser.add_argument("--builder")
     parser.add_argument("--bats-images", help="Reuse an exact verified pinned image archive; all native tests still run")
+    parser.add_argument("--continue-from", action="append", default=[],
+                        help="Continue passed gates of one exact same-image, fully cleaned qualification")
+    parser.add_argument("--reuse-upstream-proof", action="append", default=[],
+                        help="Reuse an explicitly selected complete unchanged Sysbox/Bats execution, rechecking native host and every test input")
     options = parser.parse_args()
     if not options.check_host:
         for argument in ["version", "worker_build", "consumer_build", "project_images", "factory_repo", "builder"]:
@@ -199,14 +204,23 @@ def main():
               "image_id": worker["image_id"], "executable_sha256": worker["bundle_sha256"]["factorybox"],
               "original_license_sha256": worker["original_license_sha256"],
               "bounded_builder": builder, "runner_sha256": reference.sha(artifact / "runner.py"),
+              "reuse_verifier_sha256": reference.sha(Path(release_reuse.__file__)),
               "production_qualified": False, "stages": [],
               "scope": "Native ordinary release-image functional and upstream gates on the exact delivered "
                        "image. No runtime installation, automatic admission, publication, cross-node recovery "
                        "or completion of the separate endurance/security/production release programme."}
     helper = "factorybox-release-inspect-" + owner
     attempted = False
+    reused = {}
 
     def stage(role, command):
+        if role in reused:
+            row = {**reused[role], "command": command}
+            result["stages"].append(row)
+            reference_lifecycle.write_json(artifact / "intent.json", result)
+            print(json.dumps({"native_gate": role, "evidence": row["evidence"],
+                              "passed": True, "reused": True}), flush=True)
+            return row["evidence"]
         row = {"role": role, "command": command, "passed": False}
         result["stages"].append(row)
         reference_lifecycle.write_json(artifact / "intent.json", result)
@@ -254,12 +268,33 @@ def main():
                 "--native-base-build", worker["native_base_build"], *target,
                 "--builder", options.builder, "--bounded-build", "--network", "host",
                 "--acquisition-network", "host"])
-        for role, command in native_commands(options, worker, images):
+        commands = native_commands(options, worker, images)
+        def remember(rows):
+            if reused.keys() & rows.keys():
+                raise ValueError("native reuse cannot replace or duplicate another accepted role")
+            reused.update(rows)
+        for original in options.continue_from:
+            remember(release_reuse.continuation(original, options.worker_build, worker, dict(commands)))
+        if options.reuse_upstream_proof:
+            _, component = reference_lifecycle.component_build(worker["sysbox_build"], "factorybox-build-sysbox-")
+            for original in options.reuse_upstream_proof:
+                role, row = release_reuse.upstream_receipt(
+                    original, worker, component, base, host, builder, images)
+                if role not in dict(commands):
+                    raise ValueError("reused upstream receipt is not a required native gate")
+                remember({role: row})
+        result["reused_native_gates"] = sorted(reused)
+        for role, command in commands:
             stage(role, command)
+        for row in result["stages"]:
+            if row.get("reused") and reference.sha(
+                    reference.ROOT / "artifacts" / row["evidence"] / "result.json") != row["result_sha256"]:
+                raise ValueError("reused native receipt changed during qualification")
         if (build_worker.load(options.worker_build)[1] != worker or
                 native_base.load(worker["native_base_build"], candidate_platform=options.platform)[1] != base or
                 factory_consumer_native.load_consumer(options.consumer_build, options.platform)[1] != consumer or
                 build_config.verify_builder(options, reference.DOCKER) != builder or
+                reference.sha(Path(release_reuse.__file__)) != result["reuse_verifier_sha256"] or
                 reference.sha(Path(__file__)) != result["runner_sha256"]):
             raise ValueError("native release image, builder or gate runner changed during qualification")
         result["passed"] = True
