@@ -26,6 +26,7 @@ PROOFS = [
     "same_store_new_epoch", "failed_payload_removed", "actual_capacity_returned",
     "wrong_owner_refused", "exact_replay", "original_storage_released",
     "successor_storage_released", "host_sysctls_unchanged", "inputs_unchanged",
+    "pending_resume_preserved", "pending_resume_continued",
 ]
 
 
@@ -92,6 +93,7 @@ def main():
     deadline = time.monotonic() + 420
     volume = False
     workers = []
+    pending = None
 
     def run(arguments, body=None):
         remaining = deadline - time.monotonic()
@@ -162,6 +164,21 @@ def main():
         identity = run(successor_command)
         successor = consumer_worker_loss.ready(successor_name, owner, identity, deadline)["status"]
         result["same_store_new_epoch"] = successor["store_id"] == status["store_id"] and successor["epoch"] != status["epoch"]
+        run(["exec", identity, "sh", "-ec",
+             "mkdir /busybox; tar -xzf /input/rootfs.tar.gz -C /busybox"])
+        pending_stdout = (artifact / "pending-resume.stdout").open("x")
+        pending_stderr = (artifact / "pending-resume.stderr").open("x")
+        pending = subprocess.Popen([*reference.DOCKER, "exec", "--env",
+            "FACTORYBOX_NATIVE_RETAINED_PENDING_RESUME=1", identity,
+            "/input/lifecycle.test", "-test.v",
+            "-test.run=^TestNativeRetainedCleanupWhileResumeUnattempted$", "-test.timeout=180s"],
+            stdout=pending_stdout, stderr=pending_stderr)
+        pending_stdout.close()
+        pending_stderr.close()
+        while not (output / "pending-resume-ready.json").exists():
+            if pending.poll() is not None or time.monotonic() >= deadline:
+                raise ValueError("owned pending Resume did not reach its real copy failure")
+            time.sleep(.02)
         arguments = ["exec", identity, "/opt/factorybox/factorybox", "--worker-run-root", "/run/factorybox",
                      "retire-sandbox", "--source-root", prepared["source_root"],
                      "--sandbox-owner", prepared["request"]["sandbox_owner"],
@@ -194,6 +211,13 @@ print(json.dumps({'record':hashlib.sha256((root/'record.json').read_bytes()).hex
         result["failed_payload_removed"] = observed["images_removed"]
         result["actual_capacity_returned"] = after-before >= prepared["retained_payload_bytes"]
         result["available_bytes_before"], result["available_bytes_after"] = before, after
+        run(["exec", identity, "touch", "/output/continue-pending-resume"])
+        if pending.wait(timeout=max(.1, deadline-time.monotonic())) != 0:
+            raise ValueError("original pending Resume did not continue after unrelated cleanup")
+        resumed = json.loads((output / "pending-resume-completed.json").read_text())
+        result["pending_resume_preserved"] = (
+            resumed.get("original_record_preserved") is True and resumed.get("checkpoint_preserved") is True)
+        result["pending_resume_continued"] = resumed.get("same_resume_continued") is True
         run(["stop", "--timeout=45", identity])
         exited = consumer_worker_loss.exact_worker(successor_name, owner, identity)["State"]
         if exited["Running"] or exited["OOMKilled"] or exited["ExitCode"] != 0:
@@ -215,6 +239,8 @@ print(json.dumps({'record':hashlib.sha256((root/'record.json').read_bytes()).hex
                 logs = subprocess.run([*reference.DOCKER, "logs", created], capture_output=True, text=True)
                 (artifact / (created + ".log")).write_text(logs.stdout + logs.stderr)
                 reference.owned_delete("container", created, owner)
+            if pending is not None:
+                pending.wait(timeout=10)
             if volume and not result["passed"]:
                 upstream_bats.archive_stopped_volumes(artifact, name, owner, [name], worker["image"], result, compressed=True)
             if volume:

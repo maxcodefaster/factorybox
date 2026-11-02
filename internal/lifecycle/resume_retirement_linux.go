@@ -105,6 +105,18 @@ func (e *Engine) resumeRetirementSafety(ctx context.Context, record Record, requ
 	return e.retirementPathDependencies(ctx, e.config.Root+"/objects/"+record.ID+"/resumes/"+request.SnapshotID+"/images")
 }
 
+func unattemptedResumeInputs(record Record) bool {
+	return record.Phase == "resuming" &&
+		record.Start.Attempted && record.Start.CompletedAt != "" && record.Delete == nil &&
+		record.Pause != nil && tokenID.MatchString(record.Pause.SnapshotID) &&
+		digest.MatchString(record.Pause.CheckpointSHA256) &&
+		record.Pause.RequestedAt != "" && record.Pause.CompletedAt != "" && record.Pause.RejectedAt == "" &&
+		record.Pause.Resume != nil && record.Pause.Resume.RequestedAt != "" &&
+		!record.Pause.Resume.Attempted && record.Pause.Resume.CompletedAt == "" && record.Pause.Resume.Error == "" &&
+		filepath.IsAbs(record.InputBundle) && filepath.Clean(record.InputBundle) == record.InputBundle &&
+		record.Rootfs == record.InputBundle+"/rootfs"
+}
+
 func (e *Engine) retirementPathDependencies(ctx context.Context, retiring string) error {
 	overlaps := func(name string) bool {
 		return filepath.IsAbs(name) && (below(name, retiring) || below(retiring, name))
@@ -134,7 +146,17 @@ func (e *Engine) retirementPathDependencies(ctx context.Context, retiring string
 			record.Pause.RequestedAt != "" && record.Pause.CompletedAt == "" && record.Pause.Resume == nil &&
 			filepath.IsAbs(record.InputBundle) && filepath.Clean(record.InputBundle) == record.InputBundle &&
 			record.Rootfs == record.InputBundle+"/rootfs"
-		if record.Phase != "running" && record.Phase != "paused" && !retainedPause {
+		// Copy preparation keeps the already paused OCI inputs unchanged.
+		// Under the current epoch lock, require its original empty cgroup
+		// before inventorying those same references. Never grant this
+		// exception to an attempted restore or a retained epoch.
+		preparingResume := !e.metadataOnly && unattemptedResumeInputs(record)
+		if preparingResume {
+			if err := e.requireEmptyCgroup(record); err != nil {
+				return err
+			}
+		}
+		if record.Phase != "running" && record.Phase != "paused" && !retainedPause && !preparingResume {
 			return fmt.Errorf("unresolved Sandbox blocks private-backing retirement: %s (%s)", record.ID, record.Phase)
 		}
 		if overlaps(record.InputBundle) || overlaps(record.Rootfs) ||

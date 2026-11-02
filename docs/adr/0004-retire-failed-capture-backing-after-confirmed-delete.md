@@ -39,3 +39,9 @@ or leaving multi-gigabyte partial copies permanently charged to the store.
 The same retained command also completes an abandoned capture's already
 confirmed failed-Delete admission; it does not require that failure to have
 returned the source to useful work before Delete.
+
+An unrelated current Resume preparation must not create a storage deadlock.
+While its restore is explicitly unattempted, its complete Pause and unchanged
+OCI input references can still participate in retirement's dependency inventory.
+Require the original empty cgroup under the current epoch lock and retain every
+path-overlap check. Attempted or unknown restores and earlier epochs remain fenced.

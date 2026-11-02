@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -94,5 +96,73 @@ func TestNativeRetainedFailedCapturePrepare(t *testing.T) {
 		"request": request, "receipt": receipt, "source_root": status.Lifecycle.Root,
 		"snapshot_id": snapshot, "record_sha256": sum(originalRecord),
 		"metadata_sha256": hashes, "retained_payload_bytes": 32 << 20,
+	})
+}
+
+func TestNativeRetainedCleanupWhileResumeUnattempted(t *testing.T) {
+	if os.Getenv("FACTORYBOX_NATIVE_RETAINED_PENDING_RESUME") != "1" {
+		t.Skip("owned retained cleanup with an actual unattempted Resume only")
+	}
+	status := boundedLossStatusNow(t)
+	started := standbyFixture(t, status, "pending-resume", nil)
+	snapshot := strings.Repeat("a", 32)
+	paused := boundedLossView(t, "pause", "--snapshot-id", snapshot, started.Record.ID)
+	shim := t.TempDir()
+	if err := os.WriteFile(filepath.Join(shim, "cp"), []byte("#!/bin/sh\nexit 74\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", shim+":"+originalPath)
+	output, resumeErr := boundedLossCommand("--worker-run-root", "/run/factorybox", "resume",
+		"--snapshot-id", snapshot, started.Record.ID)
+	t.Setenv("PATH", originalPath)
+	var pending View
+	if resumeErr == nil || !strings.Contains(resumeErr.Error(), "copy private fork images") ||
+		json.Unmarshal(output, &pending) != nil || pending.Record.Phase != "resuming" ||
+		pending.Record.Pause == nil || pending.Record.Pause.Resume == nil ||
+		pending.Record.Pause.Resume.Attempted {
+		t.Fatal("real copy failure did not leave its unattempted Resume", resumeErr, string(output))
+	}
+	object := status.Lifecycle.Root + "/objects/" + pending.Record.ID
+	checkpoint := object + "/captures/" + snapshot + "/checkpoint.json"
+	before, err := os.ReadFile(object + "/record.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundedLossSave(t, "pending-resume-ready.json", map[string]any{
+		"record_sha256": sum(before), "checkpoint_sha256": sum(saved),
+		"source_root": status.Lifecycle.Root, "id": pending.Record.ID,
+	})
+	for {
+		if _, err := os.Stat("/output/continue-pending-resume"); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	after, err := os.ReadFile(object + "/record.json")
+	if err != nil || sum(after) != sum(before) {
+		t.Fatal("unrelated cleanup changed the pending Resume record", err)
+	}
+	after, err = os.ReadFile(checkpoint)
+	if err != nil || sum(after) != sum(saved) {
+		t.Fatal("unrelated cleanup changed the committed Pause", err)
+	}
+	resumed := boundedLossView(t, "resume", "--snapshot-id", snapshot, started.Record.ID)
+	if resumed.Record.Phase != "running" || resumed.Runtime == nil || resumed.Runtime.Status != "running" ||
+		resumed.Record.RuntimeID != started.Record.RuntimeID ||
+		resumed.Record.Owner != started.Record.Owner || resumed.Record.InputSHA256 != started.Record.InputSHA256 ||
+		resumed.Record.Pause == nil || resumed.Record.Pause.CheckpointSHA256 != paused.Record.Pause.CheckpointSHA256 ||
+		resumed.Record.Pause.Resume == nil || resumed.Record.Pause.Resume.CompletedAt == "" ||
+		resumed.Record.Pause.Resume.RequestedAt != pending.Record.Pause.Resume.RequestedAt {
+		t.Fatal("pending preparation did not continue its original native Resume")
+	}
+	boundedLossSave(t, "pending-resume-completed.json", map[string]bool{
+		"original_record_preserved": true, "checkpoint_preserved": true, "same_resume_continued": true,
 	})
 }
