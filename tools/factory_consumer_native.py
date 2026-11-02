@@ -77,6 +77,16 @@ def worker_http_ready(run, worker_id, helper_id, worker_pid, verify):
     return response.strip() == '204'
 
 
+def owned_startup_pid(inspected):
+    state = inspected.get('State', {})
+    if state.get('Status') in {'exited', 'dead'} or state.get('Dead') is True:
+        raise RuntimeError('Owned fixture exited before readiness: ' + json.dumps(state, sort_keys=True))
+    pid = state.get('Pid')
+    if state.get('Running') is True and type(pid) is int and pid > 1:
+        return pid
+    return None
+
+
 def preparation_assignment(files, reserve):
     names = ['slot.json'] if reserve else ['assignment.json', 'parent-token', 'child-token']
     return {name: files[name] for name in names}
@@ -476,7 +486,19 @@ def main():
         w = own(name,worker_id);s = own(server_name,server_id)
         if w['HostConfig']['Memory']!=3<<30 or w['HostConfig']['NanoCpus']!=3_000_000_000 or w['HostConfig']['NetworkMode']!='none' or s['HostConfig']['NetworkMode']!='none':
             raise ValueError('Native fixture resource bounds changed')
-        wp,sp = w['State']['Pid'],s['State']['Pid']
+        readiness_until = min(deadline, time.monotonic() + 120)
+        def startup_pid(label, identity):
+            observed = own(label, identity)
+            state = observed.get('State', {})
+            history = result.setdefault('startup_observations', {}).setdefault(label, [])
+            if not history or history[-1] != state:
+                history.append(state)
+            return owned_startup_pid(observed)
+        positive_pid = lambda value: type(value) is int and value > 1
+        wp = wait(lambda: startup_pid(name, worker_id), positive_pid,
+                  'Original worker process startup', max(.1, readiness_until - time.monotonic()))
+        sp = wait(lambda: startup_pid(server_name, server_id), positive_pid,
+                  'Original consumer Hub process startup', max(.1, readiness_until - time.monotonic()))
         network_name = name+'-network'
         network_id = run_owned_container(run,containers,network_name,['--detach','--label','com.factorybox.run='+owner,
             '--privileged','--pid=host','--userns=host','--network=none','--read-only',
@@ -491,7 +513,7 @@ def main():
                 raise RuntimeError('Original worker exited or changed before HTTP readiness')
             own(network_name,network_id)
         wait(lambda:worker_http_ready(run,worker_id,network_id,wp,verify_health),
-             lambda ready:ready is True,'Worker HTTP readiness',120)
+             lambda ready:ready is True,'Worker HTTP readiness',max(.1, readiness_until-time.monotonic()))
         result['worker_http_readiness']=True
         status=json.loads(run(['exec',worker_id,'/opt/factorybox/factorybox','worker-status']))
         if not status.get('ready_at') or status.get('store_id')!=owner:

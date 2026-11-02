@@ -359,6 +359,20 @@ class NativeFactoryConsumerInputTests(unittest.TestCase):
                     consumer.worker_http_ready(command, 'worker', helper, pid, lambda: None)
             command.assert_not_called()
 
+    def test_startup_pins_only_a_live_owned_process_and_reports_terminal_exit(self):
+        for state in [
+                {"Status": "created", "Running": False, "Pid": 0},
+                {"Status": "running", "Running": True, "Pid": 0},
+                {"Status": "running", "Running": True, "Pid": True}]:
+            self.assertIsNone(consumer.owned_startup_pid({"State": state}))
+        self.assertEqual(consumer.owned_startup_pid({
+            "State": {"Status": "running", "Running": True, "Pid": 123}}), 123)
+        for state in [
+                {"Status": "exited", "Running": False, "Pid": 0, "ExitCode": 1},
+                {"Status": "dead", "Running": False, "Pid": 0, "OOMKilled": True}]:
+            with self.assertRaisesRegex(RuntimeError, "exited before readiness"):
+                consumer.owned_startup_pid({"State": state})
+
     def test_timed_out_container_create_retains_exact_cleanup_intent(self):
         containers = []
         command = ['run', '--name', 'owned-directory', '--label',
