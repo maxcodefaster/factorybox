@@ -33,6 +33,11 @@ class StorageExitRunnerTests(unittest.TestCase):
                     raise subprocess.TimeoutExpired(arguments, timeout)
                 self.fail("unexpected external action: " + repr(arguments))
 
+            def run(command, **unused):
+                if command[:3] == ["go", "test", "-c"]:
+                    Path(command[command.index("-o") + 1]).write_bytes(b"fixture-unit-binary")
+                return subprocess.CompletedProcess(command, 0, "owned container logs", "")
+
             with contextlib.ExitStack() as patches:
                 patches.enter_context(mock.patch.object(build_worker, "load", return_value=(artifact, {
                     "platform": "linux/arm64", "image": "exact-native-worker", "source_context": {},
@@ -43,8 +48,7 @@ class StorageExitRunnerTests(unittest.TestCase):
                 patches.enter_context(mock.patch.object(reference, "docker", side_effect=docker))
                 patches.enter_context(mock.patch.object(reference, "owned_delete", side_effect=lambda *args: deleted.append(args)))
                 patches.enter_context(mock.patch.object(upstream_bats, "archive_stopped_volumes"))
-                patches.enter_context(mock.patch.object(subprocess, "run",
-                    return_value=subprocess.CompletedProcess([], 0, "owned container logs", "")))
+                patches.enter_context(mock.patch.object(subprocess, "run", side_effect=run))
                 patches.enter_context(mock.patch("sys.argv", ["worker-storage-exit-native", "--worker-build", "exact"]))
                 patches.enter_context(contextlib.redirect_stdout(io.StringIO()))
                 with self.assertRaises(SystemExit):

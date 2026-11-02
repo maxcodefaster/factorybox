@@ -4,12 +4,14 @@ package worker
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"regexp"
+	"time"
 
 	"factorybox/internal/storefs"
 	"golang.org/x/sys/unix"
@@ -35,6 +37,42 @@ type BoundedStorageRelease struct {
 	Image                 storefs.Image `json:"image"`
 	KernelReleaseVerified bool          `json:"kernel_release_verified"`
 	CompletedEpochs       []string      `json:"completed_epochs"`
+}
+
+type orderlyStorageReleasePending struct{ cause error }
+
+func (failure *orderlyStorageReleasePending) Error() string { return failure.cause.Error() }
+func (failure *orderlyStorageReleasePending) Unwrap() error { return failure.cause }
+
+// An accepted predecessor can leave the exact autoclear association alive until
+// its mount namespace's final kernel reference closes. Observe that release
+// before attaching. No readiness, new epoch, mount or completion is published
+// while it remains held. Unknown ownership failures still return immediately.
+func waitOrderlyStorageRelease(ctx context.Context, observe func() ([]string, error)) ([]string, error) {
+	announced := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		completed, err := observe()
+		if cause := ctx.Err(); cause != nil {
+			return nil, cause
+		}
+		if _, exact := err.(*orderlyStorageReleasePending); !exact {
+			return completed, err
+		}
+		if !announced {
+			fmt.Fprintln(os.Stderr, "Waiting for previous orderly storage release")
+			announced = true
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func boundedExitDirectory(root, epoch string) (string, error) {
@@ -170,6 +208,7 @@ func completeBoundedExits(root string, image storefs.Image) ([]string, error) {
 	}
 	var pending []pendingExit
 	var completed []string
+	orderly := true
 	for _, entry := range entries {
 		directory, err := boundedExitDirectory(root, entry.Name())
 		if err != nil {
@@ -185,11 +224,15 @@ func completeBoundedExits(root string, image storefs.Image) ([]string, error) {
 		if err := validateBoundedExit(root, entry.Name(), image, plan); err != nil {
 			return nil, err
 		}
+		namespaceExitRequired := false
 		for _, name := range []string{"namespace-exit-required.json", "released.json"} {
 			receipt, err := readBoundedExit(directory + "/" + name)
 			if err == nil {
 				if !reflect.DeepEqual(plan, receipt) {
 					return nil, fmt.Errorf("bounded exit outcome changed")
+				}
+				if name == "namespace-exit-required.json" {
+					namespaceExitRequired = true
 				}
 			} else if !errors.Is(err, os.ErrNotExist) {
 				return nil, err
@@ -197,6 +240,7 @@ func completeBoundedExits(root string, image storefs.Image) ([]string, error) {
 		}
 		if _, err := os.Lstat(directory + "/released.json"); errors.Is(err, os.ErrNotExist) {
 			pending = append(pending, pendingExit{plan, directory})
+			orderly = orderly && namespaceExitRequired
 		} else if err != nil {
 			return nil, err
 		} else {
@@ -207,6 +251,9 @@ func completeBoundedExits(root string, image storefs.Image) ([]string, error) {
 		return completed, nil
 	}
 	if err := storefs.VerifyReleased(image); err != nil {
+		if orderly && errors.Is(err, unix.EWOULDBLOCK) {
+			return nil, &orderlyStorageReleasePending{cause: err}
+		}
 		return nil, err
 	}
 	for _, item := range pending {

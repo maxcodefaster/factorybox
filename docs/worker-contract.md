@@ -240,6 +240,16 @@ completes the same pending receipts before attaching the image. Native release
 gates require this post-exit proof in addition to the original clean-exit and
 Pause/Resume assertions. See [the namespace-exit decision](adr/0005-confirm-worker-storage-release-after-namespace-exit.md).
 
+When every outstanding predecessor has its exact accepted
+`namespace-exit-required.json` receipt, fresh admission may observe the still-held
+image lease until that kernel reference actually releases. It remains unready
+and creates no new epoch or mount while waiting. The caller's cancellation ends
+the observation; there is no additional startup timeout or early release receipt.
+Unknown ownership, changed metadata and additional failures still fail
+immediately. The standalone reconciliation command remains a single read-only
+observation. This does not extend the old worker's Close interval or detach its
+association.
+
 ## Local commands and responses
 
 Administrative clients execute the image's own binary inside the worker:

@@ -3,13 +3,73 @@
 package worker
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"factorybox/internal/storefs"
 	"golang.org/x/sys/unix"
 )
+
+func TestOrderlyStorageReleaseWaitsForObservedCompletion(t *testing.T) {
+	calls := 0
+	expected := []string{"original-epoch"}
+	completed, err := waitOrderlyStorageRelease(context.Background(), func() ([]string, error) {
+		calls++
+		if calls < 3 {
+			return nil, &orderlyStorageReleasePending{cause: unix.EWOULDBLOCK}
+		}
+		return expected, nil
+	})
+	if err != nil || calls != 3 || !reflect.DeepEqual(completed, expected) {
+		t.Fatal("orderly pending release did not retain the same observation", completed, calls, err)
+	}
+}
+
+func TestOrderlyStorageReleaseDoesNotRetryUnknownOwnership(t *testing.T) {
+	pending := &orderlyStorageReleasePending{cause: unix.EWOULDBLOCK}
+	for _, cause := range []error{unix.EWOULDBLOCK, errors.New("changed image"), errors.New("invalid exit receipt"),
+		fmt.Errorf("wrapped observation: %w", pending), errors.Join(pending, errors.New("another failure"))} {
+		calls := 0
+		_, err := waitOrderlyStorageRelease(context.Background(), func() ([]string, error) {
+			calls++
+			return nil, cause
+		})
+		if calls != 1 || err != cause {
+			t.Fatal("unknown ownership was turned into orderly release waiting", calls, err)
+		}
+	}
+}
+
+func TestOrderlyStorageReleaseCancellationPublishesNoCompletion(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	completed, err := waitOrderlyStorageRelease(ctx, func() ([]string, error) {
+		calls++
+		cancel()
+		return []string{"not-a-completion"}, &orderlyStorageReleasePending{cause: unix.EWOULDBLOCK}
+	})
+	if calls != 1 || completed != nil || !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled release observation published an outcome", completed, calls, err)
+	}
+	completed, err = waitOrderlyStorageRelease(ctx, func() ([]string, error) {
+		t.Fatal("already cancelled admission observed storage")
+		return nil, nil
+	})
+	if completed != nil || !errors.Is(err, context.Canceled) {
+		t.Fatal("already cancelled admission continued", completed, err)
+	}
+	ctx, cancel = context.WithCancel(context.Background())
+	completed, err = waitOrderlyStorageRelease(ctx, func() ([]string, error) {
+		cancel()
+		return []string{"released-but-cancelled"}, nil
+	})
+	if completed != nil || !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled admission continued after its last storage observation", completed, err)
+	}
+}
 
 func boundedExitFixture() boundedExit {
 	owner := "11111111111111111111111111111111"
