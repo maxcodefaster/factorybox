@@ -78,6 +78,20 @@ func TestStoragePolicyRejectsPartialOrOverflowedLimits(t *testing.T) {
 }
 
 func TestStorageAllocationPreservesFreeFloorAndRecoveryReserve(t *testing.T) {
+	for _, row := range []struct {
+		available, floor, reserve, allocation uint64
+		admitted                              bool
+	}{
+		{10, 2, 3, 5, true},
+		{10, 2, 3, 6, false},
+		{1, 2, 3, 0, false},
+		{10, 2, math.MaxUint64, 0, false},
+		{10, 2, 3, math.MaxUint64, false},
+	} {
+		if got := storageAllocationAdmitted(row.available, row.floor, row.reserve, row.allocation); got != row.admitted {
+			t.Fatal("storage allocation crossed its floor/reserve or overflowed", row, got)
+		}
+	}
 	path := t.TempDir()
 	root, err := os.OpenRoot(path)
 	if err != nil {

@@ -153,7 +153,49 @@ func (e *Engine) Capacity() (StorageCapacity, error) {
 		return StorageCapacity{}, err
 	}
 	defer lock.Close()
-	return e.storageCapacity()
+	return e.storageCapacityForAllocation(0)
+}
+
+func storageAllocationAdmitted(available, floor, reserve, allocation uint64) bool {
+	return floor <= available && reserve <= available-floor && allocation <= available-floor-reserve
+}
+
+// Btrfs can keep deleted extents charged until the current transaction commits.
+// Refresh only a refused allocation on our exact bounded filesystem. Ordinary
+// capacity reads and admitted writes do not flush, and host capacity is never
+// repaired by syncing an unrelated filesystem.
+func (e *Engine) storageCapacityForAllocation(bytes uint64) (StorageCapacity, error) {
+	report, err := e.storageCapacity()
+	if err != nil || e.config.BoundedStore == nil || report.FilesystemType != unix.BTRFS_SUPER_MAGIC ||
+		storageAllocationAdmitted(report.AvailableBytes, report.MinFreeBytes, report.WriteReserve, bytes) ||
+		!storageAllocationAdmitted(report.TotalBytes, report.MinFreeBytes, report.WriteReserve, bytes) ||
+		(report.Host != nil && !storageAllocationAdmitted(report.Host.AvailableBytes, report.Host.MinFreeBytes, report.Host.WriteReserve, 0)) {
+		return report, err
+	}
+	root, err := e.root.Open(".")
+	if err != nil {
+		return report, err
+	}
+	defer root.Close()
+	var stat unix.Stat_t
+	var extended unix.Statx_t
+	fd := int(root.Fd())
+	if err := errors.Join(unix.Fstat(fd, &stat),
+		unix.Statx(fd, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &extended)); err != nil {
+		return report, err
+	}
+	if extended.Mask&unix.STATX_MNT_ID == 0 ||
+		(KernelObject{Device: uint64(stat.Dev), Inode: stat.Ino, MountID: extended.Mnt_id}) != report.Directory {
+		return report, fmt.Errorf("bounded storage identity changed before capacity refresh")
+	}
+	if err := unix.Syncfs(fd); err != nil {
+		return report, fmt.Errorf("commit bounded storage reclamation: %w", err)
+	}
+	refreshed, err := e.storageCapacity()
+	if err == nil && refreshed.Directory != report.Directory {
+		return refreshed, fmt.Errorf("bounded storage identity changed during capacity refresh")
+	}
+	return refreshed, err
 }
 
 // Call under the existing controller operation lock, before new backing or a
@@ -168,20 +210,17 @@ func (e *Engine) admitStorageAllocation(bytes uint64) error {
 	if e.config.MinFreeBytes == 0 && e.config.WriteReserve == 0 {
 		return nil // Legacy explicit-controller fixtures have no admission policy.
 	}
-	report, err := e.storageCapacity()
+	report, err := e.storageCapacityForAllocation(bytes)
 	if err != nil {
 		return errors.Join(err, fmt.Errorf("new storage writes refused: capacity could not be verified"))
 	}
-	admitted := func(available, floor, reserve, allocation uint64) bool {
-		return floor <= available && reserve <= available-floor && allocation <= available-floor-reserve
-	}
 	// The bounded image was fully allocated at creation. Its internal copy
 	// consumes guest blocks, not another allocation of those bytes on the host.
-	if report.Host != nil && !admitted(report.Host.AvailableBytes, report.Host.MinFreeBytes, report.Host.WriteReserve, 0) {
+	if report.Host != nil && !storageAllocationAdmitted(report.Host.AvailableBytes, report.Host.MinFreeBytes, report.Host.WriteReserve, 0) {
 		return fmt.Errorf("new storage writes refused: host available=%d bytes, required free floor=%d plus write reserve=%d",
 			report.Host.AvailableBytes, report.Host.MinFreeBytes, report.Host.WriteReserve)
 	}
-	if !admitted(report.AvailableBytes, report.MinFreeBytes, report.WriteReserve, bytes) {
+	if !storageAllocationAdmitted(report.AvailableBytes, report.MinFreeBytes, report.WriteReserve, bytes) {
 		return fmt.Errorf("new storage writes refused: filesystem available=%d bytes, required allocation=%d bytes plus free floor=%d and write reserve=%d",
 			report.AvailableBytes, bytes, report.MinFreeBytes, report.WriteReserve)
 	}
