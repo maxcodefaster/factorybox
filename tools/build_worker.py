@@ -284,6 +284,7 @@ def main():
     if not options.native_candidate:
         criu_candidate.require_recovery_corrections(criu, criu_component)
     criu_candidate.require_descriptor_transfer(criu)
+    criu_candidate.require_mapping_access(criu)
     proof = (descriptor_transfer_proof.load(
         options.descriptor_proof, platform=options.platform,
         criu_name=options.retained_candidate, native_base_build=options.native_base_build,

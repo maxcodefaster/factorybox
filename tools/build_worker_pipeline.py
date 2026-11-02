@@ -36,6 +36,9 @@ def commands(options, sysbox, criu, descriptor_proof=None):
         "descriptor-packets": [*common, "tools/build_criu_shared_fds.py",
                                "--base-candidate", criu, "--descriptor-packets",
                                "--native-base-build", options.native_base_build],
+        "mapping-access": [*common, "tools/build_criu_shared_fds.py",
+                           "--base-candidate", criu, "--mapping-access",
+                           "--native-base-build", options.native_base_build],
         "descriptor-proof": [*common, "tests/fdstore-criu-client/run.py",
                              "--criu-candidate", criu,
                              "--native-base-build", options.native_base_build],
@@ -73,6 +76,13 @@ def descriptor_packets_input(name, result):
     if "shared-fds-packets.patch" not in result.get("candidate_patch_sha256", {}):
         return None
     criu_candidate.require_descriptor_transfer(result)
+    return name
+
+
+def mapping_access_input(name, result):
+    if "shared-filemap-access.patch" not in result.get("candidate_patch_sha256", {}):
+        return None
+    criu_candidate.require_mapping_access(result)
     return name
 
 
@@ -121,7 +131,7 @@ def main():
             supplied = evidence.name
         if role == "sysbox":
             _, loaded = reference_lifecycle.component_build(supplied, "factorybox-build-sysbox-")
-        elif role in {"criu", "recovery", "shared-fds", "namespace-access", "descriptor-packets"}:
+        elif role in {"criu", "recovery", "shared-fds", "namespace-access", "descriptor-packets", "mapping-access"}:
             _, loaded, component, _ = criu_candidate.load(supplied)
             if role == "criu":
                 criu_candidate.require_base_failure_correction(component)
@@ -156,6 +166,10 @@ def main():
                                  descriptor_packets_input(criu, loaded_criu))
         if descriptor_packets_input(criu, loaded_criu) != criu:
             raise ValueError("worker pipeline requires the exact CRIU descriptor packet protocol")
+        criu, loaded_criu = step("mapping-access", commands(options, sysbox, criu)["mapping-access"],
+                                 mapping_access_input(criu, loaded_criu))
+        if mapping_access_input(criu, loaded_criu) != criu:
+            raise ValueError("worker pipeline requires the exact CRIU shared mapping access correction")
         proof, _ = step("descriptor-proof", commands(options, sysbox, criu)["descriptor-proof"],
                         options.descriptor_proof)
         worker, built = step("worker", commands(options, sysbox, criu, proof)["worker"])

@@ -31,6 +31,16 @@ def require_large_descriptions(observed, count, previous=None):
         raise ValueError("large shared-source descriptions or independent positions changed")
 
 
+def require_writable_mapping(observed, previous=None):
+    if (observed.get("writable_shared") is not True or
+            type(observed.get("inode")) is not int or observed["inode"] <= 0 or
+            type(observed.get("counter")) is not int or observed["counter"] < 0 or
+            not isinstance(observed.get("mapped_hex"), str) or
+            not re.fullmatch(r"[a-f0-9]{32}", observed["mapped_hex"]) or
+            previous is not None and observed != previous):
+        raise ValueError("closed writable shared mapping lost its original inode, RAM or access")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker-build', required=True)
@@ -45,6 +55,8 @@ def main():
     parser.add_argument('--factory-preparation-repo', type=Path, help='Use the frozen Factory consumer preparer with its real rootfs; the workload remains this contract fixture')
     parser.add_argument('--retained-descriptions', type=int, default=0,
                         help='Keep this many independent source descriptions and file positions through every Pause/Resume')
+    parser.add_argument('--writable-mapping', action='store_true',
+                        help='Keep a closed-FD writable shared mapping across Pause/Resume and an independent editor replacement')
     args = parser.parse_args()
     if args.retained_descriptions < 0:
         parser.error('--retained-descriptions cannot be negative')
@@ -90,6 +102,7 @@ def main():
     result['docker_child'] = args.docker_child
     result['platform'] = platform
     result['retained_descriptions'] = args.retained_descriptions
+    result['writable_mapping'] = args.writable_mapping
     result['store_capacity_range'] = {'minimum_bytes': 1 << 30, 'maximum_bytes': 8 << 30}
     factory_preparer = None
     if args.factory_preparation_repo:
@@ -338,6 +351,8 @@ ca=pathlib.Path('/factory/registry-ca');ca.mkdir(parents=True);(ca/'ca.crt').wri
                 bootstrap += 'export FACTORYBOX_SHARED_SOURCE_RETAINED_DESCRIPTIONS='+str(args.retained_descriptions)+'\n'
             if args.rename_directory:
                 bootstrap += 'export FACTORYBOX_SHARED_SOURCE_SUBDIRECTORY=1\n'
+            if args.writable_mapping:
+                bootstrap += 'export FACTORYBOX_SHARED_SOURCE_WRITABLE_MMAP=1\n'
             bootstrap += 'exec /opt/factorybox-example-actor --docker-parent\n'
             request = {'version':1,'storeID':owner,'epoch':status['epoch'],'podUID':identity,
                        'runtimeHostImage':image,'sharedSource':True,'bootstrap':bootstrap}
@@ -429,6 +444,8 @@ path.write_text(json.dumps(spec))
         if args.retained_descriptions:
             configure += "\nspec['process']['env'].append(" + repr(
                 'FACTORYBOX_SHARED_SOURCE_RETAINED_DESCRIPTIONS=' + str(args.retained_descriptions)) + ")\npath.write_text(json.dumps(spec))\n"
+        if args.writable_mapping:
+            configure += "\nspec['process']['env'].append('FACTORYBOX_SHARED_SOURCE_WRITABLE_MMAP=1')\npath.write_text(json.dumps(spec))\n"
         if factory_preparer:
             configure = '''import os,pathlib
 project=pathlib.Path('/factory-source/project')
@@ -469,6 +486,9 @@ for name,content in [('current.txt','before'),('held.txt','original-held---'*256
                 time.sleep(.1)
         if args.docker_child:
             result['docker_first_use'] = docker_observation()
+        if args.writable_mapping:
+            result['writable_first_use'] = actor('POST', socket_name='.writable-mapping.sock')
+            require_writable_mapping(result['writable_first_use'])
         ownership = json.loads(run(['exec', identity, 'python3', '-c', "import json,os;stat=os.stat('/factory-source/project/runtime-write');print(json.dumps({'uid':stat.st_uid,'gid':stat.st_gid}))"]))
         result['runtime_source_owner'] = ownership
         if ownership != {'uid':101000,'gid':101000}:
@@ -479,6 +499,9 @@ for name,content in [('current.txt','before'),('held.txt','original-held---'*256
             if args.retained_descriptions:
                 phase['descriptions_before'] = actor(socket_name='.large-descriptions.sock')
                 require_large_descriptions(phase['descriptions_before'], args.retained_descriptions)
+            if args.writable_mapping:
+                phase['writable_before'] = actor(socket_name='.writable-mapping.sock')
+                require_writable_mapping(phase['writable_before'])
             result['phases'].append(phase)
             phase['pause'] = json.loads(run([*ctl, 'pause', '--snapshot-id', phase['snapshot_id'], sandbox_id], timeout=90))
             edit = '''import os,pathlib
@@ -489,6 +512,16 @@ os.replace(temporary,root/filename)
             filename = 'current.txt' if kind == 'closed-file-edit' else 'held.txt'
             content = 'accepted editor change with a different size' if kind == 'closed-file-edit' else 'replacement-held'*512
             run(['exec', identity, 'python3', '-c', 'filename=' + repr(filename) + '\ncontent=' + repr(content) + '\n' + edit])
+            if args.writable_mapping and len(result['phases']) == 1:
+                result['writable_replacement'] = json.loads(run(['exec', identity, 'python3', '-c', '''
+import hashlib,json,os,pathlib
+root=pathlib.Path('/factory-source/project');temporary=root/'.editor-mapped-save'
+temporary.write_bytes(b'editor replacement'+bytes(32750));os.chown(temporary,101000,101000);os.chmod(temporary,0o600)
+target=root/'.factorybox-mapped-shm';os.replace(temporary,target);info=target.stat()
+print(json.dumps({'inode':info.st_ino,'sha256':hashlib.sha256(target.read_bytes()).hexdigest()}))
+''']))
+                if result['writable_replacement']['inode'] == phase['writable_before']['inode']:
+                    raise ValueError('editor replacement did not create an independent mapping inode')
             if args.rename_directory and kind == 'open-file-atomic-replacement':
                 run(['exec', identity, 'python3', '-c', "import os;os.rename('/factory-source/project/folder','/factory-source/project/renamed')"])
                 phase['expected_cwd'] = phase['before']['cwd'].removesuffix('/folder') + '/renamed'
@@ -523,6 +556,23 @@ print(json.dumps(result))
             phase['resume'] = json.loads(run([*ctl, 'resume', '--snapshot-id', phase['snapshot_id'], sandbox_id], timeout=90))
             live_pid = phase['resume']['runtime']['pid']
             phase['after'] = actor()
+            if args.writable_mapping:
+                phase['writable_after'] = actor(socket_name='.writable-mapping.sock')
+                require_writable_mapping(phase['writable_after'], phase['writable_before'])
+                phase['writable_post'] = actor('POST', socket_name='.writable-mapping.sock')
+                require_writable_mapping(phase['writable_post'])
+                if (phase['writable_post']['inode'] != phase['writable_after']['inode'] or
+                        phase['writable_post']['counter'] != phase['writable_after']['counter'] + 1 or
+                        phase['writable_post']['mapped_hex'] == phase['writable_after']['mapped_hex']):
+                    raise ValueError('restored original mapping cannot perform useful shared writes')
+                replacement = json.loads(run(['exec', identity, 'python3', '-c', '''
+import hashlib,json,pathlib
+p=pathlib.Path('/factory-source/project/.factorybox-mapped-shm')
+print(json.dumps({'inode':p.stat().st_ino,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}))
+''']))
+                if replacement != result['writable_replacement']:
+                    raise ValueError('restored mapping changed the independent editor replacement')
+                phase['writable_original_and_replacement_preserved'] = True
             if args.retained_descriptions:
                 phase['descriptions_after'] = actor(socket_name='.large-descriptions.sock')
                 require_large_descriptions(

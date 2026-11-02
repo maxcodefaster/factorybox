@@ -102,7 +102,8 @@ func dockerParent() error {
 		"--mount", "type=bind,source=/workspace,target=/workspace",
 		"--mount", "type=bind,source=/home/coder/project,target=/workspace/project",
 		"--env", "FACTORYBOX_SHARED_SOURCE_ROOT=/workspace/project"}
-	for _, name := range []string{"FACTORYBOX_NETWORK_URL", "FACTORYBOX_SHARED_SOURCE_SUBDIRECTORY"} {
+	for _, name := range []string{"FACTORYBOX_NETWORK_URL", "FACTORYBOX_SHARED_SOURCE_SUBDIRECTORY",
+		"FACTORYBOX_SHARED_SOURCE_WRITABLE_MMAP"} {
 		if value := os.Getenv(name); value != "" {
 			arguments = append(arguments, "--env", name+"="+value)
 		}

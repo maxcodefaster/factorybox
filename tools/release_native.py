@@ -46,6 +46,8 @@ def native_commands(options, worker, bats_images):
     criu_base = (["--criu-base-lock", str(reference.ROOT / "artifacts" / options.worker_build / "criu-base-source-lock.json")]
                  if "criu_base_source_lock_sha256" in worker else [])
     commands = [
+        ("shared-filemap", [python, "tests/criu-shared-filemap/run.py",
+                           "--criu-candidate", worker["criu_build"], *base]),
         ("capture-budget", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build]),
         ("resume-capacity", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build, "--resume-capacity"]),
         ("resume-preparation", [python, "tools/capture_budget_native.py", "--worker-build", options.worker_build, "--resume-preparation"]),
@@ -54,7 +56,8 @@ def native_commands(options, worker, bats_images):
         ("storefs", [python, "tools/storefs_native.py", "--worker-build", options.worker_build]),
         ("worker-storage-exit", [python, "tools/worker_storage_exit_native.py", "--worker-build", options.worker_build]),
         ("shared-source-large", [python, "tools/shared_source_probe.py", "--worker-build", options.worker_build,
-                                 "--case", "open-file-atomic-replacement", "--alias-mount", "--retained-descriptions", "257"]),
+                                 "--case", "open-file-atomic-replacement", "--alias-mount",
+                                 "--retained-descriptions", "257", "--writable-mapping"]),
         ("criu-core", [python, "tools/criu_core.py", *base,
                        "--retained-candidate", worker["criu_build"], *criu_base, *upstream_target]),
         ("sysbox-unit", [python, "tools/upstream_unit.py", *sysbox, "--suite", "all",

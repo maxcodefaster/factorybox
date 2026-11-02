@@ -29,6 +29,9 @@ class WorkerPipelineTests(unittest.TestCase):
             self.assertEqual(commands["descriptor-packets"][1:],
                              ["tools/build_criu_shared_fds.py", "--base-candidate", "exact-criu",
                               "--descriptor-packets", "--native-base-build", "exact-base"])
+            self.assertEqual(commands["mapping-access"][1:],
+                             ["tools/build_criu_shared_fds.py", "--base-candidate", "exact-criu",
+                              "--mapping-access", "--native-base-build", "exact-base"])
             self.assertEqual(commands["descriptor-proof"][1:], [
                 "tests/fdstore-criu-client/run.py", "--criu-candidate", "exact-criu",
                 "--native-base-build", "exact-base"])
@@ -121,3 +124,23 @@ class WorkerPipelineTests(unittest.TestCase):
                 {**complete, "features": {**complete["features"], "schema": True}}]:
             with self.assertRaisesRegex(ValueError, "packet protocol"):
                 criu_candidate.require_descriptor_transfer(changed)
+
+    def test_worker_requires_the_mapping_correction_without_rewriting_old_inputs(self):
+        complete = {
+            "candidate_patch_sha256": {
+                "shared-fds-packets.patch": reference.sha(build_criu_shared_fds.PACKETS_PATCH),
+                "shared-filemap-access.patch": reference.sha(build_criu_shared_fds.MAPPING_PATCH),
+            },
+            "features": {"schema": 1, "shared_file_transfer_version": 2,
+                         "shared_file_descriptions": True, "shared_source_directories": True},
+        }
+        self.assertIsNone(build_worker_pipeline.mapping_access_input("old", {}))
+        self.assertEqual(build_worker_pipeline.mapping_access_input("fixed", complete), "fixed")
+        for digest in [None, "0" * 64]:
+            changed = {**complete, "candidate_patch_sha256": dict(complete["candidate_patch_sha256"])}
+            if digest is None:
+                del changed["candidate_patch_sha256"]["shared-filemap-access.patch"]
+            else:
+                changed["candidate_patch_sha256"]["shared-filemap-access.patch"] = digest
+            with self.assertRaisesRegex(ValueError, "mapping access correction"):
+                criu_candidate.require_mapping_access(changed)

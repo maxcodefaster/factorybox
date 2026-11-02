@@ -134,6 +134,8 @@ mise exec -- python3 tools/build_criu_shared_fds.py \
   --base-candidate "$shared_build" --namespace-access
 mise exec -- python3 tools/build_criu_shared_fds.py \
   --base-candidate "$namespace_build" --descriptor-packets --native-base-build "$base_build"
+mise exec -- python3 tools/build_criu_shared_fds.py \
+  --base-candidate "$packet_build" --mapping-access --native-base-build "$base_build"
 mise exec -- python3 tests/fdstore-criu-client/run.py \
   --criu-candidate "$criu_build" --native-base-build "$base_build"
 mise exec -- python3 tools/build_worker.py \
@@ -153,6 +155,20 @@ proof retains frozen Go/C inputs and binds the exact CRIU build, native platform
 Worker assembly preserves that receipt without putting run-specific hashes in distributed bytes.
 Release qualification refuses a worker without the bound proof. This component gate does not
 replace native Pause/Resume, recovery, upstream or consumer qualification.
+
+The mapping-access delta follows the descriptor-packet delta. A shared writable
+mapping may need a writable descriptor even when its retained file description is
+read-only. CRIU reopens only the inherited kernel object through `/proc/self/fd`,
+checks its original device and inode, and preserves normal restored descriptors'
+access and offsets. It never substitutes the current shared Source pathname.
+Worker assembly requires this exact ordered patch without rewriting older builds.
+The `shared-filemap` release gate exercises the selected CRIU branch with real
+Linux file descriptions and mappings. The delivered-image `shared-source-large`
+gate also uses `--writable-mapping`, retaining the original writable mapping
+through Pause/Resume while an editor independently replaces its pathname. It
+requires useful writes to the original mapping and unchanged replacement bytes,
+alongside the existing 257-description and alias-mount assertions.
+
 Each completed local worker build keeps one never-started, owned image-reference container so
 node image GC cannot remove the selected input between build and qualification. It runs no
 worker, allocates no anonymous volume and grants no runtime admission. The build receipt records

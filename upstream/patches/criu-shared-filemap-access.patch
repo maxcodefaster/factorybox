@@ -1,0 +1,41 @@
+--- a/criu/files-reg.c
++++ b/criu/files-reg.c
+@@ -2421,6 +2421,38 @@
+ 	if (factorybox_inherited_fd(d, &tmp)) {
+ 		const char *current_path = factorybox_directory_path(d);
+ 		rfi = container_of(d, struct reg_file_info, d);
++		if (open_cb == do_open_reg_noseek_flags) {
++			struct stat original, mapping;
++			int fresh, access = *(u32 *)arg & O_ACCMODE;
++			char inherited_path[64];
++
++			/* A VMA has its own access mode. The retained description may
++			 * be read-only even for a writable shared mapping. Reopen only
++			 * that pinned kernel object, never its mutable source pathname.
++			 * Normal restored descriptors keep their original description.
++			 */
++			if (access != O_RDONLY && access != O_RDWR) {
++				close(tmp);
++				errno = EINVAL;
++				return -1;
++			}
++			snprintf(inherited_path, sizeof(inherited_path), "/proc/self/fd/%d", tmp);
++			fresh = open(inherited_path, access | O_CLOEXEC);
++			if (fresh < 0) {
++				pr_perror("Factorybox cannot reopen the pinned mapping object");
++				close(tmp);
++				return -1;
++			}
++			if (fstat(tmp, &original) || !S_ISREG(original.st_mode) || fstat(fresh, &mapping) ||
++			    original.st_dev != mapping.st_dev || original.st_ino != mapping.st_ino) {
++				pr_err("Factorybox shared mapping object changed before restore\n");
++				close(fresh);
++				close(tmp);
++				return -1;
++			}
++			close(tmp);
++			tmp = fresh;
++		}
+ 		if (current_path) {
+ 			struct stat original, restored;
+ 			int fresh, flags = rfi->rfe->flags;

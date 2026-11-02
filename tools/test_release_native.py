@@ -217,15 +217,19 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                     "--worker-build", "exact-worker", "--suite", suite])
             for required in ["criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd",
                              "recovery-planned", "recovery-abrupt", "factory-source", "factory-reserve",
-                             "storefs", "worker-storage-exit", "shared-source-large"]:
+                             "storefs", "worker-storage-exit", "shared-source-large", "shared-filemap"]:
                 self.assertIn(required, roles)
             shared_source = dict(commands)["shared-source-large"]
             self.assertIn("--retained-descriptions", shared_source)
             self.assertEqual(shared_source[shared_source.index("--retained-descriptions") + 1], "257")
+            self.assertIn("--writable-mapping", shared_source)
             for role, command in commands:
                 self.assertNotIn("--native-candidate", command)
                 self.assertNotIn("--push", command)
-                if role in {"criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd"}:
+                if role == "shared-filemap":
+                    self.assertEqual(command[1:], ["tests/criu-shared-filemap/run.py",
+                        "--criu-candidate", "exact-criu", "--native-base-build", "exact-base"])
+                elif role in {"criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd"}:
                     self.assertEqual("--candidate-platform" in command, platform == "linux/amd64")
                     if platform == "linux/amd64":
                         self.assertIn(platform, command)

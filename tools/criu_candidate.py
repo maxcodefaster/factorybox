@@ -9,6 +9,7 @@ import sources
 
 PSTREE_CORRECTION = reference.ROOT / "upstream/patches/criu-pstree-error-propagation-candidate.patch"
 DESCRIPTOR_TRANSFER_PATCH = reference.ROOT / "upstream/patches/criu-shared-fds-packets.patch"
+MAPPING_ACCESS_PATCH = reference.ROOT / "upstream/patches/criu-shared-filemap-access.patch"
 RECOVERY_CORRECTIONS = {
     name + ".patch": reference.ROOT / ("upstream/patches/criu-" + name + "-candidate.patch")
     for name in ["pid-collision-diagnostics", "pid-collision-references",
@@ -40,6 +41,12 @@ def require_descriptor_transfer(result):
             any(features.get(name) is not True for name in
                 ["shared_file_descriptions", "shared_source_directories"])):
         raise ValueError("worker requires the exact CRIU descriptor packet protocol")
+
+
+def require_mapping_access(result):
+    require_descriptor_transfer(result)
+    if result.get("candidate_patch_sha256", {}).get("shared-filemap-access.patch") != reference.sha(MAPPING_ACCESS_PATCH):
+        raise ValueError("worker requires the exact CRIU shared mapping access correction")
 
 
 def supports_exit_hold(result):
@@ -81,7 +88,8 @@ def load(name, *, base_lock=None):
                         "nested-overlay-shared-root.patch", "pid-collision-diagnostics.patch",
                         "pid-collision-references.patch", "nested-pid-counter.patch",
                         "pstree-error-propagation.patch", "nested-zombie-peer-pidns.patch", "shared-fds.patch",
-                        "namespace-access.patch", "shared-fds-packets.patch"} or reference.sha(path / file) != expected:
+                        "namespace-access.patch", "shared-fds-packets.patch",
+                        "shared-filemap-access.patch"} or reference.sha(path / file) != expected:
             raise ValueError("retained-context candidate patch input changed")
     for file, expected in result.get("candidate_overlay_sha256", {}).items():
         if file != "exit-observer.h" or reference.sha(path / file) != expected:
