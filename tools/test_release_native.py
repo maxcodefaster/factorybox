@@ -209,7 +209,12 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                 "timer-admission-reader", "timer-state-reader", "timer-exit-guard",
                 "timer-signal", "timer-admission-signal", "timer-remainder",
                 "timer-remainder-protection", "timer-orphan", "timer-guard-loss",
+                "resume-retirement", "backing-retirement", "failed-capture-retirement",
             })
+            for suite in ["resume-retirement", "backing-retirement", "failed-capture-retirement"]:
+                command = dict(commands)["runtime-" + suite]
+                self.assertEqual(command[1:], ["tools/bounded_store_native.py",
+                    "--worker-build", "exact-worker", "--suite", suite])
             for required in ["criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd",
                              "recovery-planned", "recovery-abrupt", "factory-source", "factory-reserve",
                              "storefs", "worker-storage-exit", "shared-source-large"]:

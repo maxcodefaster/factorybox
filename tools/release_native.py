@@ -21,6 +21,7 @@ import upstream_bats
 
 RUNTIME_SUITES = [
     "timer-detach", "timer-admission-reader", "capacity", "retirement",
+    "resume-retirement", "backing-retirement", "failed-capture-retirement",
     "restore-hold", "stopped-memory", "timer-state-reader", "timer-exit-guard",
     "timer-signal", "timer-admission-signal", "timer-remainder",
     "timer-remainder-protection", "timer-orphan", "timer-guard-loss",

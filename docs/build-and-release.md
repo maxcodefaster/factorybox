@@ -275,10 +275,12 @@ and requires an identical worker package, image and every layer from those new
 component runs. The comparison receipt and build logs stay with the CI evidence.
 `tools/release_native.py` refuses Candidate
 workers, foreign architectures and a mismatched CLI version. It runs the original
-CRIU core and Sysbox unit/integration/lifecycle/systemd gates, all fourteen delivered-worker
+CRIU core and Sysbox unit/integration/lifecycle/systemd gates, all seventeen delivered-worker
 suites, planned and abrupt worker replacement, and both actual Factory consumer
-lanes. The original upstream skip sets stay explicit. The host-proc fixture is
-the same on both architectures. Qualification failure
+lanes. Resume-image, private Sandbox backing and failed-capture retirement are
+mandatory on both architectures, including retained mixed-CRIU metadata and
+interrupted old Pause dependencies. The original upstream skip sets stay explicit.
+The host-proc fixture is the same on both architectures. Qualification failure
 prevents publication. Uploaded workflow artifacts contain gate receipts and
 build/gate logs, not RAM images or private test stores. Source inventories,
 checksums and receipts have architecture-specific asset names so the two jobs
