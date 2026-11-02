@@ -251,13 +251,10 @@ func openDirectory(path string) (*os.File, error) {
 	return os.NewFile(uintptr(fd), path), nil
 }
 
-func captureFilesystem(roots []filesystemRoot, destination string) (*FilesystemSnapshot, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-	return copyFilesystem(ctx, roots, destination)
-}
-
 func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination string) (*FilesystemSnapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := os.Mkdir(destination, 0700); err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +17,19 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+func TestFilesystemCaptureKeepsCanceledCaller(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	destination := filepath.Join(root, "unattempted")
+	if _, err := copyFilesystem(ctx, nil, destination); !errors.Is(err, context.Canceled) {
+		t.Fatalf("filesystem capture did not retain cancellation: %v", err)
+	}
+	if _, err := os.Lstat(destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("canceled capture created filesystem backing: %v", err)
+	}
+}
 
 func BenchmarkFilesystemCloneNative(b *testing.B) {
 	if os.Getenv("FACTORYBOX_NATIVE_RETAINED_CAPTURE") != "1" {

@@ -19,6 +19,7 @@ import (
 )
 
 type captureRequest struct {
+	Deadline      int64              `json:"deadline_unix_nano,omitempty"`
 	TimerPlanSHA  string             `json:"timer_plan_sha256,omitempty"`
 	Guard         captureGuardConfig `json:"guard"`
 	Criu          string             `json:"criu"`
@@ -52,6 +53,14 @@ func captureWorkerServe() (resultErr error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
+		return err
+	}
+	if request.Deadline <= 0 {
+		return fmt.Errorf("capture worker requires its caller's finite lifecycle deadline")
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, request.Deadline))
+	defer cancel()
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	anchors := captureGuardAnchors{os.NewFile(4, "capture original source cgroup"),
@@ -130,7 +139,7 @@ func captureWorkerServe() (resultErr error) {
 			return errors.Join(err, request.Guard.Source.Network.SetPeerActive(request.Guard.PID, true))
 		}
 	}
-	captured, err = sysboxcapture.Capture(sysboxcapture.Request{
+	captured, err = sysboxcapture.Capture(ctx, sysboxcapture.Request{
 		RuntimeRoot: request.Guard.Root + "/runtime", RuntimeID: request.Guard.Source.RuntimeID,
 		Owner: request.Guard.Source.Owner, Rootfs: request.Guard.Source.Rootfs,
 		RuntimeCreated: request.Guard.Source.RuntimeCreated, PID: request.Guard.PID,
@@ -235,6 +244,8 @@ func captureStopSource(config captureGuardConfig, anchors captureGuardAnchors, c
 }
 
 func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File, executable string) error {
+	ctx, cancel := captureWorkerContext(ctx)
+	defer cancel()
 	if !guard.unsafe {
 		return fmt.Errorf("capture command requires an acknowledged guarded transaction")
 	}
@@ -261,7 +272,8 @@ func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File
 		"--owner", guard.config.Source.Owner, guard.config.Source.RuntimeID); err != nil {
 		return fmt.Errorf("capture frozen FUSE state: %w", err)
 	}
-	data, err := json.Marshal(captureRequest{Guard: guard.config, Criu: e.config.Criu, TimerPlanSHA: guard.timerPlanSHA,
+	deadline, _ := ctx.Deadline()
+	data, err := json.Marshal(captureRequest{Deadline: deadline.UnixNano(), Guard: guard.config, Criu: e.config.Criu, TimerPlanSHA: guard.timerPlanSHA,
 		CriuSHA256: e.config.CriuSHA256, ManagerRoot: e.config.ManagerRoot, FDStoreSocket: e.config.FDStoreSocket})
 	if err != nil {
 		return err
@@ -281,8 +293,6 @@ func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File
 	if _, err := unix.FcntlInt(request.Fd(), unix.F_ADD_SEALS, captureRequestSeals); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
 	command := exec.CommandContext(ctx, executable, "_capture")
 	command.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 		"HOME=/root", "LANG=C", "GOMAXPROCS=2", "GOMEMLIMIT=256MiB"}

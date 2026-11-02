@@ -107,6 +107,13 @@ controller record is not a substitute for those measurements. See the native
 results for example sizes and timings. Plan capacity for independent mutable
 filesystems, active checkpoints and interrupted operations as well as bases.
 
+Capture uses the caller's lifecycle deadline for both process state and the
+complete filesystem copy. Its sealed worker request carries that same deadline;
+the filesystem phase does not start another timer. An otherwise unbounded direct
+caller gets one finite seven-minute capture budget. A shorter deadline or
+cancellation remains authoritative. Budget expiry still requires the original
+guard's recovery evidence and never publishes an incomplete checkpoint as usable.
+
 The current candidate confirms an empty original cgroup and zero anonymous
 memory accounting before committing a pause. Small-task accounting can settle
 after the process exits. The confirmation is bounded to three seconds and the

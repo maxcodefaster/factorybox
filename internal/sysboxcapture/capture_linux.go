@@ -6,6 +6,7 @@
 package sysboxcapture
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -72,7 +73,10 @@ func writePrivate(path string, data []byte) error {
 // Capture uses a private read-only state view to supply a per-capture CRIU
 // configuration. The original Sysbox state, registration and ownership remain
 // under Sysbox. The caller must hold and validate the source guard throughout.
-func Capture(request Request) (result Result, resultErr error) {
+func Capture(ctx context.Context, request Request) (result Result, resultErr error) {
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
 	result = Result{SourcePID: request.PID, Images: request.Generation + "/images",
 		LeaveRunning: true, CompleteWriter: true}
 	if request.SharedSource != nil {
@@ -220,7 +224,7 @@ func Capture(request Request) (result Result, resultErr error) {
 			return result, err
 		}
 	}
-	result.Filesystem, err = captureFilesystem(filesystem, request.Generation+"/filesystem")
+	result.Filesystem, err = copyFilesystem(ctx, filesystem, request.Generation+"/filesystem")
 	if err != nil {
 		return result, err
 	}

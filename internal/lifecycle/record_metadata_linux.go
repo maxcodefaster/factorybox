@@ -159,7 +159,7 @@ func (e *Engine) admitGuardMetadata(source Record) error {
 		return fmt.Errorf("new sandbox metadata refused: complete source guard packet needs %d bytes, limit %d: %v",
 			len(packet), captureGuardPacketLimit, err)
 	}
-	request, err := json.Marshal(captureRequest{Guard: guard, Criu: e.config.Criu, CriuSHA256: hash,
+	request, err := json.Marshal(captureRequest{Deadline: math.MaxInt64, Guard: guard, Criu: e.config.Criu, CriuSHA256: hash,
 		TimerPlanSHA: hash, ManagerRoot: e.config.ManagerRoot})
 	if err != nil || len(request) > captureRequestLimit {
 		return fmt.Errorf("new sandbox metadata refused: complete capture request needs %d bytes, limit %d: %v",
