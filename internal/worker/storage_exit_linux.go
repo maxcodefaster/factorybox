@@ -41,6 +41,40 @@ type BoundedStorageRelease struct {
 
 type orderlyStorageReleasePending struct{ cause error }
 
+// The outer worker lease is held throughout this observation. A hard-killed
+// predecessor has no orderly exit receipt, but its exact kernel association
+// can still outlive namespace withdrawal. Unknown or joined failures are not
+// pending admission, and cancellation publishes no attachment or new epoch.
+func waitBoundedAttachment(ctx context.Context, attach func() (*storefs.Attachment, error)) (*storefs.Attachment, error) {
+	announced := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		attachment, err := attach()
+		if cause := ctx.Err(); cause != nil {
+			if attachment != nil {
+				return nil, errors.Join(cause, attachment.Close())
+			}
+			return nil, cause
+		}
+		if _, exact := err.(*storefs.AttachmentPendingError); !exact {
+			return attachment, err
+		}
+		if !announced {
+			fmt.Fprintln(os.Stderr, "Waiting for original bounded kernel association")
+			announced = true
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
 func (failure *orderlyStorageReleasePending) Error() string { return failure.cause.Error() }
 func (failure *orderlyStorageReleasePending) Unwrap() error { return failure.cause }
 

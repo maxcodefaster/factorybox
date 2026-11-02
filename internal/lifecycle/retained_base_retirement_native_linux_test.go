@@ -175,8 +175,16 @@ func TestNativeRetainedBaseRecover(t *testing.T) {
 	var result BaseRetirement
 	// Statfs observes net capacity, including the new compressed inventory and
 	// durable completion metadata. It is not the byte size of the old payload.
-	if err := json.Unmarshal(receipt, &result); err != nil || result.Request != prepared.Request ||
-		result.CompletedAt == "" || result.After.AvailableBytes < before.AvailableBytes+prepared.PayloadBytes-(1<<20) {
+	err = json.Unmarshal(receipt, &result)
+	capacityReturned := result.After.AvailableBytes >= before.AvailableBytes+prepared.PayloadBytes-(1<<20)
+	if before.FilesystemType == unix.BTRFS_SUPER_MAGIC {
+		// Btrfs subtracts a changing metadata reserve from Bavail. Preserve
+		// the physical reclamation bound and require usable space to grow.
+		capacityReturned = result.After.FreeBytes >= before.FreeBytes+prepared.PayloadBytes-(1<<20) &&
+			result.After.AvailableBytes > before.AvailableBytes
+	}
+	if err != nil || result.Request != prepared.Request ||
+		result.CompletedAt == "" || !capacityReturned {
 		t.Fatal("base retirement did not return its actual allocated capacity", result, err)
 	}
 	if _, err := os.Stat(prepared.Base.Tree.Saved); !os.IsNotExist(err) {

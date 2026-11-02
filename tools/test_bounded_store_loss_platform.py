@@ -1,11 +1,36 @@
 import unittest
 from pathlib import Path
+import subprocess
+from unittest.mock import patch
 
 import bounded_store_loss
 import build_worker
 
 
 class BoundedWorkerLossPlatformTests(unittest.TestCase):
+    def test_pending_kernel_observation_keeps_the_workers_stderr(self):
+        completed = subprocess.CompletedProcess([], 0, stdout='ordinary output\n',
+            stderr='Waiting for original bounded kernel association\n')
+        with patch.object(bounded_store_loss.subprocess, 'run', return_value=completed) as execute:
+            output = bounded_store_loss.worker_logs('exact-owned-worker')
+        self.assertIn('ordinary output', output)
+        self.assertIn('Waiting for original bounded kernel association', output)
+        self.assertEqual(execute.call_args.args[0][-2:], ['logs', 'exact-owned-worker'])
+        self.assertTrue(execute.call_args.kwargs['check'])
+
+    def test_abrupt_recovery_requires_observed_withdrawal_before_new_admission(self):
+        names = ['successor_unready_without_mount', 'only_original_descriptor_released',
+                 'successor_admitted_after_release', 'removed']
+        proof = dict.fromkeys(names, True)
+        bounded_store_loss.require_abrupt_attachment_observation({'held_reference': proof})
+        for key in names:
+            for value in [False, None]:
+                with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'held-association'):
+                    bounded_store_loss.require_abrupt_attachment_observation({
+                        'held_reference': {**proof, key: value}})
+        with self.assertRaisesRegex(ValueError, 'held-association'):
+            bounded_store_loss.require_abrupt_attachment_observation({})
+
     def test_real_recovery_probe_matches_exact_native_worker_architecture_and_kernel(self):
         for platform, machine, architecture in [
             ("linux/amd64", "x86_64", "amd64"), ("linux/arm64", "aarch64", "arm64")

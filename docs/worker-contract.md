@@ -258,6 +258,15 @@ immediately. The standalone reconciliation command remains a single read-only
 observation. This does not extend the old worker's Close interval or detach its
 association.
 
+Abrupt loss has no accepted orderly-exit receipt. Admission holding the outer
+worker lease may nevertheless observe one exact original kernel association
+until its withdrawal. Image device/inode, loop number, offset, bounded size,
+direct-I/O/autoclear flags and the original Factorybox owner label must match.
+Multiple associations, an unknown image lock or additional cleanup failures
+still refuse admission immediately. Waiting creates no mount, epoch, release
+receipt or readiness and ends on caller cancellation. No association is adopted
+or detached. See [the admission decision](adr/0007-observe-the-original-kernel-attachment-before-admission.md).
+
 ## Local commands and responses
 
 Administrative clients execute the image's own binary inside the worker:

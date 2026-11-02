@@ -159,7 +159,9 @@ func attachBounded(ctx context.Context, config Config) (_ *storefs.Attachment, _
 	}); err != nil {
 		return nil, nil, err
 	}
-	attachment, err := storefs.Attach(identity.Image, config.BoundedRoot+"/data")
+	attachment, err := waitBoundedAttachment(ctx, func() (*storefs.Attachment, error) {
+		return storefs.Attach(identity.Image, config.BoundedRoot+"/data")
+	})
 	if err != nil {
 		return nil, nil, err
 	}

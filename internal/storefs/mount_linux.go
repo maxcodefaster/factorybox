@@ -72,6 +72,7 @@ func rejectExistingAssociation(image Image) error {
 		return err
 	}
 	count := 0
+	var pending *AttachmentPendingError
 	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), "loop") {
 			continue
@@ -104,8 +105,17 @@ func rejectExistingAssociation(image Image) error {
 			return inspectErr
 		}
 		if info.Device == image.Device && info.Inode == image.Inode {
-			return fmt.Errorf("fixed image already has a loop association; adoption refused")
+			if pending != nil {
+				return fmt.Errorf("fixed image has multiple loop associations; adoption refused")
+			}
+			pending = originalAssociation(image, number, info)
+			if pending == nil {
+				return fmt.Errorf("fixed image has an unidentified loop association; adoption refused")
+			}
 		}
+	}
+	if pending != nil {
+		return pending
 	}
 	return nil
 }
@@ -201,9 +211,21 @@ func Attach(expected Image, target string) (_ *Attachment, resultErr error) {
 		if attachment.node.path != "" {
 			resultErr = errors.Join(resultErr, attachment.node.remove())
 		}
-		resultErr = errors.Join(resultErr, image.Close())
+		if err := image.Close(); err != nil {
+			resultErr = errors.Join(resultErr, err)
+		}
 	}()
 	if err := unix.Flock(int(image.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		if errors.Is(err, unix.EWOULDBLOCK) {
+			observed := rejectExistingAssociation(expected)
+			if pending, exact := observed.(*AttachmentPendingError); exact {
+				pending.imageOwnerHeld = true
+				return nil, pending
+			}
+			if observed != nil {
+				return nil, fmt.Errorf("fixed image owner could not be identified: %w", observed)
+			}
+		}
 		return nil, fmt.Errorf("fixed image already has an owner: %w", err)
 	}
 	if err := rejectExistingAssociation(expected); err != nil {

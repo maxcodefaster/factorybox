@@ -28,6 +28,61 @@ func TestOrderlyStorageReleaseWaitsForObservedCompletion(t *testing.T) {
 	}
 }
 
+func TestBoundedAttachmentWaitsOnlyForExactKernelRelease(t *testing.T) {
+	calls := 0
+	expected := &storefs.Attachment{}
+	actual, err := waitBoundedAttachment(context.Background(), func() (*storefs.Attachment, error) {
+		calls++
+		if calls < 3 {
+			return nil, &storefs.AttachmentPendingError{}
+		}
+		return expected, nil
+	})
+	if err != nil || actual != expected || calls != 3 {
+		t.Fatal("exact pending association did not remain unready until release", actual, calls, err)
+	}
+	pending := &storefs.AttachmentPendingError{}
+	for _, cause := range []error{unix.EWOULDBLOCK, errors.New("unknown owner"),
+		fmt.Errorf("wrapped observation: %w", pending), errors.Join(pending, errors.New("cleanup failed"))} {
+		calls = 0
+		actual, err = waitBoundedAttachment(context.Background(), func() (*storefs.Attachment, error) {
+			calls++
+			return nil, cause
+		})
+		if calls != 1 || actual != nil || err != cause {
+			t.Fatal("unidentified ownership or an extra failure was retried", calls, err)
+		}
+	}
+}
+
+func TestBoundedAttachmentCancellationPublishesNoAdmission(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	calls := 0
+	actual, err := waitBoundedAttachment(ctx, func() (*storefs.Attachment, error) {
+		calls++
+		cancel()
+		return nil, &storefs.AttachmentPendingError{}
+	})
+	if actual != nil || calls != 1 || !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled pending association admitted an attachment", actual, calls, err)
+	}
+	actual, err = waitBoundedAttachment(ctx, func() (*storefs.Attachment, error) {
+		t.Fatal("already cancelled attachment was dispatched")
+		return nil, nil
+	})
+	if actual != nil || !errors.Is(err, context.Canceled) {
+		t.Fatal("already cancelled admission continued", actual, err)
+	}
+	ctx, cancel = context.WithCancel(context.Background())
+	actual, err = waitBoundedAttachment(ctx, func() (*storefs.Attachment, error) {
+		cancel()
+		return nil, nil
+	})
+	if actual != nil || !errors.Is(err, context.Canceled) {
+		t.Fatal("cancellation during the final observation published admission", actual, err)
+	}
+}
+
 func TestOrderlyStorageReleaseDoesNotRetryUnknownOwnership(t *testing.T) {
 	pending := &orderlyStorageReleasePending{cause: unix.EWOULDBLOCK}
 	for _, cause := range []error{unix.EWOULDBLOCK, errors.New("changed image"), errors.New("invalid exit receipt"),

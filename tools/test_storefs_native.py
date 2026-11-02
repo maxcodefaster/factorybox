@@ -73,6 +73,7 @@ class StorefsRunnerTests(unittest.TestCase):
                         "CapacityAndRemount", "IdentityAndLeaseRefusals", "RetainsLeaseUntilAutoclear",
                         "UncertainInitializationRefused", "CopyOnWrite"][:native_count]) + "\n"
                         "--- PASS: TestCopyOnWriteImageKeepsItsOwnFormatAndGeometry (0.00s)\n"
+                        "--- PASS: TestPendingAttachmentRequiresOneExactOriginalAssociation (0.00s)\n"
                         "--- PASS: TestCopyOnWriteAttachmentSeparatesFilesystemAndLoopIdentities (0.00s)\n")
                     for name, keys in proofs.items():
                         (artifact / "output" / (name + ".json")).write_text(json.dumps({"passed": True, **dict.fromkeys(keys, True)}))

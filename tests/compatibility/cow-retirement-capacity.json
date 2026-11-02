@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "source_commit": "3e841b8",
+  "previous_manifest": "tests/compatibility/deleted-incomplete-start-retirement.json",
+  "previous_manifest_sha256": "b81e7023fdb6b43868a06d6d543cf9a29835e751c9adae9e195aa676be02078b",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Preserve the original native retirement reclamation guarantees and all ownership, interruption, replay, successor and peer assertions. On the owned Btrfs fixture only, rewrite one existing retired RAM image with identical bytes before accepting a retirement intent. Verify unchanged inode, size and SHA256 and at least 8 MiB of real additional allocation. The retained-base fixture similarly rewrites only its original caller input with the same bytes and inodes, never the imported immutable base. Its Btrfs case applies the original payload-size bound to actual free blocks while also requiring available space to increase, because Bavail additionally excludes Btrfs's changing metadata reserve. Keep the original ext4 available-space bound unchanged. This establishes exclusive physical payload for real reclamation instead of incorrectly assuming that reflink peers consume separate blocks. The actual production copier remains copy-on-write. Keep all resource ceilings, lifecycle deadlines, immutable reference inputs and retained installations unchanged. Abrupt-recovery qualification additionally holds the exact original loop descriptor, requires the successor to stay unready without a mount, then releases only that descriptor before every original recovery assertion.",
+  "files": {
+    "tools/bounded_store_loss.py": {
+      "before_sha256": "a65ef2ac04471f2414647b139005fde9eb9baa9be3e1912a86a307c9753bc263",
+      "after_sha256": "f6ce78e95277f70f366a80cbe9f240813056cf85679b751f2692136099a5726f",
+      "scope": "Establish exclusive base extents by rewriting only owned caller input, not the immutable imported base. Strengthen abrupt recovery with a held original kernel reference and a real unready successor before release. The separate base-counter adjustment is declared below."
+    },
+    "internal/lifecycle/retained_base_retirement_native_linux_test.go": {
+      "before_sha256": "3b41d805b69d6085faa1953b44475c1e4d4af17b7eadc5f3000b3b202873c22d",
+      "after_sha256": "92080b214af1176566210bef040ab33dfb064732e1e53d6bd3f13d73e228e5a0",
+      "scope": "Retain the original payload-size reclamation bound on free blocks and additionally require available space to grow on Btrfs. Preserve the exact old available-space bound on ext4 and every other original preservation/refusal assertion."
+    },
+    "internal/lifecycle/retirement_native_linux_test.go": {
+      "before_sha256": "fe7fd08d50211f4aa264a1031a9836b18ab089c21750b9a383735f34215e8ea2",
+      "after_sha256": "4e9aa03d31a11874268f4ec3fbbc18aab12507eaa875f50e239e2038b0fd3f48"
+    },
+    "internal/lifecycle/resume_retirement_native_linux_test.go": {
+      "before_sha256": "15699310a7d8613226aa65974017f6bc3aac76186b8dd9c6c0c04da1b17145be",
+      "after_sha256": "153f4afcb61ad86c64d6297e74c819899c38cc1757d9a6814a79bb7e97f2c173",
+      "scope": "Establish exclusive owned RAM-image extents before the original first and final Resume retirement assertions."
+    },
+    "internal/lifecycle/sandbox_retirement_native_linux_test.go": {
+      "before_sha256": "633f2de0914e14ac058be573311fae57a2c8470fa6af869b33b94f9d3220d052",
+      "after_sha256": "122f3e6be4720a66d73565d8984ade3019806674f2f19a7743d0ba2afac7888c",
+      "scope": "Establish exclusive owned RAM-image extents after genuine victim Delete and before the original backing-retirement guards."
+    }
+  },
+  "regressions": [
+    "TestNativeCheckpointRetirement",
+    "TestNativeResumeImageRetirement",
+    "TestNativeSandboxBackingRetirement",
+    "TestNativeRetainedBaseRecover",
+    "test_capacity_fixture_declaration_preserves_original_assertion_bytes"
+  ]
+}

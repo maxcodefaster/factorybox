@@ -137,13 +137,15 @@ try:
     reference.docker(["volume", "create", "--label", "com.factorybox.run=" + OWNER, NAME])
     first_name, first, status = start_epoch(1)
     units = reference.docker(["exec", first, "/worker.test", "-test.v",
-        "-test.run=^Test(OrderlyStorageRelease|BoundedExit)", "-test.timeout=30s"])
+        "-test.run=^Test(OrderlyStorageRelease|BoundedExit|BoundedAttachment)", "-test.timeout=30s"])
     (ARTIFACT / "worker-units.stdout").write_text(units)
     required_units = ["TestBoundedExitKeepsExactWorkerAndAttachmentIdentity",
                       "TestBoundedExitDefersOnlyTheExactUnconfirmedAssociation",
                       "TestOrderlyStorageReleaseWaitsForObservedCompletion",
                       "TestOrderlyStorageReleaseDoesNotRetryUnknownOwnership",
-                      "TestOrderlyStorageReleaseCancellationPublishesNoCompletion"]
+                      "TestOrderlyStorageReleaseCancellationPublishesNoCompletion",
+                      "TestBoundedAttachmentWaitsOnlyForExactKernelRelease",
+                      "TestBoundedAttachmentCancellationPublishesNoAdmission"]
     if "--- SKIP:" in units or any("--- PASS: " + name + " " not in units for name in required_units):
         raise ValueError("Orderly release omitted its cancellation or ownership regressions")
     result["ownershipAndCancellationUnitsPassed"] = True

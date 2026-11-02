@@ -81,7 +81,7 @@ def main():
                    "import os,subprocess,sys;"
                    "before=os.readlink('/proc/self/ns/mnt');"
                    "child=subprocess.run(['unshare','--mount','--propagation','private',"
-                   "'/probe.test','-test.v','-test.run=^Test(NativeStoreFS|CopyOnWrite)','-test.timeout=410s']);"
+                   "'/probe.test','-test.v','-test.run=^Test(NativeStoreFS|CopyOnWrite|PendingAttachment)','-test.timeout=410s']);"
                    "assert before==os.readlink('/proc/self/ns/mnt');"
                    "sys.exit(child.returncode)"]
         result["command"] = command
@@ -103,6 +103,7 @@ def main():
         if (done.returncode or state["Running"] or state["OOMKilled"] or state["ExitCode"] != 0 or
                 result["passed_tests"] != 5 or result["failed_tests"] or result["skipped_tests"] or
                 "--- PASS: TestCopyOnWriteImageKeepsItsOwnFormatAndGeometry " not in log or
+                "--- PASS: TestPendingAttachmentRequiresOneExactOriginalAssociation " not in log or
                 "--- PASS: TestCopyOnWriteAttachmentSeparatesFilesystemAndLoopIdentities " not in log):
             raise ValueError("native fixed-filesystem assertions failed or were skipped")
         required = {

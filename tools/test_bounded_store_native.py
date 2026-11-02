@@ -62,11 +62,23 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
         self.assertEqual(incomplete['previous_manifest'], 'tests/compatibility/mixed-criu-backing-retirement.json')
         self.assertEqual(hashlib.sha256((root / incomplete['previous_manifest']).read_bytes()).hexdigest(),
                          incomplete['previous_manifest_sha256'])
+        cow = json.loads((root / 'tests/compatibility/cow-retirement-capacity.json').read_text())
+        self.assertEqual(cow['schema'], 1)
+        self.assertTrue(cow['assertions_preserved'])
+        self.assertFalse(cow['upstream_assertions_modified'])
+        self.assertEqual(cow['previous_manifest'], 'tests/compatibility/deleted-incomplete-start-retirement.json')
+        self.assertEqual(hashlib.sha256((root / cow['previous_manifest']).read_bytes()).hexdigest(),
+                         cow['previous_manifest_sha256'])
+        def after_cow(name, row):
+            final = cow['files'].get(name, row)
+            if name in cow['files']:
+                self.assertEqual(final['before_sha256'], row['after_sha256'])
+            return final
         def after_incomplete_start(name, row):
             current = incomplete['files'].get(name, row)
             if name in incomplete['files']:
                 self.assertEqual(current['before_sha256'], row['after_sha256'])
-            return current
+            return after_cow(name, current)
         def latest(name, row):
             current = mixed['files'].get(name, row)
             if name in mixed['files']:
@@ -95,6 +107,9 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
                 self.assertEqual(row['before_sha256'], mixed['files'][name]['after_sha256'])
             else:
                 self.assertIsNone(row['before_sha256'])
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_cow(name, row)['after_sha256'])
+        for name, row in cow['files'].items():
+            self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
         original = declaration['files']['internal/lifecycle/bounded_store_native_linux_test.go']
         self.assertEqual(original['before_sha256'], original['after_sha256'])

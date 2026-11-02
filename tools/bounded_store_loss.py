@@ -18,6 +18,74 @@ import reference_lifecycle
 import upstream_bats
 import upstream_unit
 
+HELD_ORIGINAL_LOOP_PROGRAM = r'''
+import fcntl,json,os,signal,stat,struct,sys,time
+request=json.loads(sys.argv[1]);path='/dev/factorybox-held-'+request['owner']
+os.mknod(path,stat.S_IFBLK|0o600,os.makedev(7,request['number']))
+original=os.lstat(path);fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC)
+data=bytearray(struct.calcsize('<QQQQQIIII64s64s32sQQ'));fcntl.ioctl(fd,0x4c05,data,True)
+fields=struct.unpack('<QQQQQIIII64s64s32sQQ',data)
+assert fields[0]==request['image']['device'] and fields[1]==request['image']['inode']
+assert fields[3]==0 and fields[4]==request['image']['bytes'] and fields[5]==request['number']
+assert fields[8]==20 and fields[9].rstrip(b'\0')==('factorybox-'+request['owner']).encode()
+running=True
+def stop(*unused):
+ global running
+ running=False
+signal.signal(signal.SIGTERM,stop)
+print(json.dumps({'exactOriginalHeld':True}),flush=True)
+while running:time.sleep(.02)
+os.close(fd);now=os.lstat(path)
+assert (now.st_dev,now.st_ino,now.st_rdev)==(original.st_dev,original.st_ino,original.st_rdev)
+os.unlink(path)
+'''
+
+EXCLUSIVE_BASE_CONTROL_PROGRAM = r'''
+import ctypes,json,os,pathlib,stat,sys
+prepared=json.loads(sys.argv[1]);store=sys.argv[2]
+root=pathlib.Path(prepared['input'])
+assert str(root)==store+'/unused-base-input' and prepared['base']['source']==str(root)
+entries=sorted(root.iterdir())
+assert len(entries)==4096 and prepared['payload_bytes']==4096*4096
+fs=os.statvfs(root);before=fs.f_bavail*fs.f_frsize
+for number,path in enumerate(entries):
+ assert path.name==f'{number:04d}'
+ fd=os.open(path,os.O_RDWR|os.O_NOFOLLOW)
+ try:
+  original=os.fstat(fd)
+  assert stat.S_ISREG(original.st_mode) and original.st_nlink==1 and original.st_uid==0
+  assert original.st_size==4096
+  data=os.pread(fd,4096,0)
+  assert data==bytes([number%251+1])*4096
+  assert os.pwrite(fd,data,0)==len(data)
+  after=os.fstat(fd)
+  assert (after.st_dev,after.st_ino,after.st_size,after.st_mode,after.st_uid,after.st_gid)==(
+   original.st_dev,original.st_ino,original.st_size,original.st_mode,original.st_uid,original.st_gid)
+  assert os.pread(fd,4096,0)==data
+ finally:os.close(fd)
+fd=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+try:
+ libc=ctypes.CDLL(None,use_errno=True)
+ if libc.syncfs(fd)!=0:raise OSError(ctypes.get_errno(),'commit owned caller-input control')
+finally:os.close(fd)
+fs=os.statvfs(root);after=fs.f_bavail*fs.f_frsize
+assert after+(8<<20)<=before
+print(json.dumps({'passed':True,'files':4096,'bytes':prepared['payload_bytes'],
+ 'caller_bytes_and_inodes_preserved':True,'before_available_bytes':before,'after_available_bytes':after}))
+'''
+
+def require_abrupt_attachment_observation(result):
+    observed = result.get('held_reference', {})
+    if any(observed.get(key) is not True for key in [
+            'successor_unready_without_mount', 'only_original_descriptor_released',
+            'successor_admitted_after_release', 'removed']):
+        raise ValueError('abrupt recovery omitted the exact held-association admission proof')
+
+def worker_logs(identity):
+    observed = subprocess.run([*reference.DOCKER, 'logs', identity], capture_output=True,
+                              text=True, check=True, timeout=5)
+    return observed.stdout + observed.stderr
+
 
 def probe_build(worker, host, candidate, binary):
     options = bounded_store_native.worker_compile_options(worker, host, native_candidate=candidate)
@@ -169,6 +237,7 @@ def main():
     reference_lifecycle.write_json(artifact / 'intent.json', result)
     volume = preserve = False
     loop_holder = None
+    held_reference = None
     started = time.monotonic()
     print(json.dumps({'running': str(artifact)}), flush=True)
     try:
@@ -184,7 +253,7 @@ def main():
         reference.docker(['volume', 'create', '--label', 'com.factorybox.run=' + owner, name])
         deadline = time.monotonic() + 420
 
-        def create_worker(suffix):
+        def create_worker(suffix, *, wait=True):
             row = {'name': name + '-' + suffix, 'removed': False}
             result['workers'].append(row)
             command = ['run', '--detach', '--pull=never', '--name', row['name'], '--label', 'com.factorybox.run=' + owner,
@@ -207,7 +276,8 @@ def main():
             command += [worker['image'], '--store-id', owner, '--bounded-root', '/var/lib/sysbox/fixed-store', '--bounded-bytes', str(1 << 30)]
             row['command'] = command
             row['id'] = reference.docker(command, timeout=max(.1, min(65, deadline-time.monotonic())))
-            row['startup'] = consumer_worker_loss.ready(row['name'], owner, row['id'], deadline)
+            if wait:
+                row['startup'] = consumer_worker_loss.ready(row['name'], owner, row['id'], deadline)
             return row
 
         def run_stage(row, stage):
@@ -234,6 +304,14 @@ def main():
 
         old = create_worker('old')
         run_stage(old, 'Prepare')
+        if args.base_retirement and old['startup']['status']['lifecycle']['bounded_store']['image']['schema'] == 2:
+            # Keep the immutable imported base and every original assertion
+            # unchanged. Rewriting only the fixture's caller input with the
+            # same bytes gives the base exclusive physical extents to reclaim.
+            prepared = json.loads((output / 'retained-base-prepared.json').read_text())
+            result['base_exclusive_reclamation_control'] = json.loads(reference.docker([
+                'exec', old['id'], 'python3', '-c', EXCLUSIVE_BASE_CONTROL_PROGRAM,
+                json.dumps(prepared), old['startup']['status']['store']]))
         pause_file = output / 'bounded-loss-pause.json'
         paused = json.loads(pause_file.read_text())
         if (paused.get('passed') is not True or paused['state']['ballast_bytes'] != 32 << 20 or
@@ -241,6 +319,26 @@ def main():
             raise ValueError('old worker did not publish a complete released pause')
         result['pause_sha256'] = reference.sha(pause_file)
         consumer_worker_loss.exact_worker(old['name'], owner, old['id'])
+        if args.loss == 'abrupt':
+            active = old['startup']['status']['lifecycle']['bounded_store']
+            held_reference = {'name': name + '-held-reference', 'removed': False,
+                              'original_image': active['image'], 'original_loop': active['loop_number']}
+            result['held_reference'] = held_reference
+            held_reference['id'] = reference.docker([
+                'run', '--detach', '--pull=never', '--name', held_reference['name'],
+                '--label', 'com.factorybox.run=' + owner, '--privileged', '--network=none',
+                '--read-only', '--cpus=.25', '--memory=64m', '--pids-limit=32',
+                '--entrypoint=python3', worker['image'], '-u', '-c', HELD_ORIGINAL_LOOP_PROGRAM,
+                json.dumps({'owner': owner, 'number': active['loop_number'], 'image': active['image']})])
+            while True:
+                state = consumer_worker_loss.exact_worker(held_reference['name'], owner, held_reference['id'])['State']
+                if not state['Running'] or state['OOMKilled']:
+                    raise ValueError('original kernel-reference control exited before confirmation')
+                if '"exactOriginalHeld": true' in reference.docker(['logs', held_reference['id']]):
+                    break
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('original held kernel association was not confirmed')
+                time.sleep(.02)
         reference.docker(['stop', '--time', '10', old['id']] if args.loss == 'planned' else ['kill', '--signal', 'KILL', old['id']])
         old['stopped'] = consumer_worker_loss.exact_worker(old['name'], owner, old['id'])['State']
         if old['stopped']['Running'] or old['stopped']['OOMKilled'] or old['stopped']['ExitCode'] != (0 if args.loss == 'planned' else 137):
@@ -251,7 +349,33 @@ def main():
         old['removed'] = True
         if reference.docker(['ps', '-aq', '--no-trunc', '--filter', 'id=' + old['id']]):
             raise ValueError('old worker still exists; replacement refused')
-        replacement = create_worker('replacement')
+        replacement = create_worker('replacement', wait=held_reference is None)
+        if held_reference is not None:
+            while True:
+                state = consumer_worker_loss.exact_worker(replacement['name'], owner, replacement['id'])['State']
+                if not state['Running'] or state['OOMKilled']:
+                    raise ValueError('successor exited instead of observing the exact held kernel association')
+                logs = worker_logs(replacement['id'])
+                if 'Waiting for original bounded kernel association' in logs:
+                    break
+                if '"ready_at":' in logs:
+                    raise ValueError('successor published readiness while the original association was held')
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('successor did not identify the original held kernel association')
+                time.sleep(.02)
+            reference.docker(['exec', replacement['id'], 'python3', '-c',
+                "import os;assert not os.listdir('/var/lib/sysbox/fixed-store/data');"
+                "assert not os.path.exists('/run/factorybox/worker.json')"])
+            held_reference['successor_unready_without_mount'] = True
+            reference.docker(['stop', '--time=5', held_reference['id']], timeout=10)
+            state = consumer_worker_loss.exact_worker(held_reference['name'], owner, held_reference['id'])['State']
+            if state['Running'] or state['OOMKilled'] or state['ExitCode'] != 0:
+                raise ValueError('original descriptor control did not close its own association cleanly')
+            reference.owned_delete('container', held_reference['name'], owner)
+            held_reference['removed'] = True
+            held_reference['only_original_descriptor_released'] = True
+            replacement['startup'] = consumer_worker_loss.ready(replacement['name'], owner, replacement['id'], deadline)
+            held_reference['successor_admitted_after_release'] = True
         if args.mounted_import_interruption:
             run_stage(replacement, 'Interrupt')
             interrupted_file = output / 'recovery-import-mounted-interrupted.json'
@@ -402,6 +526,8 @@ def main():
             if any(finished.get(key) is not True for key in required) or finished.get('full_epoch_retirement_qualified') is not False:
                 raise ValueError('retirement fence proof incomplete or overclaims full epoch admission')
             result['retirement_fence_sha256'] = reference.sha(finished_file)
+        if args.loss == 'abrupt':
+            require_abrupt_attachment_observation(result)
         result['passed'] = True
     except Exception as error:
         result['error'] = str(error)
@@ -422,6 +548,9 @@ def main():
                     result['passed'] = False
                 if not loop_holder['cleanup']:
                     preserve = True
+            if held_reference is not None and not held_reference['removed']:
+                reference.owned_delete('container', held_reference['name'], owner)
+                held_reference['removed'] = True
             if volume and not result['passed']:
                 try:
                     upstream_bats.archive_stopped_volumes(artifact, name, owner, [name], worker['image'], result,
