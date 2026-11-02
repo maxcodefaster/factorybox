@@ -766,8 +766,8 @@ traceDependency({event: 'module-loaded'});
             if state["Running"] or state["Pid"] != 0 or state["OOMKilled"] or state["ExitCode"] != worker_expected: raise ValueError("consumer worker did not fully exit")
             if worker_expected == 0 and options.bounded_bytes is not None:
                 import worker_storage_release
-                record["storage_release"] = worker_storage_release.verify(
-                    worker, name, owner, record["startup"]["status"], phase_artifact)
+                record["storage_release"] = worker_storage_release.observe(
+                    worker, name, owner, record["startup"]["status"], phase_artifact, deadline=deadline)
             reference.owned_delete("container",container,owner); containers.remove(container)
             record["worker_removed"],record["passed"] = True,True
             if options.effect_gateway_proof:

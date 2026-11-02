@@ -2,10 +2,48 @@
 import json
 import re
 import subprocess
+import time
 import uuid
 
 import consumer_worker_loss
 import reference
+
+def pending_kernel_owner(receipt, diagnostic):
+    observed = receipt.get("helper_exit", {})
+    return (
+        receipt.get("cleanup") is True and receipt.get("passed") is False and
+        observed.get("running") is False and observed.get("oom_killed") is False and
+        isinstance(observed.get("command_exit"), int) and observed["command_exit"] != 0 and
+        isinstance(observed.get("exit_code"), int) and observed["exit_code"] != 0 and
+        diagnostic.strip() == "fixed filesystem still has an image owner: resource temporarily unavailable"
+    )
+
+
+def observe(worker, volume, owner, status, artifact, *, deadline):
+    """Keep single observations immutable while the stopped original releases."""
+    epoch = status.get("epoch")
+    if not isinstance(epoch, str) or not re.fullmatch(r"[a-f0-9]{32}", epoch):
+        raise ValueError("storage release requires its exact original epoch")
+    observation = 0
+    while True:
+        if time.monotonic() >= deadline:
+            raise TimeoutError("original kernel release was not confirmed within the native lifecycle")
+        selected = artifact / "storage-release-observations" / epoch / str(observation)
+        selected.mkdir(parents=True)
+        try:
+            receipt = verify(worker, volume, owner, status, selected)
+            return {**receipt, "observations": observation + 1}
+        except ValueError:
+            path = selected / ("storage-release-" + status["epoch"])
+            if not path.with_suffix(".json").is_file() or not path.with_suffix(".stderr").is_file():
+                raise
+            receipt = json.loads(path.with_suffix(".json").read_text())
+            if not pending_kernel_owner(receipt, path.with_suffix(".stderr").read_text()):
+                raise
+            # Only reobserve this completed known refusal, never an uncertain
+            # lifecycle command or a failed/changed/foreign ownership result.
+            observation += 1
+            time.sleep(.02)
 
 
 def verify(worker, volume, owner, status, artifact):

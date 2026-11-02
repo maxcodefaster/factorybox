@@ -23,15 +23,7 @@ import worker_storage_release
 COPY_DELAY_SECONDS = 65
 
 
-def pending_kernel_owner(receipt, diagnostic):
-    observed = receipt.get("helper_exit", {})
-    return (
-        receipt.get("cleanup") is True and receipt.get("passed") is False and
-        observed.get("running") is False and observed.get("oom_killed") is False and
-        isinstance(observed.get("command_exit"), int) and observed["command_exit"] != 0 and
-        isinstance(observed.get("exit_code"), int) and observed["exit_code"] != 0 and
-        diagnostic.strip() == "fixed filesystem still has an image owner: resource temporarily unavailable"
-    )
+pending_kernel_owner = worker_storage_release.pending_kernel_owner
 
 
 def require_complete(result):

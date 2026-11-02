@@ -9,6 +9,51 @@ import worker_storage_release
 
 
 class WorkerStorageReleaseTests(unittest.TestCase):
+    def test_observation_preserves_known_refusals_until_actual_release(self):
+        epoch = "b" * 32
+        pending = {"passed": False, "cleanup": True, "helper_exit": {
+            "running": False, "oom_killed": False, "command_exit": 1, "exit_code": 1}}
+        calls = []
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def verify(worker, volume, owner, status, artifact):
+                calls.append(artifact)
+                if len(calls) == 1:
+                    path = artifact / ("storage-release-" + epoch)
+                    path.with_suffix(".json").write_text(json.dumps(pending))
+                    path.with_suffix(".stderr").write_text(
+                        "fixed filesystem still has an image owner: resource temporarily unavailable\n")
+                    raise ValueError("unconfirmed")
+                return {"passed": True, "cleanup": True, "kernel_state_changed": False}
+            with mock.patch.object(worker_storage_release, "verify", side_effect=verify), \
+                 mock.patch.object(worker_storage_release.time, "sleep"), \
+                 mock.patch.object(worker_storage_release.time, "monotonic", return_value=1):
+                result = worker_storage_release.observe({}, "volume", "owner",
+                    {"epoch": epoch}, root, deadline=10)
+            self.assertEqual(result["observations"], 2)
+            self.assertTrue(result["passed"])
+            self.assertFalse(result["kernel_state_changed"])
+            self.assertEqual([path.name for path in calls], ["0", "1"])
+            original = calls[0] / ("storage-release-" + epoch + ".json")
+            self.assertEqual(json.loads(original.read_text()), pending)
+
+    def test_observation_does_not_repeat_unknown_errors_or_expired_admission(self):
+        epoch = "b" * 32
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with mock.patch.object(worker_storage_release, "verify", side_effect=ValueError("changed image")) as verify, \
+                 mock.patch.object(worker_storage_release.time, "monotonic", return_value=1):
+                with self.assertRaisesRegex(ValueError, "changed image"):
+                    worker_storage_release.observe({}, "volume", "owner", {"epoch": epoch}, root, deadline=10)
+                self.assertEqual(verify.call_count, 1)
+            with mock.patch.object(worker_storage_release, "verify") as verify, \
+                 mock.patch.object(worker_storage_release.time, "monotonic", return_value=10):
+                with self.assertRaises(TimeoutError):
+                    worker_storage_release.observe({}, "volume", "owner", {"epoch": epoch}, root, deadline=10)
+                verify.assert_not_called()
+            with self.assertRaises(ValueError):
+                worker_storage_release.observe({}, "volume", "owner", {"epoch": "../foreign"}, root, deadline=10)
+
     def scenario(self, changed=None, foreign_owner=False, command_failed=False):
         owner, epoch = "a" * 32, "b" * 32
         image = {"owner": owner, "path": "/var/lib/sysbox/fixed-store/store.img",

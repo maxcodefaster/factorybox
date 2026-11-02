@@ -905,7 +905,8 @@ print(json.dumps({'resumes':generations('resumes'),'captures':generations('captu
         run(['stop','--timeout','45',worker_id],timeout=50)
         result['final_worker_state']=own(name,worker_id)['State']
         if result['final_worker_state']['ExitCode']!=0:raise ValueError('Worker did not shut down cleanly')
-        result['storage_release'] = worker_storage_release.verify(worker, name, owner, result['worker_identity'], output)
+        result['storage_release'] = worker_storage_release.observe(
+            worker, name, owner, result['worker_identity'], output, deadline=deadline)
         result['passed']=True
     except Exception as error:
         result['error']=str(error)

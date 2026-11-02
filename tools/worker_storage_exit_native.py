@@ -187,7 +187,8 @@ try:
     reference.docker(["stop", "--timeout=5", holder], timeout=10)
     if exact(holder_name, holder)["State"]["ExitCode"] != 0:
         raise ValueError("Exact holder did not close its own original descriptor cleanly")
-    result["firstRelease"] = worker_storage_release.verify(worker, NAME, OWNER, status, ARTIFACT)
+    result["firstRelease"] = worker_storage_release.observe(
+        worker, NAME, OWNER, status, ARTIFACT, deadline=deadline)
     second_name, second, second_status = start_epoch(2)
     if second_status["epoch"] == status["epoch"] or second_status["lifecycle"]["bounded_store"]["image"] != image:
         raise ValueError("Fresh epoch changed the retained image")
@@ -256,7 +257,8 @@ try:
     result["automaticCompletionBeforeNewAdmission"] = True
     result["sameCanaryAcrossThreeEpochs"] = True
     stop_epoch(third_name, third)
-    result["finalRelease"] = worker_storage_release.verify(worker, NAME, OWNER, third_status, ARTIFACT)
+    result["finalRelease"] = worker_storage_release.observe(
+        worker, NAME, OWNER, third_status, ARTIFACT, deadline=deadline)
     result["inputsUnchanged"] = (
         reference.sha(Path(__file__)) == result["runnerSHA256"] and
         reference.sha(Path(worker_storage_release.__file__)) == result["releaseHelperSHA256"] and
