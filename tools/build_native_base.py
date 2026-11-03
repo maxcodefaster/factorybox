@@ -10,6 +10,7 @@ import uuid
 import native_base
 import reference
 import build_config
+from build_worker import retain_built_image
 
 
 def main():
@@ -58,6 +59,7 @@ def main():
         inspected = json.loads(reference.docker(["image", "inspect", result["image"]]))[0]
         native_base.bind_image_identity(result, metadata, inspected)
         result["docker_reported_image_id"] = inspected["Id"]
+        result["image_id"] = inspected["Id"]
         inspect_command = [
             *reference.DOCKER, "run", "--pull=never", "--name", helper,
             "--label", "com.factorybox.run=" + owner, "--cpus=1", "--memory=128m",
@@ -73,6 +75,10 @@ def main():
             raise ValueError("native base package inspection failed")
         (archive / "packages.tsv").write_bytes(done.stdout)
         result["packages_sha256"] = reference.sha(archive / "packages.tsv")
+        # Keep the exact inspected input leased before removing the temporary
+        # inspection container. Kubernetes image GC otherwise removes the base
+        # between a successful build and its next consumer.
+        retain_built_image(archive, result)
         result["passed"] = True
     except Exception as error:
         failure = error
