@@ -315,11 +315,11 @@ func (e *Engine) retireDeletedManagerBacking(ctx context.Context, request Sandbo
 	}
 	if intent.Version != 1 || intent.Request != request || intent.Controller != e.config.Root ||
 		intent.RuntimeID != record.RuntimeID || intent.Bundle != *record.InputDirectory ||
-		!e.backingDirectoryMatches(intent.Manager, managerIdentity, intent.Attachment) ||
 		!e.managerJournalDirectoryMatches(intent.Directory, directory, intent.JournalParent) ||
 		!digest.MatchString(intent.InventorySHA256) || intent.StartedAt == "" {
 		return result, fmt.Errorf("manager retirement differs from its original native ownership")
 	}
+	sameManager := e.backingDirectoryMatches(intent.Manager, managerIdentity, intent.Attachment)
 	allowed := map[string]bool{}
 	for _, kind := range retiredManagerKinds {
 		allowed[kind+"/"+record.RuntimeID] = true
@@ -345,6 +345,18 @@ func (e *Engine) retireDeletedManagerBacking(ctx context.Context, request Sandbo
 			!reflect.DeepEqual(result.Before, intent.Before) {
 			return result, fmt.Errorf("manager completion differs from its original intent")
 		}
+		if result.DirectoryWithdrawal != nil {
+			previous, err := e.originalManagerAttachment(intent)
+			proof := result.DirectoryWithdrawal
+			if err != nil || proof.Directory != intent.Manager || proof.Image != previous.Image || proof.RootID != 5 {
+				return result, fmt.Errorf("manager withdrawal completion differs from its original directory")
+			}
+			return result, nil
+		}
+		if !sameManager {
+			_, err := e.withdrawnManagerDirectory(intent)
+			return result, err // Preserve the completed original receipt byte for byte.
+		}
 		return result, absent()
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return result, err
@@ -355,6 +367,21 @@ func (e *Engine) retireDeletedManagerBacking(ctx context.Context, request Sandbo
 	}
 	if err := e.managerBackingDependencies(ctx, forest, record, intent.Payloads); err != nil {
 		return result, err
+	}
+	if !sameManager {
+		proof, err := e.withdrawnManagerDirectory(intent)
+		if err != nil {
+			return result, err
+		}
+		after, err := e.storageCapacity()
+		if err != nil {
+			return result, err
+		}
+		result = SandboxBackingRetirement{Version: 1, PayloadKind: "sandbox-manager-backing", Request: request,
+			IntentSHA256: sum(data), CompletedAt: now(), Before: intent.Before, After: after,
+			DirectoryWithdrawal: proof}
+		// No current-manager payload is selected, adopted or deleted.
+		return result, journal.publishCheckpoint(relative, "retirement-complete.json", result)
 	}
 	plan, err = e.rebindBackingRetirementPlan(plan, intent.Attachment)
 	if err != nil {
@@ -384,4 +411,28 @@ func (e *Engine) retireDeletedManagerBacking(ctx context.Context, request Sandbo
 	result = SandboxBackingRetirement{Version: 1, PayloadKind: "sandbox-manager-backing", Request: request,
 		IntentSHA256: sum(data), CompletedAt: now(), Before: intent.Before, After: after}
 	return result, journal.publishCheckpoint(relative, "retirement-complete.json", result)
+}
+
+func (e *Engine) originalManagerAttachment(intent managerBackingIntent) (storefs.Active, error) {
+	if !e.metadataOnly || intent.Attachment == nil {
+		return storefs.Active{}, fmt.Errorf("manager directory withdrawal requires fenced retained metadata")
+	}
+	previous, err := e.backingRetirementAttachment(intent.Attachment)
+	if err != nil || intent.Manager.Device != previous.BlockDevice ||
+		intent.Manager.MountID != previous.Mount.MountID || intent.Manager.Inode <= 256 {
+		return storefs.Active{}, fmt.Errorf("original manager directory lacks its exact store attachment: %v", err)
+	}
+	return previous, nil
+}
+
+func (e *Engine) withdrawnManagerDirectory(intent managerBackingIntent) (*DirectoryWithdrawal, error) {
+	previous, err := e.originalManagerAttachment(intent)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := storefs.VerifyDirectoryUnlinked(*e.config.BoundedStore, intent.Manager.Inode)
+	if err != nil {
+		return nil, fmt.Errorf("original manager directory withdrawal is unconfirmed: %w", err)
+	}
+	return &DirectoryWithdrawal{Directory: intent.Manager, Image: previous.Image, RootID: tree}, nil
 }

@@ -478,6 +478,16 @@ receipt and inventory live beside the bounded image on the original private
 backing volume, so a guest-full image does not prevent reclamation. This does
 not enlarge the guest store or replace worker admission.
 
+For fenced retained metadata, the pinned manager may already have removed its
+original root during shutdown. A replacement at that pathname is not adopted.
+The cleanup can finish the original accepted inventory only after a read-only
+kernel lookup proves that its recorded directory inode is no longer linked in
+the exact bounded CoW filesystem's top-level tree. A renamed original root,
+unknown filesystem/tree or changed journal still refuses completion. The
+receipt retains this independent directory-withdrawal proof; replacement
+manager data is neither selected nor deleted. Existing completed receipts are
+never rewritten.
+
 Private backing cleanup inventories retained metadata even when an older epoch
 records a different valid CRIU digest. It still requires the exact store image,
 boot, Sysbox runtime, controller paths and storage attachment identities. These

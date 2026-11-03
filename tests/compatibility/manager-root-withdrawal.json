@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "source_commit": "b93ceca825b809e2a24d04009c63f7b9c59675fd",
+  "previous_manifest": "tests/compatibility/native-manager-withdrawal.json",
+  "previous_manifest_sha256": "99fb79de5183f26ff81a028f9397c39a919661563839d9de6597fea7fd791f63",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Add a native regression for an accepted manager retirement across actual unlinking of its original directory. Require the moved-original refusal, preservation of a replacement containing same-named foreign data, exact request completion with independent kernel inode-withdrawal evidence and unchanged original receipts. Keep every existing native test, assertion, proof field, resource ceiling and deadline.",
+  "files": {
+    "tools/bounded_store_native.py": {
+      "before_sha256": "1b5b2972da547347f2db52376128b30338c5d1e107e657c559e10f6ac5b2fafe",
+      "after_sha256": "24fa88e1ebb1a18ec0014412812b31ecb66e84bf150807c6995dcb1139ce687f"
+    },
+    "internal/lifecycle/retained_manager_root_native_linux_test.go": {
+      "before_sha256": null,
+      "after_sha256": "dc18bd007e2f54215041e730054af2d055687a4ea3dd14b35c57ccdff0169bab"
+    },
+    "internal/lifecycle/manager_withdrawal_linux_test.go": {
+      "before_sha256": null,
+      "after_sha256": "499b9099ea1771627e715d16e274adabc833b7996b71c8d4097a9d3a257bd0bd"
+    }
+  }
+}

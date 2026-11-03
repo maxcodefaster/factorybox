@@ -50,6 +50,8 @@ BACKING_RETIREMENT_UNIT_TESTS = [
     'TestManagerJournalRemountRequiresItsBackingParent',
     'TestNativeRetainedMetadataAcrossRuntimeUpgrade',
     'TestNativeRetainedPendingBackingRetirement',
+    'TestNativeRetainedManagerRootWithdrawal',
+    'TestManagerWithdrawalRequiresRetainedOriginalAttachment',
     'TestRetainedMetadataKeepsRecoveryRecipeStrict',
     'TestRetainedMetadataCannotExecuteLifecycle',
     'TestRecoveryStoreEpochIdentity',

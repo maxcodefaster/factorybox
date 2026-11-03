@@ -24,13 +24,20 @@ type SandboxBackingRequest struct {
 }
 
 type SandboxBackingRetirement struct {
-	Version      int                   `json:"version"`
-	PayloadKind  string                `json:"payload_kind"`
-	Request      SandboxBackingRequest `json:"request"`
-	IntentSHA256 string                `json:"intent_sha256"`
-	CompletedAt  string                `json:"completed_at"`
-	Before       StorageCapacity       `json:"before"`
-	After        StorageCapacity       `json:"after"`
+	Version             int                   `json:"version"`
+	PayloadKind         string                `json:"payload_kind"`
+	Request             SandboxBackingRequest `json:"request"`
+	IntentSHA256        string                `json:"intent_sha256"`
+	CompletedAt         string                `json:"completed_at"`
+	Before              StorageCapacity       `json:"before"`
+	After               StorageCapacity       `json:"after"`
+	DirectoryWithdrawal *DirectoryWithdrawal  `json:"directory_withdrawal,omitempty"`
+}
+
+type DirectoryWithdrawal struct {
+	Directory KernelObject  `json:"directory"`
+	Image     storefs.Image `json:"image"`
+	RootID    uint64        `json:"root_id"`
 }
 
 type sandboxBackingIntent struct {

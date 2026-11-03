@@ -101,6 +101,10 @@ func verifyCopyOnWriteMount(active Active) error {
 		return err
 	}
 	defer unix.Close(fd)
+	return verifyCopyOnWriteFD(active, fd)
+}
+
+func verifyCopyOnWriteFD(active Active, fd int) error {
 	var stat unix.Stat_t
 	var mount unix.Statx_t
 	var filesystem unix.Statfs_t

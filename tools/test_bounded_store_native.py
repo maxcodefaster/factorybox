@@ -90,11 +90,23 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
         self.assertEqual(withdrawal['previous_manifest'], 'tests/compatibility/retained-pending-backing.json')
         self.assertEqual(hashlib.sha256((root / withdrawal['previous_manifest']).read_bytes()).hexdigest(),
                          withdrawal['previous_manifest_sha256'])
+        manager_root = json.loads((root / 'tests/compatibility/manager-root-withdrawal.json').read_text())
+        self.assertEqual(manager_root['schema'], 1)
+        self.assertTrue(manager_root['assertions_preserved'])
+        self.assertFalse(manager_root['upstream_assertions_modified'])
+        self.assertEqual(manager_root['previous_manifest'], 'tests/compatibility/native-manager-withdrawal.json')
+        self.assertEqual(hashlib.sha256((root / manager_root['previous_manifest']).read_bytes()).hexdigest(),
+                         manager_root['previous_manifest_sha256'])
+        def after_manager_root(name, row):
+            final = manager_root['files'].get(name, row)
+            if name in manager_root['files']:
+                self.assertEqual(final['before_sha256'], row['after_sha256'])
+            return final
         def after_withdrawal(name, row):
             final = withdrawal['files'].get(name, row)
             if name in withdrawal['files']:
                 self.assertEqual(final['before_sha256'], row['after_sha256'])
-            return final
+            return after_manager_root(name, final)
         def after_retained(name, row):
             final = retained['files'].get(name, row)
             if name in retained['files']:
@@ -155,6 +167,19 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_withdrawal(name, row)['after_sha256'])
         for name, row in withdrawal['files'].items():
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_manager_root(name, row)['after_sha256'])
+        for name, row in manager_root['files'].items():
+            if name == 'tools/bounded_store_native.py':
+                self.assertEqual(row['before_sha256'], retained['files'][name]['after_sha256'])
+                original_runner = (root / name).read_text()
+                for added in ['TestNativeRetainedManagerRootWithdrawal',
+                              'TestManagerWithdrawalRequiresRetainedOriginalAttachment']:
+                    original_runner = original_runner.replace("    '" + added + "',\n", '', 1)
+                self.assertEqual(hashlib.sha256(original_runner.encode()).hexdigest(), row['before_sha256'])
+            else:
+                self.assertIsNone(row['before_sha256'])
+                self.assertIn(name, ['internal/lifecycle/retained_manager_root_native_linux_test.go',
+                                    'internal/lifecycle/manager_withdrawal_linux_test.go'])
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
         original = declaration['files']['internal/lifecycle/bounded_store_native_linux_test.go']
         self.assertEqual(original['before_sha256'], original['after_sha256'])
