@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -39,35 +37,19 @@ func BenchmarkFilesystemExistingDigestNative(b *testing.B) {
 		}
 	}
 	for range b.N {
-		started := time.Now()
-		trees := make([]FilesystemTree, len(inputs))
-		durations := make([]time.Duration, len(inputs))
-		err := visitFilesystemRoots(context.Background(), len(inputs), func(ctx context.Context, index int) error {
-			input := inputs[index]
-			rootStarted := time.Now()
+		for _, input := range inputs {
 			root, err := openDirectory(input.Path)
 			if err != nil {
-				return err
+				b.Fatal(err)
 			}
-			actual, scanErr := fingerprintTree(ctx, root, nil, false)
+			started := time.Now()
+			actual, scanErr := fingerprintTree(context.Background(), root, nil, false)
 			closeErr := root.Close()
-			if err := errors.Join(scanErr, closeErr); err != nil {
-				return err
+			if scanErr != nil || closeErr != nil || !sameFilesystemTree(actual, input.Expected) {
+				b.Fatal("committed filesystem digest, metadata or topology differs", actual, scanErr, closeErr)
 			}
-			if !sameFilesystemTree(actual, input.Expected) {
-				return fmt.Errorf("committed filesystem digest, metadata or topology differs: %s", input.Expected.Name)
-			}
-			trees[index], durations[index] = actual, time.Since(rootStarted)
-			return nil
-		})
-		elapsed := time.Since(started)
-		if err != nil {
-			b.Fatal(err)
+			recordFilesystemProbe(b, input.Expected.Name, time.Since(started), actual)
 		}
-		for index, input := range inputs {
-			recordFilesystemProbe(b, input.Expected.Name, durations[index], trees[index])
-		}
-		recordFilesystemProbe(b, "all-mutable-roots", elapsed, FilesystemTree{})
 	}
 }
 

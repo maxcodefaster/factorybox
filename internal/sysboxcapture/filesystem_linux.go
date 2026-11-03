@@ -279,40 +279,35 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 	if err := os.Mkdir(destination+"/volumes", 0700); err != nil {
 		return nil, err
 	}
-	result := &FilesystemSnapshot{Version: 1, Roots: make([]FilesystemTree, len(roots))}
-	err := visitFilesystemRoots(ctx, len(roots), func(ctx context.Context, index int) error {
-		root := roots[index]
+	result := &FilesystemSnapshot{Version: 1}
+	for _, root := range roots {
 		start := time.Now()
 		if root.Expected != nil && root.Expected.Immutable != nil {
 			if root.Name != "lower" {
-				return fmt.Errorf("only the prepared immutable lower may be shared")
+				return nil, fmt.Errorf("only the prepared immutable lower may be shared")
 			}
 			tree, err := bindImmutableTreeRecorded(root.Source, destination+"/"+root.Name, *root.Expected,
 				func(tree FilesystemTree) error { return recordCaptureLowerAlias(destination, tree) })
 			if err != nil {
-				return err
+				return nil, err
 			}
 			tree.Name, tree.Source, tree.Saved = root.Name, root.Source, destination+"/"+root.Name
 			tree.CaptureUS = time.Since(start).Microseconds()
-			result.Roots[index] = tree
-			return nil
+			result.Roots = append(result.Roots, tree)
+			continue
 		}
 		source, err := openDirectory(root.Source)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		tree, err := cloneFilesystemTreeTo(ctx, source, destination+"/"+root.Name, root.Expected, false)
 		closeErr := source.Close()
 		if err := errors.Join(err, closeErr); err != nil {
-			return err
+			return nil, err
 		}
 		tree.Name, tree.Source, tree.Saved = root.Name, root.Source, destination+"/"+root.Name
 		tree.CaptureUS = time.Since(start).Microseconds()
-		result.Roots[index] = tree
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		result.Roots = append(result.Roots, tree)
 	}
 	// All writable targets were created inside this new private destination.
 	// Its immutable lower, if any, was already made durable at import. Flush
@@ -423,13 +418,12 @@ func checkFilesystemSnapshot(ctx context.Context, generation string, snapshot *F
 	if err := validateFilesystemSnapshotPaths(generation, snapshot); err != nil {
 		return err
 	}
-	return visitFilesystemRoots(ctx, len(snapshot.Roots), func(ctx context.Context, index int) error {
-		tree := snapshot.Roots[index]
+	for _, tree := range snapshot.Roots {
 		if tree.Immutable != nil {
 			if err := VerifyImmutableTree(tree.Saved, tree); err != nil {
 				return err
 			}
-			return nil
+			continue
 		}
 		directory, err := openDirectory(tree.Saved)
 		if err != nil {
@@ -440,8 +434,8 @@ func checkFilesystemSnapshot(ctx context.Context, generation string, snapshot *F
 		if err := errors.Join(readErr, closeErr); err != nil {
 			return err
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func validateFilesystemSnapshotPaths(generation string, snapshot *FilesystemSnapshot) error {
@@ -554,8 +548,7 @@ func VerifyLiveFilesystemSnapshot(ctx context.Context, snapshot *FilesystemSnaps
 	if snapshot == nil || snapshot.Version != 1 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
 		return fmt.Errorf("live pause backing is absent or invalid")
 	}
-	return visitFilesystemRoots(ctx, len(snapshot.Roots), func(ctx context.Context, index int) error {
-		tree := snapshot.Roots[index]
+	for _, tree := range snapshot.Roots {
 		if !cleanAbsolute(tree.Source) {
 			return fmt.Errorf("live pause backing path is not canonical")
 		}
@@ -566,7 +559,7 @@ func VerifyLiveFilesystemSnapshot(ctx context.Context, snapshot *FilesystemSnaps
 			if err := VerifyImmutableTree(tree.Source, tree); err != nil {
 				return err
 			}
-			return nil
+			continue
 		}
 		directory, err := openDirectory(tree.Source)
 		if err != nil {
@@ -580,8 +573,8 @@ func VerifyLiveFilesystemSnapshot(ctx context.Context, snapshot *FilesystemSnaps
 		if !sameFilesystemTree(actual, tree) {
 			return fmt.Errorf("stopped working filesystem changed after pause: %s", tree.Name)
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func cloneFilesystemTree(ctx context.Context, source *os.File, destination string) (FilesystemTree, error) {

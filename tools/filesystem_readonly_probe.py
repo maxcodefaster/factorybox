@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--sandbox', required=True)
     parser.add_argument('--snapshot', required=True)
     parser.add_argument('--baseline-ref', default='HEAD')
+    parser.add_argument('--repeats', type=int, choices=(1, 2, 3), default=2)
     options = parser.parse_args()
     if not re.fullmatch(r'[a-f0-9]{64}', options.worker_container):
         raise ValueError('probe requires one exact existing worker container ID')
@@ -70,8 +71,9 @@ r=json.loads(sys.argv[1]);root=pathlib.Path(r['root'])/'objects'/r['sandbox']
 print(json.dumps({'record':json.loads((root/'record.json').read_text()),
  'filesystem':json.loads((root/'captures'/r['snapshot']/'filesystem.json').read_text())}))
 """
-    observed = json.loads(reference.docker(['exec', options.worker_container, 'python3', '-c',
-                                           program, json.dumps(request)]))
+    inspect_capture = ['exec', options.worker_container, 'python3', '-c',
+                       program, json.dumps(request)]
+    observed = json.loads(reference.docker(inspect_capture))
     inputs = probe_inputs(status, options.sandbox, options.snapshot,
                           observed['record'], observed['filesystem'])
     owner = uuid.uuid4().hex
@@ -118,7 +120,8 @@ print(json.dumps({'record':json.loads((root/'record.json').read_text()),
         output.mkdir()
         for file in ['digest.jsonl', 'baseline.cpu.pprof', 'current.cpu.pprof']:
             (output / file).touch(mode=0o600)
-        order = ['baseline', 'current', 'current', 'baseline']
+        order = ['baseline', 'current', 'current', 'baseline'] * options.repeats
+        result['order'] = order
         script = ''
         for index, label in enumerate(order):
             profile = f' -test.cpuprofile=/output/{label}.cpu.pprof' if index < 2 else ''
@@ -146,7 +149,7 @@ print(json.dumps({'record':json.loads((root/'record.json').read_text()),
         (evidence / 'stderr.log').write_text(completed.stderr)
         completed.check_returncode()
         result['measurements'] = [json.loads(line) for line in (output / 'digest.jsonl').read_text().splitlines()]
-        if len(result['measurements']) != 12:
+        if len(result['measurements']) != len(inputs) * len(order):
             raise ValueError('read-only comparison omitted a complete verified root')
         after = json.loads(reference.docker(['inspect', options.worker_container]))[0]
         latest = json.loads(reference.docker(['exec', options.worker_container,
@@ -155,12 +158,17 @@ print(json.dumps({'record':json.loads((root/'record.json').read_text()),
                 not after['State']['Running'] or after['RestartCount'] != 0 or
                 latest['epoch'] != status['epoch'] or latest['store_id'] != status['store_id']):
             raise ValueError('read-only probe worker identity changed')
+        result['snapshot_after'] = json.loads(reference.docker(inspect_capture))
+        if result['snapshot_after'] != observed:
+            raise ValueError('committed capture changed during the read-only comparison')
         for label, source in [('baseline', baseline_root), ('current', current_root)]:
             if upstream_unit.context_manifest(source) != result['contexts'][label]:
                 raise ValueError('probe compilation context changed')
         result['passed'] = True
     except Exception as error:
-        result['error'] = str(error)
+        result['error'] = (
+            f'probe command exited {error.returncode}'
+            if isinstance(error, subprocess.CalledProcessError) else str(error))
         raise
     finally:
         if attempted:
