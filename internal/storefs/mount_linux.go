@@ -378,10 +378,19 @@ func (attachment *Attachment) Close() error {
 		}
 		attachment.loopClosed = true
 	}
-	// The final kernel reference can outlive unmount/close briefly, including
-	// with direct I/O. Observe bounded completion without detaching anything.
+	// Opening the block device itself acquires a reference and can postpone
+	// autoclear again. Observe its sysfs backing without reopening it, then
+	// independently verify the exact kernel outcome before releasing our lease.
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for {
+		backing, err := loopBackingPresent(fmt.Sprintf("/sys/block/loop%d/loop/backing_file", attachment.Active.LoopNumber))
+		if err != nil {
+			return err
+		}
+		if backing && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
 		fd, err := unix.Open(attachment.node.path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 		if err != nil {
 			return err
@@ -408,4 +417,15 @@ func (attachment *Attachment) Close() error {
 	}
 	attachment.closed = true
 	return attachment.image.Close()
+}
+
+func loopBackingPresent(path string) (bool, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil // Still requires the independent kernel ioctl above.
+	}
+	if err != nil {
+		return false, fmt.Errorf("original loop backing observation is unavailable: %w", err)
+	}
+	return strings.TrimSpace(string(data)) != "", nil
 }
