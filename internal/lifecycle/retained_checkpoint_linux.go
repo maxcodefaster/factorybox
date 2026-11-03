@@ -14,14 +14,15 @@ import (
 // RetainedCheckpointInspection is a fresh read observation, not a durable
 // deletion authorization or a replacement for dependency/ownership admission.
 type RetainedCheckpointInspection struct {
-	Version             int                       `json:"version"`
-	Request             RetainedCheckpointRequest `json:"request"`
-	BootID              string                    `json:"boot_id"`
-	Files               int                       `json:"files"`
-	FileBytes           int64                     `json:"file_bytes"`
-	FilesystemTrees     int                       `json:"filesystem_trees"`
-	FullContentVerified bool                      `json:"full_content_verified"`
-	VerifiedAt          string                    `json:"verified_at"`
+	Version                   int                       `json:"version"`
+	Request                   RetainedCheckpointRequest `json:"request"`
+	BootID                    string                    `json:"boot_id"`
+	Files                     int                       `json:"files"`
+	FileBytes                 int64                     `json:"file_bytes"`
+	FilesystemTrees           int                       `json:"filesystem_trees"`
+	FullContentVerified       bool                      `json:"full_content_verified"`
+	NativeFilesystemsVerified bool                      `json:"native_filesystems_verified,omitempty"`
+	VerifiedAt                string                    `json:"verified_at"`
 }
 
 func (e *Engine) inspectRetainedCheckpoint(ctx context.Context, request CheckpointRequest) (Checkpoint, error) {
@@ -87,5 +88,7 @@ func (e *Engine) InspectRetainedCheckpoint(ctx context.Context, request Retained
 		bytes += file.Bytes
 	}
 	return RetainedCheckpointInspection{Version: 1, Request: request, BootID: e.boot, Files: len(saved.Files),
-		FileBytes: bytes, FilesystemTrees: len(saved.Filesystem.Roots), FullContentVerified: true, VerifiedAt: now()}, nil
+		FileBytes: bytes, FilesystemTrees: len(saved.Filesystem.Roots),
+		FullContentVerified: saved.Filesystem.Version == 1, NativeFilesystemsVerified: saved.Filesystem.Version == 2,
+		VerifiedAt: now()}, nil
 }

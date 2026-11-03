@@ -286,6 +286,10 @@ func openDirectory(path string) (*os.File, error) {
 }
 
 func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination string) (*FilesystemSnapshot, error) {
+	return copyFilesystemGeneration(ctx, roots, destination, false)
+}
+
+func copyFilesystemGeneration(ctx context.Context, roots []filesystemRoot, destination string, sealedImport bool) (*FilesystemSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -301,7 +305,7 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 	}
 	result := &FilesystemSnapshot{Version: 1}
 	if native {
-		result.Version, result.Writable = 2, materialized
+		result.Version, result.Writable = 2, materialized && !sealedImport
 	}
 	for _, root := range roots {
 		start := time.Now()
@@ -320,7 +324,7 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 			continue
 		}
 		if native {
-			tree, err := cloneNativeFilesystemTree(ctx, root, destination+"/"+root.Name, materialized)
+			tree, err := cloneNativeFilesystemTree(ctx, root, destination+"/"+root.Name, materialized, sealedImport)
 			if err != nil {
 				return nil, err
 			}

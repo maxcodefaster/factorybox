@@ -91,7 +91,8 @@ func (e *Engine) readRecoveryImportPreparation(operation, targetID string) (reco
 		saved.ConfigSHA256 != source.ConfigSHA256 || saved.RuntimeSHA256 != p.RuntimeSHA256 ||
 		saved.CriuSHA256 != p.CriuSHA256 || saved.ManagerRoot != p.ManagerRoot ||
 		!saved.SourceStopped || saved.CapturedAt == "" || saved.ReleasedAt == "" ||
-		saved.Filesystem == nil || saved.Filesystem.Version != 1 || len(saved.Filesystem.Roots) == 0 ||
+		saved.Filesystem == nil || (saved.Filesystem.Version != 1 && saved.Filesystem.Version != 2) ||
+		saved.Filesystem.Writable || len(saved.Filesystem.Roots) == 0 ||
 		sum(identity) != p.Request.CheckpointSHA256 {
 		return p, fmt.Errorf("recovery import differs from its original verified pause or pinned recipe: %v", err)
 	}

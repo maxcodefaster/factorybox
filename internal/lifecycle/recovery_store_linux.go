@@ -98,7 +98,7 @@ func (e *Engine) recoveryBaseVerifier(source Record, saved *sysboxcapture.Filesy
 	}
 	remapped := false
 	for _, tree := range saved.Roots {
-		remapped = remapped || tree.Immutable != nil && tree.Immutable.Device != active.BlockDevice
+		remapped = remapped || tree.Immutable != nil && tree.Immutable.Device != active.BlockDevice || tree.Native != nil
 	}
 	if !remapped {
 		return nil, nil // Preserve strict standalone and same-device recovery.
@@ -124,6 +124,16 @@ func (e *Engine) recoveryBaseVerifier(source Record, saved *sysboxcapture.Filesy
 		return nil, err
 	}
 	return func(tree sysboxcapture.FilesystemTree, currentDevice uint64) error {
+		if tree.Native != nil {
+			known := false
+			for _, original := range saved.Roots {
+				known = known || reflect.DeepEqual(original, tree)
+			}
+			if !known {
+				return fmt.Errorf("native translation is not part of the original committed checkpoint")
+			}
+			return e.verifyNativeRetainedStorage(old, tree, currentDevice)
+		}
 		if tree.Immutable == nil || tree.Immutable.Device != old.BlockDevice || currentDevice != active.BlockDevice ||
 			!reflect.DeepEqual(tree.Immutable, source.Base.Immutable) || !withinStore(e.config.Root, tree.Immutable.Root) {
 			return fmt.Errorf("translated base differs from its exact committed source")

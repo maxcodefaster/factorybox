@@ -28,7 +28,7 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	t.Cleanup(cancel)
-	runtimeAttempted, deleted := false, false
+	runtimeAttempted, deleted, retainPause := false, false, false
 	expectedStore, expectedEpoch := "", ""
 	timings := map[string]int64{}
 	call := func(label string, args ...string) ([]byte, error) {
@@ -86,7 +86,7 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if runtimeAttempted && !deleted {
+		if runtimeAttempted && !deleted && !retainPause {
 			return
 		}
 		if err := sysboxcapture.RetireImmutableAlias(bundle+"/lower", bound); err != nil {
@@ -115,7 +115,7 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if runtimeAttempted && !deleted {
+		if runtimeAttempted && !deleted && !retainPause {
 			return
 		}
 		if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
@@ -152,6 +152,9 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 	}
 	var initial View
 	t.Cleanup(func() {
+		if retainPause {
+			return
+		}
 		response, err := call("delete", "delete", "native-source")
 		if err != nil {
 			t.Error("normal native Delete", err)
@@ -214,6 +217,23 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 			tree.HashedBytes != 0 || tree.SourceReadUS != 0 || tree.TargetReadUS != 0) {
 			t.Fatal("Pause used a private file scan instead of native capture", tree)
 		}
+	}
+	if os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_RETAINED") == "prepare" {
+		retained := nativeFilesystemRetained{
+			Request: RecoveryRequest{SourceRoot: status.Lifecycle.Root, SourceID: "native-source",
+				SnapshotID: snapshot, SourceOwner: paused.Record.Owner,
+				CheckpointSHA256: paused.Record.Pause.CheckpointSHA256},
+			StoreID: status.StoreID, Epoch: status.Epoch, State: before,
+		}
+		data, err := json.MarshalIndent(retained, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile("/output/native-retained.json", append(data, '\n'), 0600); err != nil {
+			t.Fatal(err)
+		}
+		retainPause = true
+		return
 	}
 	data, err = call("resume", "resume", "--snapshot-id", snapshot, "native-source")
 	var resumed View
@@ -292,6 +312,88 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("/output/native-filesystem-lifecycle.json", append(proof, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type nativeFilesystemRetained struct {
+	Request RecoveryRequest   `json:"request"`
+	StoreID string            `json:"store_id"`
+	Epoch   string            `json:"epoch"`
+	State   captureActorState `json:"state"`
+}
+
+func TestNativeFilesystemRetainedRecover(t *testing.T) {
+	if os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_RETAINED") != "recover" {
+		t.Skip("requires the owned replacement worker and original committed native Pause")
+	}
+	deadline, bounded := t.Deadline()
+	if !bounded {
+		t.Fatal("retained recovery requires the caller's lifecycle deadline")
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	t.Cleanup(cancel)
+	data, err := os.ReadFile("/output/native-retained.json")
+	var saved nativeFilesystemRetained
+	if err != nil || json.Unmarshal(data, &saved) != nil {
+		t.Fatal("original committed native Pause", err)
+	}
+	var status struct {
+		StoreID string `json:"store_id"`
+		Epoch   string `json:"epoch"`
+	}
+	data, err = exec.CommandContext(ctx, "/opt/factorybox/factorybox", "worker-status").Output()
+	if err != nil || json.Unmarshal(data, &status) != nil ||
+		status.StoreID != saved.StoreID || status.Epoch == saved.Epoch {
+		t.Fatal("recovery requires the same original store and a new worker epoch", err)
+	}
+	call := func(args ...string) ([]byte, error) {
+		flags := []string{"--worker-run-root", "/run/factorybox", "--worker-store-id", status.StoreID,
+			"--worker-epoch", status.Epoch}
+		cmd := exec.CommandContext(ctx, "/opt/factorybox/factorybox", append(flags, args...)...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		data, err := cmd.Output()
+		if err != nil {
+			return data, fmt.Errorf("%w: %s", err, stderr.String())
+		}
+		return data, nil
+	}
+	data, err = call("recover-paused", "--source-root", saved.Request.SourceRoot,
+		"--source", saved.Request.SourceID, "--snapshot-id", saved.Request.SnapshotID,
+		"--source-owner", saved.Request.SourceOwner, "--checkpoint-sha256", saved.Request.CheckpointSHA256,
+		"native-recovered")
+	if err != nil {
+		t.Fatal("recover exact retained native Pause", err)
+	}
+	var recovered View
+	if err := json.Unmarshal(data, &recovered); err != nil || recovered.Runtime == nil {
+		t.Fatal("missing real recovered runtime", err)
+	}
+	t.Cleanup(func() {
+		data, err := call("delete", "native-recovered")
+		if err != nil {
+			t.Error("normal recovered native Delete", err)
+			return
+		}
+		if err := os.WriteFile("/output/native-recovered-delete.json", data, 0600); err != nil {
+			t.Error(err)
+		}
+	})
+	boundedLossActor(t, recovered, saved.State)
+	advanced, err := readCaptureActor(recovered.Runtime.PID, "advance")
+	if err != nil || advanced.Counter != saved.State.Counter+1 {
+		t.Fatal("recovered native Sandbox did not perform new useful work", err)
+	}
+	data, err = json.MarshalIndent(map[string]any{
+		"passed": true, "store_id": status.StoreID, "old_epoch": saved.Epoch, "new_epoch": status.Epoch,
+		"owner": recovered.Record.Owner, "target_id": recovered.Record.ID,
+		"original_request": saved.Request, "original_ram_and_files_preserved": true, "new_useful_work": true,
+	}, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("/output/native-recovered.json", append(data, '\n'), 0600); err != nil {
 		t.Fatal(err)
 	}
 }

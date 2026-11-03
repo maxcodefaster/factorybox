@@ -5,6 +5,25 @@ import native_filesystem_lifecycle
 
 
 class NativeFilesystemLifecycleProof(unittest.TestCase):
+    def test_retained_recovery_binds_both_epochs_store_request_and_new_runtime(self):
+        prepared = {"request": {"source_id": "original"}, "store_id": "same-store", "epoch": "old"}
+        startup = {"status": {"store_id": "same-store", "epoch": "new"}}
+        proof = {"passed": True, "original_ram_and_files_preserved": True, "new_useful_work": True,
+                 "original_request": prepared["request"], "store_id": "same-store", "old_epoch": "old",
+                 "new_epoch": "new", "target_id": "native-recovered", "owner": "new-owner"}
+        deleted = {"record": {"id": "native-recovered", "owner": "new-owner", "phase": "deleted",
+                              "delete": {"completed_at": "completed"}}, "runtime": None}
+        native_filesystem_lifecycle.require_retained_complete(proof, deleted, prepared, startup)
+        for key, value in [("passed", False), ("original_ram_and_files_preserved", False),
+                           ("new_useful_work", False), ("store_id", "foreign"), ("old_epoch", "new"),
+                           ("new_epoch", "old"), ("owner", "foreign"), ("original_request", {}),
+                           ("target_id", "original")]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                native_filesystem_lifecycle.require_retained_complete({**proof, key: value}, deleted, prepared, startup)
+        with self.assertRaises(ValueError):
+            native_filesystem_lifecycle.require_retained_complete(
+                proof, {**deleted, "runtime": {"status": "stopped"}}, prepared, startup)
+
     def test_native_ram_useful_work_and_exact_delete_are_required(self):
         proof = {
             "passed": True, "same_private_ram": True, "useful_after_resume": True, "native_roots": 8,

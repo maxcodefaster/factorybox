@@ -68,6 +68,9 @@ func (b *epochInventoryBuilder) payload(absolute string) error {
 }
 
 func (b *epochInventoryBuilder) translate(tree sysboxcapture.FilesystemTree, device uint64) error {
+	if tree.Native != nil {
+		return b.engine.verifyNativeRetainedStorage(b.previous, tree, device)
+	}
 	if tree.Immutable == nil {
 		return fmt.Errorf("epoch translation has no canonical base identity")
 	}

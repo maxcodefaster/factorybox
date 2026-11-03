@@ -39,10 +39,26 @@ def require_complete(proof, deleted, child_deleted):
             not record.get("delete", {}).get("completed_at") or child_deleted.get("runtime") is not None):
         raise ValueError("native lifecycle lacks its exact independent child Delete")
 
+def require_retained_complete(proof, deleted, prepared, startup):
+    status = startup["status"]
+    record = deleted.get("record", {})
+    if (proof.get("passed") is not True or proof.get("original_ram_and_files_preserved") is not True or
+            proof.get("new_useful_work") is not True or
+            proof.get("original_request") != prepared.get("request") or
+            proof.get("store_id") != prepared.get("store_id") or proof.get("store_id") != status.get("store_id") or
+            proof.get("old_epoch") != prepared.get("epoch") or proof.get("new_epoch") != status.get("epoch") or
+            proof.get("old_epoch") == proof.get("new_epoch") or
+            proof.get("target_id") != "native-recovered" or not proof.get("owner") or
+            record.get("id") != proof.get("target_id") or record.get("owner") != proof.get("owner") or
+            record.get("phase") != "deleted" or not record.get("delete", {}).get("completed_at") or
+            deleted.get("runtime") is not None):
+        raise ValueError("retained recovery omitted original identity, state, new work or exact public Delete")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build", required=True)
+    parser.add_argument("--replacement", action="store_true", help="Recover the original native Pause after an actual clean worker replacement")
     args = parser.parse_args()
     build, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
@@ -80,8 +96,10 @@ def main():
         "passed": False, "cleanup": False, "native_lifecycle_qualified": False, "production_qualified": False,
         "scope": "Delivered CLI native-layout Start, Pause/Resume and independent Fork; child Pause/Resume and useful work after original deletion; public Delete and clean same-worker store release. Not ACME or worker-replacement qualification.",
     }
+    if args.replacement:
+        result["scope"] = "Exact native Pause, clean worker closure and original kernel-store release, new worker epoch on the same store, retained recovery with original RAM/files and new useful work. Not ACME or production qualification."
     volume_attempted = container_attempted = False
-    identity, deadline = None, None
+    identity, deadline, current_name = None, None, name
     try:
         binary = artifact / "probe.test"
         command = bounded_store_native.probe_build_command(binary, compile_options, capacity=True)
@@ -116,15 +134,20 @@ def main():
         setup = "set -eu; mkdir /busybox; tar -xzf /busybox-rootfs.tar.gz -C /busybox; exec /probe.test -test.v -test.run=^TestNativeFilesystemLifecycle$ -test.timeout=" + str(remaining) + "s"
         with (artifact / "stdout.txt").open("x") as out, (artifact / "stderr.txt").open("x") as err:
             done = subprocess.run([*reference.DOCKER, "exec", "--env", "FACTORYBOX_NATIVE_FILESYSTEM_LIFECYCLE=1",
+                                   "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETAINED=" + ("prepare" if args.replacement else ""),
                                    identity, "/bin/bash", "-ec", setup],
                                   stdout=out, stderr=err, timeout=max(.001, deadline - time.monotonic()))
         result["exit_code"] = done.returncode
         if done.returncode or "--- SKIP:" in (artifact / "stdout.txt").read_text():
             raise ValueError("native Sandbox filesystem lifecycle failed; retain original owned resources")
-        proof = json.loads((output / "native-filesystem-lifecycle.json").read_text())
-        deleted = json.loads((output / "native-delete.json").read_text())
-        child_deleted = json.loads((output / "native-child-delete.json").read_text())
-        require_complete(proof, deleted, child_deleted)
+        if not args.replacement:
+            proof = json.loads((output / "native-filesystem-lifecycle.json").read_text())
+            deleted = json.loads((output / "native-delete.json").read_text())
+            child_deleted = json.loads((output / "native-child-delete.json").read_text())
+            require_complete(proof, deleted, child_deleted)
+        else:
+            if not (output / "native-retained.json").is_file():
+                raise ValueError("replacement lacks its exact original committed native Pause")
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("native lifecycle deadline expired before worker closure")
@@ -135,24 +158,56 @@ def main():
             raise ValueError("native worker did not close its original store cleanly")
         result["storage_release"] = worker_storage_release.observe(
             worker, name, owner, result["startup"]["status"], artifact, deadline=deadline)
+        if args.replacement:
+            reference.owned_delete("container", name, owner)
+            current_name = name + "-replacement"
+            replacement = command.copy()
+            replacement[replacement.index("--name") + 1] = current_name
+            result["replacement_command"] = replacement
+            (artifact / "replacement-intent.json").write_text(json.dumps(result, indent=2) + "\n")
+            identity = reference.docker(replacement)
+            startup = consumer_worker_loss.ready(current_name, owner, identity, deadline)
+            result["replacement_startup"] = startup
+            if startup["status"]["epoch"] == result["startup"]["status"]["epoch"]:
+                raise ValueError("replacement reused the original native epoch")
+            remaining = max(.001, deadline - time.monotonic())
+            recover = [*reference.DOCKER, "exec", "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETAINED=recover",
+                       identity, "/probe.test", "-test.v", "-test.run=^TestNativeFilesystemRetainedRecover$",
+                       "-test.timeout=" + str(remaining) + "s"]
+            with (artifact / "recover.stdout").open("x") as out, (artifact / "recover.stderr").open("x") as err:
+                done = subprocess.run(recover, stdout=out, stderr=err, timeout=max(.001, deadline - time.monotonic()))
+            result["recover_exit_code"] = done.returncode
+            if done.returncode or "--- SKIP:" in (artifact / "recover.stdout").read_text():
+                raise ValueError("native retained recovery failed; preserve exact store and both epochs")
+            proof = json.loads((output / "native-recovered.json").read_text())
+            deleted = json.loads((output / "native-recovered-delete.json").read_text())
+            prepared = json.loads((output / "native-retained.json").read_text())
+            require_retained_complete(proof, deleted, prepared, startup)
+            remaining = deadline - time.monotonic()
+            reference.docker(["container", "stop", "--time=" + str(math.ceil(remaining)), identity], timeout=remaining)
+            state = consumer_worker_loss.exact_worker(current_name, owner, identity)["State"]
+            if state["Running"] or state["Pid"] or state["OOMKilled"] or state["ExitCode"]:
+                raise ValueError("replacement worker did not close its original store cleanly")
+            result["replacement_storage_release"] = worker_storage_release.observe(
+                worker, name, owner, startup["status"], artifact, deadline=deadline)
         after = consumer_worker_loss.sysctls(
             docker_image=worker["native_base_image"], owner=owner, artifact=artifact, phase="after")
         result["global_sysctls_unchanged"] = before == after
         result["inputs_unchanged"] = upstream_unit.context_manifest(source) == manifest
-        result["timings_us"] = proof["timings_us"]
+        result["timings_us"] = proof.get("timings_us")
         result["passed"] = result["global_sysctls_unchanged"] and result["inputs_unchanged"]
     except Exception as error:
         result["error"] = str(error)
     finally:
         if container_attempted:
-            logs = subprocess.run([*reference.DOCKER, "logs", name], capture_output=True, text=True, timeout=5)
+            logs = subprocess.run([*reference.DOCKER, "logs", current_name], capture_output=True, text=True, timeout=5)
             (artifact / "worker.log").write_text(logs.stdout + logs.stderr)
         if result["passed"]:
-            reference.owned_delete("container", name, owner)
+            reference.owned_delete("container", current_name, owner)
             reference.owned_delete("volume", name, owner)
             result["cleanup"] = True
         elif container_attempted or volume_attempted:
-            result["preserved_resources"] = {"container": name if container_attempted else None,
+            result["preserved_resources"] = {"container": current_name if container_attempted else None,
                                              "volume": name if volume_attempted else None}
         (artifact / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps({"evidence": str(artifact), "passed": result["passed"],

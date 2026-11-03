@@ -143,6 +143,35 @@ func TestFilesystemSnapshotManifestNative(t *testing.T) {
 	if err := VerifyFilesystemSnapshot(ctx, root+"/generation", captured); err != nil {
 		t.Fatal("native checkpoint verification", err)
 	}
+	for _, tree := range captured.Roots[1:] {
+		if err := VerifyRetainedFilesystemTree(ctx, tree, nil); err != nil {
+			t.Fatal("unchanged native retained root", err)
+		}
+		refused := errors.New("original store does not authorize translation")
+		if err := VerifyRetainedFilesystemTree(ctx, tree, func(FilesystemTree, uint64) error {
+			return refused
+		}); !errors.Is(err, refused) {
+			t.Fatal("unchanged namespace-local numbers bypassed rejected store authority", err)
+		}
+		changed := tree
+		native := *tree.Native
+		native.Saved.MountID++
+		changed.Native = &native
+		if err := VerifyRetainedFilesystemTree(ctx, changed, nil); err == nil {
+			t.Fatal("retained root translated a mount without store authority")
+		}
+		if err := VerifyRetainedFilesystemTree(ctx, changed, func(FilesystemTree, uint64) error {
+			return refused
+		}); !errors.Is(err, refused) {
+			t.Fatal("retained root ignored rejected original-store translation", err)
+		}
+		native.Saved.Changed++
+		if err := VerifyRetainedFilesystemTree(ctx, changed, func(FilesystemTree, uint64) error {
+			return nil
+		}); err == nil {
+			t.Fatal("device translation also authorized changed snapshot content")
+		}
+	}
 	for index, original := range roots[1:] {
 		saved := captured.Roots[index+1]
 		if saved.SHA256 != "" || saved.HashedBytes != 0 || saved.SourceReadUS != 0 || saved.TargetReadUS != 0 {

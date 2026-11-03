@@ -165,6 +165,49 @@ func verifyNativeFilesystemRoot(ctx context.Context, path string, expected subvo
 	return err
 }
 
+// Namespace-local device/mount numbers are not persistent identity. Only the
+// caller's independently validated original store may translate them; UUID,
+// lineage, transactions and global read-only state remain exact.
+func openRetainedNativeFilesystem(ctx context.Context, tree FilesystemTree, verify BaseRecoveryVerifier) (_ *os.File, identity subvolumeIdentity, resultErr error) {
+	if err := validateNativeFilesystemTree(tree, false); err != nil {
+		return nil, identity, err
+	}
+	path, err := nativeTreeRoot(tree.Saved, tree.Native.Member)
+	if err != nil {
+		return nil, identity, err
+	}
+	root, actual, err := openNativeFilesystemRoot(ctx, path)
+	if err != nil {
+		return nil, identity, err
+	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = errors.Join(resultErr, root.Close())
+		}
+	}()
+	expected := tree.Native.Saved
+	translated := actual.Device != expected.Device || actual.MountID != expected.MountID
+	if verify != nil {
+		// Reused namespace-local numbers do not bypass the caller's store
+		// authority after replacement.
+		if err := verify(tree, actual.Device); err != nil {
+			return nil, identity, fmt.Errorf("retained native root translation refused: %w", err)
+		}
+	} else if translated {
+		return nil, identity, fmt.Errorf("retained native root changed device or mount without original store authority")
+	}
+	if translated {
+		expected.Device, expected.MountID = actual.Device, actual.MountID
+	}
+	if !sameNativeRoot(actual, expected) {
+		return nil, identity, fmt.Errorf("retained native root identity, lineage, transactions or read-only property changed")
+	}
+	if err := verifyNativeMembers(root, tree.Native.Member, actual); err != nil {
+		return nil, identity, err
+	}
+	return root, actual, nil
+}
+
 // Native capture is selected only by the fresh common mutable layout. A flat
 // existing bundle keeps its original copier. Once selected, every private root
 // must be native; silently copying an unsupported Docker root would hide an
@@ -217,7 +260,7 @@ func nativeFilesystemPlan(ctx context.Context, roots []filesystemRoot) (native, 
 	return true, materialized, nil
 }
 
-func cloneNativeFilesystemTree(ctx context.Context, root filesystemRoot, destination string, materialized bool) (tree FilesystemTree, resultErr error) {
+func cloneNativeFilesystemTree(ctx context.Context, root filesystemRoot, destination string, materialized, sealedImport bool) (tree FilesystemTree, resultErr error) {
 	started := time.Now()
 	member := ""
 	if root.Name == "upper" {
@@ -244,7 +287,7 @@ func cloneNativeFilesystemTree(ctx context.Context, root filesystemRoot, destina
 		!sameNativeRoot(identity, root.Expected.Native.Saved)) {
 		return tree, fmt.Errorf("native clone source changed after admission")
 	}
-	saved, err := cloneSubvolume(ctx, source, targetPath, !materialized)
+	saved, err := cloneSubvolume(ctx, source, targetPath, !materialized || sealedImport)
 	if err != nil {
 		return tree, err
 	}
@@ -278,11 +321,15 @@ func validateNativeFilesystemTree(tree FilesystemTree, writable bool) error {
 			return err
 		}
 	}
-	sourceFlags, savedFlags := uint64(0), btrfsReadonlyRoot
+	savedFlags := btrfsReadonlyRoot
 	if writable {
-		sourceFlags, savedFlags = btrfsReadonlyRoot, 0
+		savedFlags = 0
 	}
-	if native.Source.Flags != sourceFlags || native.Saved.Flags != savedFlags ||
+	validSourceFlags := native.Source.Flags == 0 || native.Source.Flags == btrfsReadonlyRoot
+	if writable {
+		validSourceFlags = native.Source.Flags == btrfsReadonlyRoot
+	}
+	if !validSourceFlags || native.Saved.Flags != savedFlags ||
 		!sameNativeRoot(native.Source, native.Source) || !sameNativeRoot(native.Saved, native.Saved) ||
 		native.Source.FilesystemUUID != native.Saved.FilesystemUUID ||
 		native.Source.ID == native.Saved.ID || native.Source.UUID == native.Saved.UUID ||

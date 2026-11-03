@@ -46,6 +46,16 @@ func recoverFilesystemSnapshot(ctx context.Context, generation, destination stri
 		if tree.Immutable != nil {
 			continue
 		}
+		if tree.Native != nil {
+			root, _, err := openRetainedNativeFilesystem(ctx, tree, verify)
+			if err != nil {
+				return nil, err
+			}
+			if err := root.Close(); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if err := immutableParents(tree.Saved); err != nil {
 			return nil, err
 		}
@@ -77,9 +87,22 @@ func recoverFilesystemSnapshot(ctx context.Context, generation, destination stri
 			}
 			expected = base
 		}
+		if tree.Native != nil {
+			root, current, err := openRetainedNativeFilesystem(ctx, tree, verify)
+			if err != nil {
+				return nil, err
+			}
+			if err := root.Close(); err != nil {
+				return nil, err
+			}
+			// A fresh local view never rewrites the original checkpoint.
+			native := *tree.Native
+			native.Saved = current
+			expected.Native = &native
+		}
 		roots = append(roots, filesystemRoot{Name: tree.Name, Source: expected.Saved, Expected: &expected})
 	}
-	filesystem, err := copyFilesystem(ctx, roots, destination+"/filesystem")
+	filesystem, err := copyFilesystemGeneration(ctx, roots, destination+"/filesystem", saved.Version == 2)
 	if err != nil {
 		return nil, err
 	}
