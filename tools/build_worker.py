@@ -248,7 +248,7 @@ def load(name):
             reference.sha(artifact / "image-context/Dockerfile") != result["dockerfile_sha256"] or
             package_sha256 != result["package_sha256"]):
         raise ValueError("worker build recipe/package differs from its frozen inputs")
-    inspected = json.loads(reference.docker(["image", "inspect", result["image"]]))[0]
+    _, inspected = build_config.local_pinned_image(result["image"], result["image_id"], reference.docker)
     if (inspected["Id"] != result["image_id"] or inspected["RootFS"]["Layers"] != result["layers"] or
             inspected.get("Os") != "linux" or inspected.get("Architecture") != architecture):
         raise ValueError("completed worker image identity changed")

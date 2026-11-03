@@ -25,6 +25,45 @@ class ConsumerSupportImageTests(unittest.TestCase):
             with self.subTest(image=image), self.assertRaisesRegex(ValueError, 'exact pinned worker'):
                 consumer.consumer_support_image({'image': image})
 
+    def test_published_consumer_alias_preserves_build_receipts_and_native_identity_checks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            name = 'factorybox-build-consumer-' + 'a' * 32
+            build = root / 'artifacts' / name
+            context = build / 'context'
+            context.mkdir(parents=True)
+            (context / 'exact.go').write_text('frozen consumer\n')
+            runtime = 'owned-runtime@sha256:' + '1' * 64
+            hub = 'owned-hub@sha256:' + '2' * 64
+            published = 'registry.owned/runtime@sha256:' + '1' * 64
+            images = {role: {'platform': 'linux/arm64', 'image': image,
+                             'image_id': 'sha256:' + value * 64,
+                             'image_config': 'sha256:' + value * 64}
+                      for role, image, value in [('runtime', runtime, '3'), ('hub', hub, '4')]}
+            result = {'passed': True, 'cleanup': True, 'platform': 'linux/arm64',
+                      'image': runtime, 'hub_image': hub, 'hub_bun': '/opt/factory/opencode/musl/bun',
+                      'source_context': upstream_unit.context_manifest(context), 'images': images}
+            path = build / 'result.json'
+            path.write_text(json.dumps(result))
+            original = path.read_bytes()
+
+            def docker(arguments):
+                if arguments[-1] == runtime:
+                    raise subprocess.CalledProcessError(
+                        1, arguments, stderr='Error response from daemon: No such image: ' + runtime)
+                if arguments[-1] == images['runtime']['image_id']:
+                    return json.dumps([{'Id': images['runtime']['image_id'], 'Os': 'linux',
+                                        'Architecture': 'arm64', 'RepoDigests': [published]}])
+                self.assertEqual(arguments, ['image', 'inspect', hub])
+                return json.dumps([{'Id': images['hub']['image_id'], 'Os': 'linux',
+                                    'Architecture': 'arm64', 'RepoDigests': [hub]}])
+
+            with patch.object(reference, 'ROOT', root), patch.object(reference, 'docker', side_effect=docker):
+                loaded = consumer.load_consumer(name, 'linux/arm64')[1]
+                self.assertEqual(loaded['image'], runtime)
+                self.assertEqual(loaded['execution_images'], {'runtime': published, 'hub': hub})
+                self.assertEqual(path.read_bytes(), original)
+
 
 class RepeatedConsumerTests(unittest.TestCase):
     def setUp(self):

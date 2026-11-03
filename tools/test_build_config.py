@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import json
 
 import build_config
@@ -10,6 +10,49 @@ from test_build_worker import elf
 
 
 class BuildConfigurationTests(unittest.TestCase):
+    def test_collected_name_resolves_only_the_same_local_manifest_and_config(self):
+        digest, config = 'sha256:' + 'a' * 64, 'sha256:' + 'b' * 64
+        original, published = 'owned-build@' + digest, 'registry.owned/worker@' + digest
+        image = {'Id': config, 'RepoDigests': [published, 'foreign@sha256:' + 'c' * 64]}
+        calls = []
+
+        def docker(arguments):
+            calls.append(arguments)
+            if arguments[-1] == original:
+                raise build_config.subprocess.CalledProcessError(
+                    1, arguments, stderr='Error response from daemon: No such image: ' + original)
+            self.assertEqual(arguments, ['image', 'inspect', config])
+            return json.dumps([image])
+
+        self.assertEqual(build_config.local_pinned_image(original, config, docker), (published, image))
+        self.assertEqual(calls, [['image', 'inspect', original], ['image', 'inspect', config]])
+        for changed in [{'Id': config, 'RepoDigests': ['foreign@sha256:' + 'c' * 64]},
+                        {'Id': 'sha256:' + 'd' * 64, 'RepoDigests': [published]}]:
+            image = changed
+            with self.subTest(image=image), self.assertRaisesRegex(ValueError, 'manifest|identity'):
+                build_config.local_pinned_image(original, config, docker)
+
+    def test_local_image_errors_do_not_authorize_another_lookup_or_a_pull(self):
+        reference = 'owned@sha256:' + 'a' * 64
+        for message in ['permission denied', 'Cannot connect to the Docker daemon',
+                        'Error response from daemon: No such image: another-image']:
+            with self.subTest(message=message):
+                docker = Mock(side_effect=build_config.subprocess.CalledProcessError(
+                    1, ['image', 'inspect', reference], stderr=message))
+                with self.assertRaises(build_config.subprocess.CalledProcessError):
+                    build_config.local_pinned_image(reference, 'sha256:' + 'b' * 64, docker)
+                docker.assert_called_once_with(['image', 'inspect', reference])
+
+    def test_existing_pinned_name_remains_unchanged(self):
+        reference, config = 'owned@sha256:' + 'a' * 64, 'sha256:' + 'b' * 64
+        image = {'Id': config, 'RepoDigests': [reference]}
+        calls = []
+        def docker(arguments):
+            calls.append(arguments)
+            return json.dumps([image])
+        self.assertEqual(build_config.local_pinned_image(reference, config, docker), (reference, image))
+        self.assertEqual(calls, [['image', 'inspect', reference]])
+
     def test_component_platforms_must_be_explicit_and_agree(self):
         for platform in build_config.PLATFORMS:
             self.assertEqual(build_config.require_platform(platform, {"platform": platform}),

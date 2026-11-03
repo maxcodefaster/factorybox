@@ -27,6 +27,36 @@ def architecture(platform):
     return platform.split('/')[1]
 
 
+def local_pinned_image(image, image_id, docker):
+    """Resolve a collected repository name without changing manifest or config."""
+    try:
+        return image, json.loads(docker(['image', 'inspect', image]))[0]
+    except subprocess.CalledProcessError as error:
+        diagnostic = error.stderr
+        if isinstance(diagnostic, bytes):
+            diagnostic = diagnostic.decode('utf-8', errors='replace')
+        if (error.returncode != 1 or not isinstance(diagnostic, str) or
+                not re.search(r'(?:^|\n)(?:Error response from daemon: )?No such image: '
+                              + re.escape(image) + r'\s*$', diagnostic)):
+            raise
+        missing = error
+    if (not re.fullmatch(r'[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}', image) or
+            not isinstance(image_id, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', image_id)):
+        raise ValueError('collected local image requires its exact manifest and config identity') from missing
+    inspected = json.loads(docker(['image', 'inspect', image_id]))[0]
+    if inspected.get('Id') != image_id:
+        raise ValueError('pinned local image identity changed')
+    digest = image.rsplit('@', 1)[1]
+    aliases = sorted(reference for reference in inspected.get('RepoDigests', [])
+                     if isinstance(reference, str) and
+                     re.fullmatch(r'[a-z0-9][a-z0-9./:_-]*@' + re.escape(digest), reference))
+    if not aliases:
+        raise ValueError('pinned local image manifest is unavailable') from missing
+    # This is an observed immutable local reference, never a pull, mutable tag,
+    # rebuilt image or permission to rewrite the retained build receipt.
+    return aliases[0], inspected
+
+
 def require_elf(path, platform):
     """Check delivered ELF bytes, not a builder's declared target."""
     machine = {'amd64': 62, 'arm64': 183}[architecture(platform)]

@@ -56,13 +56,19 @@ def load_consumer(name, platform):
             set(consumer.get('images', {})) != {'runtime', 'hub'} or
             upstream_unit.context_manifest(root / 'context') != consumer.get('source_context')):
         raise ValueError('rebuild the exact current native Factory consumer and Linux Bun inputs')
+    execution_images = {}
     for role, key in [('runtime', 'image'), ('hub', 'hub_image')]:
         image = consumer['images'][role]
         if (image.get('platform') != platform or consumer[key] != image.get('image') or
                 not re.fullmatch(r'[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}', consumer[key])):
             raise ValueError('Factory consumer image roles or platform differ')
-        inspected = json.loads(reference.docker(['image', 'inspect', image['image']]))[0]
-        native_base.verify_image(image, inspected)
+        resolved, inspected = build_config.local_pinned_image(
+            image['image'], image.get('image_id', image.get('image_config')), reference.docker)
+        native_base.verify_image({**image, 'image': resolved}, inspected)
+        execution_images[role] = resolved
+    if any(execution_images[role] != consumer[key]
+           for role, key in [('runtime', 'image'), ('hub', 'hub_image')]):
+        consumer = {**consumer, 'execution_images': execution_images}
     return root, consumer
 
 
@@ -277,10 +283,13 @@ def main():
     worker_root, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
     require_native_worker(worker, host, args.native_candidate)
-    support_image = consumer_support_image(worker)
+    worker_image, _ = build_config.local_pinned_image(worker['image'], worker['image_id'], reference.docker)
+    support_image = consumer_support_image({**worker, 'image': worker_image})
     platform = worker['platform']
     architecture = build_config.architecture(platform)
     consumer_root, consumer = load_consumer(args.consumer_build, platform)
+    runtime_image = consumer.get('execution_images', {}).get('runtime', consumer['image'])
+    hub_image = consumer.get('execution_images', {}).get('hub', consumer['hub_image'])
     repo = args.factory_repo.resolve()
     for name, digest in consumer['source_context'].items():
         if (repo / name).is_symlink() or reference.sha(repo / name) != digest['sha256']:
@@ -332,7 +341,8 @@ def main():
     pins=output/'project-images.json';pins.write_text(json.dumps(images['images']))
     result = {'schema':1,'owner':owner,'attemptID':attempt,'sandboxID':sandbox,'podUID':pod_uid,'passed':False,'cleanup':False,
               'platform':platform,'native_candidate':worker.get('native_candidate'),
-              'worker_build':args.worker_build,'consumer_build':args.consumer_build,'consumer_image':consumer['image'],
+              'worker_build':args.worker_build,'consumer_build':args.consumer_build,'consumer_image':runtime_image,
+              'consumer_build_image':consumer['image'],'worker_build_image':worker['image'],
               'support_image':support_image,
               'reserve':args.reserve,'reserve_images':[node] if args.reserve else None,
               'terminal_proof':args.terminal,
@@ -350,7 +360,7 @@ def main():
               'native_profile_only':True,'kubernetes_qualified':False,'production_qualified':False,
               'source_sha256':{p.name:reference.sha(p) for p in frozen.iterdir()},
               'hub_sha256':reference.sha(hub),'bun_sha256':reference.sha(bun),
-              'hub_image':consumer['hub_image'],'hub_bun':consumer['hub_bun'],'commands':[]}
+              'hub_image':hub_image,'hub_build_image':consumer['hub_image'],'hub_bun':consumer['hub_bun'],'commands':[]}
     phase_started=time.monotonic()
     def phase(stage):
         observation={'stage':stage,'elapsed_seconds':round(time.monotonic()-phase_started,3)}
@@ -472,7 +482,7 @@ def main():
              '--tmpfs','/var/lib/docker:rw,size=16m',
              '--mount',f'type=volume,source={name},target=/factory-seed,volume-subpath=seed',
              '--env','FACTORY_POD_UID='+pod_uid,'--env','FACTORY_STORE_ID='+owner,
-             '--env','FACTORY_RUNTIME_IMAGE='+consumer['image'],'--entrypoint','/bin/sh',consumer['image'],
+             '--env','FACTORY_RUNTIME_IMAGE='+runtime_image,'--entrypoint','/bin/sh',runtime_image,
              # Cold image export includes Docker startup and durable archive
              # writes. It may use more of the existing fixture budget; run()
              # still clamps this phase to the unchanged 420-second deadline.
@@ -486,13 +496,13 @@ def main():
             '--network=none','--cpus=.5','--memory=192m','--pids-limit=32','--cap-drop=ALL',
             '--user','65534:65534','--read-only','--mount',f'type=bind,source={hub},target=/hub.js,readonly',
             '--entrypoint',consumer['hub_bun'],
-            consumer['hub_image'],'/hub.js',owner,attempt],timeout=65).strip()
+            hub_image,'/hub.js',owner,attempt],timeout=65).strip()
         worker_id = run_owned_container(run,containers,name,['--detach','--label','com.factorybox.run='+owner,
              '--privileged','--cgroupns=private','--cpus=3','--memory=3g','--pids-limit=512','--network=none',
              '--stop-timeout=45','--env','GOMAXPROCS=2','--env','GOMEMLIMIT=256MiB',
              '--env','FACTORY_POD_UID='+pod_uid,'--env','FACTORY_STORE_ID='+owner,
              '--mount',f'type=volume,source={name},target=/var/lib/sysbox',
-             '--mount',f'type=volume,source={name}-source,target=/factory-source',worker['image'],
+             '--mount',f'type=volume,source={name}-source,target=/factory-source',worker_image,
              '--store-id',owner,'--bounded-root','/var/lib/sysbox/fixed-store','--bounded-bytes',str(8<<30),
              '--health-listen','127.0.0.1:8081'],timeout=65).strip()
         w = own(name,worker_id);s = own(server_name,server_id)
@@ -587,7 +597,7 @@ def main():
             run(['cp',str(project),worker_id+':'+source_project])
             run(['exec',worker_id,'chown','-R','101000:101000',source_project])
         request = {'version':3,'sandboxID':sandbox,'storeID':owner,'epoch':status['epoch'],'podUID':pod_uid,
-                   'runtimeHostImage':consumer['image'],'sharedSource':not args.reserve,'reserveSeed':args.reserve,
+                   'runtimeHostImage':runtime_image,'sharedSource':not args.reserve,'reserveSeed':args.reserve,
                    'sourceWorkspaceID':owner if not args.reserve else None,
                    'assignment':preparation_assignment(inputs,args.reserve),
                    'bootstrap':'/factory/native-registry --archive=/factory/project-images.tar --pins=/factory/project-images.json >/var/log/native-registry.log 2>&1 &\nexec /bin/sh /factory/native-bootstrap.sh\n'}

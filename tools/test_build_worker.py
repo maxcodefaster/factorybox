@@ -2,6 +2,7 @@ import json
 import io
 import os
 import shutil
+import subprocess
 from pathlib import Path
 import tempfile
 import tarfile
@@ -60,6 +61,29 @@ class WorkerBuildInputs(unittest.TestCase):
         self.docker = patch.object(reference,"docker",return_value=json.dumps([{
             "Id":"sha256:fixture", "Os":"linux", "Architecture":"amd64",
             "RootFS":{"Layers":["sha256:layer"]}}])).start()
+
+    def test_published_worker_keeps_frozen_provenance_after_local_build_name_is_collected(self):
+        path = self.artifact / "result.json"
+        result = json.loads(path.read_text())
+        digest = "sha256:" + "f" * 64
+        result.update(image="owned-worker@" + digest, image_id=digest)
+        path.write_text(json.dumps(result))
+        original = path.read_bytes()
+        published = "registry.owned/worker@" + digest
+        image = {"Id": digest, "Os": "linux", "Architecture": "amd64",
+                 "RootFS": {"Layers": result["layers"]}, "RepoDigests": [published]}
+
+        def inspect(arguments):
+            if arguments == ["image", "inspect", result["image"]]:
+                raise subprocess.CalledProcessError(
+                    1, arguments, stderr="Error response from daemon: No such image: " + result["image"])
+            self.assertEqual(arguments, ["image", "inspect", digest])
+            return json.dumps([image])
+
+        self.docker.side_effect = inspect
+        self.assertEqual(build_worker.load(self.name), (self.artifact, result))
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(self.docker.call_count, 2)
 
     def test_completed_build_holds_only_its_exact_image_without_starting_or_allocating_volumes(self):
         state = {"owner": "a" * 32, "image": "owned@sha256:" + "b" * 64,
