@@ -33,6 +33,13 @@ def consumer_support_image(worker):
     return image
 
 
+def consumer_worker_input(worker):
+    image, _ = build_config.local_pinned_image(worker['image'], worker['image_id'], reference.docker)
+    resolved = {**worker, 'image': image}
+    consumer_support_image(resolved)
+    return resolved
+
+
 def require_native_worker(worker, host, candidate):
     native_base.require_native_host(worker["platform"], host)
     actual = worker.get("native_candidate")
@@ -283,8 +290,12 @@ def main():
     worker_root, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
     require_native_worker(worker, host, args.native_candidate)
-    worker_image, _ = build_config.local_pinned_image(worker['image'], worker['image_id'], reference.docker)
-    support_image = consumer_support_image({**worker, 'image': worker_image})
+    worker_build_image = worker['image']
+    # All worker helpers, including final storage-release observation, consume
+    # the same resolved immutable reference. The archived build stays unchanged.
+    worker = consumer_worker_input(worker)
+    worker_image = worker['image']
+    support_image = consumer_support_image(worker)
     platform = worker['platform']
     architecture = build_config.architecture(platform)
     consumer_root, consumer = load_consumer(args.consumer_build, platform)
@@ -342,7 +353,7 @@ def main():
     result = {'schema':1,'owner':owner,'attemptID':attempt,'sandboxID':sandbox,'podUID':pod_uid,'passed':False,'cleanup':False,
               'platform':platform,'native_candidate':worker.get('native_candidate'),
               'worker_build':args.worker_build,'consumer_build':args.consumer_build,'consumer_image':runtime_image,
-              'consumer_build_image':consumer['image'],'worker_build_image':worker['image'],
+              'consumer_build_image':consumer['image'],'worker_build_image':worker_build_image,
               'support_image':support_image,
               'reserve':args.reserve,'reserve_images':[node] if args.reserve else None,
               'terminal_proof':args.terminal,

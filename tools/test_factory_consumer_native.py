@@ -13,6 +13,19 @@ import upstream_unit
 
 
 class ConsumerSupportImageTests(unittest.TestCase):
+    def test_every_worker_helper_receives_the_resolved_pin_without_rewriting_build_input(self):
+        digest = 'sha256:' + 'a' * 64
+        worker = {'image': 'build-name@' + digest, 'image_id': digest, 'platform': 'linux/arm64'}
+        original = dict(worker)
+        published = 'registry.owned/worker@' + digest
+        with patch.object(consumer.build_config, 'local_pinned_image',
+                          return_value=(published, {'Id': digest})) as resolve:
+            execution = consumer.consumer_worker_input(worker)
+        self.assertEqual(worker, original)
+        self.assertEqual(execution, {**original, 'image': published})
+        self.assertEqual(consumer.consumer_support_image(execution), published)
+        resolve.assert_called_once_with(original['image'], digest, reference.docker)
+
     def test_helpers_use_only_the_packaged_worker_even_when_its_build_base_is_absent(self):
         image = 'factorybox-worker-owned@sha256:' + 'a' * 64
         worker = {'image': image, 'native_base_image': 'deleted-build-stage@sha256:' + 'b' * 64}
