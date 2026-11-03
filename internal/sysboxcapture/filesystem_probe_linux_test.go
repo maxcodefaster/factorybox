@@ -6,13 +6,70 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
+
+// Read an already committed capture through a separate owned observer. No
+// lifecycle command, mutable tree, or fixture creation belongs to this lane.
+func BenchmarkFilesystemExistingDigestNative(b *testing.B) {
+	if os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_READONLY_PROBE") != "1" {
+		b.Skip("explicit read-only committed-filesystem probe")
+	}
+	var inputs []struct {
+		Path     string         `json:"path"`
+		Expected FilesystemTree `json:"expected"`
+	}
+	if err := json.Unmarshal([]byte(os.Getenv("FACTORYBOX_FILESYSTEM_READONLY_INPUTS")), &inputs); err != nil || len(inputs) == 0 {
+		b.Fatal("read-only probe requires exact committed roots", err)
+	}
+	for _, input := range inputs {
+		if filepath.Clean(input.Path) != input.Path ||
+			!strings.HasPrefix(input.Path, "/proc/1/root/var/lib/sysbox/fixed-store/data/store/epochs/") ||
+			input.Expected.Immutable != nil || input.Expected.SHA256 == "" {
+			b.Fatal("read-only probe root is not its exact private committed tree")
+		}
+	}
+	for range b.N {
+		started := time.Now()
+		trees := make([]FilesystemTree, len(inputs))
+		durations := make([]time.Duration, len(inputs))
+		err := visitFilesystemRoots(context.Background(), len(inputs), func(ctx context.Context, index int) error {
+			input := inputs[index]
+			rootStarted := time.Now()
+			root, err := openDirectory(input.Path)
+			if err != nil {
+				return err
+			}
+			actual, scanErr := fingerprintTree(ctx, root, nil, false)
+			closeErr := root.Close()
+			if err := errors.Join(scanErr, closeErr); err != nil {
+				return err
+			}
+			if !sameFilesystemTree(actual, input.Expected) {
+				return fmt.Errorf("committed filesystem digest, metadata or topology differs: %s", input.Expected.Name)
+			}
+			trees[index], durations[index] = actual, time.Since(rootStarted)
+			return nil
+		})
+		elapsed := time.Since(started)
+		if err != nil {
+			b.Fatal(err)
+		}
+		for index, input := range inputs {
+			recordFilesystemProbe(b, input.Expected.Name, durations[index], trees[index])
+		}
+		recordFilesystemProbe(b, "all-mutable-roots", elapsed, FilesystemTree{})
+	}
+}
 
 // This bounded synthetic fixture profiles the real verifier without unpacking
 // historical dumps. It is not a substitute for the complete consumer benchmark.
