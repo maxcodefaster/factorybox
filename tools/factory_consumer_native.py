@@ -23,6 +23,16 @@ import upstream_unit
 import worker_storage_release
 
 
+def consumer_support_image(worker):
+    # The admitted worker already contains Python, tar and namespace tools.
+    # Keep helpers on that exact verified image instead of requiring a second
+    # unheld build-stage image after the worker has been packaged.
+    image = worker.get('image')
+    if not isinstance(image, str) or not re.fullmatch(r'[a-z0-9][a-z0-9./:_-]*@sha256:[0-9a-f]{64}', image):
+        raise ValueError('Consumer helpers require the exact pinned worker image')
+    return image
+
+
 def require_native_worker(worker, host, candidate):
     native_base.require_native_host(worker["platform"], host)
     actual = worker.get("native_candidate")
@@ -267,6 +277,7 @@ def main():
     worker_root, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(['info', '--format', '{{json .}}']))
     require_native_worker(worker, host, args.native_candidate)
+    support_image = consumer_support_image(worker)
     platform = worker['platform']
     architecture = build_config.architecture(platform)
     consumer_root, consumer = load_consumer(args.consumer_build, platform)
@@ -322,6 +333,7 @@ def main():
     result = {'schema':1,'owner':owner,'attemptID':attempt,'sandboxID':sandbox,'podUID':pod_uid,'passed':False,'cleanup':False,
               'platform':platform,'native_candidate':worker.get('native_candidate'),
               'worker_build':args.worker_build,'consumer_build':args.consumer_build,'consumer_image':consumer['image'],
+              'support_image':support_image,
               'reserve':args.reserve,'reserve_images':[node] if args.reserve else None,
               'terminal_proof':args.terminal,
               'diagnostic_only':args.warmup_control or args.observe_resume_cgroup or args.resume_cycles != 1,
@@ -345,7 +357,7 @@ def main():
         result.setdefault('stages',[]).append(observation)
         print(json.dumps({'evidence':str(output),**observation}),flush=True)
     phase('prepare-owned-fixture')
-    before = consumer_worker_loss.sysctls(docker_image=worker['native_base_image'],
+    before = consumer_worker_loss.sysctls(docker_image=support_image,
         owner=owner, artifact=output, phase='before', factory_network=True)
     result['host_sysctls_before'] = before
     deadline = time.monotonic()+420
@@ -452,7 +464,7 @@ def main():
         helper = name+'-directories'
         run_owned_container(run,containers,helper,['--label','com.factorybox.run='+owner,'--network=none',
              '--cpus=.25','--memory=64m','--mount',f'type=volume,source={name},target=/volume',
-             '--entrypoint','mkdir',worker['native_base_image'],'-p','/volume/seed'],timeout=65)
+             '--entrypoint','mkdir',support_image,'-p','/volume/seed'],timeout=65)
         exporter = name+'-export'
         started = time.monotonic()
         run_owned_container(run,containers,exporter,['--label','com.factorybox.run='+owner,'--network=none',
@@ -503,7 +515,7 @@ def main():
         network_id = run_owned_container(run,containers,network_name,['--detach','--label','com.factorybox.run='+owner,
             '--privileged','--pid=host','--userns=host','--network=none','--read-only',
             '--cpus=.25','--memory=64m','--pids-limit=32',
-            '--entrypoint','/bin/sleep',worker['native_base_image'],'420'],timeout=65).strip()
+            '--entrypoint','/bin/sleep',support_image,'420'],timeout=65).strip()
         network = own(network_name,network_id)
         if network['HostConfig']['PidMode']!='host' or network['HostConfig']['NetworkMode']!='none':
             raise ValueError('Owned native network helper changed its namespace bounds')
@@ -926,7 +938,7 @@ print(json.dumps({'resumes':generations('resumes'),'captures':generations('captu
                           'diagnostic_only':result['diagnostic_only'],'error':result.get('error')}),flush=True)
         if (result.get('pause_attempted') or result.get('standby_pause_attempted') or result.get('sibling_pause_attempted')) and not result['passed']:
             try:
-                upstream_bats.archive_failure(output,name,owner,[name,name+'-source'],worker['native_base_image'],result,timeout=180,compressed=True)
+                upstream_bats.archive_failure(output,name,owner,[name,name+'-source'],support_image,result,timeout=180,compressed=True)
             except Exception as error:
                 result['failure_archive_error']=str(error)
                 result['retained_volumes']=volumes[:]
@@ -948,7 +960,7 @@ print(json.dumps({'resumes':generations('resumes'),'captures':generations('captu
             try:reference.owned_delete('volume',volume,owner)
             except Exception as error:result.setdefault('cleanup_errors',[]).append(str(error))
         result['cleanup']=not result.get('cleanup_errors') and not result.get('retained_volumes')
-        after=consumer_worker_loss.sysctls(docker_image=worker['native_base_image'],
+        after=consumer_worker_loss.sysctls(docker_image=support_image,
             owner=owner, artifact=output, phase='after', factory_network=True)
         result['host_sysctls_unchanged']=after==before
         result['inputs_unchanged']=all(reference.sha(frozen/file)==value for file,value in result['source_sha256'].items()) and reference.sha(hub)==result['hub_sha256'] and reference.sha(bun)==result['bun_sha256'] and reference.sha(namespace_observer)==result['namespace_observer_sha256'] and reference.sha(cgroup_observer)==result['cgroup_observer_sha256']

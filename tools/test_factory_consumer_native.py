@@ -12,6 +12,20 @@ import reference
 import upstream_unit
 
 
+class ConsumerSupportImageTests(unittest.TestCase):
+    def test_helpers_use_only_the_packaged_worker_even_when_its_build_base_is_absent(self):
+        image = 'factorybox-worker-owned@sha256:' + 'a' * 64
+        worker = {'image': image, 'native_base_image': 'deleted-build-stage@sha256:' + 'b' * 64}
+        self.assertEqual(consumer.consumer_support_image(worker), image)
+        del worker['native_base_image']
+        self.assertEqual(consumer.consumer_support_image(worker), image)
+
+    def test_helpers_refuse_unpinned_or_missing_worker_images(self):
+        for image in [None, '', 'worker:latest', 'worker@sha256:unknown']:
+            with self.subTest(image=image), self.assertRaisesRegex(ValueError, 'exact pinned worker'):
+                consumer.consumer_support_image({'image': image})
+
+
 class RepeatedConsumerTests(unittest.TestCase):
     def setUp(self):
         self.result = {'sandboxID': 'original', 'start': {'record': {'runtime_id': 'original-runtime'}}}
