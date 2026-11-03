@@ -9,6 +9,7 @@ import subprocess
 import time
 import uuid
 
+import build_config
 import build_worker
 import consumer_worker_loss
 import native_base
@@ -21,10 +22,12 @@ import upstream_unit
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build", required=True)
-    parser.add_argument("--suite", choices=["admission", "controller-loss", "timer-abort"], default="admission")
+    parser.add_argument("--suite", choices=["admission", "memory-admission", "controller-loss", "timer-abort"], default="admission")
     args = parser.parse_args()
     _, worker = build_worker.load(args.worker_build)
-    native_base.require_native_host("linux/amd64", json.loads(reference.docker(["info", "--format", "{{json .}}"])))
+    platform = worker["platform"]
+    native_base.require_native_host(platform, json.loads(reference.docker(["info", "--format", "{{json .}}"])))
+    image, _ = build_config.local_pinned_image(worker["image"], worker["image_id"], reference.docker)
     owner = uuid.uuid4().hex
     name = "factorybox-storage-admission-" + owner
     artifact = reference.new_artifact(name)
@@ -34,6 +37,8 @@ def main():
     setup = "storage-controller-loss-setup.sh" if args.suite == "controller-loss" else "storage-admission-setup.sh"
     if args.suite == "timer-abort":
         setup = "storage-timer-abort-setup.sh"
+    if args.suite == "memory-admission":
+        setup = "storage-memory-admission-setup.sh"
     shutil.copyfile(reference.ROOT / "tests" / setup, artifact / "setup.sh")
     for directory in ["internal", "cmd/factorybox"]:
         shutil.copytree(reference.ROOT / directory, source / directory)
@@ -43,12 +48,14 @@ def main():
     core = lambda manifest: {key: value for key, value in manifest.items() if not key.endswith("_test.go")}
     if core(source_context) != core(worker["source_context"]):
         raise ValueError("pressure probe core differs from the delivered worker")
-    busybox = json.loads((reference.ROOT / "upstream/test-inputs.json").read_text())["busybox-amd64"]
+    busybox = json.loads((reference.ROOT / "upstream/test-inputs.json").read_text())["busybox-" + platform.split("/")[1]]
     rootfs = reference.ROOT / ".cache/downloads" / busybox["archive"]
     if reference.sha(rootfs) != busybox["sha256"]:
         raise ValueError("native pressure rootfs input changed")
     result = {"schema": 1, "passed": False, "cleanup": False, "production_qualified": False,
+              "native_lifecycle_qualified": False,
               "owner": owner, "worker_build": args.worker_build, "worker_image_id": worker["image_id"], "suite": args.suite,
+              "platform": platform,
               "source_context": source_context, "rootfs_sha256": busybox["sha256"],
               "runner_sha256": reference.sha(artifact / "runner.py"), "setup_sha256": reference.sha(artifact / "setup.sh"),
               "scope": ("Actual capture-worker SIGKILL during an observed owned filesystem copy, with the controller stopped "
@@ -59,16 +66,19 @@ def main():
                        "One source on a private 128-MiB tmpfs: preflight refusal, exact completed replay, "
                        "separate file-backed resume admission and actual post-admission ENOSPC. No host disk fill, "
                        "hard store quota, distribution or production qualification.")}
-    before = consumer_worker_loss.sysctls()
+    before = consumer_worker_loss.sysctls(
+        docker_image=image, owner=owner, artifact=artifact, phase="before")
     if args.suite == "timer-abort":
         result["scope"] = "Actual post-admission ENOSPC on a private 128-MiB tmpfs, confirmed source rollback, then the original protected-remainder EINTR/ABI and interruption-time deadline assertions. Identical native control. No host disk fill or production qualification."
+    if args.suite == "memory-admission":
+        result["scope"] = "Checkpoint and Pause must account for the original source's live RAM before capture, not just pass the generic free-space floor. One 32-MiB private-RAM actor; no host disk fill."
     result["global_sysctls_before"] = before
     container_attempted = volume_attempted = False
     preserve = False
     print(json.dumps({"running": str(artifact)}), flush=True)
     try:
         binary = artifact / "probe.test"
-        env = dict(os.environ, GOOS="linux", GOARCH="amd64", CGO_ENABLED="0")
+        env = dict(os.environ, GOOS="linux", GOARCH=platform.split("/")[1], CGO_ENABLED="0")
         subprocess.run(["go", "test", "-c", "-trimpath", "-buildvcs=false", "-tags=factorybox_worker_probe",
                         "-o", str(binary), "./internal/lifecycle"], cwd=source, env=env, check=True, timeout=120)
         result["probe_sha256"] = reference.sha(binary)
@@ -88,7 +98,7 @@ def main():
         for path, target, readonly in [(binary, "/probe.test", True), (artifact / "setup.sh", "/setup.sh", True),
                                        (rootfs, "/busybox-rootfs.tar.gz", True), (output, "/output", False)]:
             command += ["--mount", f"type=bind,source={path},target={target}" + (",readonly" if readonly else "")]
-        command += [worker["image"], "--store-id", owner]
+        command += [image, "--store-id", owner]
         result["command"] = command
         container_attempted = True
         identity = reference.docker(command)
@@ -110,7 +120,15 @@ def main():
         result["state"] = state["State"]
         if done.returncode or state["State"]["OOMKilled"] or not state["State"]["Running"]:
             raise ValueError("native bounded storage-pressure assertions failed")
-        if args.suite == "controller-loss":
+        if args.suite == "memory-admission":
+            proof = json.loads((output / "capture-memory-admission.json").read_text())
+            if (proof.get("passed") is not True or proof.get("preflight_rejections") != 2 or
+                    proof.get("known_ram_bytes", 0) < 32 << 20 or
+                    proof.get("generic_write_admitted") is not True or
+                    proof.get("source_identity_and_ram_preserved") is not True):
+                raise ValueError("RAM preflight did not preserve the original live source")
+            result["capture_memory_proof_sha256"] = reference.sha(output / "capture-memory-admission.json")
+        elif args.suite == "controller-loss":
             result["controller_loss_proof_sha256"] = {}
             for operation in ["checkpoint", "pause"]:
                 file = output / ("storage-controller-loss-" + operation + ".json")
@@ -135,8 +153,10 @@ def main():
             proof = json.loads((output / "storage.json").read_text())
             resume = json.loads((output / "resume-admission.json").read_text())
             reserve = json.loads((output / "reserve-ownership.json").read_text())
+            memory = json.loads((output / "capture-memory-admission.json").read_text())
             if (not proof.get("passed") or proof["preflight_rejections"] != 5 or "no space left" not in proof["actual_enospc"].lower() or
                     not resume.get("passed") or resume["preflight_rejections"] != 1 or
+                    memory.get("passed") is not True or memory.get("preflight_rejections") != 2 or
                     not all(reserve.get(key) is True for key in ["passed", "replacement_preserved", "shared_inode_refused", "replay_verified"])):
                 raise ValueError("native pressure proof lacks actual ENOSPC and required preflight cases")
             result["pressure_result_sha256"] = reference.sha(output / "storage.json")
@@ -154,7 +174,7 @@ def main():
                 reference.owned_delete("container", name, owner)
             if volume_attempted and not result["passed"]:
                 try:
-                    upstream_bats.archive_stopped_volumes(artifact, name, owner, [name], worker["image"], result,
+                    upstream_bats.archive_stopped_volumes(artifact, name, owner, [name], image, result,
                                                           timeout=120, compressed=True)
                 except Exception as error:
                     preserve = True
@@ -163,7 +183,8 @@ def main():
                 reference.owned_delete("volume", name, owner)
             result["cleanup"] = not preserve
         finally:
-            result["global_sysctls_after"] = consumer_worker_loss.sysctls()
+            result["global_sysctls_after"] = consumer_worker_loss.sysctls(
+                docker_image=image, owner=owner, artifact=artifact, phase="after")
             result["inputs_unchanged"] = (upstream_unit.context_manifest(source) == source_context and
                                           reference.sha(artifact / "runner.py") == result["runner_sha256"] and
                                           reference.sha(artifact / "setup.sh") == result["setup_sha256"])

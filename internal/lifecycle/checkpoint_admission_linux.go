@@ -47,8 +47,12 @@ func (e *Engine) admitCheckpointSource(ctx context.Context, guard *captureGuard,
 			return kind, err
 		}
 		observation.Attempts++
-		kind = "descriptors"
-		admissionErr := guard.admitCheckpointDescriptors(ctx)
+		kind = "storage"
+		admissionErr := e.admitCheckpointMemory(record)
+		if admissionErr == nil {
+			kind = "descriptors"
+			admissionErr = guard.admitCheckpointDescriptors(ctx)
+		}
 		if admissionErr == nil {
 			kind = ""
 			admissionErr = guard.admitCheckpointNamespaces(rootOwnedTimeNamespaces)

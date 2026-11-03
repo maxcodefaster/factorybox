@@ -107,6 +107,14 @@ controller record is not a substitute for those measurements. See the native
 results for example sizes and timings. Plan capacity for independent mutable
 filesystems, active checkpoints and interrupted operations as well as bases.
 
+With storage admission enabled, the current candidate charges the frozen source's
+anonymous and shared-memory counters as known RAM output before CRIU or timer
+mutation. Ordinary file cache is not charged again as RAM. Insufficient capacity
+uses the original guard's safe admission rejection and returns the source to
+running with a request-bound outcome; it does not dispatch a capture. This remains
+an admission observation, not a reservation against other guests' later writes or
+a promise that unknown filesystem-copy allocations will fit.
+
 Capture uses the caller's lifecycle deadline for both process state and the
 complete filesystem copy. Its sealed worker request carries that same deadline;
 the filesystem phase does not start another timer. An otherwise unbounded direct

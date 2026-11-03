@@ -27,6 +27,9 @@ func (failure *checkpointAdmissionError) Error() string {
 func (failure *checkpointAdmissionError) Unwrap() error { return failure.cause }
 
 func checkpointAdmissionPrefix(kind string) string {
+	if kind == "storage" {
+		return "checkpoint storage admission: "
+	}
 	if kind == "descriptors" {
 		return "checkpoint descriptor admission: "
 	}
@@ -59,7 +62,7 @@ func (e *Engine) reconcileRejectedCheckpoint(record Record, id, relative string)
 	}
 	if rejection.Version != 1 || rejection.SourceID != record.ID || rejection.SnapshotID != id ||
 		rejection.SourcePID <= 1 || rejection.RejectedAt == "" ||
-		(rejection.Kind != "" && rejection.Kind != "filesystem" && rejection.Kind != "descriptors" && rejection.Kind != "timers") ||
+		(rejection.Kind != "" && rejection.Kind != "filesystem" && rejection.Kind != "descriptors" && rejection.Kind != "timers" && rejection.Kind != "storage") ||
 		!strings.HasPrefix(rejection.Error, checkpointAdmissionPrefix(rejection.Kind)) {
 		return fmt.Errorf("checkpoint admission rejection differs from its original operation")
 	}
