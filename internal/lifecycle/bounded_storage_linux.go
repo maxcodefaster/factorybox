@@ -70,8 +70,11 @@ func (e *Engine) boundedBundle(bundle, root string, spec map[string]json.RawMess
 		if err := sysboxcapture.CheckOverlayLayout(bundle); err != nil {
 			return err
 		}
-		for _, name := range []string{"lower", "upper", "work"} {
-			path := bundle + "/" + name
+		upper, work, err := sysboxcapture.OverlayWritablePaths(bundle)
+		if err != nil {
+			return err
+		}
+		for _, path := range []string{bundle + "/lower", upper, work} {
 			if err := e.boundedObject(path); err != nil {
 				return err
 			}

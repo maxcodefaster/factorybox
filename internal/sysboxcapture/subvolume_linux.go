@@ -133,12 +133,7 @@ func cloneSubvolume(ctx context.Context, source *os.File, destination string, re
 	}
 	// Btrfs snapshots are not recursive. Refuse even one child before creating
 	// a destination rather than silently publishing the child's empty stub.
-	references := make([]byte, 4096)
-	err = subvolumeIOCTL(int(source.Fd()), btrfsRootRefsIOCTL, references)
-	if errors.Is(err, unix.EOVERFLOW) || references[4088] != 0 {
-		return identity, errNestedSubvolume
-	}
-	if err != nil {
+	if err := noNestedSubvolumes(source); err != nil {
 		return identity, err
 	}
 	if err := immutableParents(destination); err != nil {

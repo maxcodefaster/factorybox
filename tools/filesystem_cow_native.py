@@ -15,6 +15,22 @@ import native_base
 import reference
 import upstream_unit
 
+MANIFEST_TESTS = [
+    "TestFilesystemCopyCOWNative",
+    "TestFilesystemSnapshotManifestNative",
+    "TestNativeFilesystemManifestRequiresExplicitStorageProof",
+    "TestNativeFilesystemIdentityAllowsOnlyBookkeepingAdvance",
+    "TestFilesystemSnapshotSubvolumeNative",
+    "TestFilesystemSnapshotRetirementNative",
+]
+
+
+def require_manifest_coverage(output):
+    if "--- SKIP:" in output or any(
+            "\n--- PASS: " + name + " (" not in "\n" + output
+            for name in MANIFEST_TESTS):
+        raise ValueError("native manifest proof omitted an original or required capture case")
+
 
 def resolved_worker_image(worker):
     image, _ = build_config.local_pinned_image(
@@ -27,7 +43,11 @@ def main():
     parser.add_argument("--worker-build", required=True)
     parser.add_argument("--candidate-snapshots", action="store_true",
                         help="Test candidate snapshot primitives in an isolated baseline worker; never lifecycle qualification")
+    parser.add_argument("--candidate-manifest", action="store_true",
+                        help="Test candidate native capture/materialization manifests in an isolated worker; never lifecycle qualification")
     args = parser.parse_args()
+    if args.candidate_snapshots and args.candidate_manifest:
+        parser.error("select either primitive or manifest candidate proof")
     build, worker = build_worker.load(args.worker_build)
     image = resolved_worker_image(worker)
     host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
@@ -49,7 +69,7 @@ def main():
     built_core = {key: value for key, value in worker["source_context"].items()
                   if key.startswith("internal/") or key in ("go.mod", "go.sum")}
     built_core = {key: value for key, value in built_core.items() if not key.endswith("_test.go")}
-    if current_core != built_core and not args.candidate_snapshots:
+    if current_core != built_core and not (args.candidate_snapshots or args.candidate_manifest):
         raise ValueError("the component proof must use the delivered worker core")
     result = {
         "schema": 1, "owner": owner, "platform": platform, "worker_build": args.worker_build,
@@ -58,11 +78,16 @@ def main():
         "sandbox_created": False, "native_lifecycle_qualified": False,
         "production_qualified": False, "passed": False, "cleanup": False,
         "candidate_snapshots": args.candidate_snapshots,
+        "candidate_manifest": args.candidate_manifest,
         "delivered_worker_core_matches": current_core == built_core,
     }
-    if args.candidate_snapshots:
+    if args.candidate_snapshots or args.candidate_manifest:
         result["scope"] = ("Candidate kernel snapshot component in separately owned storage. "
                            "The pinned baseline worker only owns the fixture; no runtime binary is replaced.")
+    if args.candidate_manifest:
+        result["scope"] = ("Native filesystem capture, sealed verification and writable materialization, "
+                           "plus the original copier and snapshot component tests. "
+                           "Not full Sandbox lifecycle or consumer qualification.")
     attempted = volume_created = False
     try:
         binary = artifact / "probe.test"
@@ -90,10 +115,13 @@ def main():
         result["identity"] = identity
         deadline = time.monotonic() + 420
         result["startup"] = consumer_worker_loss.ready(name, owner, identity, deadline)
+        pattern = ("^TestFilesystem(CopyCOW|Snapshot(Subvolume|Retirement|Manifest))Native$|^TestNativeFilesystem(ManifestRequiresExplicitStorageProof|IdentityAllowsOnlyBookkeepingAdvance)$" if args.candidate_manifest else
+                   "^TestFilesystemSnapshot(Subvolume|Retirement)Native$" if args.candidate_snapshots else
+                   "^TestFilesystem(CopyCOW|Snapshot(Subvolume|Retirement))Native$")
         probe = [*reference.DOCKER, "exec", "--env", "FACTORYBOX_NATIVE_COW_COPY=1",
+                 "--env", "FACTORYBOX_NATIVE_COW_MANIFEST=" + ("1" if args.candidate_manifest else "0"),
                  identity, "/probe.test", "-test.v",
-                 "-test.run=^TestFilesystemSnapshot(Subvolume|Retirement)Native$" if args.candidate_snapshots
-                 else "-test.run=^TestFilesystem(CopyCOW|Snapshot(Subvolume|Retirement))Native$",
+                 "-test.run=" + pattern,
                  "-test.timeout=60s"]
         result["probe_command"] = probe
         with (artifact / "stdout.txt").open("x") as out, (artifact / "stderr.txt").open("x") as err:
@@ -101,7 +129,9 @@ def main():
                                   timeout=min(65, deadline - time.monotonic()))
         result["exit_code"] = done.returncode
         output = (artifact / "stdout.txt").read_text()
-        result["passed"] = done.returncode == 0 and "--- SKIP:" not in output
+        checks_passed = done.returncode == 0 and "--- SKIP:" not in output
+        if args.candidate_manifest and checks_passed:
+            require_manifest_coverage(output)
         consumer_worker_loss.exact_worker(name, owner, identity)
         reference.docker(["container", "stop", "--time=30", identity],
                          timeout=min(40, deadline - time.monotonic()))
@@ -109,7 +139,7 @@ def main():
         if state["Running"] or state["Pid"] or state["OOMKilled"] or state["ExitCode"]:
             raise ValueError("owned copy fixture did not close its bounded store cleanly")
         result["inputs_unchanged"] = upstream_unit.context_manifest(source) == manifest
-        result["passed"] = result["passed"] and result["inputs_unchanged"]
+        result["passed"] = checks_passed and result["inputs_unchanged"]
     finally:
         if attempted:
             logs = subprocess.run([*reference.DOCKER, "logs", name], capture_output=True,

@@ -461,8 +461,12 @@ func (e *Engine) writeForkFile(relative, name string, data []byte) error {
 }
 
 func (e *Engine) forkOverlay(bundle, operation string, intent forkIntent) error {
-	for _, name := range []string{"work", "rootfs"} {
-		if err := os.Mkdir(bundle+"/"+name, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+	upper, work, err := sysboxcapture.OverlayWritablePaths(bundle)
+	if err != nil {
+		return err
+	}
+	for _, path := range []string{work, bundle + "/rootfs"} {
+		if err := os.Mkdir(path, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 			return err
 		}
 	}
@@ -480,7 +484,7 @@ func (e *Engine) forkOverlay(bundle, operation string, intent forkIntent) error 
 		return fmt.Errorf("fork rootfs has an unexpected existing mount: %w", mounted)
 	}
 	var origin forkOverlayOrigin
-	err := e.readCheckpointJSON(operation+"/overlay-origin.json", &origin)
+	err = e.readCheckpointJSON(operation+"/overlay-origin.json", &origin)
 	if errors.Is(err, os.ErrNotExist) {
 		if mounted == nil {
 			return fmt.Errorf("fork overlay exists without its original mountpoint intent")
@@ -517,7 +521,7 @@ func (e *Engine) forkOverlay(bundle, operation string, intent forkIntent) error 
 	// namespace. Require the mount-local setting even when the worker's overlay
 	// module enables exclusive indexed uppers by default.
 	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0,
-		"index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
+		"index=off,lowerdir="+bundle+"/lower,upperdir="+upper+",workdir="+work); err != nil {
 		return err
 	}
 	return sysboxcapture.CheckOverlayLayout(bundle)

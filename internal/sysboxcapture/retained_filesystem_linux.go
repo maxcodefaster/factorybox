@@ -133,6 +133,9 @@ func VerifyRetainedFilesystemTree(ctx context.Context, tree FilesystemTree, veri
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if tree.Native != nil {
+		return fmt.Errorf("native retained filesystem requires exact store and mount translation before admission")
+	}
 	if tree.Immutable != nil {
 		if err := verifyRetainedAlias(ctx, tree, verify); err != nil {
 			return err

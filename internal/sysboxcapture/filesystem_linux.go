@@ -31,6 +31,7 @@ type filesystemRoot struct {
 
 type FilesystemSnapshot struct {
 	Version       int              `json:"version"`
+	Writable      bool             `json:"writable,omitempty"`
 	Roots         []FilesystemTree `json:"roots"`
 	DurabilityUS  int64            `json:"durability_us,omitempty"`
 	AdmissionUS   int64            `json:"source_admission_us,omitempty"`
@@ -58,19 +59,20 @@ func recordCaptureLowerAlias(destination string, tree FilesystemTree) error {
 }
 
 type FilesystemTree struct {
-	Name         string          `json:"name"`
-	Source       string          `json:"source"`
-	Saved        string          `json:"saved"`
-	SHA256       string          `json:"sha256"`
-	Entries      int             `json:"entries"`
-	FileBytes    int64           `json:"file_bytes"`
-	HashedBytes  int64           `json:"hashed_bytes"`
-	CaptureUS    int64           `json:"capture_us"`
-	SourceReadUS int64           `json:"source_read_us,omitempty"`
-	CopyUS       int64           `json:"copy_us,omitempty"`
-	TargetReadUS int64           `json:"target_read_us,omitempty"`
-	Immutable    *ImmutableTree  `json:"immutable,omitempty"`
-	Alias        *ImmutableAlias `json:"immutable_alias,omitempty"`
+	Name         string                `json:"name"`
+	Source       string                `json:"source"`
+	Saved        string                `json:"saved"`
+	SHA256       string                `json:"sha256"`
+	Entries      int                   `json:"entries"`
+	FileBytes    int64                 `json:"file_bytes"`
+	HashedBytes  int64                 `json:"hashed_bytes"`
+	CaptureUS    int64                 `json:"capture_us"`
+	SourceReadUS int64                 `json:"source_read_us,omitempty"`
+	CopyUS       int64                 `json:"copy_us,omitempty"`
+	TargetReadUS int64                 `json:"target_read_us,omitempty"`
+	Immutable    *ImmutableTree        `json:"immutable,omitempty"`
+	Alias        *ImmutableAlias       `json:"immutable_alias,omitempty"`
+	Native       *NativeFilesystemTree `json:"native,omitempty"`
 }
 
 var managedDirectories = map[string]string{
@@ -164,9 +166,13 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 	if err := CheckOverlayLayout(request.Bundle); err != nil {
 		return nil, err
 	}
+	upper, _, err := OverlayWritablePaths(request.Bundle)
+	if err != nil {
+		return nil, err
+	}
 	roots := []filesystemRoot{
 		{Name: "lower", Source: request.Bundle + "/lower", Expected: request.Base},
-		{Name: "upper", Source: request.Bundle + "/upper"},
+		{Name: "upper", Source: upper},
 	}
 	seen := map[string]bool{}
 	sharedSeen := false
@@ -207,6 +213,12 @@ func planFilesystem(request Request, stateData []byte) ([]filesystemRoot, error)
 	if (request.SharedSource != nil) != sharedSeen {
 		return nil, fmt.Errorf("runtime omitted its admitted shared source bind")
 	}
+	// Refuse incomplete native root sets while the original source is still
+	// admitted and frozen, before process capture or timer mutation. The
+	// capture writer repeats the same metadata proof before creating roots.
+	if _, _, err := nativeFilesystemPlan(context.Background(), roots); err != nil {
+		return nil, err
+	}
 	return roots, nil
 }
 
@@ -221,6 +233,10 @@ func filesystemHookCount(hooks map[string][]json.RawMessage) int {
 var ErrOverlayAbsent = errors.New("admitted overlay mount is absent")
 
 func CheckOverlayLayout(bundle string) error {
+	upper, work, err := OverlayWritablePaths(bundle)
+	if err != nil {
+		return err
+	}
 	file, err := os.Open("/proc/self/mountinfo")
 	if err != nil {
 		return err
@@ -249,8 +265,8 @@ func CheckOverlayLayout(bundle string) error {
 				options[key] = value
 			}
 		}
-		if options["lowerdir"] != bundle+"/lower" || options["upperdir"] != bundle+"/upper" ||
-			options["workdir"] != bundle+"/work" {
+		if options["lowerdir"] != bundle+"/lower" || options["upperdir"] != upper ||
+			options["workdir"] != work {
 			return fmt.Errorf("checkpoint overlay backing paths differ from the admitted layout")
 		}
 		return nil
@@ -273,6 +289,10 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	native, materialized, err := nativeFilesystemPlan(ctx, roots)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.Mkdir(destination, 0700); err != nil {
 		return nil, err
 	}
@@ -280,6 +300,9 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 		return nil, err
 	}
 	result := &FilesystemSnapshot{Version: 1}
+	if native {
+		result.Version, result.Writable = 2, materialized
+	}
 	for _, root := range roots {
 		start := time.Now()
 		if root.Expected != nil && root.Expected.Immutable != nil {
@@ -293,6 +316,14 @@ func copyFilesystem(ctx context.Context, roots []filesystemRoot, destination str
 			}
 			tree.Name, tree.Source, tree.Saved = root.Name, root.Source, destination+"/"+root.Name
 			tree.CaptureUS = time.Since(start).Microseconds()
+			result.Roots = append(result.Roots, tree)
+			continue
+		}
+		if native {
+			tree, err := cloneNativeFilesystemTree(ctx, root, destination+"/"+root.Name, materialized)
+			if err != nil {
+				return nil, err
+			}
 			result.Roots = append(result.Roots, tree)
 			continue
 		}
@@ -341,6 +372,9 @@ func MaterializeFilesystemSnapshot(ctx context.Context, generation, destination 
 	if snapshot != nil && snapshot.SharedSource != nil {
 		return nil, ErrSharedSourceCopy
 	}
+	if snapshot != nil && snapshot.Version == 2 && snapshot.Writable {
+		return nil, fmt.Errorf("native materialization requires a sealed checkpoint, not a working descendant")
+	}
 	if !cleanAbsolute(generation) || !cleanAbsolute(destination) ||
 		destination == generation || strings.HasPrefix(destination, generation+"/") ||
 		strings.HasPrefix(generation, destination+"/") {
@@ -379,7 +413,7 @@ func MaterializeFilesystemSnapshot(ctx context.Context, generation, destination 
 	result.AdmissionUS = admissionUS
 	for index, tree := range result.Roots {
 		expected := snapshot.Roots[index]
-		if !sameFilesystemTree(tree, expected) {
+		if !sameFilesystemTree(tree, expected) && !materializedNativeFilesystemTree(tree, expected) {
 			return nil, fmt.Errorf("materialized filesystem differs from its saved checkpoint: %s", tree.Name)
 		}
 	}
@@ -391,12 +425,14 @@ func MaterializeFilesystemSnapshot(ctx context.Context, generation, destination 
 }
 
 func sameFilesystemTree(actual, expected FilesystemTree) bool {
-	return actual.SHA256 == expected.SHA256 && actual.Entries == expected.Entries &&
+	return actual.Native == nil && expected.Native == nil &&
+		actual.SHA256 == expected.SHA256 && actual.Entries == expected.Entries &&
 		actual.FileBytes == expected.FileBytes && actual.HashedBytes == expected.HashedBytes
 }
 
-// VerifyFilesystemSnapshot reads every saved tree again and checks the exact
-// content/metadata digest. Saved paths must belong to this generation.
+// VerifyFilesystemSnapshot verifies the explicit storage proof of every saved
+// tree. Legacy trees retain full content/metadata verification; native trees
+// retain their exact kernel identity. Paths must belong to this generation.
 func VerifyFilesystemSnapshot(ctx context.Context, generation string, snapshot *FilesystemSnapshot) error {
 	return checkFilesystemSnapshot(ctx, generation, snapshot, func(ctx context.Context, root *os.File, expected FilesystemTree) error {
 		actual, err := fingerprintTree(ctx, root, nil, false)
@@ -419,6 +455,16 @@ func checkFilesystemSnapshot(ctx context.Context, generation string, snapshot *F
 		return err
 	}
 	for _, tree := range snapshot.Roots {
+		if tree.Native != nil {
+			path, err := nativeTreeRoot(tree.Saved, tree.Native.Member)
+			if err != nil {
+				return err
+			}
+			if err := verifyNativeFilesystemRoot(ctx, path, tree.Native.Saved); err != nil {
+				return err
+			}
+			continue
+		}
 		if tree.Immutable != nil {
 			if err := VerifyImmutableTree(tree.Saved, tree); err != nil {
 				return err
@@ -439,7 +485,8 @@ func checkFilesystemSnapshot(ctx context.Context, generation string, snapshot *F
 }
 
 func validateFilesystemSnapshotPaths(generation string, snapshot *FilesystemSnapshot) error {
-	if snapshot == nil || snapshot.Version != 1 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
+	if snapshot == nil || snapshot.Version != 1 && snapshot.Version != 2 ||
+		snapshot.Version == 1 && snapshot.Writable || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
 		return fmt.Errorf("filesystem snapshot root set is absent or invalid")
 	}
 	seen := map[string]bool{}
@@ -448,10 +495,20 @@ func validateFilesystemSnapshotPaths(generation string, snapshot *FilesystemSnap
 		for _, kind := range managedDirectories {
 			allowed = allowed || tree.Name == "volumes/"+kind
 		}
-		if !allowed || seen[tree.Name] || tree.Saved != generation+"/filesystem/"+tree.Name {
+		saved := generation + "/filesystem/" + tree.Name
+		if snapshot.Version == 2 && tree.Name == "upper" {
+			saved = generation + "/filesystem/mutable/upper"
+		}
+		if !allowed || seen[tree.Name] || tree.Saved != saved {
 			return fmt.Errorf("filesystem snapshot root escaped its generation or is duplicated")
 		}
 		seen[tree.Name] = true
+		if snapshot.Version == 1 && tree.Native != nil ||
+			snapshot.Version == 2 && tree.Name != "lower" && validateNativeFilesystemTree(tree, snapshot.Writable) != nil ||
+			snapshot.Version == 2 && tree.Name == "lower" && tree.Immutable == nil ||
+			tree.Name == "lower" && tree.Native != nil {
+			return fmt.Errorf("filesystem storage proof differs from its manifest version")
+		}
 		if tree.Immutable != nil {
 			if tree.Name != "lower" {
 				return fmt.Errorf("only the prepared immutable lower may be shared")
@@ -545,12 +602,39 @@ func VerifyLiveFilesystemSnapshot(ctx context.Context, snapshot *FilesystemSnaps
 			return err
 		}
 	}
-	if snapshot == nil || snapshot.Version != 1 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
+	if snapshot == nil || snapshot.Version != 1 && snapshot.Version != 2 || len(snapshot.Roots) < 2 || len(snapshot.Roots) > 9 {
 		return fmt.Errorf("live pause backing is absent or invalid")
+	}
+	if snapshot.Version == 2 {
+		var generation string
+		for _, tree := range snapshot.Roots {
+			if tree.Name == "lower" && strings.HasSuffix(tree.Saved, "/filesystem/lower") {
+				generation = strings.TrimSuffix(tree.Saved, "/filesystem/lower")
+			}
+		}
+		if snapshot.Writable || generation == "" {
+			return fmt.Errorf("live native backing requires its sealed pause manifest")
+		}
+		if err := validateFilesystemSnapshotPaths(generation, snapshot); err != nil {
+			return err
+		}
 	}
 	for _, tree := range snapshot.Roots {
 		if !cleanAbsolute(tree.Source) {
 			return fmt.Errorf("live pause backing path is not canonical")
+		}
+		if snapshot.Version == 1 && (snapshot.Writable || tree.Native != nil) {
+			return fmt.Errorf("live legacy backing cannot use a native storage proof")
+		}
+		if tree.Native != nil {
+			path, err := nativeTreeRoot(tree.Source, tree.Native.Member)
+			if err != nil {
+				return err
+			}
+			if err := verifyNativeFilesystemRoot(ctx, path, tree.Native.Source); err != nil {
+				return err
+			}
+			continue
 		}
 		if tree.Immutable != nil {
 			if tree.Name != "lower" {
