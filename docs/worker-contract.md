@@ -516,14 +516,20 @@ persists the original lower-alias mountpoint before binding it. Cleanup records
 its release before preparing the deletion inventory. Missing evidence, active
 references and successor payloads still refuse reclamation.
 
-After worker replacement, an already completed Sandbox retirement can finish
-this capture-only stage with `retire-sandbox --source-root OLD_CONTROLLER`
-and the original Sandbox ID, `--sandbox-owner` and `--input-sha256`, through
+After worker replacement, `retire-sandbox --source-root OLD_CONTROLLER`
+can continue private manager and input cleanup whose original Sandbox Delete
+completed, including when the old worker never published a retirement intent.
+Supply the original Sandbox ID, `--sandbox-owner` and `--input-sha256`, through
 `--worker-run-root`. This requires the exact retained image and source epoch,
-confirmed original Delete, absent runtime/cgroup and unchanged original
-retirement receipt/inventory. A changed store, owner, inode or attachment
-refuses cleanup. The old receipt and lifecycle record are not rewritten;
-the metadata handle cannot execute the old runtime or CRIU recipe.
+confirmed original Delete and absent runtime/cgroup. Every retained epoch
+participates in dependency checks. New inventories record their exact attachment;
+same-image device and mount changes never authorize changed inodes or content.
+An interrupted manager inventory can continue after reattachment without
+reselecting its payloads. An old journal without sufficient remount evidence
+still refuses retargeting. Existing completed input-retirement receipts retain
+their capture-only completion path and are never rewritten. The old lifecycle
+record stays unchanged; the metadata handle cannot execute the old runtime or
+CRIU recipe.
 Dependency inventory compares old records against their own valid recorded
 Sysbox and CRIU digests, even after the current worker upgrades those components.
 Store, boot, paths and attachment checks remain exact. This metadata-only

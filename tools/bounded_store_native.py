@@ -46,6 +46,10 @@ BACKING_RETIREMENT_PROOFS = [
 BACKING_RETIREMENT_UNIT_TESTS = [
     'TestSandboxBackingRetirementAdmission',
     'TestSandboxBackingRetirementAfterDeletedIncompleteStart',
+    'TestBackingRetirementAttachmentPreservesPersistentIdentity',
+    'TestManagerJournalRemountRequiresItsBackingParent',
+    'TestNativeRetainedMetadataAcrossRuntimeUpgrade',
+    'TestNativeRetainedPendingBackingRetirement',
     'TestRetainedMetadataKeepsRecoveryRecipeStrict',
     'TestRetainedMetadataCannotExecuteLifecycle',
     'TestRecoveryStoreEpochIdentity',
@@ -440,6 +444,7 @@ def main():
         if backing_retirement:
             command += ['--env', 'FACTORYBOX_NATIVE_BACKING_RETIREMENT=1',
                         '--env', 'FACTORYBOX_NATIVE_IMPORT_MOUNT_INTERRUPTION=1',
+                        '--env', 'FACTORYBOX_NATIVE_RETAINED_METADATA_ROOT=/output',
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^(' + '|'.join(
                             ['TestNativeSandboxBackingRetirement', 'TestNativeDeletedIncompleteStartBackingRetirement',
                              *BACKING_RETIREMENT_UNIT_TESTS]) + ')$']

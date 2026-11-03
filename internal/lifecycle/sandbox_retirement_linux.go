@@ -13,6 +13,7 @@ import (
 	"sort"
 
 	"factorybox/internal/ownedtree"
+	"factorybox/internal/storefs"
 	"factorybox/internal/sysboxcapture"
 )
 
@@ -43,6 +44,7 @@ type sandboxBackingIntent struct {
 	Reserve         retirementReserve     `json:"reserve"`
 	StartedAt       string                `json:"started_at"`
 	Before          StorageCapacity       `json:"before"`
+	Attachment      *storefs.Active       `json:"attachment,omitempty"`
 }
 
 func sandboxBackingRecord(record Record, request SandboxBackingRequest) error {
@@ -66,12 +68,22 @@ func sandboxBackingRecord(record Record, request SandboxBackingRequest) error {
 }
 
 func (e *Engine) sandboxBackingSafety(ctx context.Context, record Record, lock *os.File) error {
-	state, err := e.state(ctx, record, lock)
-	if err != nil || state != nil {
-		return errors.Join(err, fmt.Errorf("Sandbox backing retirement has no confirmed runtime absence"))
+	if e.metadataOnly {
+		// Metadata cleanup cannot execute the historical runtime. Both its
+		// retained runtime directory and any same-named cgroup must be absent.
+		for _, path := range []string{e.config.Root + "/runtime/" + record.RuntimeID, cgroupRoot + "/" + record.RuntimeID} {
+			if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("retained deleted Sandbox has remaining or successor execution: %v", err)
+			}
+		}
+	} else {
+		state, err := e.state(ctx, record, lock)
+		if err != nil || state != nil {
+			return errors.Join(err, fmt.Errorf("Sandbox backing retirement has no confirmed runtime absence"))
+		}
 	}
 	actual, err := directoryIdentity(record.InputBundle)
-	if err != nil || actual != *record.InputDirectory {
+	if err != nil || !e.backingDirectoryMatches(*record.InputDirectory, actual, nil) {
 		return errors.Join(err, fmt.Errorf("original Sandbox bundle directory changed"))
 	}
 	return nil
@@ -110,6 +122,10 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 		return result, err
 	}
 	defer forest.close()
+	return e.retireDeletedBacking(ctx, request, forest)
+}
+
+func (e *Engine) retireDeletedBacking(ctx context.Context, request SandboxBackingRequest, forest *epochRetirementForest) (result SandboxBackingRetirement, resultErr error) {
 	record, err := e.read(request.SandboxID)
 	if err != nil {
 		return result, err
@@ -266,7 +282,7 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 		}
 		for _, name := range []string{"rootfs", "lower"} {
 			identity, err := directoryIdentity(record.InputBundle + "/" + name)
-			if err != nil || identity.MountID != record.InputDirectory.MountID || identity.Device != record.InputDirectory.Device {
+			if err != nil || identity.MountID != storeIdentity.MountID || identity.Device != storeIdentity.Device {
 				return result, errors.Join(err, fmt.Errorf("private input mounts must be released before backing retirement"))
 			}
 			if name == "rootfs" || record.Base != nil {
@@ -285,7 +301,7 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 			}
 		}
 		sort.Strings(paths)
-		if err := e.sandboxBackingDependencies(ctx, storePath, paths); err != nil {
+		if err := forest.backingDependencies(ctx, storePath, paths); err != nil {
 			return result, err
 		}
 		plan, err := ownedtree.Capture(ctx, store, paths)
@@ -305,13 +321,14 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 			return result, err
 		}
 		intent = sandboxBackingIntent{Version: 1, Request: request, Directory: directory, Bundle: *record.InputDirectory,
-			Store: storeIdentity, InventorySHA256: hash, Payloads: paths, Reserve: reserve, StartedAt: now(), Before: before}
+			Store: storeIdentity, InventorySHA256: hash, Payloads: paths, Reserve: reserve, StartedAt: now(), Before: before,
+			Attachment: e.config.BoundedStore}
 		if err := e.publishCheckpoint(relative, "retirement-intent.json", intent); err != nil {
 			return result, err
 		}
 	}
-	if intent.Version != 1 || intent.Request != request || intent.Directory != directory ||
-		intent.Bundle != *record.InputDirectory || intent.Store != storeIdentity ||
+	if intent.Version != 1 || intent.Request != request || !e.backingDirectoryMatches(intent.Directory, directory, intent.Attachment) ||
+		intent.Bundle != *record.InputDirectory || !e.backingDirectoryMatches(intent.Store, storeIdentity, intent.Attachment) ||
 		!digest.MatchString(intent.InventorySHA256) || intent.StartedAt == "" || len(intent.Payloads) == 0 {
 		return result, fmt.Errorf("Sandbox backing retirement intent differs from its original identity")
 	}
@@ -352,7 +369,15 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 	if !reflect.DeepEqual(plan.Paths, intent.Payloads) {
 		return result, fmt.Errorf("Sandbox backing inventory differs from its exact accepted paths")
 	}
-	if err := e.sandboxBackingDependencies(ctx, storePath, intent.Payloads); err != nil {
+	if err := forest.backingDependencies(ctx, storePath, intent.Payloads); err != nil {
+		return result, err
+	}
+	attachment, err := e.backingRetirementAttachment(intent.Attachment)
+	if err != nil {
+		return result, err
+	}
+	plan, err = e.rebindBackingRetirementPlan(plan, intent.Attachment)
+	if err != nil {
 		return result, err
 	}
 	if err := ownedtree.RemoveRemaining(ctx, store, plan); err != nil {
@@ -361,7 +386,12 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 	if err := absent(); err != nil {
 		return result, err
 	}
-	if err := e.releaseRetirementReserve(relative, intent.Reserve); err != nil {
+	reserve := intent.Reserve
+	if reserve.Device != attachment.BlockDevice {
+		return result, fmt.Errorf("Sandbox retirement reserve escaped its recorded attachment")
+	}
+	reserve.Device = e.config.BoundedStore.BlockDevice
+	if err := e.releaseRetirementReserve(relative, reserve); err != nil {
 		return result, err
 	}
 	after, err := e.storageCapacity()

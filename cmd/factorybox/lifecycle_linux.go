@@ -166,7 +166,7 @@ func runLifecycle(args []string) error {
 		operation.StringVar(&backingRequest.SandboxOwner, "sandbox-owner", "", "exact deleted Sandbox owner")
 		operation.StringVar(&backingRequest.InputSHA256, "input-sha256", "", "exact original OCI input SHA-256")
 		if command == "retire-sandbox" {
-			operation.StringVar(&retainedRoot, "source-root", "", "complete capture cleanup for this exact already-retired controller epoch")
+			operation.StringVar(&retainedRoot, "source-root", "", "continue confirmed-deleted backing cleanup in this exact earlier controller")
 		}
 		if err := operation.Parse(remaining); err != nil {
 			return err

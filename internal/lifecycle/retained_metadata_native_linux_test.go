@@ -151,4 +151,7 @@ func TestNativeRetainedMetadataAcrossRuntimeUpgrade(t *testing.T) {
 	if err := storefs.VerifyReleased(image); err != nil {
 		t.Fatal("exact metadata fixture kernel attachment did not release", err)
 	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal("remove exactly released owned metadata fixture", err)
+	}
 }

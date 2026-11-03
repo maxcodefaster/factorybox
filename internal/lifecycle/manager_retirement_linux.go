@@ -13,6 +13,7 @@ import (
 	"sort"
 
 	"factorybox/internal/ownedtree"
+	"factorybox/internal/storefs"
 	"golang.org/x/sys/unix"
 )
 
@@ -95,6 +96,26 @@ type managerBackingIntent struct {
 	Payloads        []string              `json:"payloads"`
 	StartedAt       string                `json:"started_at"`
 	Before          StorageCapacity       `json:"before"`
+	Attachment      *storefs.Active       `json:"attachment,omitempty"`
+	JournalParent   *KernelObject         `json:"journal_parent,omitempty"`
+}
+
+func (e *Engine) managerJournalDirectoryMatches(saved, current KernelObject, parent *KernelObject) bool {
+	if saved == current {
+		return true
+	}
+	// This journal is outside the fixed image. Do not apply the image's
+	// loop-device translation to it. Only a remount of its exact root-owned
+	// backing directory on the same image device may change its mount ID.
+	if !e.metadataOnly || parent == nil || e.config.BoundedStore == nil {
+		return false
+	}
+	active, err := directoryIdentity(filepath.Dir(e.config.BoundedStore.Image.Path))
+	return err == nil && parent.Device == e.config.BoundedStore.Image.Device &&
+		active.Device == parent.Device && active.Inode == parent.Inode &&
+		saved.Inode != 0 && saved.Inode == current.Inode &&
+		saved.Device == parent.Device && current.Device == active.Device &&
+		saved.MountID == parent.MountID && current.MountID == active.MountID
 }
 
 // A guest may exhaust its bounded filesystem. Put this small recovery journal
@@ -252,6 +273,10 @@ func (e *Engine) retireDeletedManagerBacking(ctx context.Context, request Sandbo
 	if err != nil {
 		return result, err
 	}
+	parent, err := directoryIdentity(filepath.Dir(e.config.BoundedStore.Image.Path))
+	if err != nil {
+		return result, err
+	}
 	var intent managerBackingIntent
 	err = journal.readCheckpointJSON(relative+"/retirement-intent.json", &intent)
 	first := errors.Is(err, os.ErrNotExist)
@@ -282,14 +307,16 @@ func (e *Engine) retireDeletedManagerBacking(ctx context.Context, request Sandbo
 		}
 		intent = managerBackingIntent{Version: 1, Request: request, Controller: e.config.Root,
 			RuntimeID: record.RuntimeID, Bundle: *record.InputDirectory, Manager: managerIdentity,
-			Directory: directory, InventorySHA256: hash, Payloads: paths, StartedAt: now(), Before: before}
+			Directory: directory, InventorySHA256: hash, Payloads: paths, StartedAt: now(), Before: before,
+			Attachment: e.config.BoundedStore, JournalParent: &parent}
 		if err := journal.publishCheckpoint(relative, "retirement-intent.json", intent); err != nil {
 			return result, err
 		}
 	}
 	if intent.Version != 1 || intent.Request != request || intent.Controller != e.config.Root ||
 		intent.RuntimeID != record.RuntimeID || intent.Bundle != *record.InputDirectory ||
-		intent.Manager != managerIdentity || intent.Directory != directory ||
+		!e.backingDirectoryMatches(intent.Manager, managerIdentity, intent.Attachment) ||
+		!e.managerJournalDirectoryMatches(intent.Directory, directory, intent.JournalParent) ||
 		!digest.MatchString(intent.InventorySHA256) || intent.StartedAt == "" {
 		return result, fmt.Errorf("manager retirement differs from its original native ownership")
 	}
@@ -327,6 +354,10 @@ func (e *Engine) retireDeletedManagerBacking(ctx context.Context, request Sandbo
 		return result, errors.Join(err, fmt.Errorf("manager inventory differs from its accepted paths"))
 	}
 	if err := e.managerBackingDependencies(ctx, forest, record, intent.Payloads); err != nil {
+		return result, err
+	}
+	plan, err = e.rebindBackingRetirementPlan(plan, intent.Attachment)
+	if err != nil {
 		return result, err
 	}
 	current, err := verifiedManagerBackingPayloads(manager, record)

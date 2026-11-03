@@ -13,6 +13,8 @@ import reference
 
 ROOT_METADATA_CASES = (
     "TestRetainedBackingRequiresExactOriginalStoreTranslation",
+    "TestBackingRetirementAttachmentPreservesPersistentIdentity",
+    "TestManagerJournalRemountRequiresItsBackingParent",
     "TestRecoveredCaptureRetirementProofPreservesOriginalMetadata",
     "TestRecoveredCaptureRetirementProofRejectsChangedOrUnclosedSources",
     "TestRecoveredCaptureBackingRequiresExplicitConfirmedDelete",

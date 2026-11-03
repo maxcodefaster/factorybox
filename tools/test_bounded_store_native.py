@@ -76,11 +76,23 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
         self.assertEqual(native['previous_manifest'], 'tests/compatibility/cow-retirement-capacity.json')
         self.assertEqual(hashlib.sha256((root / native['previous_manifest']).read_bytes()).hexdigest(),
                          native['previous_manifest_sha256'])
+        retained = json.loads((root / 'tests/compatibility/retained-pending-backing.json').read_text())
+        self.assertEqual(retained['schema'], 1)
+        self.assertTrue(retained['assertions_preserved'])
+        self.assertFalse(retained['upstream_assertions_modified'])
+        self.assertEqual(retained['previous_manifest'], 'tests/compatibility/native-epoch-retirement.json')
+        self.assertEqual(hashlib.sha256((root / retained['previous_manifest']).read_bytes()).hexdigest(),
+                         retained['previous_manifest_sha256'])
+        def after_retained(name, row):
+            final = retained['files'].get(name, row)
+            if name in retained['files']:
+                self.assertEqual(final['before_sha256'], row['after_sha256'])
+            return final
         def after_native(name, row):
             final = native['files'].get(name, row)
             if name in native['files']:
                 self.assertEqual(final['before_sha256'], row['after_sha256'])
-            return final
+            return after_retained(name, final)
         def after_cow(name, row):
             final = cow['files'].get(name, row)
             if name in cow['files']:
@@ -124,6 +136,9 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_native(name, row)['after_sha256'])
         for name, row in native['files'].items():
+            self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_retained(name, row)['after_sha256'])
+        for name, row in retained['files'].items():
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
         original = declaration['files']['internal/lifecycle/bounded_store_native_linux_test.go']

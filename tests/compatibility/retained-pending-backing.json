@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "source_commit": "46f68e787b2e79100f9ab26265139b2752e745f2",
+  "previous_manifest": "tests/compatibility/native-epoch-retirement.json",
+  "previous_manifest_sha256": "54c181db65828515aadf07ac11c515f70d92c0c6326828c9d954cec53789daf8",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Add required native retained-metadata and pending confirmed-Delete backing regressions to the existing backing-retirement lane. Keep every original test, assertion, proof field, resource ceiling and deadline. Provide a separate owned fixture directory; never use the retained installation.",
+  "files": {
+    "tools/bounded_store_native.py": {
+      "before_sha256": "28f52b7ef29e71de0676ac2ddd708c848d2cc2853d00d36939c81825cc3997ad",
+      "after_sha256": "1b5b2972da547347f2db52376128b30338c5d1e107e657c559e10f6ac5b2fafe"
+    }
+  }
+}
