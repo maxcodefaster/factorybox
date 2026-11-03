@@ -68,10 +68,20 @@ func TestNativeRetainedSelectionRecover(t *testing.T) {
 	inspectArgs := retirementArgs("inspect-recovery-checkpoint", request, "")
 	inspectArgs = append([]string{inspectArgs[0], "--source-root", pause.Request.SourceRoot}, inspectArgs[1:]...)
 	var inspected RetainedCheckpointInspection
-	if err := json.Unmarshal(boundedLossAction(t, inspectArgs...), &inspected); err != nil || inspected.Version != 1 ||
-		!inspected.FullContentVerified || inspected.Files <= 0 || inspected.FileBytes < 32<<20 || inspected.FilesystemTrees < 2 ||
+	if err := json.Unmarshal(boundedLossAction(t, inspectArgs...), &inspected); err != nil {
+		t.Fatal("decode exact retained inspection", err)
+	}
+	verified := inspected.FullContentVerified && !inspected.NativeFilesystemsVerified
+	if os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_LAYOUT") == "1" {
+		// Native saved roots deliberately do not claim a fresh full-content
+		// scan. Require their own positive verification and complete root set;
+		// the default copying fixture retains its original hash requirement.
+		verified = !inspected.FullContentVerified && inspected.NativeFilesystemsVerified && inspected.FilesystemTrees == 9
+	}
+	if inspected.Version != 1 || !verified ||
+		inspected.Files <= 0 || inspected.FileBytes < 32<<20 || inspected.FilesystemTrees < 2 ||
 		inspected.Request.SourceRoot != pause.Request.SourceRoot || inspected.Request.CheckpointRequest != request || inspected.VerifiedAt == "" {
-		t.Fatal("retained inspection did not verify the complete exact saved generation", inspected, err)
+		t.Fatal("retained inspection did not verify the complete exact saved generation", inspected)
 	}
 	selected, err := old.selection(relative, "recover-primary")
 	if err != nil || selected.ReleasedAt != "" {

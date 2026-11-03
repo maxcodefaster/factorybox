@@ -1,0 +1,110 @@
+--- a/libcontainer/factoryboxrestore/factorybox_native_overlay_linux.go
++++ b/libcontainer/factoryboxrestore/factorybox_native_overlay_linux.go
+@@ -3,6 +3,7 @@
+ package factoryboxrestore
+ 
+ import (
++	"crypto/sha256"
+ 	"encoding/binary"
+ 	"errors"
+ 	"fmt"
+@@ -96,7 +97,11 @@
+ 			return "", "", fmt.Errorf("native restore upper and work do not share their original subvolume")
+ 		}
+ 	}
+-	upper, work = rootPath+"/upper", rootPath+"/"+filepath.Base(requestedWork)
++	// A native clone includes its ancestors' work directories. Bind this
++	// fresh work name to the exact destination bundle, retaining every
++	// inherited directory and refusing reuse by the same restore.
++	workName := fmt.Sprintf("%s-%x", filepath.Base(requestedWork), sha256.Sum256([]byte(bundle)))
++	upper, work = rootPath+"/upper", rootPath+"/"+workName
+ 	return upper, work, factoryboxNewWork(work)
+ }
+ 
+--- a/libcontainer/factoryboxrestore/factorybox_native_root_linux_test.go
++++ b/libcontainer/factoryboxrestore/factorybox_native_root_linux_test.go
+@@ -3,6 +3,7 @@
+ package factoryboxrestore
+ 
+ import (
++	"crypto/sha256"
+ 	"errors"
+ 	"fmt"
+ 	"os"
+@@ -144,6 +145,9 @@
+ 	if strings.HasSuffix(mode, "resume") {
+ 		leaf = "resume-work-" + token
+ 	}
++	if native {
++		leaf = fmt.Sprintf("%s-%x", leaf, sha256.Sum256([]byte(bundle)))
++	}
+ 	negative := native && mode != "native-restore" && mode != "native-resume"
+ 	switch mode {
+ 	case "native-root-alias":
+--- /dev/null
++++ b/libcontainer/factoryboxrestore/factorybox_native_work_linux_test.go
+@@ -0,0 +1,64 @@
++//go:build linux
++
++package factoryboxrestore
++
++import (
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"testing"
++)
++
++func TestFactoryboxNativeInheritedWork(t *testing.T) {
++	storage := os.Getenv("FACTORYBOX_NATIVE_RESTORE_ROOT")
++	if storage == "" {
++		t.Skip("requires separately owned native worker storage")
++	}
++	bundle, err := os.MkdirTemp(storage, "inherited-work-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	mutable := bundle + "/mutable"
++	if output, err := exec.Command("btrfs", "subvolume", "create", "--", mutable).CombinedOutput(); err != nil {
++		t.Fatal(string(output), err)
++	}
++	t.Cleanup(func() {
++		if output, err := exec.Command("btrfs", "subvolume", "delete", "--", mutable).CombinedOutput(); err != nil {
++			t.Error(string(output), err)
++			return
++		}
++		if err := os.Remove(bundle); err != nil {
++			t.Error(err)
++		}
++	})
++	if err := os.Chmod(mutable, 0700); err != nil {
++		t.Fatal(err)
++	}
++	for _, name := range []string{"upper", "work", "restore-work"} {
++		if err := os.Mkdir(mutable+"/"+name, 0700); err != nil {
++			t.Fatal(err)
++		}
++	}
++	inherited := mutable + "/restore-work/foreign"
++	if err := os.WriteFile(inherited, []byte("preserve ancestor"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	upper, work, err := factoryboxOverlayPaths(bundle, bundle+"/restore-work")
++	if err != nil {
++		t.Fatal("a descendant must not reuse or delete its ancestor's overlay work directory", err)
++	}
++	if upper != mutable+"/upper" || filepath.Dir(work) != mutable ||
++		!strings.HasPrefix(filepath.Base(work), "restore-work-") {
++		t.Fatal("fresh work escaped the original common native root", upper, work)
++	}
++	if data, err := os.ReadFile(inherited); err != nil || string(data) != "preserve ancestor" {
++		t.Fatal("ancestor work was changed", string(data), err)
++	}
++	if err := os.Mkdir(work, 0700); err != nil {
++		t.Fatal(err)
++	}
++	if _, _, err := factoryboxOverlayPaths(bundle, bundle+"/restore-work"); err == nil {
++		t.Fatal("an existing work directory for the same exact restore was reused")
++	}
++}

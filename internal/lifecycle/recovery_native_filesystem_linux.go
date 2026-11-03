@@ -19,7 +19,7 @@ func (e *Engine) verifyNativeRetainedStorage(old storefs.Active, tree sysboxcapt
 	native := tree.Native
 	if current == nil || old.Image.Schema != 2 || current.Image.Schema != 2 || old.Image != current.Image ||
 		native == nil || native.Saved.FilesystemUUID != old.Image.UUID ||
-		native.Saved.MountID != old.Mount.MountID || native.Saved.Flags != 1 ||
+		native.Saved.MountID != old.Mount.MountID || native.Saved.Flags > 1 ||
 		!withinStore(e.config.Root, tree.Saved) {
 		return fmt.Errorf("native retained tree differs from its original epoch and fixed store")
 	}

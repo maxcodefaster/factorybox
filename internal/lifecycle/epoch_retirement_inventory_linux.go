@@ -25,6 +25,7 @@ type epochPayloadInventory struct {
 	Payload ownedtree.Plan
 	Witness ownedtree.Plan
 	Records map[string]Record
+	Native  []sysboxcapture.FilesystemTree
 }
 
 type epochInventoryBuilder struct {
@@ -36,6 +37,7 @@ type epochInventoryBuilder struct {
 	records      map[string]Record
 	bases        map[string]sysboxcapture.FilesystemTree
 	retiredBases map[string]bool
+	native       []sysboxcapture.FilesystemTree
 }
 
 func below(name, root string) bool { return name == root || strings.HasPrefix(name, root+"/") }
@@ -90,8 +92,15 @@ func (b *epochInventoryBuilder) snapshot(generation string, snapshot *sysboxcapt
 	if err := sysboxcapture.VerifyRetainedFilesystemSnapshot(b.ctx, b.engine.config.Root+"/"+generation, snapshot, b.translate); err != nil {
 		return err
 	}
+	if err := b.captureAlias(generation, snapshot); err != nil {
+		return err
+	}
 	for _, tree := range snapshot.Roots {
-		if err := b.payload(tree.Saved); err != nil {
+		if tree.Native != nil {
+			if err := b.nativePayload(tree); err != nil {
+				return err
+			}
+		} else if err := b.payload(tree.Saved); err != nil {
 			return err
 		}
 	}
@@ -612,9 +621,16 @@ func (b *epochInventoryBuilder) fork(record Record, backingRetired bool) error {
 	if !reflect.DeepEqual(&filesystem, prepared.Filesystem) || len(filesystem.Roots) < 2 || len(filesystem.Roots) > 9 {
 		return fmt.Errorf("epoch fork filesystem preparation differs")
 	}
+	if err := b.captureAlias(materialized, &filesystem); err != nil {
+		return err
+	}
 	seen := map[string]bool{}
 	for _, tree := range filesystem.Roots {
-		if tree.Saved != b.engine.config.Root+"/"+materialized+"/filesystem/"+tree.Name || !epochFilesystemName(tree.Name) || seen[tree.Name] {
+		expected := b.engine.config.Root + "/" + materialized + "/filesystem/" + tree.Name
+		if filesystem.Version == 2 && tree.Name == "upper" {
+			expected = b.engine.config.Root + "/" + materialized + "/filesystem/mutable/upper"
+		}
+		if tree.Saved != expected || !epochFilesystemName(tree.Name) || seen[tree.Name] {
 			return fmt.Errorf("epoch fork filesystem escaped its exact private preparation")
 		}
 		seen[tree.Name] = true
@@ -633,7 +649,11 @@ func (b *epochInventoryBuilder) fork(record Record, backingRetired bool) error {
 			return fmt.Errorf("epoch fork has an unexpected immutable tree")
 		}
 		if !backingRetired {
-			if err := b.payload(tree.Saved); err != nil {
+			if tree.Native != nil {
+				if err := b.nativePayload(tree); err != nil {
+					return err
+				}
+			} else if err := b.payload(tree.Saved); err != nil {
 				return err
 			}
 		} else if tree.Immutable != nil {
@@ -657,6 +677,9 @@ func (b *epochInventoryBuilder) fork(record Record, backingRetired bool) error {
 		return fmt.Errorf("epoch fork overlay has a foreign or changed uncovered mountpoint: %v", err)
 	}
 	for _, name := range []string{"rootfs", "work", "restore-work"} {
+		if filesystem.Version == 2 && name != "rootfs" {
+			continue // All native workdirs are inside the common mutable root.
+		}
 		if backingRetired && name != "rootfs" {
 			continue
 		}
@@ -676,7 +699,7 @@ func (b *epochInventoryBuilder) fork(record Record, backingRetired bool) error {
 		pauses = append(pauses, *record.Pause)
 	}
 	for _, pause := range pauses {
-		if pause.Resume == nil || backingRetired {
+		if pause.Resume == nil || backingRetired || filesystem.Version == 2 {
 			continue
 		}
 		// The pinned FactoryboxResumeRoot creates exactly this private
@@ -946,7 +969,11 @@ func (e *Engine) inventoryEpochPayloads(ctx context.Context) (epochPayloadInvent
 		}
 		paths = append(paths, name)
 	}
-	full, err := ownedtree.Capture(ctx, e.root, paths)
+	nativePaths, err := epochNativePaths(e.config.Root, b.native)
+	if err != nil {
+		return result, err
+	}
+	full, err := ownedtree.CaptureDelegating(ctx, e.root, paths, nativePaths)
 	if err != nil {
 		return result, err
 	}
@@ -963,13 +990,23 @@ func (e *Engine) inventoryEpochPayloads(ctx context.Context) (epochPayloadInvent
 			return result, fmt.Errorf("unknown or foreign epoch metadata: %s", entry.Path)
 		}
 	}
-	sort.Strings(b.payloads)
+	nativeSet := map[string]bool{}
+	for _, name := range nativePaths {
+		nativeSet[name] = true
+	}
+	plain := make([]string, 0, len(b.payloads))
+	for _, name := range b.payloads {
+		if !nativeSet[name] {
+			plain = append(plain, name)
+		}
+	}
+	sort.Strings(plain)
 	if len(b.payloads) == 0 {
 		return result, fmt.Errorf("epoch inventory has no complete payload roots")
 	}
-	plan, err := epochPayloadPlan(ctx, e.root, full, b.payloads)
+	plan, err := epochPayloadPlan(ctx, e.root, full, plain)
 	if err != nil {
 		return result, err
 	}
-	return epochPayloadInventory{Payload: plan, Witness: full, Records: b.records}, nil
+	return epochPayloadInventory{Payload: plan, Witness: full, Records: b.records, Native: b.native}, nil
 }

@@ -31,7 +31,12 @@ def start(row, image, previous, deadline, ready):
     row["identity"] = identity
     row["startup"] = ready(name, owner, identity, deadline)
     active = row["startup"]["status"]["lifecycle"]["bounded_store"]
-    if (active["loop_number"] != old["loop_number"] or active["block_device"] != old["block_device"] or
+    # Btrfs st_dev identifies its virtual filesystem, not the physical loop.
+    # Different filesystems can use the same loop slot with different st_dev;
+    # a remounted retained filesystem can reuse a previous virtual number.
+    physical_device = active["image"]["schema"] == 1 and old["image"]["schema"] == 1
+    if (active["loop_number"] != old["loop_number"] or
+            physical_device and active["block_device"] != old["block_device"] or
             active["image"]["owner"] != owner or active["image"]["owner"] == old["image"]["owner"] or
             active["image"]["filesystem_uuid"] == old["image"]["filesystem_uuid"]):
         raise ValueError("owned empty worker did not acquire the released old loop slot")
@@ -41,8 +46,10 @@ def start(row, image, previous, deadline, ready):
 def verify_replacement(row, current):
     old = row["previous_active"]
     active = current["lifecycle"]["bounded_store"]
+    physical_device = old["image"]["schema"] == 1
     if (row.get("old_slot_held") is not True or active["image"] != old["image"] or
-            active["loop_number"] == old["loop_number"] or active["block_device"] == old["block_device"]):
+            active["loop_number"] == old["loop_number"] or
+            physical_device and active["block_device"] == old["block_device"]):
         raise ValueError("replacement did not remount the exact retained image on a different loop device")
     row["replacement_active"] = active
     row["replacement_verified"] = True

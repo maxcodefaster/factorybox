@@ -575,6 +575,13 @@ func (e *Engine) epochWitness(ctx context.Context, source *Engine, prepared epoc
 	if err != nil {
 		return witness, err
 	}
+	nativePaths, err := epochNativePaths(source.config.Root, prepared.Native)
+	if err != nil || !reflect.DeepEqual(witness.DelegatedRoots, nativePaths) {
+		return witness, errors.Join(err, fmt.Errorf("epoch witness delegation differs from its native roots"))
+	}
+	if _, err := e.bindEpochNativeRetirement(ctx, source, prepared, !complete); err != nil {
+		return witness, err
+	}
 	if err := e.epochRetirementMetadata(ctx, source, prepared); err != nil {
 		return witness, err
 	}
@@ -653,6 +660,9 @@ func (e *Engine) completedEpochRetirement(ctx context.Context, source *Engine) (
 		if _, err := source.root.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 			return report, fmt.Errorf("retired epoch has payload or a foreign successor: %s: %v", path, err)
 		}
+	}
+	if err := e.epochNativeAbsent(ctx, source, prepared); err != nil {
+		return report, err
 	}
 	return report, nil
 }
@@ -748,7 +758,7 @@ func (e *Engine) retireEpoch(ctx context.Context, request epochRetirementRequest
 			return report, err
 		}
 		prepared = epochRetirementPreparation{Version: 1, Request: request, BootID: e.boot, Image: e.config.BoundedStore.Image, Attachment: *e.config.BoundedStore,
-			InventorySHA256: payloadSHA, WitnessSHA256: witnessSHA, Directory: directory, Reserve: reserve, Before: before, PreparedAt: now()}
+			InventorySHA256: payloadSHA, WitnessSHA256: witnessSHA, Directory: directory, Reserve: reserve, Before: before, PreparedAt: now(), Native: inventory.Native}
 		if err := source.publishCheckpoint(epochRetirementDirectory, "prepare.json", prepared); err != nil {
 			return report, err
 		}
@@ -817,6 +827,23 @@ func (e *Engine) retireEpoch(ctx context.Context, request epochRetirementRequest
 	plan, err = rebindEpochRetirementPlan(plan, prepared.Attachment, *e.config.BoundedStore)
 	if err != nil {
 		return report, err
+	}
+	if err := ownedtree.ValidateRemaining(ctx, source.root, plan); err != nil {
+		return report, err
+	}
+	native, err := e.bindEpochNativeRetirement(ctx, source, prepared, true)
+	if err != nil {
+		return report, err
+	}
+	for _, tree := range native {
+		if err := sysboxcapture.RetireColdNativeFilesystemTree(ctx, tree); err != nil {
+			return report, err
+		}
+	}
+	for _, tree := range native {
+		if err := sysboxcapture.WaitColdNativeFilesystemRetirement(ctx, tree); err != nil {
+			return report, err
+		}
 	}
 	if err := ownedtree.RemoveRemaining(ctx, source.root, plan); err != nil {
 		return report, err

@@ -253,6 +253,49 @@ func TestFilesystemSnapshotManifestNative(t *testing.T) {
 	if err := VerifyFilesystemSnapshot(ctx, root+"/generation", captured); err != nil {
 		t.Fatal("independent write changed the saved checkpoint", err)
 	}
+	t.Run("cold-native-retirement", func(t *testing.T) {
+		working := left.Roots[2]
+		if _, err := RebindNativeFilesystemRetirement(ctx, working, nil); err == nil {
+			t.Fatal("accepted retirement silently adopted later working writes")
+		}
+		observed, err := ObserveRetainedNativeFilesystemRetirement(ctx, working, nil)
+		if err != nil || observed.Native.Saved.Flags != 0 {
+			t.Fatal("observe owned cold working root without changing its flags", err)
+		}
+		refused := errors.New("original store does not authorize retirement")
+		if _, err := RebindNativeFilesystemRetirement(ctx, observed, func(FilesystemTree, uint64) error {
+			return refused
+		}); !errors.Is(err, refused) {
+			t.Fatal("reused local numbers bypassed retirement store authority", err)
+		}
+		if err := CheckNativeFilesystemRetirement(ctx, observed); err == nil {
+			t.Fatal("cold working proof broadened the sealed-checkpoint API")
+		}
+		if err := os.WriteFile(observed.Saved+"/marker", []byte("changed after observation"), 0640); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckColdNativeFilesystemRetirement(ctx, observed); err == nil {
+			t.Fatal("cold retirement adopted writes after its exact observation")
+		}
+		observed, err = ObserveRetainedNativeFilesystemRetirement(ctx, working, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := RetireColdNativeFilesystemTree(ctx, observed); err != nil {
+			t.Fatal("withdraw exact cold working subvolume", err)
+		}
+		if err := RetireColdNativeFilesystemTree(ctx, observed); err != nil {
+			t.Fatal("replay caller-authorized absent cold root", err)
+		}
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		if err := WaitColdNativeFilesystemRetirement(cancelled, observed); !errors.Is(err, context.Canceled) {
+			t.Fatal("cold cleaning observation ignored cancellation", err)
+		}
+		if err := VerifyFilesystemSnapshot(ctx, root+"/generation", captured); err != nil {
+			t.Fatal("cold working retirement changed its sealed ancestor", err)
+		}
+	})
 	if err := os.WriteFile(root+"/docker/marker", []byte("source advanced"), 0640); err != nil {
 		t.Fatal(err)
 	}

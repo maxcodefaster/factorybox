@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"factorybox/internal/storefs"
+	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
 
@@ -70,6 +72,25 @@ func boundedLossAction(t *testing.T, args ...string) []byte {
 	t.Helper()
 	data, err := boundedLossCommand(append([]string{"--worker-run-root", "/run/factorybox"}, args...)...)
 	if err != nil {
+		status := boundedLossStatusNow(t)
+		// Keep the native cause before the separately owned fixture is archived.
+		// Only read bounded log tails, never private filesystem or RAM payloads.
+		for _, pattern := range []string{"forks/*/materialized/images/*.log", "objects/*/captures/*/images/*.log"} {
+			paths, _ := filepath.Glob(status.Lifecycle.Root + "/" + pattern)
+			for _, path := range paths[:min(len(paths), 32)] {
+				file, openErr := os.Open(path)
+				if openErr != nil {
+					continue
+				}
+				if info, statErr := file.Stat(); statErr == nil && info.Mode().IsRegular() {
+					tail := make([]byte, min(info.Size(), 64<<10))
+					if _, readErr := file.ReadAt(tail, max(0, info.Size()-int64(len(tail)))); readErr == nil {
+						t.Logf("native diagnostic %s:\n%s", path, tail)
+					}
+				}
+				file.Close()
+			}
+		}
 		t.Fatal(err, string(data))
 	}
 	return data
@@ -134,13 +155,33 @@ func TestNativeBoundedLossPrepare(t *testing.T) {
 	}
 	status := boundedLossStatusNow(t)
 	bundle := status.Store + "/loss-bundle"
-	for _, name := range []string{"", "/upper", "/work", "/rootfs"} {
+	native := os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_LAYOUT") == "1"
+	directories := []string{"", "/upper", "/work", "/rootfs"}
+	if native {
+		directories = []string{"", "/rootfs"}
+	}
+	for _, name := range directories {
 		mode := os.FileMode(0755)
 		if name == "" {
 			mode = 0700
 		}
 		if err := os.Mkdir(bundle+name, mode); err != nil {
 			t.Fatal(err)
+		}
+	}
+	upper, work := bundle+"/upper", bundle+"/work"
+	if native {
+		if output, err := exec.Command("btrfs", "subvolume", "create", "--", bundle+"/mutable").CombinedOutput(); err != nil {
+			t.Fatal("create exact native fixture mutable root", string(output), err)
+		}
+		if err := os.Chmod(bundle+"/mutable", 0700); err != nil {
+			t.Fatal(err)
+		}
+		upper, work = bundle+"/mutable/upper", bundle+"/mutable/work"
+		for _, path := range []string{upper, work} {
+			if err := os.Mkdir(path, 0755); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	if out, err := exec.Command("cp", "-a", "/busybox", bundle+"/lower").CombinedOutput(); err != nil {
@@ -154,7 +195,27 @@ func TestNativeBoundedLossPrepare(t *testing.T) {
 		t.Fatal(err)
 	}
 	baseID := prepareRecoveryImportMountedFixture(t, bundle)
-	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0, "index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+bundle+"/work"); err != nil {
+	if native {
+		var base Base
+		baseID = "native-recovery-base"
+		if err := json.Unmarshal(boundedLossAction(t, "prepare-base", "--source", bundle+"/lower", baseID), &base); err != nil ||
+			base.Tree.Immutable == nil {
+			t.Fatal("native fixture immutable lower", err)
+		}
+		if err := os.Rename(bundle+"/lower", bundle+"/lower-input"); err != nil {
+			t.Fatal(err)
+		}
+		bound, err := sysboxcapture.BindFilesystemBase(base.Tree, bundle+"/lower")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := sysboxcapture.RetireImmutableAlias(bundle+"/lower", bound); err != nil {
+				t.Error("release only exact native fixture base alias", err)
+			}
+		})
+	}
+	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0, "index=off,lowerdir="+bundle+"/lower,upperdir="+upper+",workdir="+work); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -211,6 +272,20 @@ func TestNativeBoundedLossPrepare(t *testing.T) {
 		paused.Record.Pause.CheckpointSHA256 == "" || paused.Record.Pause.After.Anon != 0 ||
 		!paused.Record.Pause.Snapshot.FileBacked || paused.Record.Pause.Snapshot.ResidentBytesAfter != 0 {
 		t.Fatal("pause was not fully committed and released", paused.Record.Pause)
+	}
+	if native {
+		data, err := os.ReadFile(status.Lifecycle.Root + "/objects/source/captures/" + snapshot + "/checkpoint.json")
+		var saved Checkpoint
+		if err != nil || json.Unmarshal(data, &saved) != nil || saved.Filesystem == nil ||
+			saved.Filesystem.Version != 2 || saved.Filesystem.Writable || len(saved.Filesystem.Roots) != 9 {
+			t.Fatal("native epoch fixture did not publish its actual sealed native root set", err)
+		}
+		for _, tree := range saved.Filesystem.Roots {
+			if tree.Name != "lower" && (tree.Native == nil || tree.HashedBytes != 0 ||
+				tree.SourceReadUS != 0 || tree.TargetReadUS != 0) {
+				t.Fatal("native epoch fixture silently fell back to payload scans", tree.Name)
+			}
+		}
 	}
 	request := RecoveryRequest{SourceRoot: status.Lifecycle.Root, SourceID: "source", SnapshotID: snapshot,
 		SourceOwner: paused.Record.Owner, CheckpointSHA256: paused.Record.Pause.CheckpointSHA256}

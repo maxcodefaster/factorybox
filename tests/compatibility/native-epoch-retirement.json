@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "source_commit": "def1cee",
+  "previous_manifest": "tests/compatibility/cow-retirement-capacity.json",
+  "previous_manifest_sha256": "4202fa1d268708dfe464f3bd86bdf359052d0d3ef464ad2a42dd34484c2de124",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Add native common-subvolume layout to the complete existing epoch-retirement fixture without dropping its original lifecycle, recovery, ENOSPC, interruption, ownership or useful-work assertions. Native retained inspection must positively verify all nine filesystem roots and must not claim full-content hashing; the default copying fixture retains its original hash requirement. A Btrfs loop holder verifies the original physical loop slot independently of its virtual filesystem device, while ext4 retains its exact original device assertions. Before retirement intent, reuse the existing same-byte/inode/SHA256 exclusive-allocation control on only the native fixture's cold RAM image so its original usable-capacity increase remains a real reclamation assertion despite shared descendants. Never rewrite sealed native filesystem roots. Keep all resource ceilings, deadlines, vet checks and retained installations unchanged.",
+  "files": {
+    "tools/bounded_store_loss.py": {
+      "before_sha256": "f6ce78e95277f70f366a80cbe9f240813056cf85679b751f2692136099a5726f",
+      "after_sha256": "c4dcad62c59f424fcf386dec0754ed4d5c378c7d743d4220dcd2938781424566"
+    },
+    "tools/consumer_loop_holder.py": {
+      "before_sha256": "88d981aff7989eea4fc20b07734b0128fcf56461c1892cf9400e06bc944648c6",
+      "after_sha256": "03ef50febca0724480e8a3ae3e412134d03446ef9ad64d6cfae47d189e89e0b3"
+    },
+    "tools/native_filesystem_lifecycle.py": {
+      "before_sha256": "ffa59fc24bcfffd9952f5f2da1d7b62d3a84b728c9f0c0a01814254f5b27c133",
+      "after_sha256": "c85255ef8f577ea2d7e8472947985d2f1ac3f62e1ee1408e955dc02dbd102dd9"
+    },
+    "internal/lifecycle/bounded_loss_native_linux_test.go": {
+      "before_sha256": "ad878a7bd5bb6aa3f832f0c2c3381c2b91aee5d863d472f75eaf8df260ee5628",
+      "after_sha256": "abdc913a988d2d756356a31f630e9af97b2e2f30b8dd0efabdd598da36118c73"
+    },
+    "internal/lifecycle/retained_selection_native_linux_test.go": {
+      "before_sha256": "e44110974b3bd87afec292399d56d8eda622af53abf0146c6b98050a1c36cd7c",
+      "after_sha256": "f024ea183a36b18417c5ecaea674aaa05e43946b4b330c57f996a4b8cc7a570f"
+    },
+    "internal/lifecycle/epoch_retirement_native_linux_test.go": {
+      "before_sha256": "c115d02140ba010152a27ed94086546f094606abb80c4f2a15bd6613bbe66969",
+      "after_sha256": "8373d7297088824800a5d55161b71a5363f68a10e61bd20157567b7f7a61414e"
+    },
+    "internal/lifecycle/native_filesystem_native_linux_test.go": {
+      "before_sha256": "8851e2093f5825d16259f0c07f140299020d804719712734ce7cb2d5586618cb",
+      "after_sha256": "3c063fded6a7c314863761600f499bba0075d8614e60c6545ef79f293dbada73"
+    },
+    "internal/sysboxcapture/filesystem_manifest_native_linux_test.go": {
+      "before_sha256": "d7a153213bb9c04f5efe703fc557a4181d8f9976544ed00b15a8d00252f9e7ee",
+      "after_sha256": "7427891f00f34c6fd443f4ebc5f7b9028f7784a9d37b82c1512df3da9a18af94"
+    }
+  }
+}

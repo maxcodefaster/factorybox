@@ -162,6 +162,8 @@ def main():
                         help='retain every original assertion, then test durable retirement protection across another worker loss')
     parser.add_argument('--epoch-retirement', action='store_true',
                         help='full public epoch admission, exact partial deletion, worker loss and completion with useful successor')
+    parser.add_argument('--native-filesystems', action='store_true',
+                        help='Run the complete epoch suite with native common-subvolume capture; preserve all original assertions')
     parser.add_argument('--base-retirement', action='store_true',
                         help='retire one unreferenced retained base after every original recovery assertion')
     parser.add_argument('--initial-import-pressure', action='store_true',
@@ -169,6 +171,8 @@ def main():
     parser.add_argument('--mounted-import-interruption', action='store_true',
                         help='interrupt actual import after immutable mounts exist, fence its worker, cancel through a third worker, then every original recovery assertion')
     args = parser.parse_args()
+    if args.native_filesystems and not args.epoch_retirement:
+        raise ValueError('native filesystem qualification requires the complete epoch-retirement fixture')
     if args.base_retirement and any([args.retirement_fence, args.epoch_retirement,
                                     args.initial_import_pressure, args.mounted_import_interruption]):
         raise ValueError('retained base retirement owns a separate complete recovery fixture')
@@ -220,6 +224,7 @@ def main():
               'loss': args.loss, 'retained_selection': args.retained_selection,
               'retirement_fence': args.retirement_fence,
               'epoch_retirement': args.epoch_retirement,
+              'native_filesystems': args.native_filesystems,
               'base_retirement': args.base_retirement,
               'initial_import_pressure': args.initial_import_pressure,
               'mounted_import_interruption': args.mounted_import_interruption,
@@ -266,6 +271,8 @@ def main():
                 command += ['--env', 'FACTORYBOX_NATIVE_EPOCH_RETIREMENT_FENCE=1']
             if args.epoch_retirement:
                 command += ['--env', 'FACTORYBOX_NATIVE_EPOCH_RETIREMENT=1']
+            if args.native_filesystems:
+                command += ['--env', 'FACTORYBOX_NATIVE_FILESYSTEM_LAYOUT=1']
             if args.initial_import_pressure:
                 command += ['--env', 'FACTORYBOX_NATIVE_IMPORT_INITIAL_PRESSURE=1']
             if args.mounted_import_interruption:

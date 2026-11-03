@@ -58,9 +58,10 @@ class RestoreRootNativeProof(unittest.TestCase):
     def test_all_original_native_and_refusal_cases_are_required(self):
         rows = ["--- PASS: TestFactoryboxNativeRootMapping/" + name + " (0.01s)"
                 for name in restore_root_native.CASES]
+        rows.append("--- PASS: TestFactoryboxNativeInheritedWork (0.01s)")
         restore_root_native.require_coverage("\n".join(rows))
         for index in range(len(rows)):
-            with self.subTest(missing=restore_root_native.CASES[index]), self.assertRaises(ValueError):
+            with self.subTest(missing=rows[index]), self.assertRaises(ValueError):
                 restore_root_native.require_coverage("\n".join(rows[:index] + rows[index+1:]))
         for invalid in ["PASS", "--- SKIP: required\n" + "\n".join(rows)]:
             with self.subTest(output=invalid), self.assertRaises(ValueError):

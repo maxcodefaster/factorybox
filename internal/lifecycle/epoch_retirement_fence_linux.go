@@ -15,6 +15,7 @@ import (
 
 	"factorybox/internal/ownedtree"
 	"factorybox/internal/storefs"
+	"factorybox/internal/sysboxcapture"
 )
 
 const epochRetirementDirectory = ".epoch-retirement"
@@ -37,17 +38,18 @@ type EpochRetirementRequest = epochRetirementRequest
 type EpochRecoveryHandover = epochRecoveryHandover
 
 type epochRetirementPreparation struct {
-	Version         int                    `json:"version"`
-	Request         epochRetirementRequest `json:"request"`
-	BootID          string                 `json:"boot_id"`
-	Image           storefs.Image          `json:"image"`
-	Attachment      storefs.Active         `json:"attachment"`
-	InventorySHA256 string                 `json:"inventory_sha256"`
-	PreparedAt      string                 `json:"prepared_at"`
-	WitnessSHA256   string                 `json:"witness_sha256,omitempty"`
-	Directory       KernelObject           `json:"directory,omitempty"`
-	Reserve         retirementReserve      `json:"reserve,omitempty"`
-	Before          StorageCapacity        `json:"before,omitempty"`
+	Version         int                            `json:"version"`
+	Request         epochRetirementRequest         `json:"request"`
+	BootID          string                         `json:"boot_id"`
+	Image           storefs.Image                  `json:"image"`
+	Attachment      storefs.Active                 `json:"attachment"`
+	InventorySHA256 string                         `json:"inventory_sha256"`
+	PreparedAt      string                         `json:"prepared_at"`
+	WitnessSHA256   string                         `json:"witness_sha256,omitempty"`
+	Directory       KernelObject                   `json:"directory,omitempty"`
+	Reserve         retirementReserve              `json:"reserve,omitempty"`
+	Before          StorageCapacity                `json:"before,omitempty"`
+	Native          []sysboxcapture.FilesystemTree `json:"native,omitempty"`
 }
 
 type epochRetirementFence struct {
@@ -191,6 +193,7 @@ func rebindEpochRetirementPlan(plan ownedtree.Plan, previous, current storefs.Ac
 	// Never modify the archived plan or share its mutable backing arrays.
 	result := plan
 	result.Paths = append([]string(nil), plan.Paths...)
+	result.DelegatedRoots = append([]string(nil), plan.DelegatedRoots...)
 	result.Anchors = append([]ownedtree.Entry(nil), plan.Anchors...)
 	result.Entries = append([]ownedtree.Entry(nil), plan.Entries...)
 	if err := translate(&result.Root); err != nil {
@@ -345,6 +348,9 @@ func (e *Engine) finishEpochRetirementFence(ctx context.Context, source *Engine,
 		if _, err := source.root.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("epoch retirement still has payload or a successor: %s: %v", path, err)
 		}
+	}
+	if err := e.epochNativeAbsent(ctx, source, prepared); err != nil {
+		return err
 	}
 	plan, err := e.verifyEpochRetirementFence(ctx, store, accepted)
 	if errors.Is(err, os.ErrNotExist) {

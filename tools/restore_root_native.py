@@ -26,7 +26,7 @@ TEST_BINARY = "factorybox-restore-root.test"
 
 
 def require_coverage(output):
-    if "--- SKIP:" in output or any(
+    if "--- SKIP:" in output or "--- PASS: TestFactoryboxNativeInheritedWork (" not in output or any(
             "--- PASS: TestFactoryboxNativeRootMapping/" + name + " (" not in output
             for name in CASES):
         raise ValueError("native root mapping omitted an original-layout or required refusal case")
@@ -92,7 +92,7 @@ def main():
         probe = [
             *reference.DOCKER, "exec", "--env",
             "FACTORYBOX_NATIVE_RESTORE_ROOT=/var/lib/sysbox/fixed-store/data/store",
-            identity, "/probe.test", "-test.v", "-test.run=^TestFactoryboxNativeRootMapping$",
+            identity, "/probe.test", "-test.v", "-test.run=^TestFactoryboxNative(RootMapping|InheritedWork)$",
             "-test.timeout=" + str(remaining) + "s",
         ]
         result["probe_command"] = probe

@@ -261,6 +261,14 @@ func TestNativeEpochRetirementRecover(t *testing.T) {
 		t.Fatal("an overlay outside the epoch still using its lower was accepted")
 	}
 	wrong++
+	if os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_LAYOUT") == "1" {
+		// Native descendants intentionally share extents with the old pause.
+		// Preserve the original usable-capacity assertion by giving only this
+		// cold fixture's RAM image exclusive extents before deletion intent.
+		// The existing control verifies identical bytes, inode and size plus
+		// actual allocation; sealed native filesystem roots stay untouched.
+		retirementExclusivePayload(t, images)
+	}
 	epochRetirementPreparationENOSPC(t, engine, old, pause.Request, request)
 	acceptedBytes, err := epochRetirementCLI(t, "begin-epoch-retirement", request, "epoch-retirement-request.json")
 	if err != nil {

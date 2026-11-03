@@ -71,6 +71,14 @@ def require_backing_retirement(proof):
             any(retired.get(key) is not True or retired.get("child", {}).get(key) is not True for key in fields)):
         raise ValueError("native backing retirement omitted exact cleanup or independent work")
 
+def require_epoch_retirement(proof):
+    retired = proof.get("native_epoch_retirement", {})
+    if any(retired.get(key) is not True for key in
+           ["passed", "old_payloads_absent", "original_metadata_preserved", "exact_replay",
+            "old_recovery_refused", "successor_resumed_and_useful",
+            "actual_controller_sigkill", "foreign_successor_preserved"]):
+        raise ValueError("native epoch retirement omitted old backing withdrawal or useful independent recovery")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -79,11 +87,14 @@ def main():
     parser.add_argument("--retirement", action="store_true", help="Retire the exact native checkpoint while an independent child continues useful work")
     parser.add_argument("--retirement-interruption", action="store_true", help="Kill native retirement after actual root withdrawal and verify its exact continuation")
     parser.add_argument("--backing-retirement", action="store_true", help="Retire the deleted native Sandbox's private backing while its independent child remains useful")
+    parser.add_argument("--epoch-retirement", action="store_true", help="Retire the original native epoch after a committed independent successor pause")
     args = parser.parse_args()
     if args.replacement and (args.retirement or args.backing_retirement):
         parser.error("select either replacement recovery or same-worker checkpoint retirement")
     if args.retirement_interruption and not args.retirement:
         parser.error("--retirement-interruption requires --retirement")
+    if args.epoch_retirement and not args.replacement:
+        parser.error("--epoch-retirement requires --replacement")
     build, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
     native_base.require_native_host(worker["platform"], host)
@@ -126,6 +137,8 @@ def main():
         result["scope"] += " Includes exact native checkpoint retirement, selection protection and useful independent child after retirement."
     if args.backing_retirement:
         result["scope"] += " Includes exact deleted-Sandbox private backing retirement and useful independent child."
+    if args.epoch_retirement:
+        result["scope"] += " Includes public original-epoch retirement with a committed independent successor and useful resumed work."
     volume_attempted = container_attempted = False
     identity, deadline, current_name = None, None, name
     try:
@@ -166,6 +179,7 @@ def main():
                                    "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETIREMENT=" + ("1" if args.retirement else "0"),
                                    "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETIREMENT_INTERRUPT=" + ("1" if args.retirement_interruption else "0"),
                                    "--env", "FACTORYBOX_NATIVE_FILESYSTEM_BACKING_RETIREMENT=" + ("1" if args.backing_retirement else "0"),
+                                   "--env", "FACTORYBOX_NATIVE_FILESYSTEM_EPOCH_RETIREMENT_PREPARE=" + ("1" if args.epoch_retirement else "0"),
                                    identity, "/bin/bash", "-ec", setup],
                                   stdout=out, stderr=err, timeout=max(.001, deadline - time.monotonic()))
         result["exit_code"] = done.returncode
@@ -207,6 +221,7 @@ def main():
                 raise ValueError("replacement reused the original native epoch")
             remaining = max(.001, deadline - time.monotonic())
             recover = [*reference.DOCKER, "exec", "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETAINED=recover",
+                       "--env", "FACTORYBOX_NATIVE_FILESYSTEM_EPOCH_RETIREMENT=" + ("1" if args.epoch_retirement else "0"),
                        identity, "/probe.test", "-test.v", "-test.run=^TestNativeFilesystemRetainedRecover$",
                        "-test.timeout=" + str(remaining) + "s"]
             with (artifact / "recover.stdout").open("x") as out, (artifact / "recover.stderr").open("x") as err:
@@ -218,6 +233,9 @@ def main():
             deleted = json.loads((output / "native-recovered-delete.json").read_text())
             prepared = json.loads((output / "native-retained.json").read_text())
             require_retained_complete(proof, deleted, prepared, startup)
+            if args.epoch_retirement:
+                require_epoch_retirement(proof)
+                result["native_epoch_retirement"] = proof["native_epoch_retirement"]
             remaining = deadline - time.monotonic()
             reference.docker(["container", "stop", "--time=" + str(math.ceil(remaining)), identity], timeout=remaining)
             state = consumer_worker_loss.exact_worker(current_name, owner, identity)["State"]

@@ -5,6 +5,19 @@ import native_filesystem_lifecycle
 
 
 class NativeFilesystemLifecycleProof(unittest.TestCase):
+    def test_native_epoch_retirement_requires_exact_backing_and_useful_successor(self):
+        fields = ["passed", "old_payloads_absent", "original_metadata_preserved", "exact_replay",
+                  "old_recovery_refused", "successor_resumed_and_useful",
+                  "actual_controller_sigkill", "foreign_successor_preserved"]
+        retired = dict.fromkeys(fields, True)
+        native_filesystem_lifecycle.require_epoch_retirement({"native_epoch_retirement": retired})
+        for field in fields:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                native_filesystem_lifecycle.require_epoch_retirement(
+                    {"native_epoch_retirement": {**retired, field: False}})
+        with self.assertRaises(ValueError):
+            native_filesystem_lifecycle.require_epoch_retirement({})
+
     def test_native_backing_retirement_requires_exact_cleanup_and_independent_work(self):
         fields = ["passed", "exact_replay", "native_mutable_absent", "manager_roots_absent",
                   "common_base_preserved", "independent_child_useful"]

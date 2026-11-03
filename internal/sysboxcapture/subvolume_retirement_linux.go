@@ -21,7 +21,11 @@ const (
 )
 
 func subvolumeRetirementParent(path string, expected subvolumeIdentity) (_ *os.File, resultErr error) {
-	if !cleanAbsolute(path) || expected.Flags != btrfsReadonlyRoot ||
+	return subvolumeRetirementParentFlags(path, expected, btrfsReadonlyRoot)
+}
+
+func subvolumeRetirementParentFlags(path string, expected subvolumeIdentity, flags uint64) (_ *os.File, resultErr error) {
+	if !cleanAbsolute(path) || flags > btrfsReadonlyRoot || expected.Flags != flags ||
 		expected.ID < 256 || expected.MountID == 0 || expected.FilesystemUUID == "" {
 		return nil, fmt.Errorf("native retirement requires its sealed snapshot identity")
 	}
@@ -72,6 +76,10 @@ func retireSubvolume(ctx context.Context, path string, expected subvolumeIdentit
 	if err := verifySubvolume(path, expected); err != nil {
 		return err
 	}
+	return destroySubvolume(ctx, parent, path, expected.ID)
+}
+
+func destroySubvolume(ctx context.Context, parent *os.File, path string, id uint64) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -80,7 +88,7 @@ func retireSubvolume(ctx context.Context, path string, expected subvolumeIdentit
 	// falls back to recursive unlink or a path-only deletion.
 	data := make([]byte, 4096)
 	binary.LittleEndian.PutUint64(data[16:24], btrfsDeleteByID)
-	binary.LittleEndian.PutUint64(data[56:64], expected.ID)
+	binary.LittleEndian.PutUint64(data[56:64], id)
 	if err := subvolumeIOCTL(int(parent.Fd()), btrfsDestroyIOCTL, data); err != nil {
 		return err
 	}
@@ -102,10 +110,14 @@ func retireSubvolume(ctx context.Context, path string, expected subvolumeIdentit
 // a Go context. Bounded root-item queries let cancellation stop observation
 // without a leaked waiter or a false receipt that all bytes are already free.
 func waitSubvolumeRetirement(ctx context.Context, path string, expected subvolumeIdentity) (resultErr error) {
+	return waitSubvolumeRetirementFlags(ctx, path, expected, btrfsReadonlyRoot)
+}
+
+func waitSubvolumeRetirementFlags(ctx context.Context, path string, expected subvolumeIdentity, flags uint64) (resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	parent, err := subvolumeRetirementParent(path, expected)
+	parent, err := subvolumeRetirementParentFlags(path, expected, flags)
 	if err != nil {
 		return err
 	}

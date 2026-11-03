@@ -39,11 +39,12 @@ type Entry struct {
 }
 
 type Plan struct {
-	Version int      `json:"version"`
-	Root    Object   `json:"root"`
-	Paths   []string `json:"paths"`
-	Anchors []Entry  `json:"anchors"`
-	Entries []Entry  `json:"entries"`
+	Version        int      `json:"version"`
+	Root           Object   `json:"root"`
+	Paths          []string `json:"paths"`
+	Anchors        []Entry  `json:"anchors"`
+	Entries        []Entry  `json:"entries"`
+	DelegatedRoots []string `json:"delegated_roots,omitempty"`
 }
 
 const MaximumEntries = 1000000
@@ -157,7 +158,10 @@ func list(anchor int, name string) ([]os.DirEntry, error) {
 	return entries, nil
 }
 
-func walk(ctx context.Context, anchor int, name string, mount uint64, visit func(Entry) error, depth int, buffer []byte) error {
+func walk(ctx context.Context, anchor int, name string, mount uint64, delegated map[string]bool, visit func(Entry) error, depth int, buffer []byte) error {
+	if delegated[name] {
+		return ctx.Err()
+	}
 	if depth > 256 {
 		return fmt.Errorf("owned tree exceeds depth bound")
 	}
@@ -179,7 +183,7 @@ func walk(ctx context.Context, anchor int, name string, mount uint64, visit func
 		return err
 	}
 	for _, child := range entries {
-		if err := walk(ctx, anchor, name+"/"+child.Name(), mount, visit, depth+1, buffer); err != nil {
+		if err := walk(ctx, anchor, name+"/"+child.Name(), mount, delegated, visit, depth+1, buffer); err != nil {
 			return err
 		}
 	}
@@ -189,6 +193,14 @@ func walk(ctx context.Context, anchor int, name string, mount uint64, visit func
 // Capture must follow the caller's complete ownership/content authorization.
 // No file, mount or permission is changed while taking the inventory.
 func Capture(ctx context.Context, root *os.Root, paths []string) (plan Plan, resultErr error) {
+	return CaptureDelegating(ctx, root, paths, nil)
+}
+
+// CaptureDelegating inventories a witness around separately owned roots. Their
+// names and contents are not traversed or authorized by this plan. The caller
+// must verify them independently on every use. Such a witness cannot be passed
+// to RemoveRemaining, including after the delegated roots have disappeared.
+func CaptureDelegating(ctx context.Context, root *os.Root, paths, delegatedRoots []string) (plan Plan, resultErr error) {
 	anchor, err := root.Open(".")
 	if err != nil {
 		return plan, err
@@ -201,6 +213,12 @@ func Capture(ctx context.Context, root *os.Root, paths []string) (plan Plan, res
 	}
 	plan.Paths = append([]string(nil), paths...)
 	sort.Strings(plan.Paths)
+	plan.DelegatedRoots = append([]string(nil), delegatedRoots...)
+	sort.Strings(plan.DelegatedRoots)
+	delegated, err := delegatedPaths(plan)
+	if err != nil {
+		return plan, err
+	}
 	anchors := map[string]bool{}
 	// Each scan is sequential. Reuse its read buffer across regular files;
 	// the independent complete validation still hashes every file again.
@@ -212,7 +230,7 @@ func Capture(ctx context.Context, root *os.Root, paths []string) (plan Plan, res
 		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
 			anchors[parent] = true
 		}
-		if err := walk(ctx, int(anchor.Fd()), name, plan.Root.MountID, func(entry Entry) error {
+		if err := walk(ctx, int(anchor.Fd()), name, plan.Root.MountID, delegated, func(entry Entry) error {
 			if len(plan.Entries) >= MaximumEntries {
 				return fmt.Errorf("owned tree exceeds inventory bound")
 			}
@@ -243,6 +261,44 @@ func Capture(ctx context.Context, root *os.Root, paths []string) (plan Plan, res
 	return plan, nil
 }
 
+func delegatedPaths(plan Plan) (map[string]bool, error) {
+	if len(plan.DelegatedRoots) == 0 {
+		return nil, nil
+	}
+	if len(plan.DelegatedRoots) > MaximumEntries {
+		return nil, fmt.Errorf("delegated witness roots exceed inventory bound")
+	}
+	result := map[string]bool{}
+	for i, name := range plan.DelegatedRoots {
+		if !local(name) || i > 0 && name <= plan.DelegatedRoots[i-1] {
+			return nil, fmt.Errorf("delegated witness roots are invalid or repeated")
+		}
+		inside := false
+		for _, root := range plan.Paths {
+			inside = inside || strings.HasPrefix(name, root+"/")
+		}
+		if !inside {
+			return nil, fmt.Errorf("delegated witness root is not strictly inside a selected tree")
+		}
+		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+			if result[parent] {
+				return nil, fmt.Errorf("delegated witness roots overlap")
+			}
+		}
+		result[name] = true
+	}
+	for _, entries := range [][]Entry{plan.Entries, plan.Anchors} {
+		for _, entry := range entries {
+			for parent := entry.Path; parent != "."; parent = path.Dir(parent) {
+				if result[parent] {
+					return nil, fmt.Errorf("delegated witness contains an inventoried descendant")
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
 func same(actual, expected Entry) bool {
 	return actual.Path == expected.Path && actual.Object == expected.Object && actual.Bytes == expected.Bytes &&
 		actual.Rdev == expected.Rdev && actual.Content == expected.Content && actual.Link == expected.Link
@@ -258,6 +314,10 @@ func validate(ctx context.Context, anchor int, plan Plan, missing bool) error {
 	}
 	if plan.Version != 1 || actualRoot != plan.Root || len(plan.Entries) > MaximumEntries || len(plan.Paths) == 0 {
 		return fmt.Errorf("owned inventory root or version changed")
+	}
+	delegated, err := delegatedPaths(plan)
+	if err != nil {
+		return err
 	}
 	expected := map[string]Entry{}
 	for _, entry := range plan.Entries {
@@ -293,7 +353,7 @@ func validate(ctx context.Context, anchor int, plan Plan, missing bool) error {
 		if _, exists := expected[name]; !exists {
 			return fmt.Errorf("inventory omits its payload root")
 		}
-		err := walk(ctx, anchor, name, plan.Root.MountID, func(actual Entry) error {
+		err := walk(ctx, anchor, name, plan.Root.MountID, delegated, func(actual Entry) error {
 			entry, exists := expected[actual.Path]
 			if !exists || !same(actual, entry) {
 				return fmt.Errorf("owned payload changed or contains an unknown entry: %s", actual.Path)
@@ -348,6 +408,9 @@ func ValidateComplete(ctx context.Context, root *os.Root, plan Plan) error {
 // Only inventoried original objects are unlinked; a live open reference retains
 // its data. The caller must observe filesystem capacity separately.
 func RemoveRemaining(ctx context.Context, root *os.Root, plan Plan) error {
+	if len(plan.DelegatedRoots) != 0 {
+		return fmt.Errorf("delegated witness is not deletion authority")
+	}
 	anchor, err := root.Open(".")
 	if err != nil {
 		return err
