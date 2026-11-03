@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"strings"
 
 	"github.com/vishvananda/netlink"
@@ -20,12 +21,41 @@ func (config Config) validateCopy(source Config) error {
 	if err := config.Validate(); err != nil {
 		return err
 	}
+	return config.validateCopyOwner(source)
+}
+
+func (config Config) validateCopyOwner(source Config) error {
 	if source.Owner == config.Owner || source.CIDR == config.CIDR ||
 		source.NamespaceDevice != config.NamespaceDevice || source.NamespaceInode != config.NamespaceInode ||
 		source.MTU != config.MTU {
 		return fmt.Errorf("independent network copy requires another owner, subnet and peer in the original worker")
 	}
 	return nil
+}
+
+// RetainedCopyConfiguration verifies immutable dependency metadata without
+// joining or adopting the previous worker's network namespace. It grants no
+// live network authority; execution still uses CopyConfiguration/Validate.
+func (config Config) RetainedCopyConfiguration(source Config, saved []byte) ([]byte, error) {
+	for _, value := range []Config{source, config} {
+		expected, err := derive(value.Owner)
+		if err != nil {
+			return nil, err
+		}
+		if value.NamespaceDevice == 0 || value.NamespaceInode == 0 ||
+			value.MTU < 576 || value.MTU > 65535 {
+			return nil, fmt.Errorf("retained network lacks its original namespace or finite MTU")
+		}
+		expected.NamespaceDevice, expected.NamespaceInode, expected.MTU =
+			value.NamespaceDevice, value.NamespaceInode, value.MTU
+		if !reflect.DeepEqual(value, expected) {
+			return nil, fmt.Errorf("retained network differs from its derived owner configuration")
+		}
+	}
+	if err := config.validateCopyOwner(source); err != nil {
+		return nil, err
+	}
+	return copyCRIUConfiguration(source, config, saved)
 }
 
 // CopyConfiguration changes only the complete known outer-netdev mapping.

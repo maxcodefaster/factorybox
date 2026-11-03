@@ -15,6 +15,10 @@ import (
 )
 
 func validateForkNetwork(intent forkIntent) error {
+	return validateForkNetworkMetadata(intent, false)
+}
+
+func validateForkNetworkMetadata(intent forkIntent, metadataOnly bool) error {
 	if intent.Source.Network == nil {
 		if intent.TargetNetwork != nil || len(intent.NetworkCopy) != 0 {
 			return fmt.Errorf("fork added a network absent from its original checkpoint")
@@ -24,7 +28,13 @@ func validateForkNetwork(intent forkIntent) error {
 	if intent.Recovery != nil || intent.TargetNetwork == nil || intent.TargetNetwork.Owner != intent.Owner {
 		return fmt.Errorf("network fork requires its independently owned same-worker target")
 	}
-	if _, err := intent.TargetNetwork.CopyConfiguration(*intent.Source.Network, intent.CriuConfig); err != nil {
+	var err error
+	if metadataOnly {
+		_, err = intent.TargetNetwork.RetainedCopyConfiguration(*intent.Source.Network, intent.CriuConfig)
+	} else {
+		_, err = intent.TargetNetwork.CopyConfiguration(*intent.Source.Network, intent.CriuConfig)
+	}
+	if err != nil {
 		return err
 	}
 	var proof sysboxcapture.NetworkCopyEvidence

@@ -216,7 +216,7 @@ func (e *Engine) readForkIntent(operation, sourceID, snapshotID, targetID string
 			return intent, fmt.Errorf("fork intent changed saved metadata: %s", name)
 		}
 	}
-	return intent, validateForkNetwork(intent)
+	return intent, validateForkNetworkMetadata(intent, e.metadataOnly)
 }
 
 func (e *Engine) newForkIntent(ctx context.Context, sourceID, snapshotID, targetID string) (forkIntent, error) {
