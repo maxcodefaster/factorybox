@@ -945,13 +945,20 @@
       "commit": "2d45af01bcfd8641e6641f76104c6003bf501cd7",
       "local_inputs_sha256": {
         "upstream/patches/sysbox-mgr-test-diagnostics.patch": "1c11808cc65c17123e2e1502ec061bf5f427b5e2eed6e04ea8d99d4ddc0f1987",
-        "upstream/patches/sysbox-mgr-binfmt-policy.patch": "e9e9dc6c48947f180fcda726c31de02410f0c4bb01d7a6df8f4f4f5e52d4a90a"
+        "upstream/patches/sysbox-mgr-binfmt-policy.patch": "e9e9dc6c48947f180fcda726c31de02410f0c4bb01d7a6df8f4f4f5e52d4a90a",
+        "upstream/patches/sysbox-mgr-native-private-volumes.patch": "2081538b5a6d5e835deba7e00d0cc303b8046f435119cb761236baf23f7143dc"
       },
       "overlays": {},
       "patches": [
         "upstream/patches/sysbox-mgr-test-diagnostics.patch",
-        "upstream/patches/sysbox-mgr-binfmt-policy.patch"
+        "upstream/patches/sysbox-mgr-binfmt-policy.patch",
+        "upstream/patches/sysbox-mgr-native-private-volumes.patch"
       ],
+      "prepared_files_sha256": {
+        "volMgr/factorybox_subvolume_linux.go": "b3596983396c2392f812fb4334aa849b620b1d5c98ce4383b4fb506190fa5e0b",
+        "volMgr/factorybox_subvolume_linux_test.go": "ffdb55cc7f61a51bfbd45e53f711b9dde4dee75ee782dab72334db0644a831da",
+        "volMgr/volMgr.go": "a3564bdb808b3834db758d5e7450df087dd46b2ee7827ff02ba02828d52f8e5c"
+      },
       "prefix": "sysbox-mgr-2d45af01bcfd8641e6641f76104c6003bf501cd7",
       "repository": "nestybox/sysbox-mgr",
       "sha256": "8c39b638d0051b61eea0a17972787259ce0597b1ce4cfc1fca75d3ee4826ecf9",

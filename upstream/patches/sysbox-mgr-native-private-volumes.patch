@@ -1,0 +1,603 @@
+diff --git a/volMgr/volMgr.go b/volMgr/volMgr.go
+--- a/volMgr/volMgr.go
++++ b/volMgr/volMgr.go
+@@ -48,14 +48,15 @@
+ )
+ 
+ type volInfo struct {
+-	volPath     string      // volume path in host
+-	rootfs      string      // container rootfs
+-	mountPath   string      // container path where volume is mounted
+-	syncOutPath string      // container path for volume sync-out
+-	uid         uint32      // uid owner for container
+-	gid         uint32      // gid owner for container
+-	shiftUids   bool        // chown uid(gid) when copying to/from container rootfs
+-	perm        os.FileMode // permissions for the volume
++	nativeRoot  *factoryboxVolumeRoot // exact kernel root for a fresh Factorybox volume
++	volPath     string                // volume path in host
++	rootfs      string                // container rootfs
++	mountPath   string                // container path where volume is mounted
++	syncOutPath string                // container path for volume sync-out
++	uid         uint32                // uid owner for container
++	gid         uint32                // gid owner for container
++	shiftUids   bool                  // chown uid(gid) when copying to/from container rootfs
++	perm        os.FileMode           // permissions for the volume
+ }
+ 
+ type vmgr struct {
+@@ -143,19 +144,25 @@
+ 		}
+ 	}()
+ 
+-	if err = os.Mkdir(volPath, perm); err != nil {
++	if vi.nativeRoot, err = createFactoryboxVolumeRoot(id, volPath, perm); err != nil {
++		if vi.nativeRoot != nil {
++			_ = destroyFactoryboxVolumeRoot(volPath, vi.nativeRoot)
++		}
+ 		return nil, fmt.Errorf("failed to create volume for container %v: %v", id, err)
+ 	}
++	m.mu.Lock()
++	m.volTable[id] = vi
++	m.mu.Unlock()
+ 
+ 	if err = os.Chown(volPath, int(uid), int(gid)); err != nil {
+-		os.RemoveAll(volPath)
++		_ = destroyFactoryboxVolumeRoot(volPath, vi.nativeRoot)
+ 		return nil, fmt.Errorf("failed to set ownership of volume %v: %v", volPath, err)
+ 	}
+ 
+ 	// Sync the contents of container's mountpoint to the newly created volume ("sync-in")
+ 	if _, err := os.Stat(mountPath); err == nil {
+ 		if err = m.rsyncVol(mountPath, volPath, uid, gid, chownOnSync, shiftUp); err != nil {
+-			os.RemoveAll(volPath)
++			_ = destroyFactoryboxVolumeRoot(volPath, vi.nativeRoot)
+ 			return nil, fmt.Errorf("volume sync-in failed: %v", err)
+ 		}
+ 	}
+@@ -170,7 +177,7 @@
+ 	}
+ 
+ 	logrus.Debugf("%s: created volume for container %s",
+-		m.name, formatter.ContainerID{id})
++		m.name, formatter.ContainerID{ID: id})
+ 
+ 	return mounts, nil
+ }
+@@ -183,7 +190,7 @@
+ 	if !found {
+ 		m.mu.Unlock()
+ 		return fmt.Errorf("failed to find vol info for container %s",
+-			formatter.ContainerID{id})
++			formatter.ContainerID{ID: id})
+ 	}
+ 	volPath := vi.volPath
+ 	m.mu.Unlock()
+@@ -192,7 +199,7 @@
+ 		return fmt.Errorf("failed to stat %v: %v", volPath, err)
+ 	}
+ 
+-	if err := os.RemoveAll(volPath); err != nil {
++	if err := destroyFactoryboxVolumeRoot(volPath, vi.nativeRoot); err != nil {
+ 		return fmt.Errorf("failed to remove %v: %v", volPath, err)
+ 	}
+ 
+@@ -201,7 +208,7 @@
+ 	m.mu.Unlock()
+ 
+ 	logrus.Debugf("%s: destroyed volume for container %s",
+-		m.name, formatter.ContainerID{id})
++		m.name, formatter.ContainerID{ID: id})
+ 
+ 	return nil
+ }
+@@ -218,14 +225,14 @@
+ 	if !found {
+ 		m.mu.Unlock()
+ 		return fmt.Errorf("failed to find vol info for container %s",
+-			formatter.ContainerID{id})
++			formatter.ContainerID{ID: id})
+ 	}
+ 	m.mu.Unlock()
+ 
+ 	// If the container's rootfs is gone, bail
+ 	if _, err := os.Stat(vi.rootfs); os.IsNotExist(err) {
+ 		logrus.Debugf("%s: volume sync-out for container %s skipped: target %s does not exist",
+-			m.name, formatter.ContainerID{id}, vi.rootfs)
++			m.name, formatter.ContainerID{ID: id}, vi.rootfs)
+ 		return nil
+ 	}
+ 
+@@ -255,7 +262,7 @@
+ 			_, err2 := os.Stat(vi.syncOutPath)
+ 			if err2 != nil && os.IsNotExist(err2) {
+ 				logrus.Debugf("%s: volume sync-out for container %s skipped: target %s does not exist",
+-					m.name, formatter.ContainerID{id}, vi.syncOutPath)
++					m.name, formatter.ContainerID{ID: id}, vi.syncOutPath)
+ 				return nil
+ 			}
+ 
+@@ -264,7 +271,7 @@
+ 	}
+ 
+ 	logrus.Debugf("%s: sync'd-out volume for container %s",
+-		m.name, formatter.ContainerID{id})
++		m.name, formatter.ContainerID{ID: id})
+ 
+ 	return nil
+ }
+@@ -274,11 +281,11 @@
+ 	for id, _ := range m.volTable {
+ 		if err := m.SyncOut(id); err != nil {
+ 			logrus.Warnf("%s: failed to sync-out volumes for container %s: %s",
+-				m.name, formatter.ContainerID{id}, err)
++				m.name, formatter.ContainerID{ID: id}, err)
+ 		}
+ 		if err := m.DestroyVol(id); err != nil {
+ 			logrus.Warnf("%s: failed to destroy volumes for container %s: %s",
+-				m.name, formatter.ContainerID{id}, err)
++				m.name, formatter.ContainerID{ID: id}, err)
+ 		}
+ 	}
+ }
+diff --git a/volMgr/factorybox_subvolume_linux.go b/volMgr/factorybox_subvolume_linux.go
+new file mode 100644
+--- /dev/null
++++ b/volMgr/factorybox_subvolume_linux.go
+@@ -0,0 +1,261 @@
++//go:build linux
++
++package volMgr
++
++import (
++	"bufio"
++	"encoding/binary"
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"runtime"
++	"strconv"
++	"strings"
++	"unsafe"
++
++	"golang.org/x/sys/unix"
++)
++
++// Only newly created Factorybox volumes use native roots. Existing directories
++// and ordinary Sysbox IDs keep their original allocation and deletion paths.
++type factoryboxVolumeRoot struct {
++	Filesystem [16]byte
++	ID         uint64
++	UUID       [16]byte
++	Device     uint64
++	Mount      uint64
++}
++
++const (
++	factoryboxSubvolCreate  = uintptr(0x50009418)
++	factoryboxSubvolDestroy = uintptr(0x5000943f)
++	factoryboxFilesystem    = uintptr(0x8400941f)
++	factoryboxSubvolInfo    = uintptr(0x81f8943c)
++)
++
++func factoryboxVolumeID(id string) bool {
++	return len(id) == 36 && strings.HasPrefix(id, "fbx-") &&
++		strings.Trim(id[4:], "0123456789abcdef") == ""
++}
++
++func factoryboxVolumeIOCTL(fd int, request uintptr, data []byte) error {
++	_, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), request, uintptr(unsafe.Pointer(&data[0])))
++	runtime.KeepAlive(data)
++	if errno != 0 {
++		return errno
++	}
++	return nil
++}
++
++func factoryboxVolumeFilesystem(fd int) ([16]byte, error) {
++	var uuid [16]byte
++	data := make([]byte, 1024)
++	if err := factoryboxVolumeIOCTL(fd, factoryboxFilesystem, data); err != nil {
++		return uuid, err
++	}
++	if binary.LittleEndian.Uint64(data[:8]) != 1 || binary.LittleEndian.Uint64(data[8:16]) != 1 {
++		return uuid, fmt.Errorf("Factorybox volume requires one original filesystem device")
++	}
++	copy(uuid[:], data[16:32])
++	if uuid == ([16]byte{}) {
++		return uuid, fmt.Errorf("Factorybox volume filesystem UUID is absent")
++	}
++	return uuid, nil
++}
++
++func factoryboxVolumeMount(fd int) (uint64, error) {
++	var stat unix.Statx_t
++	if err := unix.Statx(fd, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &stat); err != nil {
++		return 0, err
++	}
++	if stat.Mask&unix.STATX_MNT_ID == 0 || stat.Mnt_id == 0 {
++		return 0, fmt.Errorf("Factorybox volume mount identity is absent")
++	}
++	return stat.Mnt_id, nil
++}
++
++func factoryboxVolumeParent(path string) (*os.File, error) {
++	if !filepath.IsAbs(path) || filepath.Clean(path) != path || !factoryboxVolumeID(filepath.Base(path)) {
++		return nil, fmt.Errorf("Factorybox volume path is not canonical")
++	}
++	fd, err := unix.Openat2(unix.AT_FDCWD, filepath.Dir(path), &unix.OpenHow{
++		Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
++		Resolve: unix.RESOLVE_NO_SYMLINKS,
++	})
++	if err != nil {
++		return nil, err
++	}
++	parent := os.NewFile(uintptr(fd), "Factorybox volume parent")
++	var stat unix.Stat_t
++	if err := unix.Fstat(fd, &stat); err != nil {
++		parent.Close()
++		return nil, err
++	}
++	if stat.Uid != 0 || stat.Mode&0777 != 0700 {
++		parent.Close()
++		return nil, fmt.Errorf("Factorybox volume parent is not private root-owned storage")
++	}
++	return parent, nil
++}
++
++func factoryboxVolumeMode(mode os.FileMode) (os.FileMode, error) {
++	status, err := os.Open("/proc/self/status")
++	if err != nil {
++		return 0, err
++	}
++	defer status.Close()
++	scanner := bufio.NewScanner(status)
++	for scanner.Scan() {
++		fields := strings.Fields(scanner.Text())
++		if len(fields) == 2 && fields[0] == "Umask:" {
++			mask, err := strconv.ParseUint(fields[1], 8, 9)
++			if err != nil {
++				return 0, err
++			}
++			return mode &^ os.FileMode(mask), nil
++		}
++	}
++	return 0, errors.Join(scanner.Err(), fmt.Errorf("Factorybox volume creation lacks its original umask"))
++}
++
++func inspectFactoryboxVolume(parent *os.File, name string) (factoryboxVolumeRoot, error) {
++	var identity factoryboxVolumeRoot
++	fd, err := unix.Openat2(int(parent.Fd()), name, &unix.OpenHow{
++		Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
++		Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS | unix.RESOLVE_NO_XDEV,
++	})
++	if err != nil {
++		return identity, err
++	}
++	defer unix.Close(fd)
++	var stat unix.Stat_t
++	if err := unix.Fstat(fd, &stat); err != nil {
++		return identity, err
++	}
++	if stat.Ino != 256 {
++		return identity, fmt.Errorf("Factorybox volume is not a native subvolume root")
++	}
++	identity.Filesystem, err = factoryboxVolumeFilesystem(fd)
++	if err != nil {
++		return identity, err
++	}
++	identity.Mount, err = factoryboxVolumeMount(fd)
++	if err != nil {
++		return identity, err
++	}
++	enclosing, err := factoryboxVolumeMount(int(parent.Fd()))
++	if err != nil || identity.Mount != enclosing {
++		return identity, fmt.Errorf("Factorybox volume crosses its original mount: %v", err)
++	}
++	data := make([]byte, 504)
++	if err := factoryboxVolumeIOCTL(fd, factoryboxSubvolInfo, data); err != nil {
++		return identity, err
++	}
++	identity.ID, identity.Device = binary.LittleEndian.Uint64(data[:8]), uint64(stat.Dev)
++	copy(identity.UUID[:], data[296:312])
++	if identity.ID < 256 || identity.UUID == ([16]byte{}) {
++		return identity, fmt.Errorf("Factorybox volume kernel identity is incomplete")
++	}
++	return identity, nil
++}
++
++func createFactoryboxVolumeRoot(id, path string, mode os.FileMode) (_ *factoryboxVolumeRoot, resultErr error) {
++	if !factoryboxVolumeID(id) {
++		return nil, os.Mkdir(path, mode)
++	}
++	var selected unix.Statfs_t
++	if err := unix.Statfs(filepath.Dir(path), &selected); err != nil {
++		return nil, err
++	}
++	if selected.Type != unix.BTRFS_SUPER_MAGIC {
++		return nil, os.Mkdir(path, mode)
++	}
++	parent, err := factoryboxVolumeParent(path)
++	if err != nil {
++		return nil, err
++	}
++	defer func() { resultErr = errors.Join(resultErr, parent.Close()) }()
++	var filesystem unix.Statfs_t
++	if err := unix.Fstatfs(int(parent.Fd()), &filesystem); err != nil {
++		return nil, err
++	}
++	if filesystem.Type != unix.BTRFS_SUPER_MAGIC {
++		return nil, fmt.Errorf("Factorybox volume backing changed before creation")
++	}
++	if id != filepath.Base(path) {
++		return nil, fmt.Errorf("Factorybox volume ID differs from its owned path")
++	}
++	expectedFS, err := factoryboxVolumeFilesystem(int(parent.Fd()))
++	if err != nil {
++		return nil, err
++	}
++	actualMode, err := factoryboxVolumeMode(mode)
++	if err != nil {
++		return nil, err
++	}
++	data := make([]byte, 4096)
++	copy(data[56:], id)
++	if err := factoryboxVolumeIOCTL(int(parent.Fd()), factoryboxSubvolCreate, data); err != nil {
++		return nil, err
++	}
++	identity, err := inspectFactoryboxVolume(parent, id)
++	if err != nil {
++		return nil, err
++	}
++	if identity.Filesystem != expectedFS {
++		return nil, fmt.Errorf("Factorybox volume left its original filesystem")
++	}
++	if err := os.Chmod(path, actualMode); err != nil {
++		return &identity, err
++	}
++	if err := errors.Join(parent.Sync(), unix.Syncfs(int(parent.Fd()))); err != nil {
++		return &identity, err
++	}
++	return &identity, nil
++}
++
++func destroyFactoryboxVolumeRoot(path string, expected *factoryboxVolumeRoot) (resultErr error) {
++	if expected == nil {
++		return os.RemoveAll(path)
++	}
++	parent, err := factoryboxVolumeParent(path)
++	if err != nil {
++		return err
++	}
++	defer func() { resultErr = errors.Join(resultErr, parent.Close()) }()
++	actual, err := inspectFactoryboxVolume(parent, filepath.Base(path))
++	if err != nil {
++		return err
++	}
++	if actual != *expected {
++		return fmt.Errorf("Factorybox volume UUID, ID, filesystem or mount changed")
++	}
++	mounts, err := os.Open("/proc/self/mountinfo")
++	if err != nil {
++		return err
++	}
++	scanner := bufio.NewScanner(mounts)
++	for scanner.Scan() {
++		fields := strings.Fields(scanner.Text())
++		if len(fields) < 6 {
++			mounts.Close()
++			return fmt.Errorf("invalid Factorybox volume mount inventory")
++		}
++		target := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`).Replace(fields[4])
++		if target == path || strings.HasPrefix(target, path+"/") {
++			mounts.Close()
++			return fmt.Errorf("Factorybox volume has a foreign covering or descendant mount")
++		}
++	}
++	if err := errors.Join(scanner.Err(), mounts.Close()); err != nil {
++		return err
++	}
++	data := make([]byte, 4096)
++	binary.LittleEndian.PutUint64(data[16:24], 1<<4) // BTRFS_SUBVOL_SPEC_BY_ID
++	binary.LittleEndian.PutUint64(data[56:64], expected.ID)
++	if err := factoryboxVolumeIOCTL(int(parent.Fd()), factoryboxSubvolDestroy, data); err != nil {
++		return err
++	}
++	return errors.Join(parent.Sync(), unix.Syncfs(int(parent.Fd())))
++}
+diff --git a/volMgr/factorybox_subvolume_linux_test.go b/volMgr/factorybox_subvolume_linux_test.go
+new file mode 100644
+--- /dev/null
++++ b/volMgr/factorybox_subvolume_linux_test.go
+@@ -0,0 +1,191 @@
++//go:build linux
++
++package volMgr
++
++import (
++	"errors"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"golang.org/x/sys/unix"
++)
++
++func TestFactoryboxOrdinaryVolumeRoot(t *testing.T) {
++	root := t.TempDir()
++	path := root + "/ordinary-sysbox"
++	identity, err := createFactoryboxVolumeRoot("ordinary-sysbox", path, 0750)
++	if err != nil || identity != nil {
++		t.Fatal("ordinary Sysbox volume selected native Factorybox storage", identity, err)
++	}
++	if err := os.WriteFile(path+"/data", []byte("ordinary"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := createFactoryboxVolumeRoot("ordinary-sysbox", path, 0750); !errors.Is(err, os.ErrExist) {
++		t.Fatal("ordinary volume creation adopted an existing path", err)
++	}
++	if err := destroyFactoryboxVolumeRoot(path, identity); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
++		t.Fatal("ordinary private volume was not removed", err)
++	}
++	for _, invalid := range []string{"fbx-", "fbx-" + strings.Repeat("a", 31),
++		"fbx-" + strings.Repeat("A", 32), "fbx-" + strings.Repeat("g", 32),
++		"fbx-" + strings.Repeat("a", 32) + "/child"} {
++		if factoryboxVolumeID(invalid) {
++			t.Fatal("unowned ID selected a native Factorybox volume", invalid)
++		}
++	}
++}
++
++func TestFactoryboxManagedSubvolumeNative(t *testing.T) {
++	if os.Getenv("FACTORYBOX_NATIVE_VOLUME_SUBVOLUMES") != "1" {
++		t.Skip("requires separately owned native Btrfs storage")
++	}
++	parent := os.Getenv("FACTORYBOX_NATIVE_VOLUME_ROOT")
++	var fs unix.Statfs_t
++	if parent == "" || filepath.Clean(parent) != parent || !filepath.IsAbs(parent) ||
++		unix.Statfs(parent, &fs) != nil || fs.Type != unix.BTRFS_SUPER_MAGIC {
++		t.Fatal("native fixture has no explicit Btrfs root")
++	}
++	root, err := os.MkdirTemp(parent, "manager-volume-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	command := func(arguments ...string) error {
++		out, err := exec.Command("btrfs", arguments...).CombinedOutput()
++		if err != nil {
++			return errors.Join(err, errors.New(string(out)))
++		}
++		return nil
++	}
++	var volumes []string
++	var mounted string
++	t.Cleanup(func() {
++		if mounted != "" {
++			if err := unix.Unmount(mounted, 0); err != nil {
++				t.Error(err)
++				return
++			}
++		}
++		for i := len(volumes) - 1; i >= 0; i-- {
++			if _, err := os.Lstat(volumes[i]); errors.Is(err, os.ErrNotExist) {
++				continue
++			}
++			if err := command("subvolume", "delete", "--", volumes[i]); err != nil {
++				t.Error(err)
++				return
++			}
++		}
++		if err := os.RemoveAll(root); err != nil {
++			t.Error(err)
++		}
++	})
++	for _, name := range []string{"manager", "rootfs", "foreign"} {
++		if err := os.Mkdir(root+"/"+name, 0700); err != nil {
++			t.Fatal(err)
++		}
++	}
++	manager, err := New("native-volume-test", root+"/manager", false)
++	if err != nil {
++		t.Fatal(err)
++	}
++	id := "fbx-" + strings.Repeat("a", 32)
++	mounts, err := manager.CreateVol(id, root+"/rootfs", "/var/lib/docker", 100000, 100000, false, 0750)
++	if err != nil || len(mounts) != 1 {
++		t.Fatal("create actual Sysbox-managed private volume", mounts, err)
++	}
++	path := root + "/manager/" + id
++	volumes = append(volumes, path)
++	if mounts[0].Source != path || mounts[0].Destination != "/var/lib/docker" {
++		t.Fatal("native volume escaped its original manager geometry", mounts)
++	}
++	anchor, err := factoryboxVolumeParent(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	_, inspectErr := inspectFactoryboxVolume(anchor, id)
++	closeErr := anchor.Close()
++	if inspectErr != nil || closeErr != nil {
++		t.Fatal("actual manager did not allocate a snapshot-capable private root", inspectErr, closeErr)
++	}
++	stat, err := os.Stat(path)
++	expectedMode, modeErr := factoryboxVolumeMode(0750)
++	if err != nil || modeErr != nil || stat.Mode().Perm() != expectedMode.Perm() {
++		t.Fatal("native volume changed original umask or permissions", err, modeErr)
++	}
++	if err := os.WriteFile(path+"/data", []byte("complete-private-docker-data"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := createFactoryboxVolumeRoot(id, path, 0750); !errors.Is(err, unix.EEXIST) {
++		t.Fatal("native creator adopted an existing private root", err)
++	}
++	saved := root + "/saved"
++	if err := command("subvolume", "snapshot", "-r", "--", path, saved); err != nil {
++		t.Fatal("private Docker data cannot be captured atomically", err)
++	}
++	volumes = append(volumes, saved)
++	if err := os.WriteFile(path+"/data", []byte("later-private-writes"), 0600); err != nil {
++		t.Fatal(err)
++	}
++	if err := unix.Mount(path, path, "", unix.MS_BIND, ""); err != nil {
++		t.Fatal(err)
++	}
++	mounted = path
++	if err := manager.DestroyVol(id); err == nil {
++		t.Fatal("manager deleted a foreign self-bind with identical bytes")
++	}
++	if err := unix.Unmount(path, 0); err != nil {
++		t.Fatal(err)
++	}
++	mounted = ""
++	if err := os.Mkdir(path+"/nested", 0700); err != nil {
++		t.Fatal(err)
++	}
++	if err := unix.Mount(root+"/foreign", path+"/nested", "", unix.MS_BIND, ""); err != nil {
++		t.Fatal(err)
++	}
++	mounted = path + "/nested"
++	if err := manager.DestroyVol(id); err == nil {
++		t.Fatal("manager crossed a foreign descendant mount")
++	}
++	if err := unix.Unmount(mounted, 0); err != nil {
++		t.Fatal(err)
++	}
++	mounted = ""
++	replaced := root + "/manager/fbx-" + strings.Repeat("b", 32)
++	if err := os.Rename(path, replaced); err != nil {
++		t.Fatal(err)
++	}
++	volumes = append(volumes, replaced)
++	replacement, err := createFactoryboxVolumeRoot(id, path, 0750)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := manager.DestroyVol(id); err == nil {
++		t.Fatal("manager adopted a replacement volume with a different kernel identity")
++	}
++	if err := destroyFactoryboxVolumeRoot(path, replacement); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Rename(replaced, path); err != nil {
++		t.Fatal(err)
++	}
++	if err := manager.DestroyVol(id); err != nil {
++		t.Fatal("retire original exact managed root without walking every file", err)
++	}
++	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
++		t.Fatal("original managed volume was not withdrawn", err)
++	}
++	if _, exists := manager.(*vmgr).volTable[id]; exists {
++		t.Fatal("retired volume remains registered")
++	}
++	data, err := os.ReadFile(saved + "/data")
++	if err != nil || string(data) != "complete-private-docker-data" {
++		t.Fatal("deleting the working volume changed its sealed snapshot", err)
++	}
++	t.Log("actual manager create/snapshot/destroy, unchanged modes, native identity and foreign-mount/refusal checks passed")
++}
