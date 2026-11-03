@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "source_commit": "db2201685e25c0635e12d7c5cfb2f91f8fd60405",
+  "previous_manifest": "tests/compatibility/retained-pending-backing.json",
+  "previous_manifest_sha256": "cf917db19cc00a8dedbe21c863655f4876f374b20f59004afcd261465ca4e28e",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Observe Sysbox's actual asynchronous withdrawal after the native fixture deliberately renames a deleted runtime's bundle, before creating its synthetic retained manager payload. Keep every original preservation, partial-unlink, capacity and dependency assertion. Use the existing test deadline, without a fixed settling delay or changing runtime behavior.",
+  "files": {
+    "internal/lifecycle/sandbox_retirement_native_linux_test.go": {
+      "before_sha256": "122f3e6be4720a66d73565d8984ade3019806674f2f19a7743d0ba2afac7888c",
+      "after_sha256": "05dc98fec84ef204c86b9b38617d3677916a2171d4e44016f1cd02a93edf0c74"
+    }
+  }
+}

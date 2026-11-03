@@ -72,7 +72,7 @@ func nativeRetainedPendingBackingRetirement(t *testing.T, native bool) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := attachment.Close(); err != nil {
+		if err := closeNativeRetirementStore(t, attachment); err != nil {
 			t.Error(err)
 		}
 	})
@@ -171,7 +171,7 @@ func nativeRetainedPendingBackingRetirement(t *testing.T, native bool) {
 	// a claim that the synthetic lifecycle above actually ran Sysbox or CRIU.
 	remount := func() {
 		t.Helper()
-		if err := attachment.Close(); err != nil {
+		if err := closeNativeRetirementStore(t, attachment); err != nil {
 			t.Fatal(err)
 		}
 		var err error
@@ -310,7 +310,7 @@ func nativeRetainedPendingBackingRetirement(t *testing.T, native bool) {
 		hashFile(epochPath) != originalEpoch || hashFile(managerIntent) != originalManagerIntent {
 		t.Fatal("retirement rewrote immutable lifecycle evidence")
 	}
-	if err := attachment.Close(); err != nil {
+	if err := closeNativeRetirementStore(t, attachment); err != nil {
 		t.Fatal(err)
 	}
 	if err := storefs.VerifyReleased(image); err != nil {

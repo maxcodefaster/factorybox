@@ -134,6 +134,7 @@ func TestNativeSandboxBackingRetirement(t *testing.T) {
 	if err := os.Rename(renamed, bundle); err != nil {
 		t.Fatal(err)
 	}
+	awaitNativeManagerWithdrawal(t, status.Lifecycle.ManagerRoot, victim.Record.RuntimeID)
 	engine, err := Open(status.Lifecycle)
 	if err != nil {
 		t.Fatal(err)

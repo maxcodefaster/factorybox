@@ -57,7 +57,7 @@ func TestNativeRetainedMetadataAcrossRuntimeUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := attachment.Close(); err != nil {
+		if err := closeNativeRetirementStore(t, attachment); err != nil {
 			t.Error(err)
 		}
 	})
@@ -145,7 +145,7 @@ func TestNativeRetainedMetadataAcrossRuntimeUpgrade(t *testing.T) {
 			t.Fatal("dependency inventory changed the current fixed attachment", err)
 		}
 	}()
-	if err := attachment.Close(); err != nil {
+	if err := closeNativeRetirementStore(t, attachment); err != nil {
 		t.Fatal(err)
 	}
 	if err := storefs.VerifyReleased(image); err != nil {

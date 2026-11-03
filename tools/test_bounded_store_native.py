@@ -83,11 +83,23 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
         self.assertEqual(retained['previous_manifest'], 'tests/compatibility/native-epoch-retirement.json')
         self.assertEqual(hashlib.sha256((root / retained['previous_manifest']).read_bytes()).hexdigest(),
                          retained['previous_manifest_sha256'])
+        withdrawal = json.loads((root / 'tests/compatibility/native-manager-withdrawal.json').read_text())
+        self.assertEqual(withdrawal['schema'], 1)
+        self.assertTrue(withdrawal['assertions_preserved'])
+        self.assertFalse(withdrawal['upstream_assertions_modified'])
+        self.assertEqual(withdrawal['previous_manifest'], 'tests/compatibility/retained-pending-backing.json')
+        self.assertEqual(hashlib.sha256((root / withdrawal['previous_manifest']).read_bytes()).hexdigest(),
+                         withdrawal['previous_manifest_sha256'])
+        def after_withdrawal(name, row):
+            final = withdrawal['files'].get(name, row)
+            if name in withdrawal['files']:
+                self.assertEqual(final['before_sha256'], row['after_sha256'])
+            return final
         def after_retained(name, row):
             final = retained['files'].get(name, row)
             if name in retained['files']:
                 self.assertEqual(final['before_sha256'], row['after_sha256'])
-            return final
+            return after_withdrawal(name, final)
         def after_native(name, row):
             final = native['files'].get(name, row)
             if name in native['files']:
@@ -139,6 +151,9 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_retained(name, row)['after_sha256'])
         for name, row in retained['files'].items():
+            self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
+            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_withdrawal(name, row)['after_sha256'])
+        for name, row in withdrawal['files'].items():
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
             self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
         original = declaration['files']['internal/lifecycle/bounded_store_native_linux_test.go']
