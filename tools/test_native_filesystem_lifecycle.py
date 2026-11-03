@@ -5,6 +5,23 @@ import native_filesystem_lifecycle
 
 
 class NativeFilesystemLifecycleProof(unittest.TestCase):
+    def test_native_checkpoint_retirement_requires_every_safety_and_useful_work_check(self):
+        fields = ["passed", "selection_protected", "exact_replay", "native_roots_absent",
+                  "checkpoint_metadata_preserved", "new_fork_refused", "independent_child_useful"]
+        retired = dict.fromkeys(fields, True)
+        native_filesystem_lifecycle.require_checkpoint_retirement({"native_checkpoint_retirement": retired})
+        for field in fields:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                native_filesystem_lifecycle.require_checkpoint_retirement(
+                    {"native_checkpoint_retirement": {**retired, field: False}})
+        with self.assertRaises(ValueError):
+            native_filesystem_lifecycle.require_checkpoint_retirement({})
+        with self.assertRaises(ValueError):
+            native_filesystem_lifecycle.require_checkpoint_retirement({"native_checkpoint_retirement": retired}, True)
+        native_filesystem_lifecycle.require_checkpoint_retirement(
+            {"native_checkpoint_retirement": {**retired, "actual_controller_sigkill": True,
+                                               "partial_retry_preserved_foreign": True}}, True)
+
     def test_retained_recovery_binds_both_epochs_store_request_and_new_runtime(self):
         prepared = {"request": {"source_id": "original"}, "store_id": "same-store", "epoch": "old"}
         startup = {"status": {"store_id": "same-store", "epoch": "new"}}

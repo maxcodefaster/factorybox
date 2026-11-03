@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 
@@ -37,6 +38,7 @@ type checkpointRetirementIntent struct {
 	InventorySHA256 string                         `json:"inventory_sha256"`
 	Payloads        []string                       `json:"payloads"`
 	Aliases         []sysboxcapture.FilesystemTree `json:"aliases"`
+	Native          []sysboxcapture.FilesystemTree `json:"native,omitempty"`
 	Reserve         retirementReserve              `json:"reserve"`
 	StartedAt       string                         `json:"started_at"`
 	Before          StorageCapacity                `json:"before"`
@@ -264,15 +266,24 @@ func (e *Engine) RetireCheckpoint(ctx context.Context, request CheckpointRequest
 		}
 		paths := []string{relative + "/images"}
 		aliases := []sysboxcapture.FilesystemTree{}
+		native := []sysboxcapture.FilesystemTree{}
 		payloads := append([]string(nil), paths...)
 		for _, tree := range saved.Filesystem.Roots {
 			expected := e.config.Root + "/" + relative + "/filesystem/" + tree.Name
+			if tree.Native != nil && tree.Name == "upper" {
+				expected = e.config.Root + "/" + relative + "/filesystem/mutable/upper"
+			}
 			if tree.Saved != expected {
 				return result, fmt.Errorf("retirement tree is outside the exact generation")
 			}
 			name := strings.TrimPrefix(tree.Saved, e.config.Root+"/")
+			if tree.Native != nil && tree.Native.Member == "upper" {
+				name = filepath.Dir(name)
+			}
 			payloads = append(payloads, name)
-			if tree.Immutable != nil {
+			if tree.Native != nil {
+				native = append(native, tree)
+			} else if tree.Immutable != nil {
 				if tree.Immutable.Root == e.config.Root+"/"+relative || strings.HasPrefix(tree.Immutable.Root, e.config.Root+"/"+relative+"/") {
 					return result, fmt.Errorf("retirement would delete a retained immutable base")
 				}
@@ -298,7 +309,7 @@ func (e *Engine) RetireCheckpoint(ctx context.Context, request CheckpointRequest
 			return result, err
 		}
 		intent = checkpointRetirementIntent{Version: 1, Request: request, Directory: directory, InventorySHA256: hash,
-			Payloads: payloads, Aliases: aliases, Reserve: reserve, StartedAt: now(), Before: before}
+			Payloads: payloads, Aliases: aliases, Native: native, Reserve: reserve, StartedAt: now(), Before: before}
 		if err := e.publishCheckpoint(relative, "retirement-intent.json", intent); err != nil {
 			return result, err
 		}
@@ -333,6 +344,24 @@ func (e *Engine) RetireCheckpoint(ctx context.Context, request CheckpointRequest
 	}
 	if err := ownedtree.ValidateRemaining(ctx, e.root, plan); err != nil {
 		return result, err
+	}
+	if err := e.retirementAliases(intent.Aliases, false); err != nil {
+		return result, err
+	}
+	for _, tree := range intent.Native {
+		if err := sysboxcapture.CheckNativeFilesystemRetirement(ctx, tree); err != nil {
+			return result, err
+		}
+	}
+	for _, tree := range intent.Native {
+		if err := sysboxcapture.RetireNativeFilesystemTree(ctx, tree); err != nil {
+			return result, err
+		}
+	}
+	for _, tree := range intent.Native {
+		if err := sysboxcapture.WaitNativeFilesystemRetirement(ctx, tree); err != nil {
+			return result, err
+		}
 	}
 	if err := e.retirementAliases(intent.Aliases, true); err != nil {
 		return result, err

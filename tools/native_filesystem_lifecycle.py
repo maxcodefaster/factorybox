@@ -54,12 +54,28 @@ def require_retained_complete(proof, deleted, prepared, startup):
             deleted.get("runtime") is not None):
         raise ValueError("retained recovery omitted original identity, state, new work or exact public Delete")
 
+def require_checkpoint_retirement(proof, interrupted=False):
+    retired = proof.get("native_checkpoint_retirement", {})
+    if any(retired.get(key) is not True for key in
+           ["passed", "selection_protected", "exact_replay", "native_roots_absent",
+            "checkpoint_metadata_preserved", "new_fork_refused", "independent_child_useful"]):
+        raise ValueError("native checkpoint retirement omitted ownership, retention or independent work")
+    if interrupted and (retired.get("actual_controller_sigkill") is not True or
+                        retired.get("partial_retry_preserved_foreign") is not True):
+        raise ValueError("native checkpoint retirement omitted actual interruption and safe continuation")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build", required=True)
     parser.add_argument("--replacement", action="store_true", help="Recover the original native Pause after an actual clean worker replacement")
+    parser.add_argument("--retirement", action="store_true", help="Retire the exact native checkpoint while an independent child continues useful work")
+    parser.add_argument("--retirement-interruption", action="store_true", help="Kill native retirement after actual root withdrawal and verify its exact continuation")
     args = parser.parse_args()
+    if args.replacement and args.retirement:
+        parser.error("select either replacement recovery or same-worker checkpoint retirement")
+    if args.retirement_interruption and not args.retirement:
+        parser.error("--retirement-interruption requires --retirement")
     build, worker = build_worker.load(args.worker_build)
     host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
     native_base.require_native_host(worker["platform"], host)
@@ -98,6 +114,8 @@ def main():
     }
     if args.replacement:
         result["scope"] = "Exact native Pause, clean worker closure and original kernel-store release, new worker epoch on the same store, retained recovery with original RAM/files and new useful work. Not ACME or production qualification."
+    if args.retirement:
+        result["scope"] += " Includes exact native checkpoint retirement, selection protection and useful independent child after retirement."
     volume_attempted = container_attempted = False
     identity, deadline, current_name = None, None, name
     try:
@@ -135,6 +153,8 @@ def main():
         with (artifact / "stdout.txt").open("x") as out, (artifact / "stderr.txt").open("x") as err:
             done = subprocess.run([*reference.DOCKER, "exec", "--env", "FACTORYBOX_NATIVE_FILESYSTEM_LIFECYCLE=1",
                                    "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETAINED=" + ("prepare" if args.replacement else ""),
+                                   "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETIREMENT=" + ("1" if args.retirement else "0"),
+                                   "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETIREMENT_INTERRUPT=" + ("1" if args.retirement_interruption else "0"),
                                    identity, "/bin/bash", "-ec", setup],
                                   stdout=out, stderr=err, timeout=max(.001, deadline - time.monotonic()))
         result["exit_code"] = done.returncode
@@ -145,6 +165,8 @@ def main():
             deleted = json.loads((output / "native-delete.json").read_text())
             child_deleted = json.loads((output / "native-child-delete.json").read_text())
             require_complete(proof, deleted, child_deleted)
+            if args.retirement:
+                require_checkpoint_retirement(proof, args.retirement_interruption)
         else:
             if not (output / "native-retained.json").is_file():
                 raise ValueError("replacement lacks its exact original committed native Pause")
@@ -195,6 +217,8 @@ def main():
         result["global_sysctls_unchanged"] = before == after
         result["inputs_unchanged"] = upstream_unit.context_manifest(source) == manifest
         result["timings_us"] = proof.get("timings_us")
+        if args.retirement:
+            result["native_checkpoint_retirement"] = proof["native_checkpoint_retirement"]
         result["passed"] = result["global_sysctls_unchanged"] and result["inputs_unchanged"]
     except Exception as error:
         result["error"] = str(error)

@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -294,24 +296,195 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 	if actual, err := readCaptureActor(child.Runtime.PID, "get"); err != nil || !reflect.DeepEqual(actual, copied) {
 		t.Fatal("native child Resume lost its independently advanced state", err)
 	}
+	var checkpointRetirement map[string]any
+	if os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_RETIREMENT") == "1" {
+		checkpointRetirement = nativeCheckpointRetirement(t, call, checkpoint, child)
+	}
 	if _, err := call("delete-source-before-child", "delete", "native-source"); err != nil {
 		t.Fatal("delete original native source", err)
 	}
-	if actual, err := readCaptureActor(child.Runtime.PID, "advance"); err != nil || actual.Counter != before.Counter+3 {
+	expectedChildCounter := before.Counter + 3
+	if checkpointRetirement != nil {
+		expectedChildCounter++
+	}
+	if actual, err := readCaptureActor(child.Runtime.PID, "advance"); err != nil || actual.Counter != expectedChildCounter {
 		t.Fatal("native child depends on the deleted original source", err)
 	}
-	proof, err := json.MarshalIndent(map[string]any{
+	evidence := map[string]any{
 		"passed": true, "production_qualified": false, "owner": initial.Record.Owner,
 		"timings_us": timings, "pause": paused.Record.Pause, "native_roots": len(checkpoint.Filesystem.Roots) - 1,
 		"same_private_ram": true, "useful_after_resume": true,
 		"child_owner": child.Record.Owner, "independent_fork_ram": true,
 		"child_pause": childPaused.Record.Pause, "child_resume_preserves_work": true,
 		"child_useful_after_source_delete": true,
-	}, "", "  ")
+	}
+	if checkpointRetirement != nil {
+		evidence["native_checkpoint_retirement"] = checkpointRetirement
+	}
+	proof, err := json.MarshalIndent(evidence, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("/output/native-filesystem-lifecycle.json", append(proof, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func nativeCheckpointRetirement(t *testing.T, call func(string, ...string) ([]byte, error), checkpoint Checkpoint, child View) map[string]any {
+	t.Helper()
+	identity, err := json.Marshal(checkpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := CheckpointRequest{checkpoint.SourceID, checkpoint.ID, checkpoint.Owner, sum(identity)}
+	selected, err := call("select-retirement", retirementArgs("select-checkpoint", request, "native-retirement")...)
+	if err != nil || len(selected) == 0 {
+		t.Fatal("protect exact native checkpoint", err)
+	}
+	if _, err := call("selected-retirement-refused", retirementArgs("retire-checkpoint", request, "")...); err == nil ||
+		!strings.Contains(err.Error(), "protected by recovery selection") {
+		t.Fatal("native retirement ignored its original recovery selection", err)
+	}
+	if _, err := call("release-retirement", retirementArgs("release-checkpoint", request, "native-retirement")...); err != nil {
+		t.Fatal("release exact native checkpoint selection", err)
+	}
+	data, err := os.ReadFile("/output/native-checkpoint.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation := filepath.Dir(filepath.Dir(checkpoint.Filesystem.Roots[0].Saved))
+	original, err := os.ReadFile(generation + "/checkpoint.json")
+	if err != nil || !bytes.Equal(data, original) {
+		t.Fatal("native retirement lost the original checkpoint metadata", err)
+	}
+	interrupted := os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_RETIREMENT_INTERRUPT") == "1"
+	if interrupted {
+		nativeInterruptCheckpointRetirement(t, call, request, generation)
+	}
+	retired, err := call("retire-native-checkpoint", retirementArgs("retire-checkpoint", request, "")...)
+	var result CheckpointRetirement
+	if err != nil || json.Unmarshal(retired, &result) != nil || result.Request != request || result.CompletedAt == "" {
+		t.Fatal("public native checkpoint retirement", err)
+	}
+	replayed, err := call("replay-native-retirement", retirementArgs("retire-checkpoint", request, "")...)
+	if err != nil || !bytes.Equal(retired, replayed) {
+		t.Fatal("native retirement did not preserve its exact completion on replay", err)
+	}
+	for _, tree := range checkpoint.Filesystem.Roots {
+		path := tree.Saved
+		if tree.Native != nil && tree.Native.Member == "upper" {
+			path = filepath.Dir(path)
+		}
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatal("native checkpoint backing remains after retirement", path, err)
+		}
+	}
+	if actual, err := os.ReadFile(generation + "/checkpoint.json"); err != nil || !bytes.Equal(actual, original) {
+		t.Fatal("native retirement changed retained checkpoint provenance", err)
+	}
+	if _, err := call("retired-new-fork", "fork", "--source", request.SourceID, "--snapshot-id", request.SnapshotID,
+		"native-retired-new"); err == nil || !strings.Contains(err.Error(), "retirement") {
+		t.Fatal("retired native checkpoint admitted new execution")
+	}
+	before, err := readCaptureActor(child.Runtime.PID, "get")
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundedLossActor(t, child, before)
+	after, err := readCaptureActor(child.Runtime.PID, "advance")
+	if err != nil || after.Counter != before.Counter+1 || after.BallastSHA == before.BallastSHA ||
+		after.BallastBytes != before.BallastBytes {
+		t.Fatal("native checkpoint retirement broke its independent live child", before, after, err)
+	}
+	return map[string]any{
+		"passed": true, "selection_protected": true, "exact_replay": true, "native_roots_absent": true,
+		"checkpoint_metadata_preserved": true, "new_fork_refused": true, "independent_child_useful": true,
+		"retirement":                result,
+		"actual_controller_sigkill": interrupted, "partial_retry_preserved_foreign": interrupted,
+	}
+}
+
+func nativeInterruptCheckpointRetirement(t *testing.T, call func(string, ...string) ([]byte, error), request CheckpointRequest, generation string) {
+	t.Helper()
+	deadline, bounded := t.Deadline()
+	if !bounded {
+		t.Fatal("native retirement interruption requires its lifecycle deadline")
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	status := boundedLossStatusNow(t)
+	args := []string{"--worker-run-root", "/run/factorybox", "--worker-store-id", status.StoreID,
+		"--worker-epoch", status.Epoch}
+	command := exec.CommandContext(ctx, "/opt/factorybox/factorybox", append(args, retirementArgs("retire-checkpoint", request, "")...)...)
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := false
+	defer func() {
+		if !waited {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+	}()
+	pidfd, err := unix.PidfdOpen(command.Process.Pid, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(pidfd)
+	withdrawn := generation + "/filesystem/mutable"
+	for {
+		var intent checkpointRetirementIntent
+		data, readErr := os.ReadFile(generation + "/retirement-intent.json")
+		_, missing := os.Lstat(withdrawn)
+		if readErr == nil && json.Unmarshal(data, &intent) == nil && intent.Request == request &&
+			len(intent.Native) == 8 && os.IsNotExist(missing) {
+			if err := unix.PidfdSendSignal(pidfd, unix.SIGSTOP, nil, 0); err != nil {
+				t.Fatal("stop original retirement controller after actual native withdrawal", err)
+			}
+			if _, err := os.Lstat(generation + "/retirement-complete.json"); !os.IsNotExist(err) {
+				t.Fatal("native retirement completed before the real interruption", err)
+			}
+			if err := unix.PidfdSendSignal(pidfd, unix.SIGKILL, nil, 0); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+		poll := []unix.PollFd{{Fd: int32(pidfd), Events: unix.POLLIN}}
+		n, err := unix.Poll(poll, 0)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil || n != 0 || ctx.Err() != nil {
+			t.Fatal("native retirement did not expose its original incomplete withdrawal", readErr, missing, err, ctx.Err())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := command.Wait(); err == nil {
+		t.Fatal("killed native retirement returned success")
+	}
+	waited = true
+	if err := os.WriteFile("/output/native-retirement-interrupted.stderr", stderr.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(withdrawn, 0700); err != nil {
+		t.Fatal(err)
+	}
+	foreign := withdrawn + "/foreign-successor"
+	if err := os.WriteFile(foreign, []byte("preserve foreign successor"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := call("native-retirement-foreign-refused", retirementArgs("retire-checkpoint", request, "")...); err == nil {
+		t.Fatal("native retirement retry adopted a foreign successor")
+	}
+	if data, err := os.ReadFile(foreign); err != nil || string(data) != "preserve foreign successor" {
+		t.Fatal("native retirement retry changed foreign data", err)
+	}
+	if err := os.Remove(foreign); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(withdrawn); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -345,6 +345,12 @@ func TestFilesystemSnapshotManifestNative(t *testing.T) {
 		if err := errors.Join(cloneErr, source.Close()); err != nil {
 			t.Fatal(err)
 		}
+		if err := CheckNativeFilesystemRetirement(ctx, captured.Roots[2]); err == nil {
+			t.Fatal("retirement admission accepted a same-name native replacement")
+		}
+		if err := RetireNativeFilesystemTree(ctx, captured.Roots[2]); err == nil {
+			t.Fatal("native retirement deleted a same-name replacement")
+		}
 		if err := VerifyFilesystemSnapshot(ctx, root+"/generation", captured); err == nil {
 			t.Fatal("same-name same-data root replacement retained snapshot authority")
 		}
