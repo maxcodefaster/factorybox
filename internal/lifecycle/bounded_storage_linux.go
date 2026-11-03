@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"factorybox/internal/storefs"
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
 )
@@ -25,14 +26,7 @@ func (e *Engine) boundedObject(path string) error {
 	if err := canonical(path); err != nil {
 		return err
 	}
-	var stat unix.Stat_t
-	if err := unix.Lstat(path, &stat); err != nil {
-		return err
-	}
-	if uint64(stat.Dev) != active.BlockDevice || (stat.Mode&unix.S_IFMT != unix.S_IFDIR && stat.Mode&unix.S_IFMT != unix.S_IFREG) {
-		return fmt.Errorf("path is not backed by the bounded filesystem: %s", path)
-	}
-	return nil
+	return storefs.VerifyObjectBacking(*active, path)
 }
 
 // Initial nested mounts are not silently included in the capacity claim. Guest

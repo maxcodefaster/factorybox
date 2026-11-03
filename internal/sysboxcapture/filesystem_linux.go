@@ -82,7 +82,7 @@ var managedDirectories = map[string]string{
 
 func cleanAbsolute(path string) bool {
 	return filepath.IsAbs(path) && filepath.Clean(path) == path &&
-		!strings.ContainsAny(path, "\n,:\\")
+		!strings.ContainsAny(path, "\x00\n,:\\")
 }
 
 // AdmitFilesystem checks the original frozen source before the controller

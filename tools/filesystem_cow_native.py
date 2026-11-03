@@ -16,11 +16,20 @@ import reference
 import upstream_unit
 
 
+def resolved_worker_image(worker):
+    image, _ = build_config.local_pinned_image(
+        worker["image"], worker["image_id"], reference.docker)
+    return image
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker-build", required=True)
+    parser.add_argument("--candidate-snapshots", action="store_true",
+                        help="Test candidate snapshot primitives in an isolated baseline worker; never lifecycle qualification")
     args = parser.parse_args()
     build, worker = build_worker.load(args.worker_build)
+    image = resolved_worker_image(worker)
     host = json.loads(reference.docker(["info", "--format", "{{json .}}"]))
     platform = native_base.native_platform(host)
     native_base.require_native_host(platform, host)
@@ -40,15 +49,20 @@ def main():
     built_core = {key: value for key, value in worker["source_context"].items()
                   if key.startswith("internal/") or key in ("go.mod", "go.sum")}
     built_core = {key: value for key, value in built_core.items() if not key.endswith("_test.go")}
-    if current_core != built_core:
+    if current_core != built_core and not args.candidate_snapshots:
         raise ValueError("the component proof must use the delivered worker core")
     result = {
         "schema": 1, "owner": owner, "platform": platform, "worker_build": args.worker_build,
-        "image": worker["image"], "source_context": manifest,
+        "image": image, "source_context": manifest,
         "scope": "Complete verified filesystem copies on the host filesystem and owned bounded store",
         "sandbox_created": False, "native_lifecycle_qualified": False,
         "production_qualified": False, "passed": False, "cleanup": False,
+        "candidate_snapshots": args.candidate_snapshots,
+        "delivered_worker_core_matches": current_core == built_core,
     }
+    if args.candidate_snapshots:
+        result["scope"] = ("Candidate kernel snapshot component in separately owned storage. "
+                           "The pinned baseline worker only owns the fixture; no runtime binary is replaced.")
     attempted = volume_created = False
     try:
         binary = artifact / "probe.test"
@@ -67,7 +81,7 @@ def main():
             "--env", "GOMAXPROCS=2", "--env", "GOMEMLIMIT=256MiB",
             "--mount", "type=volume,source=" + name + ",target=/var/lib/sysbox",
             "--mount", "type=bind,source=" + str(binary) + ",target=/probe.test,readonly",
-            worker["image"], "--store-id", owner,
+            image, "--store-id", owner,
             "--bounded-root", "/var/lib/sysbox/fixed-store", "--bounded-bytes", str(512 << 20),
         ]
         result["command"] = command
@@ -77,7 +91,9 @@ def main():
         deadline = time.monotonic() + 420
         result["startup"] = consumer_worker_loss.ready(name, owner, identity, deadline)
         probe = [*reference.DOCKER, "exec", "--env", "FACTORYBOX_NATIVE_COW_COPY=1",
-                 identity, "/probe.test", "-test.v", "-test.run=^TestFilesystemCopyCOWNative$",
+                 identity, "/probe.test", "-test.v",
+                 "-test.run=^TestFilesystemSnapshot(Subvolume|Retirement)Native$" if args.candidate_snapshots
+                 else "-test.run=^TestFilesystem(CopyCOW|Snapshot(Subvolume|Retirement))Native$",
                  "-test.timeout=60s"]
         result["probe_command"] = probe
         with (artifact / "stdout.txt").open("x") as out, (artifact / "stderr.txt").open("x") as err:

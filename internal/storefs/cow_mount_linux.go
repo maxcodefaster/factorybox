@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -18,6 +20,64 @@ const (
 	btrfsFilesystemInfo = 0x8400941f
 	btrfsDeviceInfo     = 0xd000941e
 )
+
+// VerifyObjectBacking keeps the capacity boundary tied to the admitted image,
+// not to one virtual st_dev value. Btrfs assigns another virtual device to a
+// child subvolume even though it remains inside that same fixed filesystem.
+// Such a child must independently prove the exact filesystem UUID and original
+// store mount. A path on the host's Btrfs filesystem is not equivalent backing.
+func VerifyObjectBacking(active Active, path string) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path ||
+		(path != active.Target && !strings.HasPrefix(path, active.Target+"/")) {
+		return fmt.Errorf("object is outside the admitted fixed filesystem")
+	}
+	if err := Verify(active); err != nil {
+		return err
+	}
+	fd, err := unix.Openat2(unix.AT_FDCWD, path, &unix.OpenHow{
+		Flags:   unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW | unix.O_NONBLOCK,
+		Resolve: unix.RESOLVE_NO_SYMLINKS,
+	})
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	var stat unix.Stat_t
+	if err := unix.Fstat(fd, &stat); err != nil {
+		return err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR && stat.Mode&unix.S_IFMT != unix.S_IFREG {
+		return fmt.Errorf("fixed-store object is not a directory or regular file")
+	}
+	if uint64(stat.Dev) == active.BlockDevice {
+		return nil
+	}
+	if active.Image.Schema != 2 {
+		return fmt.Errorf("object is not backed by its admitted fixed filesystem")
+	}
+	var mount unix.Statx_t
+	var filesystem unix.Statfs_t
+	if err := unix.Statx(fd, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &mount); err != nil {
+		return err
+	}
+	if err := unix.Fstatfs(fd, &filesystem); err != nil {
+		return err
+	}
+	if mount.Mask&unix.STATX_MNT_ID == 0 || mount.Mnt_id != active.Mount.MountID ||
+		filesystem.Type != unix.BTRFS_SUPER_MAGIC {
+		return fmt.Errorf("child subvolume is on a foreign mount")
+	}
+	var info [1024]byte
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), btrfsFilesystemInfo,
+		uintptr(unsafe.Pointer(&info[0]))); errno != 0 {
+		return errno
+	}
+	if binary.LittleEndian.Uint64(info[:8]) != 1 || binary.LittleEndian.Uint64(info[8:16]) != 1 ||
+		hex.EncodeToString(info[16:32]) != active.Image.UUID {
+		return fmt.Errorf("child subvolume is outside the original single-device store")
+	}
+	return nil
+}
 
 // ValidateAttachmentIdentity checks saved metadata without adopting a mount.
 // BlockDevice is the filesystem's st_dev. A CoW filesystem has a virtual
