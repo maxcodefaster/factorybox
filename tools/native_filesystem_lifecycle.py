@@ -64,6 +64,13 @@ def require_checkpoint_retirement(proof, interrupted=False):
                         retired.get("partial_retry_preserved_foreign") is not True):
         raise ValueError("native checkpoint retirement omitted actual interruption and safe continuation")
 
+def require_backing_retirement(proof):
+    retired = proof.get("native_backing_retirement", {})
+    fields = ["passed", "exact_replay", "native_mutable_absent", "manager_roots_absent", "common_base_preserved"]
+    if (retired.get("independent_child_useful") is not True or
+            any(retired.get(key) is not True or retired.get("child", {}).get(key) is not True for key in fields)):
+        raise ValueError("native backing retirement omitted exact cleanup or independent work")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -71,8 +78,9 @@ def main():
     parser.add_argument("--replacement", action="store_true", help="Recover the original native Pause after an actual clean worker replacement")
     parser.add_argument("--retirement", action="store_true", help="Retire the exact native checkpoint while an independent child continues useful work")
     parser.add_argument("--retirement-interruption", action="store_true", help="Kill native retirement after actual root withdrawal and verify its exact continuation")
+    parser.add_argument("--backing-retirement", action="store_true", help="Retire the deleted native Sandbox's private backing while its independent child remains useful")
     args = parser.parse_args()
-    if args.replacement and args.retirement:
+    if args.replacement and (args.retirement or args.backing_retirement):
         parser.error("select either replacement recovery or same-worker checkpoint retirement")
     if args.retirement_interruption and not args.retirement:
         parser.error("--retirement-interruption requires --retirement")
@@ -116,6 +124,8 @@ def main():
         result["scope"] = "Exact native Pause, clean worker closure and original kernel-store release, new worker epoch on the same store, retained recovery with original RAM/files and new useful work. Not ACME or production qualification."
     if args.retirement:
         result["scope"] += " Includes exact native checkpoint retirement, selection protection and useful independent child after retirement."
+    if args.backing_retirement:
+        result["scope"] += " Includes exact deleted-Sandbox private backing retirement and useful independent child."
     volume_attempted = container_attempted = False
     identity, deadline, current_name = None, None, name
     try:
@@ -155,6 +165,7 @@ def main():
                                    "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETAINED=" + ("prepare" if args.replacement else ""),
                                    "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETIREMENT=" + ("1" if args.retirement else "0"),
                                    "--env", "FACTORYBOX_NATIVE_FILESYSTEM_RETIREMENT_INTERRUPT=" + ("1" if args.retirement_interruption else "0"),
+                                   "--env", "FACTORYBOX_NATIVE_FILESYSTEM_BACKING_RETIREMENT=" + ("1" if args.backing_retirement else "0"),
                                    identity, "/bin/bash", "-ec", setup],
                                   stdout=out, stderr=err, timeout=max(.001, deadline - time.monotonic()))
         result["exit_code"] = done.returncode
@@ -167,6 +178,8 @@ def main():
             require_complete(proof, deleted, child_deleted)
             if args.retirement:
                 require_checkpoint_retirement(proof, args.retirement_interruption)
+            if args.backing_retirement:
+                require_backing_retirement(proof)
         else:
             if not (output / "native-retained.json").is_file():
                 raise ValueError("replacement lacks its exact original committed native Pause")
@@ -219,6 +232,8 @@ def main():
         result["timings_us"] = proof.get("timings_us")
         if args.retirement:
             result["native_checkpoint_retirement"] = proof["native_checkpoint_retirement"]
+        if args.backing_retirement:
+            result["native_backing_retirement"] = proof["native_backing_retirement"]
         result["passed"] = result["global_sysctls_unchanged"] and result["inputs_unchanged"]
     except Exception as error:
         result["error"] = str(error)

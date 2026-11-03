@@ -31,6 +31,7 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	t.Cleanup(cancel)
 	runtimeAttempted, deleted, retainPause := false, false, false
+	sourceOverlayReleased, sourceLowerReleased := false, false
 	expectedStore, expectedEpoch := "", ""
 	timings := map[string]int64{}
 	call := func(label string, args ...string) ([]byte, error) {
@@ -88,6 +89,9 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		if sourceLowerReleased {
+			return
+		}
 		if runtimeAttempted && !deleted && !retainPause {
 			return
 		}
@@ -117,6 +121,9 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		if sourceOverlayReleased {
+			return
+		}
 		if runtimeAttempted && !deleted && !retainPause {
 			return
 		}
@@ -303,12 +310,41 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 	if _, err := call("delete-source-before-child", "delete", "native-source"); err != nil {
 		t.Fatal("delete original native source", err)
 	}
+	var backingRetirement map[string]any
+	if os.Getenv("FACTORYBOX_NATIVE_FILESYSTEM_BACKING_RETIREMENT") == "1" {
+		if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
+			t.Fatal("release deleted native fixture overlay", err)
+		}
+		sourceOverlayReleased = true
+		if err := sysboxcapture.RetireImmutableAlias(bundle+"/lower", bound); err != nil {
+			t.Fatal("release deleted native fixture immutable alias", err)
+		}
+		sourceLowerReleased = true
+		expected, err := readCaptureActor(child.Runtime.PID, "get")
+		if err != nil {
+			t.Fatal(err)
+		}
+		backingRetirement = nativeDeletedBackingRetirement(t, call, initial.Record, base)
+		boundedLossActor(t, child, expected)
+	}
 	expectedChildCounter := before.Counter + 3
 	if checkpointRetirement != nil {
 		expectedChildCounter++
 	}
 	if actual, err := readCaptureActor(child.Runtime.PID, "advance"); err != nil || actual.Counter != expectedChildCounter {
 		t.Fatal("native child depends on the deleted original source", err)
+	}
+	if backingRetirement != nil {
+		backingRetirement["independent_child_useful"] = true
+		response, err := call("delete-child-before-backing", "delete", child.Record.ID)
+		if err != nil {
+			t.Fatal("delete exact native child before its backing retirement", err)
+		}
+		var childDeleted View
+		if json.Unmarshal(response, &childDeleted) != nil || childDeleted.Record.Phase != "deleted" || childDeleted.Runtime != nil {
+			t.Fatal("native child backing requires its confirmed public Delete")
+		}
+		backingRetirement["child"] = nativeDeletedBackingRetirement(t, call, childDeleted.Record, base)
 	}
 	evidence := map[string]any{
 		"passed": true, "production_qualified": false, "owner": initial.Record.Owner,
@@ -321,6 +357,9 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 	if checkpointRetirement != nil {
 		evidence["native_checkpoint_retirement"] = checkpointRetirement
 	}
+	if backingRetirement != nil {
+		evidence["native_backing_retirement"] = backingRetirement
+	}
 	proof, err := json.MarshalIndent(evidence, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -328,6 +367,35 @@ func TestNativeFilesystemLifecycle(t *testing.T) {
 	if err := os.WriteFile("/output/native-filesystem-lifecycle.json", append(proof, '\n'), 0600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func nativeDeletedBackingRetirement(t *testing.T, call func(string, ...string) ([]byte, error), record Record, base Base) map[string]any {
+	t.Helper()
+	args := []string{"retire-sandbox", "--sandbox-owner", record.Owner, "--input-sha256", record.InputSHA256, record.ID}
+	retired, err := call("retire-native-backing-"+record.ID, args...)
+	var result SandboxBackingRetirement
+	request := SandboxBackingRequest{record.ID, record.Owner, record.InputSHA256}
+	if err != nil || json.Unmarshal(retired, &result) != nil || result.Request != request || result.CompletedAt == "" {
+		t.Fatal("public native deleted-Sandbox backing retirement", err)
+	}
+	replayed, err := call("replay-native-backing-"+record.ID, args...)
+	if err != nil || !bytes.Equal(retired, replayed) {
+		t.Fatal("native backing retirement lost exact completion replay", err)
+	}
+	if _, err := os.Lstat(record.InputBundle + "/mutable"); !os.IsNotExist(err) {
+		t.Fatal("native Sandbox mutable subvolume remains", err)
+	}
+	status := boundedLossStatusNow(t)
+	for _, kind := range retiredManagerKinds {
+		if _, err := os.Lstat(status.Lifecycle.ManagerRoot + "/" + kind + "/" + record.RuntimeID); !os.IsNotExist(err) {
+			t.Fatal("native Sandbox manager backing remains", kind, err)
+		}
+	}
+	if err := sysboxcapture.VerifyImmutableTree(base.Tree.Saved, base.Tree); err != nil {
+		t.Fatal("native backing retirement changed the common immutable base", err)
+	}
+	return map[string]any{"passed": true, "exact_replay": true, "native_mutable_absent": true,
+		"manager_roots_absent": true, "common_base_preserved": true, "retirement": result}
 }
 
 func nativeCheckpointRetirement(t *testing.T, call func(string, ...string) ([]byte, error), checkpoint Checkpoint, child View) map[string]any {

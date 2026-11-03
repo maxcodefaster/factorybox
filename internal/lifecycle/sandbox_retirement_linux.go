@@ -13,6 +13,7 @@ import (
 	"sort"
 
 	"factorybox/internal/ownedtree"
+	"factorybox/internal/sysboxcapture"
 )
 
 type SandboxBackingRequest struct {
@@ -153,20 +154,6 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 	if err != nil {
 		return result, err
 	}
-	allowed := map[string]bool{bundle + "/upper": true, bundle + "/work": true}
-	required := map[string]bool{bundle + "/upper": true, bundle + "/work": true}
-	if record.Base == nil {
-		allowed[bundle+"/lower"], required[bundle+"/lower"] = true, true
-	}
-	pauses := append([]PauseOperation(nil), record.PauseHistory...)
-	if record.Pause != nil {
-		pauses = append(pauses, *record.Pause)
-	}
-	for _, pause := range pauses {
-		if pause.Resume != nil && pause.Resume.CompletedAt != "" && tokenID.MatchString(pause.SnapshotID) {
-			allowed[bundle+"/resume-work-"+pause.SnapshotID] = true
-		}
-	}
 	relative := "objects/" + record.ID + "/backing-retirement"
 	if err := e.root.Mkdir(relative, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 		return result, err
@@ -184,6 +171,40 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 	if err != nil && !first {
 		return result, err
 	}
+	native := false
+	if first {
+		upper, work, err := sysboxcapture.OverlayWritablePaths(record.InputBundle)
+		if err != nil {
+			return result, err
+		}
+		native = upper == record.InputBundle+"/mutable/upper" && work == record.InputBundle+"/mutable/work"
+	} else {
+		// Once withdrawal begins, missing or partially removed members cannot
+		// select another layout. The accepted inventory retains that choice.
+		for _, name := range intent.Payloads {
+			native = native || name == bundle+"/mutable"
+		}
+	}
+	private := []string{bundle + "/upper", bundle + "/work"}
+	if native {
+		private = []string{bundle + "/mutable"}
+	}
+	allowed, required := map[string]bool{}, map[string]bool{}
+	for _, name := range private {
+		allowed[name], required[name] = true, true
+	}
+	if record.Base == nil {
+		allowed[bundle+"/lower"], required[bundle+"/lower"] = true, true
+	}
+	pauses := append([]PauseOperation(nil), record.PauseHistory...)
+	if record.Pause != nil {
+		pauses = append(pauses, *record.Pause)
+	}
+	for _, pause := range pauses {
+		if pause.Resume != nil && pause.Resume.CompletedAt != "" && tokenID.MatchString(pause.SnapshotID) {
+			allowed[bundle+"/resume-work-"+pause.SnapshotID] = true
+		}
+	}
 	if record.Fork != nil {
 		// Fork manifests reserve exact private filesystem/image roots. The
 		// currently deleted fork can no longer mutate them. The common
@@ -200,7 +221,8 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 		data, _ := json.Marshal(fork)
 		if fork.Owner != record.Owner || !reflect.DeepEqual(&fork.Origin, record.Fork) || sum(fork.OCI) != record.InputSHA256 ||
 			prepared.Version != 1 || prepared.Owner != record.Owner || prepared.IntentSHA256 != sum(data) ||
-			prepared.PreparedAt == "" || prepared.Filesystem == nil || len(prepared.Filesystem.Roots) > 9 {
+			prepared.PreparedAt == "" || prepared.Filesystem == nil || len(prepared.Filesystem.Roots) > 9 ||
+			native != (prepared.Filesystem.Version == 2) {
 			return result, fmt.Errorf("deleted fork has no exact independent preparation")
 		}
 		if err := epochRestoreReceipt(e, "objects/"+record.ID+"/restore", record, e.forkRestoreRequest(fork, record), record.Start.CompletedAt); err != nil {
@@ -212,11 +234,18 @@ func (e *Engine) RetireDeletedBacking(ctx context.Context, request SandboxBackin
 		allowed[bundle+"/restore-work"] = true
 		seen := map[string]bool{}
 		for _, tree := range prepared.Filesystem.Roots {
-			if tree.Saved != record.InputBundle+"/"+tree.Name || !epochFilesystemName(tree.Name) ||
+			expected := record.InputBundle + "/" + tree.Name
+			if prepared.Filesystem.Version == 2 && tree.Name == "upper" {
+				expected = record.InputBundle + "/mutable/upper"
+			}
+			if tree.Saved != expected || !epochFilesystemName(tree.Name) ||
 				tree.Immutable != nil && tree.Name != "lower" || seen[tree.Name] {
 				return result, fmt.Errorf("deleted fork filesystem escaped its exact private input")
 			}
 			seen[tree.Name] = true
+			if native && tree.Name == "upper" {
+				continue // Its common upper/work root is already selected once.
+			}
 			if tree.Name != "lower" || record.Base == nil {
 				allowed[bundle+"/"+tree.Name], required[bundle+"/"+tree.Name] = true, true
 			}

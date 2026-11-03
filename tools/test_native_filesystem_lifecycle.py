@@ -5,6 +5,23 @@ import native_filesystem_lifecycle
 
 
 class NativeFilesystemLifecycleProof(unittest.TestCase):
+    def test_native_backing_retirement_requires_exact_cleanup_and_independent_work(self):
+        fields = ["passed", "exact_replay", "native_mutable_absent", "manager_roots_absent",
+                  "common_base_preserved", "independent_child_useful"]
+        retired = dict.fromkeys(fields, True)
+        retired["child"] = dict.fromkeys(fields[:-1], True)
+        native_filesystem_lifecycle.require_backing_retirement({"native_backing_retirement": retired})
+        for field in fields:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                native_filesystem_lifecycle.require_backing_retirement(
+                    {"native_backing_retirement": {**retired, field: False}})
+        with self.assertRaises(ValueError):
+            native_filesystem_lifecycle.require_backing_retirement({})
+        for field in fields[:-1]:
+            with self.subTest(child_field=field), self.assertRaises(ValueError):
+                native_filesystem_lifecycle.require_backing_retirement(
+                    {"native_backing_retirement": {**retired, "child": {**retired["child"], field: False}}})
+
     def test_native_checkpoint_retirement_requires_every_safety_and_useful_work_check(self):
         fields = ["passed", "selection_protected", "exact_replay", "native_roots_absent",
                   "checkpoint_metadata_preserved", "new_fork_refused", "independent_child_useful"]
