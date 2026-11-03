@@ -153,6 +153,9 @@ def main():
             raise ValueError("Sysbox component build failed; inspect build.log")
         result["binary_sha256"] = {name: reference.sha(output / name) for name in COMPONENTS
                                   if name in ["sysbox-runc", "sysbox-fs", "sysbox-mgr"]}
+        result["native_test_sha256"] = {
+            "factorybox-restore-root.test": reference.sha(output / "factorybox-restore-root.test"),
+        }
         result["toolchain"] = (output / "toolchain.txt").read_text()
         result["packages_sha256"] = reference.sha(output / "packages.tsv")
         result["apt_sources_sha256"] = reference.sha(output / "apt-sources.list")

@@ -48,7 +48,9 @@ RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/ro
     go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
       -o /out/libcontainer.test ./libcontainer \
     && go test -mod=readonly -c -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
-      -o /out/integration.test ./libcontainer/integration
+      -o /out/integration.test ./libcontainer/integration \
+    && go test -mod=readonly -c -trimpath -buildvcs=false -tags idmapped_mnt \
+      -o /out/factorybox-restore-root.test ./libcontainer/factoryboxrestore
 RUN --mount=type=cache,id=factorybox-go-mod-${FACTORYBOX_BUILD_CACHE},target=/root/go/pkg/mod \
     --mount=type=cache,id=factorybox-go-build-${FACTORYBOX_BUILD_CACHE},target=/root/.cache/go-build \
     --mount=type=bind,source=build-resolv.conf,target=/etc/resolv.conf,readonly \

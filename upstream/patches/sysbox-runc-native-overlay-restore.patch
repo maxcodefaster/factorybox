@@ -1,0 +1,389 @@
+diff --git a/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go b/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go
+--- a/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go
++++ b/libcontainer/factoryboxrestore/factorybox_rootfs_linux.go
+@@ -55,6 +55,10 @@
+ 	if err != nil || current == outer {
+ 		return fmt.Errorf("restore requires a private mount namespace: %v", err)
+ 	}
++	upper, work, err := factoryboxOverlayPaths(bundle, work)
++	if err != nil {
++		return err
++	}
+ 	handles := &userns.Handles{}
+ 	defer handles.Release()
+ 	mapping, err := handles.Get(userns.Mapping{UIDMappings: config.UidMappings, GIDMappings: config.GidMappings})
+@@ -85,5 +89,5 @@
+ 	if err := os.Mkdir(work, 0700); err != nil {
+ 		return err
+ 	}
+-	return unix.Mount("overlay", config.Rootfs, "overlay", 0, "index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/upper,workdir="+work)
++	return unix.Mount("overlay", config.Rootfs, "overlay", 0, "index=off,lowerdir="+bundle+"/lower,upperdir="+upper+",workdir="+work)
+ }
+diff --git a/libcontainer/factoryboxrestore/factorybox_native_overlay_linux.go b/libcontainer/factoryboxrestore/factorybox_native_overlay_linux.go
+new file mode 100644
+--- /dev/null
++++ b/libcontainer/factoryboxrestore/factorybox_native_overlay_linux.go
+@@ -0,0 +1,110 @@
++//go:build linux
++
++package factoryboxrestore
++
++import (
++	"encoding/binary"
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"runtime"
++	"strings"
++	"unsafe"
++
++	"golang.org/x/sys/unix"
++)
++
++// The controller verifies the prepared filesystem manifest before dispatch.
++// This adapter additionally fences the actual namespace geometry before it
++// ID-maps any source or withdraws the existing merged view.
++func factoryboxOverlayPaths(bundle, requestedWork string) (upper, work string, resultErr error) {
++	if !filepath.IsAbs(bundle) || filepath.Clean(bundle) != bundle ||
++		strings.ContainsAny(bundle, "\x00\n,:\\") || filepath.Dir(requestedWork) != bundle {
++		return "", "", fmt.Errorf("restore overlay paths are outside their original bundle")
++	}
++	upper, work = bundle+"/upper", requestedWork
++	rootPath := bundle + "/mutable"
++	_, err := os.Lstat(rootPath)
++	if errors.Is(err, os.ErrNotExist) {
++		return upper, work, factoryboxNewWork(work)
++	}
++	if err != nil {
++		return "", "", err
++	}
++	parent, err := unix.Openat2(unix.AT_FDCWD, bundle, &unix.OpenHow{
++		Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
++		Resolve: unix.RESOLVE_NO_SYMLINKS,
++	})
++	if err != nil {
++		return "", "", err
++	}
++	defer func() { resultErr = errors.Join(resultErr, unix.Close(parent)) }()
++	root, err := unix.Openat2(parent, "mutable", &unix.OpenHow{
++		Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
++		Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS,
++	})
++	if err != nil {
++		return "", "", err
++	}
++	defer func() { resultErr = errors.Join(resultErr, unix.Close(root)) }()
++	var stat unix.Stat_t
++	var fs unix.Statfs_t
++	var rootMount, parentMount unix.Statx_t
++	if err := errors.Join(unix.Fstat(root, &stat), unix.Fstatfs(root, &fs),
++		unix.Statx(root, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &rootMount),
++		unix.Statx(parent, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &parentMount)); err != nil {
++		return "", "", err
++	}
++	if fs.Type != unix.BTRFS_SUPER_MAGIC || stat.Ino != 256 || stat.Uid != 0 ||
++		stat.Mode&0777 != 0700 || rootMount.Mask&unix.STATX_MNT_ID == 0 ||
++		parentMount.Mask&unix.STATX_MNT_ID == 0 || rootMount.Mnt_id == 0 ||
++		rootMount.Mnt_id != parentMount.Mnt_id {
++		return "", "", fmt.Errorf("native restore requires its private uncovered common upper/work subvolume")
++	}
++	// Linux UAPI btrfs_ioctl_get_subvol_info_args, identical on the two
++	// admitted 64-bit architectures. Never infer writability from a bind.
++	info := make([]byte, 504)
++	_, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(root), 0x81f8943c,
++		uintptr(unsafe.Pointer(&info[0])))
++	runtime.KeepAlive(info)
++	if errno != 0 {
++		return "", "", errno
++	}
++	if binary.LittleEndian.Uint64(info[:8]) < 256 ||
++		binary.LittleEndian.Uint64(info[288:296]) != 0 {
++		return "", "", fmt.Errorf("native restore common root is not its writable subvolume")
++	}
++	for _, name := range []string{"upper", "work"} {
++		child, err := unix.Openat2(root, name, &unix.OpenHow{
++			Flags:   unix.O_RDONLY | unix.O_DIRECTORY | unix.O_CLOEXEC,
++			Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS,
++		})
++		if err != nil {
++			return "", "", err
++		}
++		var member unix.Stat_t
++		var memberMount unix.Statx_t
++		err = errors.Join(unix.Fstat(child, &member),
++			unix.Statx(child, "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &memberMount),
++			unix.Close(child))
++		if err != nil {
++			return "", "", err
++		}
++		if member.Dev != stat.Dev || memberMount.Mask&unix.STATX_MNT_ID == 0 ||
++			memberMount.Mnt_id != rootMount.Mnt_id {
++			return "", "", fmt.Errorf("native restore upper and work do not share their original subvolume")
++		}
++	}
++	upper, work = rootPath+"/upper", rootPath+"/"+filepath.Base(requestedWork)
++	return upper, work, factoryboxNewWork(work)
++}
++
++func factoryboxNewWork(path string) error {
++	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
++		return nil
++	} else if err != nil {
++		return err
++	}
++	return fmt.Errorf("restore work already exists; refusing reuse: %s", path)
++}
+diff --git a/libcontainer/factoryboxrestore/factorybox_native_root_linux_test.go b/libcontainer/factoryboxrestore/factorybox_native_root_linux_test.go
+new file mode 100644
+--- /dev/null
++++ b/libcontainer/factoryboxrestore/factorybox_native_root_linux_test.go
+@@ -0,0 +1,248 @@
++//go:build linux
++
++package factoryboxrestore
++
++import (
++	"errors"
++	"fmt"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"syscall"
++	"testing"
++	"time"
++
++	sh "github.com/nestybox/sysbox-libs/idShiftUtils"
++	"github.com/opencontainers/runc/libcontainer/configs"
++	"golang.org/x/sys/unix"
++)
++
++func TestFactoryboxNativeRootMapping(t *testing.T) {
++	if os.Getenv("FACTORYBOX_NATIVE_RESTORE_ROOT") == "" {
++		t.Skip("requires separately owned native worker storage")
++	}
++	mode := os.Getenv("FACTORYBOX_NATIVE_RESTORE_CASE")
++	if mode == "" {
++		deadline, bounded := t.Deadline()
++		if !bounded {
++			t.Fatal("native mapping requires its caller's lifecycle deadline")
++		}
++		for _, name := range []string{
++			"flat-restore", "flat-resume", "native-restore", "native-resume",
++			"native-root-alias", "native-upper-alias", "native-work-alias",
++			"native-covered-root", "native-split-upper", "native-existing-work",
++		} {
++			t.Run(name, func(t *testing.T) {
++				command := exec.Command(os.Args[0], "-test.v", "-test.run=^TestFactoryboxNativeRootMapping$",
++					"-test.timeout="+time.Until(deadline).String())
++				command.Env = append(os.Environ(), "FACTORYBOX_NATIVE_RESTORE_CASE="+name)
++				command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: unix.CLONE_NEWNS, Pdeathsig: syscall.SIGKILL}
++				if output, err := command.CombinedOutput(); err != nil {
++					t.Fatal(string(output), err)
++				} else {
++					t.Log(string(output))
++				}
++			})
++		}
++		return
++	}
++	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
++		t.Fatal(err)
++	}
++	root, err := os.MkdirTemp(os.Getenv("FACTORYBOX_NATIVE_RESTORE_ROOT"), "mapped-root-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var mounts, subvolumes []string
++	btrfs := func(args ...string) {
++		t.Helper()
++		if output, err := exec.Command("btrfs", args...).CombinedOutput(); err != nil {
++			t.Fatal(string(output), err)
++		}
++	}
++	t.Cleanup(func() {
++		for i := len(mounts) - 1; i >= 0; i-- {
++			if err := unix.Unmount(mounts[i], 0); err != nil && !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.ENOENT) {
++				t.Error(err)
++				return
++			}
++		}
++		for i := len(subvolumes) - 1; i >= 0; i-- {
++			if _, err := os.Lstat(subvolumes[i]); errors.Is(err, os.ErrNotExist) {
++				continue
++			}
++			if output, err := exec.Command("btrfs", "subvolume", "delete", "--", subvolumes[i]).CombinedOutput(); err != nil {
++				t.Error(string(output), err)
++				return
++			}
++		}
++		if err := os.RemoveAll(root); err != nil {
++			t.Error(err)
++		}
++	})
++	owner := strings.Repeat("a", 32)
++	bundle, manager := root+"/bundle", root+"/manager"
++	id := "fbx-" + owner
++	volume := manager + "/docker/" + id
++	for _, path := range []string{bundle, bundle + "/lower", bundle + "/rootfs", manager, manager + "/docker"} {
++		if err := os.Mkdir(path, 0700); err != nil {
++			t.Fatal(err)
++		}
++	}
++	btrfs("subvolume", "create", "--", volume)
++	subvolumes = append(subvolumes, volume)
++	if err := os.Chmod(volume, 0700); err != nil {
++		t.Fatal(err)
++	}
++	upper, work, backing := bundle+"/upper", bundle+"/work", bundle
++	native := strings.HasPrefix(mode, "native-")
++	if native {
++		backing = bundle + "/mutable"
++		btrfs("subvolume", "create", "--", backing)
++		subvolumes = append(subvolumes, backing)
++		if err := os.Chmod(backing, 0700); err != nil {
++			t.Fatal(err)
++		}
++		upper, work = backing+"/upper", backing+"/work"
++	}
++	for _, path := range []string{upper, work} {
++		if err := os.Mkdir(path, 0700); err != nil {
++			t.Fatal(err)
++		}
++	}
++	for path, content := range map[string]string{
++		bundle + "/lower/lower-marker": "unchanged lower",
++		upper + "/upper-marker":        "retained upper",
++		volume + "/private-marker":     "retained private volume",
++	} {
++		if err := os.WriteFile(path, []byte(content), 0640); err != nil {
++			t.Fatal(err)
++		}
++	}
++	originalLower, err := os.Open(bundle + "/lower/lower-marker")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer originalLower.Close()
++	originalVolume, err := os.Open(volume + "/private-marker")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer originalVolume.Close()
++	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0,
++		"index=off,lowerdir="+bundle+"/lower,upperdir="+upper+",workdir="+work); err != nil {
++		t.Fatal(err)
++	}
++	mounts = append(mounts, bundle+"/rootfs")
++	var originalRoot unix.Stat_t
++	if err := unix.Stat(bundle+"/rootfs", &originalRoot); err != nil {
++		t.Fatal(err)
++	}
++	token := strings.Repeat("b", 32)
++	leaf := "restore-work"
++	if strings.HasSuffix(mode, "resume") {
++		leaf = "resume-work-" + token
++	}
++	negative := native && mode != "native-restore" && mode != "native-resume"
++	switch mode {
++	case "native-root-alias":
++		if err := os.Rename(backing, backing+"-original"); err != nil {
++			t.Fatal(err)
++		}
++		subvolumes[len(subvolumes)-1] = backing + "-original"
++		if err := os.Symlink(backing+"-original", backing); err != nil {
++			t.Fatal(err)
++		}
++	case "native-upper-alias", "native-work-alias":
++		path := upper
++		if mode == "native-work-alias" {
++			path = work
++		}
++		if err := os.Rename(path, path+"-original"); err != nil {
++			t.Fatal(err)
++		}
++		if err := os.Symlink(path+"-original", path); err != nil {
++			t.Fatal(err)
++		}
++	case "native-covered-root":
++		if err := unix.Mount(backing, backing, "", unix.MS_BIND, ""); err != nil {
++			t.Fatal(err)
++		}
++		mounts = append(mounts, backing)
++	case "native-split-upper":
++		if err := os.Rename(upper, upper+"-original"); err != nil {
++			t.Fatal(err)
++		}
++		btrfs("subvolume", "create", "--", upper)
++		subvolumes = append(subvolumes, upper)
++	case "native-existing-work":
++		if err := os.Mkdir(backing+"/"+leaf, 0700); err != nil {
++			t.Fatal(err)
++		}
++		if err := os.WriteFile(backing+"/"+leaf+"/foreign", []byte("preserve"), 0600); err != nil {
++			t.Fatal(err)
++		}
++	}
++	config := configs.Config{
++		Rootfs: bundle + "/rootfs", RootfsUidShiftType: sh.IDMappedMount,
++		Cgroups: &configs.Cgroup{Path: "/" + id}, Labels: []string{"io.factorybox.owner=" + owner},
++		UidMappings: []configs.IDMap{{ContainerID: 0, HostID: 100000, Size: 65536}},
++		GidMappings: []configs.IDMap{{ContainerID: 0, HostID: 100000, Size: 65536}},
++		Mounts:      []*configs.Mount{{Source: volume, Destination: "/var/lib/docker", Device: "bind", IDMappedMount: true}},
++	}
++	// Those two paths become ID-mapped mounts only inside this child namespace.
++	// Release the merged overlay before its mapped lower and private volume.
++	mounts = append([]string{bundle + "/lower", volume}, mounts...)
++	if strings.HasSuffix(mode, "resume") {
++		err = FactoryboxResumeRoot(config, bundle, manager, token)
++	} else {
++		err = FactoryboxRoot(config, bundle, manager, filepath.Join(root, "images"))
++	}
++	if negative {
++		if err == nil {
++			t.Fatal("foreign or partial native layout was accepted", mode)
++		}
++		var current unix.Stat_t
++		if err := unix.Stat(bundle+"/rootfs", &current); err != nil || current.Dev != originalRoot.Dev || current.Ino != originalRoot.Ino {
++			t.Fatal("refusal changed the original overlay", err)
++		}
++		if err := unix.Stat(bundle+"/lower/lower-marker", &current); err != nil || current.Uid != 0 {
++			t.Fatal("refusal changed the original lower mount", current.Uid, err)
++		}
++		if mode == "native-existing-work" {
++			if data, err := os.ReadFile(backing + "/" + leaf + "/foreign"); err != nil || string(data) != "preserve" {
++				t.Fatal("existing work was overwritten", err)
++			}
++		}
++		return
++	}
++	if err != nil {
++		t.Fatal("public root mapper cannot restore the admitted overlay layout", err)
++	}
++	for _, path := range []string{bundle + "/lower/lower-marker", volume + "/private-marker"} {
++		var stat unix.Stat_t
++		if err := unix.Stat(path, &stat); err != nil || stat.Uid != 100000 || stat.Gid != 100000 {
++			t.Fatal("root mapping was not an actual ID-mapped mount", path, stat.Uid, stat.Gid, err)
++		}
++	}
++	for _, file := range []*os.File{originalLower, originalVolume} {
++		var stat unix.Stat_t
++		if err := unix.Fstat(int(file.Fd()), &stat); err != nil || stat.Uid != 0 || stat.Gid != 0 {
++			t.Fatal("mapping changed original inode ownership", stat.Uid, stat.Gid, err)
++		}
++	}
++	if data, err := os.ReadFile(bundle + "/rootfs/upper-marker"); err != nil || string(data) != "retained upper" {
++		t.Fatal("restore lost original upper state", string(data), err)
++	}
++	if err := os.WriteFile(bundle+"/rootfs/lower-marker", []byte("restored copy-up"), 0640); err != nil {
++		t.Fatal("restored overlay cannot copy up an existing mapped lower file", err)
++	}
++	if data, err := os.ReadFile(upper + "/lower-marker"); err != nil || string(data) != "restored copy-up" {
++		t.Fatal("copy-up escaped its original upper", string(data), err)
++	}
++	if _, err := os.Stat(backing + "/" + leaf); err != nil {
++		t.Fatal("restore work is outside its original upper subvolume", err)
++	}
++	t.Log(fmt.Sprintf("%s: actual lower/private-volume ID maps, original inode ownership, retained upper and copy-up passed", mode))
++}

@@ -1011,7 +1011,8 @@
         "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch": "b0cc2468b3f531317af079480c458bc4ea0d78661acb2d9c84d0273cf61bf5fe",
         "upstream/patches/sysbox-runc-exec-delegation-leaf.patch": "d98068c8c4c9ec38ad220d44f1207ad93f77128b9047f136932b783f39fdd107",
         "upstream/patches/sysbox-runc-restore-hold-diagnostics.patch": "cdb50fd2ceaf0d57599107f827871a820b47ee2bac8718a4313583cbcb808f8c",
-        "upstream/patches/sysbox-runc-restore-hold-settlement.patch": "55b12c12c1638254cace7b08fdfc0ad4b4ca1e4719d8d5a37720a22ca0846d6d"
+        "upstream/patches/sysbox-runc-restore-hold-settlement.patch": "55b12c12c1638254cace7b08fdfc0ad4b4ca1e4719d8d5a37720a22ca0846d6d",
+        "upstream/patches/sysbox-runc-native-overlay-restore.patch": "59b4ac67da9883ab15d1684a62aad2abf9bdd352ca2dd5461d50c5636d09e064"
       },
       "overlays": {
         "experiment_copy.go": "upstream/overlays/sysbox-runc/experiment_copy.go",
@@ -1047,7 +1048,8 @@
         "upstream/patches/sysbox-runc-factorybox-restore-hold-criu-worker.patch",
         "upstream/patches/sysbox-runc-exec-delegation-leaf.patch",
         "upstream/patches/sysbox-runc-restore-hold-diagnostics.patch",
-        "upstream/patches/sysbox-runc-restore-hold-settlement.patch"
+        "upstream/patches/sysbox-runc-restore-hold-settlement.patch",
+        "upstream/patches/sysbox-runc-native-overlay-restore.patch"
       ],
       "prefix": "sysbox-runc-081856cc5d17e7095f066b08d0eca6bb0b515c47",
       "repository": "nestybox/sysbox-runc",
@@ -1076,7 +1078,9 @@
         "libcontainer/factorybox_restore_root_linux_test.go": "fd88c29e90203fa119cdab4149056a47fb6513c217e0508a2d566db17336d3e3",
         "main.go": "b88ed6bbd8de228d4363d92c3b053365e9097418fbf42bd446f09680b961bd17",
         "libcontainer/experiment_seccomp_linux.go": "09547f4889b780c25a73a8eb11732fe3fdf8e54ec82073edce6123bb47727f7f",
-        "libcontainer/factoryboxrestore/factorybox_rootfs_linux.go": "2f9d5efa1e7324ddbbb777224dccd59845ea41b7bc6d74dc968fe8b5c4aaa036",
+        "libcontainer/factoryboxrestore/factorybox_rootfs_linux.go": "309327b3c2bde7d4ed6e3b0529de88cdcb354145e41413839173f77a5672ec4c",
+        "libcontainer/factoryboxrestore/factorybox_native_overlay_linux.go": "83bc64fbf9af88cb92e63d7dfcf144a8754cc2dbec6f584bed9ab0b6b9860d37",
+        "libcontainer/factoryboxrestore/factorybox_native_root_linux_test.go": "6f6d54cb5e0e0559feec10ba32d44dca8098be45007441cb67de7a9d7249f538",
         "libcontainer/factorybox_restore_cgroup_linux.go": "cec1f923bafee61a32bce65feebca1603e795c37ee9e845d41271b1b3660d04c",
         "factorybox_restore_receipt.go": "eb9b3ef36b1b1d80af994d6982d6aecec61c588630d523af492060588d9e331d",
         "factorybox_restore_receipt_test.go": "9577b54e7da495b8d861f1a10c8ce0d05e229a2637832264c89fc1405c3fffcd",
