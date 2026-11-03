@@ -64,19 +64,9 @@ func (e *Engine) openRetained(source string, metadataOnly bool) (_ *Engine, resu
 	if readErr != nil {
 		return nil, readErr
 	}
-	config := e.config
-	config.Root = source
-	validate := validateRetainedStoreEpoch
-	if metadataOnly {
-		validate = validateRetainedStoreMetadata
-	}
-	previous, err := validate(config, e.boot, epoch)
+	config, previous, err := retainedControllerConfiguration(e.config, source, e.boot, epoch, metadataOnly)
 	if err != nil {
 		return nil, err
-	}
-	if metadataOnly {
-		// Preserve historical evidence comparisons, never execute this recipe.
-		config.CriuSHA256 = epoch.Lifecycle.CriuSHA256
 	}
 	retained, err := os.OpenRoot(source)
 	if err != nil {

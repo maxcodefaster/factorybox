@@ -524,6 +524,10 @@ confirmed original Delete, absent runtime/cgroup and unchanged original
 retirement receipt/inventory. A changed store, owner, inode or attachment
 refuses cleanup. The old receipt and lifecycle record are not rewritten;
 the metadata handle cannot execute the old runtime or CRIU recipe.
+Dependency inventory compares old records against their own valid recorded
+Sysbox and CRIU digests, even after the current worker upgrades those components.
+Store, boot, paths and attachment checks remain exact. This metadata-only
+admission does not permit restoring RAM with a different execution recipe.
 
 Before publishing a new intent, an exact retry can discard an interrupted
 private inventory, allocation reserve or publication temporary. It inspects

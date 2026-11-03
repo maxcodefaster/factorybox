@@ -24,6 +24,31 @@ type recoveryStoreEpoch struct {
 	Lifecycle Config
 }
 
+func retainedControllerConfiguration(current Config, source, boot string, epoch recoveryStoreEpoch, metadataOnly bool) (Config, storefs.Active, error) {
+	config := current
+	config.Root = source
+	validate := validateRetainedStoreEpoch
+	if metadataOnly {
+		if !digest.MatchString(current.RuntimeSHA256) || !digest.MatchString(epoch.Lifecycle.RuntimeSHA256) {
+			return Config{}, storefs.Active{}, fmt.Errorf("retained metadata requires valid current and historical runtime identities")
+		}
+		// The privately read old recipe is evidence, not an executable.
+		// Keep its record comparisons exact without requiring the current
+		// worker to execute the historical Sysbox build.
+		config.RuntimeSHA256 = epoch.Lifecycle.RuntimeSHA256
+		validate = validateRetainedStoreMetadata
+	}
+	previous, err := validate(config, boot, epoch)
+	if err != nil {
+		return Config{}, storefs.Active{}, err
+	}
+	if metadataOnly {
+		// Preserve historical evidence comparisons, never execute this recipe.
+		config.CriuSHA256 = epoch.Lifecycle.CriuSHA256
+	}
+	return config, previous, nil
+}
+
 func validateRecoveryStoreEpoch(config Config, boot string, source Record, epoch recoveryStoreEpoch) (storefs.Active, error) {
 	if config.BoundedStore == nil || epoch.Lifecycle.BoundedStore == nil || source.Base == nil || source.Base.Immutable == nil {
 		return storefs.Active{}, fmt.Errorf("device translation requires complete bounded source identities")
