@@ -7,14 +7,21 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
 
 func TestRestoreWorkerSealedRequest(t *testing.T) {
-	request := restoreWorkerRequest{Version: 1, BootID: "original-boot", TargetID: "target",
+	request := restoreWorkerRequest{Version: 1, Deadline: time.Now().Add(time.Minute).UnixNano(), BootID: "original-boot", TargetID: "target",
 		TargetSHA: strings.Repeat("a", 64), RequestSHA: strings.Repeat("b", 64), Operation: "restore"}
 	encoded, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutDeadline := request
+	withoutDeadline.Deadline = 0
+	missingDeadline, err := json.Marshal(withoutDeadline)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,6 +33,7 @@ func TestRestoreWorkerSealedRequest(t *testing.T) {
 	}{
 		{"unsealed", encoded, false, false},
 		{"valid", encoded, true, true},
+		{"missing-deadline", missingDeadline, true, false},
 		{"trailing-object", append(append([]byte{}, encoded...), []byte(" {}")...), true, false},
 		{"unknown-field", append(append([]byte{}, encoded[:len(encoded)-1]...), []byte(",\"unknown\":true}")...), true, false},
 		{"oversized", []byte(strings.Repeat(" ", captureRequestLimit+1)), true, false},

@@ -19,7 +19,7 @@ func TestCaptureWorkerUsesCallerBudget(t *testing.T) {
 		t.Run(duration.String(), func(t *testing.T) {
 			parent, cancelParent := context.WithTimeout(context.Background(), duration)
 			defer cancelParent()
-			ctx, cancel := captureWorkerContext(parent)
+			ctx, cancel := lifecycleWorkerContext(parent)
 			defer cancel()
 			want, _ := parent.Deadline()
 			got, ok := ctx.Deadline()
@@ -36,7 +36,7 @@ func TestCaptureWorkerUsesCallerBudget(t *testing.T) {
 
 func TestCaptureWorkerBoundsAnUnboundedCaller(t *testing.T) {
 	started := time.Now()
-	ctx, cancel := captureWorkerContext(context.Background())
+	ctx, cancel := lifecycleWorkerContext(context.Background())
 	defer cancel()
 	deadline, ok := ctx.Deadline()
 	if !ok || deadline.Before(started.Add(7*time.Minute)) || deadline.After(time.Now().Add(7*time.Minute)) {
@@ -51,7 +51,7 @@ func TestCaptureWorkerBoundsAnUnboundedCaller(t *testing.T) {
 func TestCaptureWorkerKeepsAnExpiredCaller(t *testing.T) {
 	parent, cancelParent := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancelParent()
-	ctx, cancel := captureWorkerContext(parent)
+	ctx, cancel := lifecycleWorkerContext(parent)
 	defer cancel()
 	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		t.Fatalf("capture revived an expired caller: %v", ctx.Err())

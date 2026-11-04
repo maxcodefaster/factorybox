@@ -244,7 +244,7 @@ func captureStopSource(config captureGuardConfig, anchors captureGuardAnchors, c
 }
 
 func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File, executable string) error {
-	ctx, cancel := captureWorkerContext(ctx)
+	ctx, cancel := lifecycleWorkerContext(ctx)
 	defer cancel()
 	if !guard.unsafe {
 		return fmt.Errorf("capture command requires an acknowledged guarded transaction")

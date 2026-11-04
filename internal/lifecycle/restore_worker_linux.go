@@ -19,6 +19,7 @@ import (
 
 type restoreWorkerRequest struct {
 	Version    int    `json:"version"`
+	Deadline   int64  `json:"deadline_unix_nano"`
 	Config     Config `json:"config"`
 	BootID     string `json:"boot_id"`
 	TargetID   string `json:"target_id"`
@@ -55,7 +56,7 @@ func decodeRestoreWorkerRequest(file *os.File) (restoreWorkerRequest, error) {
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return request, fmt.Errorf("restore worker request has trailing data")
 	}
-	if request.Version != 1 || !sandboxID.MatchString(request.TargetID) ||
+	if request.Version != 1 || request.Deadline <= 0 || !sandboxID.MatchString(request.TargetID) ||
 		!digest.MatchString(request.TargetSHA) || !digest.MatchString(request.RequestSHA) || request.BootID == "" ||
 		(request.Operation != "restore" && request.Operation != "resume") {
 		return request, fmt.Errorf("restore worker request identity is invalid")
@@ -116,6 +117,11 @@ func serveRestoreWorker(operation, runtimeID string) error {
 	defer sealed.Close()
 	request, err := decodeRestoreWorkerRequest(envelope)
 	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(0, request.Deadline))
+	defer cancel()
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if operation != "factorybox-"+request.Operation {
@@ -191,12 +197,13 @@ func serveRestoreWorker(operation, runtimeID string) error {
 	if err := e.requireEmptyCgroup(target); err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
 	return e.heldRestoreWorker(ctx, lock, target, expected, sealed, relative, request.Operation)
 }
 
 func (e *Engine) heldRestore(ctx context.Context, lock *os.File, target Record, request any, sealed *os.File, relative, operation string) error {
+	ctx, cancel := lifecycleWorkerContext(ctx)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
 	data, err := json.Marshal(request)
 	if err != nil {
 		return err
@@ -205,7 +212,7 @@ func (e *Engine) heldRestore(ctx context.Context, lock *os.File, target Record, 
 	if err != nil {
 		return err
 	}
-	worker := restoreWorkerRequest{Version: 1, Config: e.config, BootID: e.boot,
+	worker := restoreWorkerRequest{Version: 1, Deadline: deadline.UnixNano(), Config: e.config, BootID: e.boot,
 		TargetID: target.ID, TargetSHA: sum(record), RequestSHA: sum(data), Operation: operation, Relative: relative}
 	data, err = json.Marshal(worker)
 	if err != nil || len(data) > captureRequestLimit {
@@ -228,8 +235,6 @@ func (e *Engine) heldRestore(ctx context.Context, lock *os.File, target Record, 
 		return err
 	}
 	defer root.Close()
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
 	command := exec.CommandContext(ctx, "/proc/self/exe", "_restore-worker", "factorybox-"+operation, target.RuntimeID)
 	command.ExtraFiles = []*os.File{envelope, lock, root, sealed}
 	command.Env = []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",

@@ -148,6 +148,37 @@ type restoreHoldReady struct {
 	CRIUOrigin bool   `json:"criu_returned_to_original_worker"`
 }
 
+func readRestoreHold(ctx context.Context, fd int) ([]byte, error) {
+	ctx, cancel := lifecycleWorkerContext(ctx)
+	defer cancel()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		// Polling observes cancellation; it does not impose a second restore
+		// deadline while the accepted backend is still making progress.
+		poll := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+		n, err := unix.Poll(poll, 50)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("observe restore pre-resume hold: %w", err)
+		}
+		if n == 0 {
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		packet, err := captureGuardRead(fd, -1)
+		if err == nil && len(packet) == 0 {
+			err = fmt.Errorf("restore closed before its pre-resume hold")
+		}
+		return packet, err
+	}
+}
+
 // The independent restore worker owns this handshake through activation and
 // durable publication. Its public controller may stop or die in the meantime.
 func (e *Engine) heldRestoreWorker(ctx context.Context, lock *os.File, target Record, request any, sealed *os.File, relative, operation string) error {
@@ -176,9 +207,12 @@ func (e *Engine) heldRestoreWorker(ctx context.Context, lock *os.File, target Re
 			<-done
 		}
 	}()
-	packet, err := captureGuardRead(int(client.Fd()), 15000)
+	packet, err := readRestoreHold(ctx, int(client.Fd()))
 	if err != nil {
-		return fmt.Errorf("restore did not enter its pre-resume hold: %w", err)
+		cancel()
+		backendErr := <-done
+		waited = true
+		return errors.Join(fmt.Errorf("restore did not enter its pre-resume hold: %w", err), backendErr)
 	}
 	child.Close()
 	var ready restoreHoldReady

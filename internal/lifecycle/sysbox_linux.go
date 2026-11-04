@@ -79,6 +79,14 @@ func (e *Engine) command(ctx context.Context, lock *os.File, args ...string) ([]
 	return e.commandFiles(ctx, lock, nil, args...)
 }
 
+func runtimeCommandContext(ctx context.Context, args []string) (context.Context, context.CancelFunc) {
+	if len(args) == 4 && args[0] == "--criu" &&
+		(args[2] == "factorybox-restore" || args[2] == "factorybox-resume") {
+		return lifecycleWorkerContext(ctx)
+	}
+	return context.WithTimeout(ctx, 60*time.Second)
+}
+
 func (e *Engine) commandFiles(ctx context.Context, lock *os.File, files []*os.File, args ...string) ([]byte, error) {
 	if e.metadataOnly {
 		return nil, fmt.Errorf("retained metadata handle cannot execute runtime commands")
@@ -91,7 +99,7 @@ func (e *Engine) commandFiles(ctx context.Context, lock *os.File, files []*os.Fi
 		return nil, err
 	}
 	defer binary.Close()
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	ctx, cancel := runtimeCommandContext(ctx, args)
 	defer cancel()
 	command := exec.CommandContext(ctx, "/proc/self/fd/3",
 		append([]string{"--root", e.config.Root + "/runtime"}, args...)...)
