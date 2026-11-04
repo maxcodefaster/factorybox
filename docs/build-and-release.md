@@ -515,6 +515,15 @@ rereading the child. Completion still requires the child's actual zero anonymous
 memory, an empty cgroup and the unchanged three-second observation deadline.
 There is no global flush or fabricated zero.
 
+After a complete capture, confirmation of the original source's kernel exit uses
+the caller's remaining lifecycle deadline. It does not impose a separate
+three-second stop cutoff or renew the request. Only pending pidfd/cgroup exit is
+observed again; changed ownership and invalid kernel anchors fail immediately.
+The original pidfd, empty-cgroup and thread checks still precede clearing that
+empty cgroup's freezer. Cancellation leaves an unconfirmed outcome, not a
+successful Pause. This is separate from the unchanged three-second stopped-memory
+observation above.
+
 `timer-orphan` and `timer-guard-loss` exercise actual controller/guard SIGKILL
 after completed process capture. They require the staged source and queued
 signal to remain held and unresolved requests to refuse replay or deletion.

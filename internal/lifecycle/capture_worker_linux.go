@@ -195,7 +195,7 @@ func captureWorkerServe() (resultErr error) {
 		return errors.Join(err, reserveErr, validation, rollback, receipt)
 	}
 	if request.Guard.StopSource {
-		return captureStopSource(request.Guard, anchors, captured)
+		return captureStopSource(ctx, request.Guard, anchors, captured)
 	}
 	if err := activateCaptureTimers(request, anchors, requestFile, guardControl); err != nil {
 		return err
@@ -203,7 +203,13 @@ func captureWorkerServe() (resultErr error) {
 	return captureGuardCaptureReturned(request.Guard, anchors)
 }
 
-func captureStopSource(config captureGuardConfig, anchors captureGuardAnchors, captured sysboxcapture.Result) error {
+func captureStopSource(ctx context.Context, config captureGuardConfig, anchors captureGuardAnchors, captured sysboxcapture.Result) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if _, finite := ctx.Deadline(); !finite {
+		return fmt.Errorf("captured source stop requires its original finite lifecycle deadline")
+	}
 	if !config.StopSource || captured.SourcePID != config.PID || !captured.CompleteWriter ||
 		!captured.LeaveRunning || captured.Filesystem == nil {
 		return fmt.Errorf("source stop lacks its complete retained-source snapshot")
@@ -217,12 +223,15 @@ func captureStopSource(config captureGuardConfig, anchors captureGuardAnchors, c
 	}); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := captureKillFrozenSource(config, anchors); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if err := captureGuardValidateStopped(config, anchors); err == nil {
+	return captureWaitStopped(ctx,
+		func() error { return captureGuardValidateStopped(config, anchors) },
+		func() error {
 			// Old Sysbox checks its freezer before reporting process exit.
 			// Clear only this already-empty original cgroup's freezer.
 			fd, err := unix.Openat(int(anchors.group.Fd()), "cgroup.freeze",
@@ -236,11 +245,7 @@ func captureStopSource(config captureGuardConfig, anchors captureGuardAnchors, c
 				return err
 			}
 			return captureGuardValidateStopped(config, anchors)
-		} else if time.Now().After(deadline) {
-			return fmt.Errorf("captured original source did not stop: %w", err)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+		})
 }
 
 func (e *Engine) capture(ctx context.Context, guard *captureGuard, lock *os.File, executable string) error {

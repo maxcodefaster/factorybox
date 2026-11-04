@@ -175,7 +175,12 @@ func captureGuardValidateState(config captureGuardConfig, anchor captureGuardAnc
 	}
 	if err != nil || (!stopped && n != 0) ||
 		(stopped && (n != 1 || poll[0].Revents&unix.POLLIN == 0 || poll[0].Revents&unix.POLLNVAL != 0)) {
-		return fmt.Errorf("guard source pidfd is exited or invalid: %v", err)
+		cause := fmt.Errorf("guard source pidfd state differs: stopped=%t ready=%d revents=%#x: %v",
+			stopped, n, poll[0].Revents, err)
+		if stopped && err == nil && n == 0 {
+			return &captureStopPending{cause}
+		}
+		return cause
 	}
 	descriptor, err := os.ReadFile(fmt.Sprintf("/proc/self/fdinfo/%d", anchor.pid.Fd()))
 	if err != nil {
@@ -192,12 +197,18 @@ func captureGuardValidateState(config captureGuardConfig, anchor captureGuardAnc
 	}
 	if stopped {
 		events, err := captureGuardEvents(anchor.group)
-		if err != nil || events["populated"] != 0 {
+		if err != nil {
 			return fmt.Errorf("stopped source still has populated owned cgroups: %v", err)
 		}
+		if events["populated"] != 0 {
+			return &captureStopPending{fmt.Errorf("stopped source still has populated owned cgroups")}
+		}
 		threads, err := captureGuardThreads(config, anchor)
-		if err != nil || len(threads) != 0 {
+		if err != nil {
 			return fmt.Errorf("stopped source still has owned threads or a foreign mount: %v", err)
+		}
+		if len(threads) != 0 {
+			return &captureStopPending{fmt.Errorf("stopped source still has owned threads")}
 		}
 		return nil
 	}
