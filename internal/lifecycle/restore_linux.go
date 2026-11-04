@@ -148,12 +148,19 @@ type restoreHoldReady struct {
 	CRIUOrigin bool   `json:"criu_returned_to_original_worker"`
 }
 
-func readRestoreHold(ctx context.Context, fd int) ([]byte, error) {
+var errRestoreBackendExited = errors.New("restore backend exited before its pre-resume hold")
+
+func readRestoreHold(ctx context.Context, fd int, backendDone <-chan struct{}) ([]byte, error) {
 	ctx, cancel := lifecycleWorkerContext(ctx)
 	defer cancel()
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		select {
+		case <-backendDone:
+			return nil, errRestoreBackendExited
+		default:
 		}
 		// Polling observes cancellation; it does not impose a second restore
 		// deadline while the accepted backend is still making progress.
@@ -195,23 +202,20 @@ func (e *Engine) heldRestoreWorker(ctx context.Context, lock *os.File, target Re
 	defer child.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	done := make(chan error, 1)
+	done := make(chan struct{})
+	var backendErr error
 	go func() {
-		_, err := e.commandFiles(ctx, lock, []*os.File{sealed, child}, "--criu", e.config.Criu, "factorybox-"+operation, target.RuntimeID)
-		done <- err
+		_, backendErr = e.commandFiles(ctx, lock, []*os.File{sealed, child}, "--criu", e.config.Criu, "factorybox-"+operation, target.RuntimeID)
+		close(done)
 	}()
-	waited := false
 	defer func() {
-		if !waited {
-			cancel()
-			<-done
-		}
+		cancel()
+		<-done
 	}()
-	packet, err := readRestoreHold(ctx, int(client.Fd()))
+	packet, err := readRestoreHold(ctx, int(client.Fd()), done)
 	if err != nil {
 		cancel()
-		backendErr := <-done
-		waited = true
+		<-done
 		return errors.Join(fmt.Errorf("restore did not enter its pre-resume hold: %w", err), backendErr)
 	}
 	child.Close()
@@ -254,10 +258,9 @@ func (e *Engine) heldRestoreWorker(ctx context.Context, lock *os.File, target Re
 	if _, err := client.Write([]byte("held:" + ready.RequestSHA)); err != nil {
 		return err
 	}
-	err = <-done
-	waited = true
-	if err != nil {
-		return err
+	<-done
+	if backendErr != nil {
+		return backendErr
 	}
 	result, state, err := e.operationCompletedStatus(ctx, lock, target, request, relative+"/"+operation+"-held.json", "paused")
 	if err != nil {

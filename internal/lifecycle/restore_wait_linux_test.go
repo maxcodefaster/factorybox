@@ -54,7 +54,7 @@ func TestRestoreHoldKeepsCallerBudget(t *testing.T) {
 		<-finished
 	})
 	start := time.Now()
-	packet, err := readRestoreHold(ctx, reader)
+	packet, err := readRestoreHold(ctx, reader, nil)
 	if err != nil || !bytes.Equal(packet, want) || ctx.Err() != nil {
 		t.Fatalf("restore shortened its live caller budget after %s: packet=%q error=%v caller=%v",
 			time.Since(start), packet, err, ctx.Err())
@@ -71,7 +71,7 @@ func TestRestoreHoldRejectsClosedSocket(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if packet, err := readRestoreHold(ctx, reader); err == nil || len(packet) != 0 {
+	if packet, err := readRestoreHold(ctx, reader, nil); err == nil || len(packet) != 0 {
 		t.Fatalf("restore accepted a closed hold socket: packet=%q error=%v", packet, err)
 	}
 }
@@ -80,7 +80,7 @@ func TestRestoreHoldHonorsCallerCancellation(t *testing.T) {
 	reader, _ := restoreWaitSocket(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := readRestoreHold(ctx, reader)
+	_, err := readRestoreHold(ctx, reader, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("restore did not retain caller cancellation: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestRestoreHoldHonorsExpiredCaller(t *testing.T) {
 	reader, _ := restoreWaitSocket(t)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 	defer cancel()
-	_, err := readRestoreHold(ctx, reader)
+	_, err := readRestoreHold(ctx, reader, nil)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("restore revived an expired caller: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestRestoreHoldHonorsInFlightCancellation(t *testing.T) {
 	defer cancel()
 	timer := time.AfterFunc(20*time.Millisecond, cancel)
 	defer timer.Stop()
-	_, err := readRestoreHold(ctx, reader)
+	_, err := readRestoreHold(ctx, reader, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("restore ignored cancellation while waiting for its owned socket: %v", err)
 	}
@@ -116,9 +116,34 @@ func TestRestoreHoldRetainsTheOriginalPacket(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	packet, err := readRestoreHold(ctx, reader)
+	packet, err := readRestoreHold(ctx, reader, nil)
 	if err != nil || !bytes.Equal(packet, want) {
 		t.Fatalf("restore changed its hold packet: %q %v", packet, err)
+	}
+}
+
+func TestRestoreHoldObservesBackendExit(t *testing.T) {
+	reader, _ := restoreWaitSocket(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	exited := make(chan struct{})
+	close(exited)
+	_, err := readRestoreHold(ctx, reader, exited)
+	if !errors.Is(err, errRestoreBackendExited) || ctx.Err() != nil {
+		t.Fatalf("restore waited out its caller after backend exit: backend=%v caller=%v", err, ctx.Err())
+	}
+}
+
+func TestRestoreHoldObservesInFlightBackendExit(t *testing.T) {
+	reader, _ := restoreWaitSocket(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	exited := make(chan struct{})
+	timer := time.AfterFunc(20*time.Millisecond, func() { close(exited) })
+	defer timer.Stop()
+	_, err := readRestoreHold(ctx, reader, exited)
+	if !errors.Is(err, errRestoreBackendExited) || ctx.Err() != nil {
+		t.Fatalf("restore ignored backend exit during its wait: backend=%v caller=%v", err, ctx.Err())
 	}
 }
 
