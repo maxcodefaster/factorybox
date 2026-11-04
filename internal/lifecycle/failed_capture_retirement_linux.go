@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"slices"
 
 	"factorybox/internal/ownedtree"
 )
@@ -65,27 +66,44 @@ func (e *Engine) retireDeletedFailedCaptureBacking(ctx context.Context, record R
 		return err
 	}
 	admissionSHA := sum(encodedAdmission)
-	payload := generation + "/images"
+	allowed := []string{generation + "/images"}
+	if admission.Version == 2 {
+		allowed = append(allowed, generation+"/filesystem")
+	}
+	slices.Sort(allowed)
 	journal, relative, err := e.privateBackingJournal(record, "failed-capture")
 	if err != nil {
 		return err
 	}
 	defer journal.root.Close()
+	alias := ""
+	if admission.Version == 2 {
+		alias, err = journal.privateJournalChild(relative, "alias")
+		if err != nil {
+			return err
+		}
+		relative, err = journal.privateJournalChild(relative, "payload")
+		if err != nil {
+			return err
+		}
+	}
 	directory, err := directoryIdentity(journal.config.Root + "/" + relative)
 	if err != nil {
 		return err
 	}
 	dependencies := func() error {
 		for _, controller := range forest.controllers {
-			if err := controller.sandboxBackingDependencies(ctx, e.config.Root, []string{payload}); err != nil {
+			if err := controller.sandboxBackingDependencies(ctx, e.config.Root, allowed); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
 	absent := func() error {
-		if _, err := e.root.Lstat(payload); !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("retired failed capture has remaining or successor images: %v", err)
+		for _, path := range allowed {
+			if _, err := e.root.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("retired failed capture has remaining or successor backing: %s: %v", path, err)
+			}
 		}
 		return nil
 	}
@@ -99,23 +117,31 @@ func (e *Engine) retireDeletedFailedCaptureBacking(ctx context.Context, record R
 		if err := journal.resetUnacceptedRetirementPreparation(ctx, relative); err != nil {
 			return err
 		}
-		paths := []string{}
-		if info, err := e.root.Lstat(payload); err == nil {
-			// CRIU's image directory may carry the original guest's mapped
-			// UID. Its root-owned private capture parent and confirmed Delete
-			// establish ownership, not a requirement to chown guest payloads.
-			if !info.IsDir() {
-				return fmt.Errorf("failed capture images are not their original private directory")
-			}
-			if err := e.boundedObject(e.config.Root + "/" + payload); err != nil {
-				return err
-			}
-			paths = append(paths, payload)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
 		if err := dependencies(); err != nil {
 			return err
+		}
+		if admission.Version == 2 {
+			if err := e.uncoverRecoveredCapture(journal, alias, record, request, pause.SnapshotID,
+				generation, admissionSHA, capture); err != nil {
+				return err
+			}
+		}
+		paths := []string{}
+		for _, payload := range allowed {
+			if info, err := e.root.Lstat(payload); err == nil {
+				// CRIU's image directory may carry the original guest's mapped
+				// UID. Its root-owned private capture parent and confirmed Delete
+				// establish ownership, not a requirement to chown guest payloads.
+				if !info.IsDir() {
+					return fmt.Errorf("failed capture backing is not its original private directory")
+				}
+				if err := e.boundedObject(e.config.Root + "/" + payload); err != nil {
+					return err
+				}
+				paths = append(paths, payload)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
 		}
 		plan := ownedtree.Plan{Version: 1, Paths: paths}
 		if len(paths) != 0 {
@@ -145,8 +171,16 @@ func (e *Engine) retireDeletedFailedCaptureBacking(ctx context.Context, record R
 		intent.AdmissionSHA256 != admissionSHA || intent.Controller != e.config.Root ||
 		intent.Capture != capture || intent.Directory != directory || intent.Bundle != *record.InputDirectory ||
 		!digest.MatchString(intent.InventorySHA256) || intent.StartedAt == "" ||
-		len(intent.Payloads) > 1 || len(intent.Payloads) == 1 && intent.Payloads[0] != payload {
+		len(intent.Payloads) > len(allowed) {
 		return fmt.Errorf("failed capture retirement changed its original owner/input")
+	}
+	for i, path := range intent.Payloads {
+		if !slices.Contains(allowed, path) {
+			return fmt.Errorf("failed capture retirement gained an unauthorized payload")
+		}
+		if i > 0 && path <= intent.Payloads[i-1] {
+			return fmt.Errorf("failed capture retirement has duplicate or unordered payloads")
+		}
 	}
 	data, _ := json.Marshal(intent)
 	var result SandboxBackingRetirement
@@ -166,6 +200,9 @@ func (e *Engine) retireDeletedFailedCaptureBacking(ctx context.Context, record R
 	}
 	if err := dependencies(); err != nil {
 		return err
+	}
+	if proved, err := e.deletedFailedPauseCapture(record, pause.SnapshotID); err != nil || !proved {
+		return errors.Join(err, fmt.Errorf("failed capture Delete proof changed before retirement"))
 	}
 	if len(intent.Payloads) != 0 {
 		if err := ownedtree.RemoveRemaining(ctx, e.root, plan); err != nil {

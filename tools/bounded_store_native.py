@@ -186,8 +186,8 @@ def main():
     parser.add_argument('--native-candidate', action='store_true',
                         help='Test an explicitly unqualified delivered candidate only on its exact native Docker host kernel')
     parser.add_argument('--frozen-core', action='store_true', help='Compile current test files against the selected worker build\'s exact frozen non-test sources; retain the complete original test tree and overlay current test files only')
-    parser.add_argument('--suite', choices=['capacity', 'retirement', 'resume-retirement', 'backing-retirement', 'failed-capture-retirement', 'network-fork', 'network-resume', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'pidfd-namespaces', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
-    parser.add_argument('--retirement-cli', help='Exact standalone cleanup CLI; failed-capture-retirement only, without replacing the worker executable')
+    parser.add_argument('--suite', choices=['capacity', 'retirement', 'resume-retirement', 'backing-retirement', 'failed-capture-retirement', 'stopped-capture-retirement', 'network-fork', 'network-resume', 'retirement-base-diagnostic', 'timer-restart-prototype', 'timer-natural', 'timer-freezer-abi', 'timer-state-reader', 'timer-admission-reader', 'timer-exit-guard', 'timer-detach', 'timer-signal', 'timer-admission-signal', 'timer-remainder', 'timer-remainder-protection', 'timer-kernel-activation-prototype', 'restore-hold', 'pidfd-namespaces', 'timer-orphan', 'timer-guard-loss', 'record-metadata', 'worker-metadata', 'stopped-memory', 'standby-cgroup', 'standby-exec', 'standby-repeat', 'standby-peers'], default='capacity')
+    parser.add_argument('--retirement-cli', help='Exact standalone cleanup CLI; failed/stopped-capture retirement only, without replacing the worker executable')
     parser.add_argument('--nested-exec-consumer', help='Exact existing consumer image supplying nested runc for the standby-exec control')
     parser.add_argument('--exec-trace-inputs', help='Optional exact owned diagnostic strace acquisition; standby-exec only')
     parser.add_argument('--peer-source', action='store_true',
@@ -232,8 +232,9 @@ def main():
     resume_retirement = args.suite == 'resume-retirement'
     backing_retirement = args.suite == 'backing-retirement'
     failed_capture_retirement = args.suite == 'failed-capture-retirement'
-    if args.retirement_cli and not failed_capture_retirement:
-        parser.error('--retirement-cli requires failed-capture-retirement')
+    stopped_capture_retirement = args.suite == 'stopped-capture-retirement'
+    if args.retirement_cli and not (failed_capture_retirement or stopped_capture_retirement):
+        parser.error('--retirement-cli requires failed/stopped-capture-retirement')
     network_fork = args.suite == 'network-fork'
     network_resume = args.suite == 'network-resume'
     if (args.peer_source or args.peer_network or args.peer_common_base or args.peer_release or args.peer_docker) and not standby_peers:
@@ -260,7 +261,7 @@ def main():
     if reference.docker(['ps', '--filter', 'label=com.factorybox.run', '--format', '{{.ID}}']):
         raise ValueError('other Factorybox runs must finish before this serialized test')
     owner = uuid.uuid4().hex
-    retirement = args.suite.startswith('retirement') or resume_retirement or backing_retirement or failed_capture_retirement or network_fork or network_resume or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or pidfd_namespaces or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
+    retirement = args.suite.startswith('retirement') or resume_retirement or backing_retirement or failed_capture_retirement or stopped_capture_retirement or network_fork or network_resume or prototype or natural_timer or freezer_abi or reader_only or admission_reader or exit_guard or detach or signal_boundary or admission_signal or remainder or protection or restore_hold or pidfd_namespaces or timer_orphan or timer_guard_loss or record_metadata or worker_metadata or stopped_memory or standby_cgroup or standby_exec or standby_repeat or standby_peers
     name = ('factorybox-checkpoint-retirement-' if retirement else 'factorybox-bounded-store-') + owner
     artifact = reference.new_artifact(name)
     artifact.mkdir()
@@ -329,6 +330,11 @@ def main():
         result['scope'] = 'Delivered CLI recovery selections, released selection replay, committed-pause protection, live independent fork/resume after checkpoint retirement, foreign mount/successor refusal, actual SIGKILL during partial deletion, retry with unknown entry refusal, verified immutable base alias cleanup and a required read-only-request/NULL-remainder relative wait through source/fork with preserved syscall registers and original deadline. Not epoch retirement or production qualification.'
     if pidfd_namespaces:
         result['scope'] = 'Delivered worker Pause/Resume of a live pidfd within one user namespace, with flat and distinct nested PID namespaces. The original pidfd must signal the same exact child before and after restore, not merely open a same-numbered process. No Factory installation, uncertain ACME replay or production qualification.'
+    if stopped_capture_retirement:
+        result['scope'] = ('Actual CRIU capture and stopped original source with controller exit before checkpoint '
+                           'publication. Explicit Delete and private backing retirement preserve all original evidence, '
+                           'refuse missing authority and foreign successors, and never manufacture a committed Pause. '
+                           'No retained-installation repair or complete platform qualification.')
     if standby_cgroup:
         result['scope'] = 'Exact delivered worker with independent tiny writable-cgroup fixtures. Require exec in init.scope before and after real Pause/Resume and admission of new child cgroups from existing and empty delegation. Not Docker, Fork or platform qualification.'
     if standby_exec:
@@ -474,9 +480,10 @@ def main():
                         '--env', 'FACTORYBOX_RETIREMENT_TEST=^(' + '|'.join(
                             ['TestNativeSandboxBackingRetirement', 'TestNativeDeletedIncompleteStartBackingRetirement',
                              *BACKING_RETIREMENT_UNIT_TESTS]) + ')$']
-        if failed_capture_retirement:
-            command += ['--env', 'FACTORYBOX_NATIVE_FAILED_CAPTURE_RETIREMENT=1',
-                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNativeFailedCaptureBackingRetirement$']
+        if failed_capture_retirement or stopped_capture_retirement:
+            target = 'Stopped' if stopped_capture_retirement else 'Failed'
+            command += ['--env', 'FACTORYBOX_NATIVE_' + target.upper() + '_CAPTURE_RETIREMENT=1',
+                        '--env', 'FACTORYBOX_RETIREMENT_TEST=^TestNative' + target + 'CaptureBackingRetirement$']
             if args.retirement_cli:
                 executable = Path(args.retirement_cli).absolute()
                 if executable.resolve() != executable or not executable.is_file():
@@ -599,6 +606,8 @@ def main():
             count = 2
         if pidfd_namespaces:
             prefix, count = 'TestNativePidfdNamespaces', 1
+        if stopped_capture_retirement:
+            prefix, count = 'TestNativeStoppedCaptureBackingRetirement', 1
         result['passed_tests'] = sum(line.startswith('--- PASS: ' + prefix) for line in log.splitlines())
         if done.returncode or not state['Running'] or state['OOMKilled'] or result['passed_tests'] != count or '--- SKIP:' in log:
             raise ValueError('native bounded worker assertions failed or skipped')
@@ -606,6 +615,15 @@ def main():
             proof_path = output / 'pidfd-namespaces.json'
             proof = json.loads(proof_path.read_text())
             require_pidfd_namespace_coverage(proof)
+            result['proof_sha256'] = reference.sha(proof_path)
+        elif stopped_capture_retirement:
+            proof_path = output / 'stopped-capture-retirement.json'
+            proof = json.loads(proof_path.read_text())
+            if any(proof.get(key) is not True for key in ['passed', 'real_capture_and_stop',
+                    'confirmed_delete', 'images_and_filesystem_retired', 'original_evidence_preserved',
+                    'no_checkpoint_manufactured', 'exact_completion_replayed',
+                    'missing_admission_refused', 'foreign_successor_preserved', 'original_record_unchanged']):
+                raise ValueError('stopped-capture retirement omitted cleanup or preservation assertions')
             result['proof_sha256'] = reference.sha(proof_path)
         elif failed_capture_retirement:
             proof_path = output / 'failed-capture-retirement.json'

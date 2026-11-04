@@ -524,6 +524,18 @@ empty cgroup's freezer. Cancellation leaves an unconfirmed outcome, not a
 successful Pause. This is separate from the unchanged three-second stopped-memory
 observation above.
 
+An explicit Delete can settle an unpublished capture whose original source has
+already stopped. It verifies the original capture and stop receipts, absent
+controller, writer, guard and retained helpers, and the empty unchanged cgroup
+tree. It never repeats capture, restores a process, thaws a live source or
+completes the failed Pause. Its versioned admission is retained with the original
+evidence. Ordinary private-backing retirement can then release that capture's
+RAM images and filesystem while preserving its receipts and Source.
+The `stopped-capture-retirement` delivered-image gate exercises real CRIU capture
+and controller exit before checkpoint publication, cleanup, exact replay and
+missing-authority/foreign-successor refusals. Older worker executables do not
+gain this capability merely because newer source exists.
+
 `timer-orphan` and `timer-guard-loss` exercise actual controller/guard SIGKILL
 after completed process capture. They require the staged source and queued
 signal to remain held and unresolved requests to refuse replay or deletion.

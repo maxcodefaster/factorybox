@@ -209,9 +209,9 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                 "timer-admission-reader", "timer-state-reader", "timer-exit-guard",
                 "timer-signal", "timer-admission-signal", "timer-remainder",
                 "timer-remainder-protection", "timer-orphan", "timer-guard-loss",
-                "resume-retirement", "backing-retirement", "failed-capture-retirement",
+                "resume-retirement", "backing-retirement", "failed-capture-retirement", "stopped-capture-retirement",
             })
-            for suite in ["resume-retirement", "backing-retirement", "failed-capture-retirement", "pidfd-namespaces"]:
+            for suite in ["resume-retirement", "backing-retirement", "failed-capture-retirement", "stopped-capture-retirement", "pidfd-namespaces"]:
                 command = dict(commands)["runtime-" + suite]
                 self.assertEqual(command[1:], ["tools/bounded_store_native.py",
                     "--worker-build", "exact-worker", "--suite", suite])

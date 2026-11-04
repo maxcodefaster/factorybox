@@ -102,22 +102,27 @@ func (e *Engine) exitRecoveredFailedCapture(record Record, id, relative string) 
 	if err != nil || !recovered {
 		return recovered, nil, err
 	}
+	alias, err := e.exitFailedCaptureAlias(record, relative)
+	return true, alias, err
+}
+
+func (e *Engine) exitFailedCaptureAlias(record Record, relative string) (*sysboxcapture.FilesystemTree, error) {
 	if record.Base == nil || record.Base.Immutable == nil {
-		return true, nil, nil
+		return nil, nil
 	}
 	// The writer binds the verified lower before copying mutable roots. A
 	// failed copy has no manifest containing its underlying mountpoint identity.
 	// Keep every byte; release only the currently verified read-only base alias.
 	lower := e.config.Root + "/" + relative + "/filesystem/lower"
 	if _, err := e.root.Lstat(relative + "/filesystem/lower"); errors.Is(err, os.ErrNotExist) {
-		return true, nil, nil
+		return nil, nil
 	} else if err != nil {
-		return false, nil, err
+		return nil, err
 	}
 	tree := *record.Base
 	tree.Name, tree.Source, tree.Saved, tree.Alias = "lower", record.InputBundle+"/lower", lower, nil
 	if err := sysboxcapture.VerifyImmutableTree(lower, tree); err != nil {
-		return false, nil, err
+		return nil, err
 	}
-	return true, &tree, nil
+	return &tree, nil
 }

@@ -48,6 +48,9 @@ fi
 if test "${FACTORYBOX_NATIVE_RETAINED_CAPTURE:-}" = 1; then
   /sysboxcapture.test -test.v -test.timeout=30s
   test_pattern='^TestRetainedCaptureNative$'
+  if test "${FACTORYBOX_NATIVE_STOPPED_CAPTURE_DELETE:-}" = 1; then
+    test_pattern='^TestStoppedCaptureDeleteNative$'
+  fi
   if test "${FACTORYBOX_NATIVE_PAUSE:-}" = 1; then
     test_pattern='^TestPauseNative$'
   fi

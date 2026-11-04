@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "source_commit": "83cb74bd30b81a42421d6209fdbfd9edcca5be49",
+  "previous_manifest": "tests/compatibility/pidfd-namespaces.json",
+  "previous_manifest_sha256": "73621b8a8c22af82c10b2662734692e58d821303aa905fdc0a81a6f43f4d066c",
+  "production_manifest": "tests/production-fixture-extensions.json",
+  "production_manifest_sha256": "5de8dfadd90fe3b69df051f8f29a062444d806e47be437c66d7f9f7ed209f944",
+  "assertions_preserved": true,
+  "upstream_assertions_modified": false,
+  "scope": "Add the stopped-capture cleanup lane without removing any existing suite, assertion, resource ceiling, lifecycle deadline or ownership check. Reverse this exact patch before verifying the unchanged PIDFD and prior native fixture declarations.",
+  "patch": "tests/compatibility/stopped-capture-delete.patch",
+  "patch_sha256": "e6699320310339b020b493ab98562772a6d554a66f3ef5746a1859a14479a452",
+  "files": {
+    "tests/lifecycle-native.sh": {
+      "before_sha256": "67de906690fce219d62d65ff766954e8bdd2da70808cbf329a1b1a22f2d095fd",
+      "after_sha256": "5003c99e3d3493ef253963802832a22457bc5808ec2c8a0bf9d195f944259df0"
+    },
+    "tools/bounded_store_native.py": {
+      "before_sha256": "33266c04fc323ece43affd51fafbb22ab2870eaf30f915cacb176d7ce44f8adc",
+      "after_sha256": "7b4885e6a4f25abfb01743e41ca76e13fb0b867cf7557d172bc1f525056f88a5"
+    }
+  }
+}

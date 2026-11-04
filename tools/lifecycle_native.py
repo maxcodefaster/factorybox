@@ -22,7 +22,7 @@ ROOT = reference.ROOT
 EXPECTED_TESTS = 7
 EXPECTED_CAPTURE_SUBTESTS = 17
 EXPECTED_ADAPTER_TESTS = 11
-EXPECTED_ADAPTER_SUBTESTS = 61
+EXPECTED_ADAPTER_SUBTESTS = 65
 ADAPTER_TESTS = (
     "TestImmutableBaseNative", "TestFilesystemBaseRecoveryNative",
     "TestPrivateConfigViewPreservesSysboxState", "TestCheckpointWatchSearchAdmission",
@@ -162,7 +162,7 @@ def archive_capture(archive, name, owner, result, image):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sysbox-build", required=True)
-    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "auxiliary", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss"], default="lifecycle")
+    parser.add_argument("--suite", choices=["lifecycle", "guard", "capture", "pause", "base", "base-pause", "delegation", "auxiliary", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss", "stopped-delete"], default="lifecycle")
     inputs = parser.add_mutually_exclusive_group()
     inputs.add_argument("--criu-build", help="Required rebuilt CRIU artifact for checkpoint-based suites")
     inputs.add_argument("--retained-candidate", help="Explicitly unselected retained-context CRIU build")
@@ -183,7 +183,7 @@ def main():
         parser.error("--test must be one exact native test name")
     if options.test and options.suite == "guard":
         parser.error("the guard suite always runs all failure/disarm cases")
-    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "auxiliary", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss"]
+    capture_mode = options.suite in ["capture", "pause", "base", "base-pause", "delegation", "auxiliary", "namespaces", "time", "mountfd", "overlay", "interruption", "admission", "worker-loss", "stopped-delete"]
     if options.suite == "auxiliary" and options.candidate_platform != "linux/amd64":
         parser.error("auxiliary-controller regression requires this explicit AMD64 worker profile")
     if capture_mode and (not (options.criu_build or options.retained_candidate) or options.test):
@@ -222,6 +222,10 @@ def main():
                   "restore while the original mounted contents/RAM/useful work remain intact. "
                   "No Docker consumer or production storage-driver selection."
                   if options.suite == "overlay" else
+                  "Actual complete CRIU capture and original source stop, followed by controller "
+                  "exit before checkpoint publication. Explicit Delete requires exact original "
+                  "receipts, absent processes and empty owned cgroups; it never completes Pause. "
+                  if options.suite == "stopped-delete" else
                   "Actual capture-worker SIGKILL during filesystem copy after successful CRIU. "
                   "Checkpoint and pause must preserve the original running PID/RAM/useful work and "
                   "independently usable prior checkpoint without publishing incomplete backing. "
@@ -403,7 +407,7 @@ def main():
             "--env", "FACTORYBOX_NATIVE_RETAINED_CAPTURE=" + ("1" if capture_mode else "0"),
             "--env", "FACTORYBOX_COMPONENT_INPUTS=" + ("1" if component_inputs else "0"),
             "--env", "FACTORYBOX_NATIVE_PAUSE=" + ("1" if options.suite in ["pause", "base-pause"] else "0"),
-            "--env", "FACTORYBOX_NATIVE_IMMUTABLE_BASE=" + ("1" if options.suite in ["base", "base-pause"] else "0"),
+            "--env", "FACTORYBOX_NATIVE_IMMUTABLE_BASE=" + ("1" if options.suite in ["base", "base-pause", "stopped-delete"] else "0"),
             "--env", "FACTORYBOX_NATIVE_NAMESPACES=" + ("1" if options.suite == "namespaces" else "0"),
             "--env", "FACTORYBOX_NATIVE_TIME=" + ("1" if options.suite == "time" else "0"),
             "--env", "FACTORYBOX_NATIVE_DELEGATION=" + ("1" if options.suite == "delegation" else "0"),
@@ -412,6 +416,7 @@ def main():
             "--env", "FACTORYBOX_NATIVE_OVERLAY=" + ("1" if options.suite == "overlay" else "0"),
             "--env", "FACTORYBOX_NATIVE_INTERRUPTION=" + ("1" if options.suite == "interruption" else "0"),
             "--env", "FACTORYBOX_NATIVE_WORKER_LOSS=" + ("1" if options.suite == "worker-loss" else "0"),
+            "--env", "FACTORYBOX_NATIVE_STOPPED_CAPTURE_DELETE=" + ("1" if options.suite == "stopped-delete" else "0"),
             "--env", "FACTORYBOX_NATIVE_FILESYSTEM_ADMISSION=" + ("1" if options.suite == "admission" else "0"),
             "--env", "FACTORYBOX_NATIVE_TEST=" + (options.test or ""),
             "--env", "FACTORYBOX_RUNTIME_SHA256=" + components["binary_sha256"]["sysbox-runc"],
@@ -471,6 +476,7 @@ def main():
             (options.suite != "interruption" or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "admission" or result["passed_subtests"] == 17 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "worker-loss" or result["passed_subtests"] == 3 + EXPECTED_ADAPTER_SUBTESTS) and
+            (options.suite != "stopped-delete" or result["passed_subtests"] == 11 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "namespaces" or result["passed_subtests"] == 1 + EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite not in ["time", "delegation", "auxiliary"] or result["passed_subtests"] == EXPECTED_ADAPTER_SUBTESTS) and
             (options.suite != "mountfd" or result["passed_subtests"] == 2 + EXPECTED_ADAPTER_SUBTESTS) and

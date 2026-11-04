@@ -232,6 +232,16 @@ func (e *Engine) exitCaptureAliases(ctx context.Context, record Record, bases []
 			if deleted, proofErr := e.deletedFailedPauseCapture(record, entry.Name()); proofErr != nil {
 				return nil, proofErr
 			} else if deleted {
+				alias, err := e.exitFailedCaptureAlias(record, relative)
+				if err != nil {
+					return nil, err
+				}
+				if alias != nil {
+					if err := exitKnownAlias(*alias, bases); err != nil {
+						return nil, err
+					}
+					aliases = append(aliases, *alias)
+				}
 				continue
 			}
 			recovered, alias, proofErr := e.exitRecoveredFailedCapture(record, entry.Name(), relative)

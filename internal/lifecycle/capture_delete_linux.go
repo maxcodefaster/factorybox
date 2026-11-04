@@ -40,6 +40,11 @@ func (e *Engine) admitFailedPauseDelete(record Record) (resultErr error) {
 	if err != nil {
 		return err
 	}
+	if _, err := e.root.Lstat(relative + "/guard/capture-stop-intent.json"); err == nil {
+		return e.admitStoppedCaptureDelete(record, relative)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	anchors := captureGuardAnchors{}
 	defer func() { resultErr = errors.Join(resultErr, anchors.close()) }()
 	anchors.root, err = e.root.Open(".")
@@ -218,6 +223,9 @@ func (e *Engine) deletedFailedPauseCapture(record Record, snapshotID string) (bo
 			return false, nil
 		}
 		return false, err
+	}
+	if admission.Version == 2 {
+		return e.deletedStoppedCapture(record, relative, admission)
 	}
 	names := []string{
 		"guard/guard-intent.json", "checkpoint-intent.json", "guard/guard-outcome.json",
