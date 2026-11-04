@@ -19,17 +19,20 @@ PATCH = reference.ROOT / 'upstream/patches/criu-shared-fds-candidate.patch'
 NAMESPACE_PATCH = reference.ROOT / 'upstream/patches/criu-userns-validation-handles.patch'
 PACKETS_PATCH = criu_candidate.DESCRIPTOR_TRANSFER_PATCH
 MAPPING_PATCH = criu_candidate.MAPPING_ACCESS_PATCH
+PIDFD_PATCH = criu_candidate.PIDFD_TARGET_PATCH
 
 
-def delta_recipe(namespace_access, previous, descriptor_packets=False, mapping_access=False):
-    if sum([bool(namespace_access), bool(descriptor_packets), bool(mapping_access)]) > 1:
+def delta_recipe(namespace_access, previous, descriptor_packets=False, mapping_access=False, pidfd_targets=False):
+    if sum([bool(namespace_access), bool(descriptor_packets), bool(mapping_access), bool(pidfd_targets)]) > 1:
         raise ValueError('ordered CRIU deltas cannot be combined')
-    patch = MAPPING_PATCH if mapping_access else PACKETS_PATCH if descriptor_packets else NAMESPACE_PATCH if namespace_access else PATCH
-    delta = 'shared-filemap-access' if mapping_access else 'shared-fds-packets' if descriptor_packets else 'namespace-access' if namespace_access else 'shared-fds'
-    targets = 1 if mapping_access or namespace_access else 2 if descriptor_packets else 8
+    patch = PIDFD_PATCH if pidfd_targets else MAPPING_PATCH if mapping_access else PACKETS_PATCH if descriptor_packets else NAMESPACE_PATCH if namespace_access else PATCH
+    delta = 'pidfd-target-binding' if pidfd_targets else 'shared-filemap-access' if mapping_access else 'shared-fds-packets' if descriptor_packets else 'namespace-access' if namespace_access else 'shared-fds'
+    targets = 4 if pidfd_targets else 1 if mapping_access or namespace_access else 2 if descriptor_packets else 8
     changed = [line.removeprefix('+++ b/') for line in patch.read_text().splitlines() if line.startswith('+++ b/')]
     if (len(changed) != targets or len(set(changed)) != targets or
-            any(not value.startswith('criu/') or '..' in Path(value).parts for value in changed) or
+            any((not value.startswith('criu/') and not (pidfd_targets and value == 'images/pidfd.proto')) or
+                '..' in Path(value).parts for value in changed) or
+            pidfd_targets and changed != ['images/pidfd.proto', 'criu/include/pidfd.h', 'criu/files.c', 'criu/pidfd.c'] or
             namespace_access and changed != ['criu/namespaces.c'] or
             mapping_access and changed != ['criu/files-reg.c'] or
             descriptor_packets and changed != ['criu/files.c', 'criu/crtools.c']):
@@ -39,11 +42,13 @@ def delta_recipe(namespace_access, previous, descriptor_packets=False, mapping_a
     if descriptor_packets and any(previous.get('candidate_patch_sha256', {}).get(name) != reference.sha(path)
                                   for name, path in [('shared-fds.patch', PATCH), ('namespace-access.patch', NAMESPACE_PATCH)]):
         raise ValueError('descriptor packets require the exact existing shared-description and namespace deltas')
-    if mapping_access:
+    if mapping_access or pidfd_targets:
         criu_candidate.require_descriptor_transfer(previous)
         if any(previous.get('candidate_patch_sha256', {}).get(name) != reference.sha(path)
                for name, path in [('shared-fds.patch', PATCH), ('namespace-access.patch', NAMESPACE_PATCH)]):
             raise ValueError('mapping access requires the exact existing shared-description and namespace deltas')
+    if pidfd_targets:
+        criu_candidate.require_mapping_access(previous)
     return patch, delta, changed
 
 
@@ -59,12 +64,15 @@ def main():
                       help='After namespace validation, receive complete multi-packet descriptor generations')
     mode.add_argument('--mapping-access', action='store_true',
                       help='After descriptor packets, honor VMA access on the exact retained source inode')
+    mode.add_argument('--pidfd-targets', action='store_true',
+                      help='After mapping access, bind pidfds to exact restored tasks across PID namespaces')
     parser.add_argument('--native-base-build',
                         help='Explicit verified compiler base for the same native platform; completed inputs stay unchanged')
     parser.add_argument('--prepared', help='One new, unbuilt preparation from this task; never a completed input')
     args = parser.parse_args()
     original, previous, _, _ = criu_candidate.load(args.base_candidate, base_lock=args.base_lock)
-    patch, delta, changed = delta_recipe(args.namespace_access, previous, args.descriptor_packets, args.mapping_access)
+    patch, delta, changed = delta_recipe(args.namespace_access, previous, args.descriptor_packets,
+                                        args.mapping_access, args.pidfd_targets)
     filename = delta + '.patch'
     if args.prepared:
         if not re.fullmatch(r'factorybox-build-criu-retained-[0-9a-f]{32}', args.prepared):
@@ -196,6 +204,8 @@ def main():
             criu_candidate.require_descriptor_transfer(result)
         if args.mapping_access:
             criu_candidate.require_mapping_access(result)
+        if args.pidfd_targets:
+            criu_candidate.require_pidfd_targets(result)
         result['inputs_unchanged'] = (sources.tree_sha(artifact / 'context') == result['context_sha256'] and
                                       sources.tree_sha(original / 'context') == previous['context_sha256'])
         if not result['scope_gate_passed'] or not result['inputs_unchanged'] or result['features'].get('shared_file_descriptions') is not True:

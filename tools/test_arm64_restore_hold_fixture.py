@@ -3,11 +3,15 @@ import json
 from pathlib import Path
 import re
 import unittest
+from verify_fixture_extensions import pidfd_fixture_before
 
 
 class RestoreHoldFixturePortTests(unittest.TestCase):
     def verify_declaration(self, filename):
         root = Path(__file__).resolve().parents[1]
+        before = pidfd_fixture_before(root)
+        def contents(path):
+            return before[path] if path in before else (root / path).read_bytes()
         declared = json.loads((root / "tests/compatibility" / filename).read_text())
         self.assertEqual(declared["schema"], 1)
         self.assertTrue(declared["assertions_preserved"])
@@ -15,12 +19,12 @@ class RestoreHoldFixturePortTests(unittest.TestCase):
         sha = lambda value: hashlib.sha256(value).hexdigest()
         for path, row in declared["files"].items():
             with self.subTest(path=path):
-                self.assertEqual(sha((root / path).read_bytes()), row["after_sha256"])
+                self.assertEqual(sha(contents(path)), row["after_sha256"])
         for path, digest in declared["added_files"].items():
             with self.subTest(path=path):
-                self.assertEqual(sha((root / path).read_bytes()), digest)
+                self.assertEqual(sha(contents(path)), digest)
         for path, functions in declared["unchanged_functions"].items():
-            text = (root / path).read_text()
+            text = contents(path).decode()
             for name, digest in functions.items():
                 with self.subTest(path=path, function=name):
                     # These fixed fixture functions close at column zero.
@@ -30,7 +34,7 @@ class RestoreHoldFixturePortTests(unittest.TestCase):
                     self.assertIsNotNone(match)
                     self.assertEqual(sha(match[0].encode()), digest)
         for path, literals in declared["unchanged_literals"].items():
-            text = (root / path).read_text()
+            text = contents(path).decode()
             for name, digest in literals.items():
                 with self.subTest(path=path, literal=name):
                     match = re.search(r"^const " + re.escape(name) + r" = `([\s\S]*?)`",

@@ -136,6 +136,8 @@ mise exec -- python3 tools/build_criu_shared_fds.py \
   --base-candidate "$namespace_build" --descriptor-packets --native-base-build "$base_build"
 mise exec -- python3 tools/build_criu_shared_fds.py \
   --base-candidate "$packet_build" --mapping-access --native-base-build "$base_build"
+mise exec -- python3 tools/build_criu_shared_fds.py \
+  --base-candidate "$mapping_build" --pidfd-targets --native-base-build "$base_build"
 mise exec -- python3 tests/fdstore-criu-client/run.py \
   --criu-candidate "$criu_build" --native-base-build "$base_build"
 mise exec -- python3 tools/build_worker.py \
@@ -173,6 +175,18 @@ pre-correction CRIU only inside an owned negative-control container. It requires
 a real writable-mapping restore failure, confirmed Stop and exact Delete replay,
 unchanged Source and checkpoint bytes, clean worker exit and kernel storage
 release. It never substitutes a component in a retained installation.
+
+The PIDFD delta follows mapping access. Captures bind each live pidfd to its
+target's image-root task identity, not its innermost numeric PID. During restore
+that exact task creates the original file description on itself and publishes
+it through CRIU's existing descriptor store before shared file-table restoration.
+Numeric lookup from an ancestor namespace cannot select a different task.
+Legacy nested live-pidfd images without this binding refuse restoration.
+The `pidfd-namespaces` delivered-worker gate requires the original handles to
+signal their exact child through three Pause/Resume cycles, independent Fork
+and a branch Pause/Resume. Flat, nested and shared-file-table controls preserve
+descriptor aliases, independent flags, self handles and already dead handles.
+Existing external-target refusals remain.
 
 Each completed local worker build keeps one never-started, owned image-reference container so
 node image GC cannot remove the selected input between build and qualification. It runs no

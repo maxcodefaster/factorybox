@@ -24,6 +24,10 @@ func timerReaderFixtureFiles(t *testing.T, status boundedLossStatus, id, command
 // the exact-owned outer worker is removed. Ordinary reader fixtures retain
 // their original per-sandbox deletion and overlay-unmount assertions.
 func timerReaderFixtureFilesWithCleanup(t *testing.T, status boundedLossStatus, id, command string, actor bool, files map[string][]byte, cleanup func(*testing.T, View)) View {
+	return timerReaderFixtureFilesWithConfiguration(t, status, id, command, actor, files, cleanup, nil)
+}
+
+func timerReaderFixtureFilesWithConfiguration(t *testing.T, status boundedLossStatus, id, command string, actor bool, files map[string][]byte, cleanup func(*testing.T, View), configure func(map[string]any)) View {
 	t.Helper()
 	bundle := status.Store + "/" + id + "-bundle"
 	for _, name := range []string{"", "/upper", "/work", "/rootfs"} {
@@ -82,6 +86,9 @@ func timerReaderFixtureFilesWithCleanup(t *testing.T, status boundedLossStatus, 
 	process["env"] = []string{"HOME=/root", "PATH=/bin:/sbin:/usr/bin:/usr/sbin"}
 	spec["root"].(map[string]any)["readonly"] = false
 	spec["linux"].(map[string]any)["resources"] = map[string]any{"pids": map[string]any{"limit": 128}, "devices": []map[string]any{{"allow": true, "access": "rwm"}}}
+	if configure != nil {
+		configure(spec)
+	}
 	data, err = json.Marshal(spec)
 	if err != nil {
 		t.Fatal(err)

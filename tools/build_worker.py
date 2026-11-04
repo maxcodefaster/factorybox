@@ -283,8 +283,7 @@ def main():
     criu_path, criu, criu_component, _ = criu_candidate.load(options.retained_candidate, base_lock=options.criu_base_lock)
     if not options.native_candidate:
         criu_candidate.require_recovery_corrections(criu, criu_component)
-    criu_candidate.require_descriptor_transfer(criu)
-    criu_candidate.require_mapping_access(criu)
+    criu_candidate.require_pidfd_targets(criu)
     proof = (descriptor_transfer_proof.load(
         options.descriptor_proof, platform=options.platform,
         criu_name=options.retained_candidate, native_base_build=options.native_base_build,

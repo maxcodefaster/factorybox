@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import bounded_store_native
 import build_worker
+from verify_fixture_extensions import pidfd_fixture_before
 
 
 class BoundedWorkerPlatformTests(unittest.TestCase):
@@ -30,6 +31,9 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
 
     def test_capacity_fixture_declaration_preserves_original_assertion_bytes(self):
         root = bounded_store_native.reference.ROOT
+        before = pidfd_fixture_before(root)
+        def contents(name):
+            return before[name] if name in before else (root / name).read_bytes()
         declaration = json.loads((root / 'tests/compatibility/bounded-capacity-debug-info.json').read_text())
         self.assertEqual(declaration['schema'], 1)
         self.assertTrue(declaration['assertions_preserved'])
@@ -143,35 +147,35 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
                 final = extension['files'][name]
                 self.assertEqual(final['before_sha256'], row['after_sha256'])
                 row = final
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), current(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), current(name, row)['after_sha256'])
         for name, row in extension['files'].items():
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), current(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), current(name, row)['after_sha256'])
         for name, row in successor['files'].items():
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), latest(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), latest(name, row)['after_sha256'])
         for name, row in mixed['files'].items():
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_incomplete_start(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), after_incomplete_start(name, row)['after_sha256'])
         for name, row in incomplete['files'].items():
             if name in mixed['files']:
                 self.assertEqual(row['before_sha256'], mixed['files'][name]['after_sha256'])
             else:
                 self.assertIsNone(row['before_sha256'])
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_cow(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), after_cow(name, row)['after_sha256'])
         for name, row in cow['files'].items():
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_native(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), after_native(name, row)['after_sha256'])
         for name, row in native['files'].items():
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_retained(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), after_retained(name, row)['after_sha256'])
         for name, row in retained['files'].items():
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_withdrawal(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), after_withdrawal(name, row)['after_sha256'])
         for name, row in withdrawal['files'].items():
             self.assertRegex(row['before_sha256'], r'^[0-9a-f]{64}$')
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), after_manager_root(name, row)['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), after_manager_root(name, row)['after_sha256'])
         for name, row in manager_root['files'].items():
             if name == 'tools/bounded_store_native.py':
                 self.assertEqual(row['before_sha256'], retained['files'][name]['after_sha256'])
-                original_runner = (root / name).read_text()
+                original_runner = contents(name).decode()
                 for added in ['TestNativeRetainedManagerRootWithdrawal',
                               'TestManagerWithdrawalRequiresRetainedOriginalAttachment']:
                     original_runner = original_runner.replace("    '" + added + "',\n", '', 1)
@@ -180,7 +184,7 @@ class BoundedWorkerPlatformTests(unittest.TestCase):
                 self.assertIsNone(row['before_sha256'])
                 self.assertIn(name, ['internal/lifecycle/retained_manager_root_native_linux_test.go',
                                     'internal/lifecycle/manager_withdrawal_linux_test.go'])
-            self.assertEqual(hashlib.sha256((root / name).read_bytes()).hexdigest(), row['after_sha256'])
+            self.assertEqual(hashlib.sha256(contents(name)).hexdigest(), row['after_sha256'])
         original = declaration['files']['internal/lifecycle/bounded_store_native_linux_test.go']
         self.assertEqual(original['before_sha256'], original['after_sha256'])
 

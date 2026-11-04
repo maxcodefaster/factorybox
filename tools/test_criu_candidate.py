@@ -141,7 +141,7 @@ class CandidatePatchTests(unittest.TestCase):
                          "exit-hold-socket.patch", "pid-collision-diagnostics.patch",
                          "pid-collision-references.patch", "nested-pid-counter.patch",
                          "pstree-error-propagation.patch", "nested-zombie-peer-pidns.patch",
-                         "namespace-access.patch"]:
+                         "namespace-access.patch", "pidfd-target-binding.patch"]:
             with self.subTest(patch=filename), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 name, archive, result = self.fixture(root, True)

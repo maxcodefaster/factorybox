@@ -32,6 +32,9 @@ class WorkerPipelineTests(unittest.TestCase):
             self.assertEqual(commands["mapping-access"][1:],
                              ["tools/build_criu_shared_fds.py", "--base-candidate", "exact-criu",
                               "--mapping-access", "--native-base-build", "exact-base"])
+            self.assertEqual(commands["pidfd-targets"][1:],
+                             ["tools/build_criu_shared_fds.py", "--base-candidate", "exact-criu",
+                              "--pidfd-targets", "--native-base-build", "exact-base"])
             self.assertEqual(commands["descriptor-proof"][1:], [
                 "tests/fdstore-criu-client/run.py", "--criu-candidate", "exact-criu",
                 "--native-base-build", "exact-base"])
@@ -144,3 +147,25 @@ class WorkerPipelineTests(unittest.TestCase):
                 changed["candidate_patch_sha256"]["shared-filemap-access.patch"] = digest
             with self.assertRaisesRegex(ValueError, "mapping access correction"):
                 criu_candidate.require_mapping_access(changed)
+
+    def test_worker_requires_exact_pidfd_task_binding_and_all_earlier_corrections(self):
+        complete = {
+            "candidate_patch_sha256": {
+                "shared-fds-packets.patch": reference.sha(build_criu_shared_fds.PACKETS_PATCH),
+                "shared-filemap-access.patch": reference.sha(build_criu_shared_fds.MAPPING_PATCH),
+                "pidfd-target-binding.patch": reference.sha(build_criu_shared_fds.PIDFD_PATCH),
+            },
+            "features": {"schema": 1, "shared_file_transfer_version": 2,
+                         "shared_file_descriptions": True, "shared_source_directories": True},
+        }
+        self.assertIsNone(build_worker_pipeline.pidfd_targets_input("old", {}))
+        self.assertEqual(build_worker_pipeline.pidfd_targets_input("fixed", complete), "fixed")
+        for name in complete["candidate_patch_sha256"]:
+            for value in [None, "0" * 64]:
+                changed = {**complete, "candidate_patch_sha256": dict(complete["candidate_patch_sha256"])}
+                if value is None:
+                    del changed["candidate_patch_sha256"][name]
+                else:
+                    changed["candidate_patch_sha256"][name] = value
+                with self.subTest(patch=name, value=value), self.assertRaises(ValueError):
+                    criu_candidate.require_pidfd_targets(changed)
