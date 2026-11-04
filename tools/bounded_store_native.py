@@ -143,6 +143,44 @@ def probe_build_command(binary, compile_options, *, capacity=False):
             *compile_options, '-o', str(binary), './internal/lifecycle']
 
 
+def overlay_frozen_tests(current, frozen, *, maintenance=False):
+    current, frozen = Path(current), Path(frozen)
+    if maintenance:
+        # A newer administrative CLI is exercised against the old worker's
+        # actual capture code. Keep every original test; add only this native
+        # fixture, not unit tests requiring APIs absent from that old runtime.
+        names = [
+            "internal/lifecycle/stopped_capture_delete_native_linux_test.go",
+            "internal/lifecycle/stopped_capture_retirement_native_linux_test.go",
+        ]
+    else:
+        names = [str(path.relative_to(current))
+                 for directory in ["internal", "cmd/factorybox"]
+                 for path in sorted((current / directory).rglob("*_test.go"))]
+    original = {name: row for name, row in upstream_unit.context_manifest(frozen).items()
+                if name.endswith("_test.go")}
+    for name in names:
+        source, target = current / name, frozen / name
+        if (source.is_symlink() or not source.is_file() or
+                source.resolve() != current.resolve() / name):
+            raise ValueError("current test overlay must be a regular source file")
+        if maintenance and (target.exists() or target.is_symlink()):
+            raise ValueError("standalone cleanup fixture cannot replace an original test")
+    for name in names:
+        target = frozen / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(current / name, target)
+    after = upstream_unit.context_manifest(frozen)
+    preserved = all(after.get(name) == row for name, row in original.items())
+    if maintenance and not preserved:
+        raise ValueError("standalone cleanup changed original test assertions")
+    return {
+        "mode": "standalone-stopped-capture-cleanup" if maintenance else "all-current-tests",
+        "added_tests": names,
+        "original_tests_preserved": preserved,
+    }
+
+
 def require_detach_coverage(log):
     controls = ["foreign-thaw-refused", "changed-source-refused", "live-tracer-refused"]
     required = ["--- PASS: TestNativeTimerDetachCompletion ",
@@ -271,14 +309,10 @@ def main():
         shutil.copytree(core_source / directory, source / directory)
     for file in ['go.mod', 'go.sum']:
         shutil.copyfile(core_source / file, source / file)
+    test_overlay = None
     if args.frozen_core:
-        for directory in ['internal', 'cmd/factorybox']:
-            for path in sorted((reference.ROOT / directory).rglob('*_test.go')):
-                if path.is_symlink() or not path.is_file():
-                    raise ValueError('current test overlay must be a regular source file')
-                target = source / path.relative_to(reference.ROOT)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(path, target)
+        test_overlay = overlay_frozen_tests(reference.ROOT, source,
+            maintenance=bool(args.retirement_cli and stopped_capture_retirement))
     shutil.copyfile(__file__, artifact / 'runner.py')
     setup = 'checkpoint-retirement-setup.sh' if retirement else 'bounded-store-setup.sh'
     shutil.copyfile(reference.ROOT / 'tests' / setup, artifact / 'setup.sh')
@@ -316,6 +350,7 @@ def main():
               'host': {key: host[key] for key in ['OSType', 'Architecture', 'KernelVersion']},
               'worker_build': args.worker_build, 'worker_image_id': worker['image_id'], 'source_context': manifest, 'suite': args.suite,
               'current_test_overlay_on_frozen_core': args.frozen_core,
+              'test_overlay': test_overlay,
               'runner_sha256': reference.sha(artifact / 'runner.py'), 'setup_sha256': reference.sha(artifact / 'setup.sh'),
               'rootfs_sha256': busybox['sha256'],
               'global_sysctls_before': consumer_worker_loss.sysctls(

@@ -11,8 +11,39 @@ import tempfile
 import reference
 
 
+def legacy_cleanup_fixture_before(root):
+    root = Path(root)
+    manifest = root / "tests/compatibility/stopped-capture-legacy-cleanup.json"
+    if not manifest.exists():
+        return {}
+    value = json.loads(manifest.read_text())
+    name = "tools/bounded_store_native.py"
+    if (value.get("schema") != 1 or value.get("assertions_preserved") is not True or
+            value.get("upstream_assertions_modified") is not False or set(value["files"]) != {name} or
+            value["previous_manifest"] != "tests/compatibility/stopped-capture-delete.json" or
+            reference.sha(root / value["previous_manifest"]) != value["previous_manifest_sha256"] or
+            reference.sha(root / value["patch"]) != value["patch_sha256"]):
+        raise ValueError("legacy cleanup fixture compatibility declaration differs")
+    previous = json.loads((root / value["previous_manifest"]).read_text())
+    row = value["files"][name]
+    if (reference.sha(root / name) != row["after_sha256"] or
+            row["before_sha256"] != previous["files"][name]["after_sha256"]):
+        raise ValueError("legacy cleanup fixture changed its ordered input")
+    with tempfile.TemporaryDirectory(prefix="fbx-legacy-cleanup-fixture-") as directory:
+        target = Path(directory)
+        (target / name).parent.mkdir(parents=True)
+        shutil.copyfile(root / name, target / name)
+        done = subprocess.run(["patch", "--batch", "--reverse", "--fuzz=0", "-p1",
+                               "-i", str((root / value["patch"]).resolve())],
+                              cwd=target, capture_output=True, text=True, timeout=10)
+        if done.returncode or reference.sha(target / name) != row["before_sha256"]:
+            raise ValueError("legacy cleanup fixture cannot reconstruct original runner assertions")
+        return {name: (target / name).read_bytes()}
+
+
 def stopped_capture_fixture_before(root):
     root = Path(root)
+    prior = legacy_cleanup_fixture_before(root)
     manifest = root / "tests/compatibility/stopped-capture-delete.json"
     if not manifest.exists():
         return {}
@@ -33,11 +64,12 @@ def stopped_capture_fixture_before(root):
         target = Path(directory)
         for name, row in value["files"].items():
             earlier = previous if name == "tools/bounded_store_native.py" else production
-            if (reference.sha(root / name) != row["after_sha256"] or
+            data = prior[name] if name in prior else (root / name).read_bytes()
+            if (hashlib.sha256(data).hexdigest() != row["after_sha256"] or
                     earlier["files"][name]["after_sha256"] != row["before_sha256"]):
                 raise ValueError("stopped capture fixture changed its ordered input: " + name)
             (target / name).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(root / name, target / name)
+            (target / name).write_bytes(data)
         done = subprocess.run(["patch", "--batch", "--reverse", "--fuzz=0", "-p1",
                                "-i", str((root / value["patch"]).resolve())],
                               cwd=target, capture_output=True, text=True, timeout=10)
@@ -165,6 +197,7 @@ def verify(root, baseline=None):
             "before_files_verified":baseline is not None,"upstream_assertions_modified":False,
             "pidfd_fixture_extensions":len(pidfd_fixture_before(root)),
             "stopped_capture_fixture_extensions":len(stopped_capture_fixture_before(root)),
+            "legacy_cleanup_fixture_extensions":len(legacy_cleanup_fixture_before(root)),
             **production_extensions(root)}
 
 

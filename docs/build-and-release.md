@@ -536,6 +536,13 @@ and controller exit before checkpoint publication, cleanup, exact replay and
 missing-authority/foreign-successor refusals. Older worker executables do not
 gain this capability merely because newer source exists.
 
+For a separate maintenance-tool proof, combine `--frozen-core` and
+`--retirement-cli` with the `stopped-capture-retirement` suite. This preserves
+all original old-worker test files and adds only the two named native fixtures.
+It does not overlay new API unit tests onto an old API. The exact standalone
+CLI is copied, hashed and executed without replacing the worker executable.
+The ordinary current-worker lane still uses its complete current test tree.
+
 `timer-orphan` and `timer-guard-loss` exercise actual controller/guard SIGKILL
 after completed process capture. They require the staged source and queued
 signal to remain held and unresolved requests to refuse replay or deletion.
