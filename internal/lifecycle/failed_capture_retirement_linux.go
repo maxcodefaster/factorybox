@@ -205,6 +205,9 @@ func (e *Engine) retireDeletedFailedCaptureBacking(ctx context.Context, record R
 		return errors.Join(err, fmt.Errorf("failed capture Delete proof changed before retirement"))
 	}
 	if len(intent.Payloads) != 0 {
+		if err := e.retireCaptureNativePayload(ctx, generation, plan); err != nil {
+			return err
+		}
 		if err := ownedtree.RemoveRemaining(ctx, e.root, plan); err != nil {
 			return err
 		}

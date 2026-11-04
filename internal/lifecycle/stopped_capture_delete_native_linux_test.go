@@ -29,6 +29,9 @@ func stoppedCaptureDeleteFixture(t *testing.T, root string) {
 	if os.Getenv("FACTORYBOX_NATIVE_STOPPED_CAPTURE_RETIREMENT") == "1" {
 		config = boundedLossStatusNow(t).Lifecycle
 		id = "stopped-capture"
+		if os.Getenv("FACTORYBOX_STOPPED_CAPTURE_NATIVE_LAYOUT") == "1" {
+			id = "stopped-capture-native"
+		}
 		if config.Root != root {
 			t.Fatal("stopped capture fixture targets another bounded worker")
 		}

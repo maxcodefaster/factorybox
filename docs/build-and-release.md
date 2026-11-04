@@ -531,9 +531,14 @@ tree. It never repeats capture, restores a process, thaws a live source or
 completes the failed Pause. Its versioned admission is retained with the original
 evidence. Ordinary private-backing retirement can then release that capture's
 RAM images and filesystem while preserving its receipts and Source.
+That retirement withdraws sealed native filesystem roots through their original
+kernel identities before removing ordinary files. It never makes a snapshot
+writable. An already accepted file inventory remains unchanged on continuation,
+including after an older cleanup attempt stopped at a read-only native root.
 The `stopped-capture-retirement` delivered-image gate exercises real CRIU capture
 and controller exit before checkpoint publication, cleanup, exact replay and
-missing-authority/foreign-successor refusals. Older worker executables do not
+missing-authority/foreign-successor refusals with both copied and sealed native
+filesystems. Older worker executables do not
 gain this capability merely because newer source exists.
 
 For a separate maintenance-tool proof, combine `--frozen-core` and

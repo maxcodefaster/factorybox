@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"factorybox/internal/sysboxcapture"
+	"golang.org/x/sys/unix"
 )
 
 func TestNativeStoppedCaptureBackingRetirement(t *testing.T) {
@@ -158,5 +161,153 @@ func TestNativeStoppedCaptureBackingRetirement(t *testing.T) {
 		"missing_admission_refused": true, "foreign_successor_preserved": true,
 		"original_record_unchanged":        true,
 		"unaccepted_preparation_recovered": true,
+	})
+	t.Run("sealed-native-filesystem", stoppedCaptureNativeBackingRetirement)
+}
+
+// Keep the original copied-filesystem fixture above. A real common-subvolume
+// capture must also retire its sealed roots without making them writable.
+func stoppedCaptureNativeBackingRetirement(t *testing.T) {
+	t.Setenv("FACTORYBOX_STOPPED_CAPTURE_NATIVE_LAYOUT", "1")
+	status := boundedLossStatusNow(t)
+	id := "stopped-capture-native"
+	bundle := status.Store + "/" + id + "-bundle"
+	for _, path := range []string{bundle, bundle + "/rootfs"} {
+		if err := os.Mkdir(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if output, err := exec.Command("cp", "-a", "/busybox", bundle+"/lower-input").CombinedOutput(); err != nil {
+		t.Fatal(string(output), err)
+	}
+	var base Base
+	if err := json.Unmarshal(boundedLossAction(t, "prepare-base", "--source", bundle+"/lower-input", id+"-base"), &base); err != nil {
+		t.Fatal(err)
+	}
+	lower, err := sysboxcapture.BindFilesystemBase(base.Tree, bundle+"/lower")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("btrfs", "subvolume", "create", "--", bundle+"/mutable").CombinedOutput(); err != nil {
+		t.Fatal(string(output), err)
+	}
+	for _, name := range []string{"upper", "work"} {
+		if err := os.Mkdir(bundle+"/mutable/"+name, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := unix.Mount("overlay", bundle+"/rootfs", "overlay", 0,
+		"index=off,lowerdir="+bundle+"/lower,upperdir="+bundle+"/mutable/upper,workdir="+bundle+"/mutable/work"); err != nil {
+		t.Fatal(err)
+	}
+	overlayMounted, lowerMounted := true, true
+	t.Cleanup(func() {
+		if _, err := boundedLossCommand("--worker-run-root", "/run/factorybox", "delete", id); err != nil {
+			t.Error(err)
+		}
+		if overlayMounted {
+			if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
+				t.Error(err)
+			}
+		}
+		if lowerMounted {
+			if err := sysboxcapture.RetireImmutableAlias(bundle+"/lower", lower); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	if output, err := exec.Command(status.Lifecycle.Runtime, "spec", "--bundle", bundle).CombinedOutput(); err != nil {
+		t.Fatal(string(output), err)
+	}
+	data, err := os.ReadFile(bundle + "/config.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec map[string]any
+	if err := json.Unmarshal(data, &spec); err != nil {
+		t.Fatal(err)
+	}
+	process := spec["process"].(map[string]any)
+	process["terminal"], process["cwd"] = false, "/"
+	process["args"] = []string{"/bin/sh", "-c", "exec /bin/sleep 300 </dev/null >/dev/null 2>&1"}
+	process["env"] = []string{"HOME=/root", "PATH=/bin:/sbin:/usr/bin:/usr/sbin"}
+	spec["root"].(map[string]any)["readonly"] = false
+	spec["annotations"] = map[string]string{baseAnnotation: id + "-base"}
+	data, err = json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bundle+"/config.json", data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	started := boundedLossView(t, "start", "--bundle", bundle, id)
+	child := exec.Command(os.Args[0], "-test.run=^TestNativeStoppedCaptureBackingRetirement$", "-test.timeout=420s")
+	child.Env = append(os.Environ(), "FACTORYBOX_STOPPED_CAPTURE_DELETE_FIXTURE="+status.Lifecycle.Root)
+	if output, err := child.CombinedOutput(); err != nil {
+		t.Fatal("actual native capture and controller exit", string(output), err)
+	}
+	generation := status.Lifecycle.Root + "/objects/" + id + "/captures/" + strings.Repeat("b", 32)
+	cli := os.Getenv("FACTORYBOX_RETIREMENT_CLI")
+	if cli == "" {
+		cli = "/opt/factorybox/factorybox"
+	}
+	command := func(args ...string) ([]byte, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 420*time.Second)
+		defer cancel()
+		return exec.CommandContext(ctx, cli, append([]string{"--worker-run-root", "/run/factorybox"}, args...)...).CombinedOutput()
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		output, err := command("delete", id)
+		if err == nil {
+			break
+		}
+		if !bytes.Contains(output, []byte("live or unproved original actor")) || time.Now().After(deadline) {
+			t.Fatal("Delete after native capture", string(output), err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := unix.Unmount(bundle+"/rootfs", 0); err != nil {
+		t.Fatal(err)
+	}
+	overlayMounted = false
+	if err := sysboxcapture.RetireImmutableAlias(bundle+"/lower", lower); err != nil {
+		t.Fatal(err)
+	}
+	lowerMounted = false
+	manifest, err := os.ReadFile(generation + "/filesystem.json")
+	var filesystem sysboxcapture.FilesystemSnapshot
+	if err != nil || json.Unmarshal(manifest, &filesystem) != nil || filesystem.Version != 2 {
+		t.Fatal("fixture did not capture native snapshots", err)
+	}
+	nativeRoots := 0
+	for _, tree := range filesystem.Roots {
+		if tree.Native != nil {
+			nativeRoots++
+			if tree.Native.Saved.Flags != 1 {
+				t.Fatal("capture root is not sealed")
+			}
+		}
+	}
+	if nativeRoots != 8 {
+		t.Fatal("fixture omitted native mutable/manager roots", nativeRoots)
+	}
+	output, err := command(backingRetirementArgs(SandboxBackingRequest{id, started.Record.Owner, started.Record.InputSHA256})...)
+	if err != nil {
+		t.Fatal("retire actual sealed native capture", string(output), err)
+	}
+	for _, name := range []string{"filesystem", "images"} {
+		if _, err := os.Lstat(generation + "/" + name); !os.IsNotExist(err) {
+			t.Fatal("native capture payload remains", name, err)
+		}
+	}
+	if after, err := os.ReadFile(generation + "/filesystem.json"); err != nil || !bytes.Equal(manifest, after) {
+		t.Fatal("native retirement changed original manifest", err)
+	}
+	if replay, err := command(backingRetirementArgs(SandboxBackingRequest{id, started.Record.Owner, started.Record.InputSHA256})...); err != nil || !bytes.Equal(output, replay) {
+		t.Fatal("native retirement replay changed", string(replay), err)
+	}
+	boundedLossSave(t, "stopped-capture-native-retirement.json", map[string]any{
+		"passed": true, "sealed_native_roots": nativeRoots, "original_manifest_preserved": true,
+		"native_payload_absent": true, "exact_completion_replayed": true,
 	})
 }

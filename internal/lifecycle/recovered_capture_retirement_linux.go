@@ -309,6 +309,9 @@ func (e *Engine) retireRecoveredCapture(ctx context.Context, record Record, requ
 		return errors.Join(err, fmt.Errorf("recovered capture proof changed before retirement"))
 	}
 	if len(intent.Payloads) != 0 {
+		if err := e.retireCaptureNativePayload(ctx, generation, plan); err != nil {
+			return err
+		}
 		if err := ownedtree.RemoveRemaining(ctx, e.root, plan); err != nil {
 			return err
 		}
