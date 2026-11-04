@@ -15,7 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
+	"sync"
 
 	"factorybox/internal/sysboxcapture"
 	"golang.org/x/sys/unix"
@@ -561,8 +563,16 @@ func (e *Engine) recoverCheckpointSource(relative string, record Record, id stri
 }
 
 func (e *Engine) checkpointFiles(ctx context.Context, relative string) ([]CheckpointFile, error) {
-	// List only runtime inputs copied by Resume. Capture ownership and guard
-	// journals remain separate evidence, not additional restore images.
+	names, err := e.checkpointFileNames(relative)
+	if err != nil {
+		return nil, err
+	}
+	return e.hashCheckpointFiles(ctx, relative, names, checkpointHashWorkers())
+}
+
+// checkpointFileNames lists only runtime inputs copied by Resume. Capture
+// ownership and guard journals remain separate evidence, not restore images.
+func (e *Engine) checkpointFileNames(relative string) ([]string, error) {
 	names := []string{"criu.conf", "filesystem.json", "source-state.json", "sysbox-state.json"}
 	images, err := e.root.Open(relative + "/images")
 	if err != nil {
@@ -582,40 +592,116 @@ func (e *Engine) checkpointFiles(ctx context.Context, relative string) ([]Checkp
 		}
 		names = append(names, "images/"+entry.Name())
 	}
-	// ReadDir returns sorted entries for an ordinary File only when requested
-	// through os.ReadDir. Sort explicitly for stable manifest comparisons.
+	// Sort explicitly for stable manifest comparisons.
 	sort.Strings(names)
-	result := make([]CheckpointFile, 0, len(names))
+	return names, nil
+}
+
+const checkpointHashBlock = 1 << 20
+
+var checkpointHashBuffers = sync.Pool{New: func() any {
+	buffer := make([]byte, checkpointHashBlock)
+	return &buffer
+}}
+
+// Hash files concurrently. Each result keeps its sorted position, so the manifest
+// is byte-identical to a sequential pass. Every file keeps the same checks.
+func checkpointHashWorkers() int {
+	workers := runtime.GOMAXPROCS(0)
+	if workers > 4 {
+		workers = 4
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	return workers
+}
+
+func (e *Engine) hashCheckpointFiles(ctx context.Context, relative string, names []string, workers int) ([]CheckpointFile, error) {
 	root, err := e.root.Open(".")
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
-	for _, name := range names {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		fd, err := unix.Openat2(int(root.Fd()), relative+"/"+name, &unix.OpenHow{
-			Flags: unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOATIME, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS})
-		if err != nil {
-			return nil, err
-		}
-		file := os.NewFile(uintptr(fd), name)
+	result := make([]CheckpointFile, len(names))
+	// A single RAM image dominates a pause. Bigger files start first, but each
+	// goroutine writes only its own slot, so the order is still sorted.
+	order := make([]int, len(names))
+	for index := range order {
+		order[index] = index
+	}
+	sizes := make([]int64, len(names))
+	for index, name := range names {
 		var stat unix.Stat_t
-		statErr := unix.Fstat(fd, &stat)
-		if statErr != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Nlink != 1 {
-			file.Close()
-			return nil, fmt.Errorf("checkpoint file changed its regular-file identity: %s: %v", name, statErr)
+		if err := unix.Fstatat(int(root.Fd()), relative+"/"+name, &stat, unix.AT_SYMLINK_NOFOLLOW); err == nil {
+			sizes[index] = stat.Size
 		}
-		hash := sha256.New()
-		_, readErr := io.Copy(hash, checkpointReader{ctx, file})
-		closeErr := file.Close()
-		if err := errors.Join(readErr, closeErr); err != nil {
-			return nil, err
-		}
-		result = append(result, CheckpointFile{Name: name, SHA256: hex.EncodeToString(hash.Sum(nil)), Bytes: stat.Size})
+	}
+	sort.SliceStable(order, func(i, j int) bool { return sizes[order[i]] > sizes[order[j]] })
+	workerContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var wait sync.WaitGroup
+	var once sync.Once
+	var failure error
+	jobs := make(chan int)
+	if workers > len(order) {
+		workers = len(order)
+	}
+	for worker := 0; worker < workers; worker++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for index := range jobs {
+				file, err := e.hashCheckpointFile(workerContext, root, relative, names[index])
+				if err != nil {
+					once.Do(func() { failure = err; cancel() })
+					continue
+				}
+				result[index] = file
+			}
+		}()
+	}
+	for _, index := range order {
+		jobs <- index
+	}
+	close(jobs)
+	wait.Wait()
+	if failure != nil {
+		return nil, failure
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return result, nil
+}
+
+func (e *Engine) hashCheckpointFile(ctx context.Context, root *os.File, relative, name string) (CheckpointFile, error) {
+	if err := ctx.Err(); err != nil {
+		return CheckpointFile{}, err
+	}
+	fd, err := unix.Openat2(int(root.Fd()), relative+"/"+name, &unix.OpenHow{
+		Flags: unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOATIME, Resolve: unix.RESOLVE_BENEATH | unix.RESOLVE_NO_SYMLINKS})
+	if err != nil {
+		return CheckpointFile{}, err
+	}
+	file := os.NewFile(uintptr(fd), name)
+	var stat unix.Stat_t
+	statErr := unix.Fstat(fd, &stat)
+	if statErr != nil || stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Nlink != 1 {
+		file.Close()
+		return CheckpointFile{}, fmt.Errorf("checkpoint file changed its regular-file identity: %s: %v", name, statErr)
+	}
+	// Sequential access lets the kernel read ahead of the hash.
+	_ = unix.Fadvise(fd, 0, 0, unix.FADV_SEQUENTIAL)
+	hash := sha256.New()
+	buffer := checkpointHashBuffers.Get().(*[]byte)
+	_, readErr := io.CopyBuffer(hash, checkpointReader{ctx, file}, *buffer)
+	checkpointHashBuffers.Put(buffer)
+	closeErr := file.Close()
+	if err := errors.Join(readErr, closeErr); err != nil {
+		return CheckpointFile{}, err
+	}
+	return CheckpointFile{Name: name, SHA256: hex.EncodeToString(hash.Sum(nil)), Bytes: stat.Size}, nil
 }
 
 type checkpointReader struct {

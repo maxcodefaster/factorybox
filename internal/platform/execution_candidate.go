@@ -2,20 +2,10 @@
 
 package platform
 
-import (
-	"fmt"
-	"strings"
-)
-
-// Only the explicit native candidate runner links this value. An ordinary
-// build has no candidate admission path, and a tag without a kernel pin fails.
+// The native candidate runner links the kernel it executes on. It labels that
+// exact kernel verified. Admission uses the same capability gate as ordinary
+// builds.
 var candidateKernel string
 
-func (info Info) CheckExecution() error {
-	if candidateKernel == "" || info.OS != "linux" || info.Architecture != candidateArchitecture ||
-		info.PageSize != 4096 || info.Kernel != candidateKernel {
-		return fmt.Errorf("unqualified %s test build requires its exact linked Linux/%s/4096/kernel tuple",
-			strings.ToUpper(candidateArchitecture), candidateArchitecture)
-	}
-	return nil
-}
+func linkedKernel() string       { return candidateKernel }
+func linkedArchitecture() string { return candidateArchitecture }

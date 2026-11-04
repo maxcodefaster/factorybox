@@ -21,9 +21,11 @@ give the worker a ServiceAccount token. Its Pod uses `restartPolicy: Never`.
 Worker replacement and retained recovery require their separate exact protocol.
 
 Cloud providers use the same manifest and configurable StorageClass. This does
-not broaden execution admission: the current AMD64 build still accepts only
-its linked kernel, 4096-byte pages and the tested native facilities. No new
-kernel, VM, host runtime installation or global sysctl change is included.
+not widen the privileges the worker needs. Admission is by kernel capability
+([platform admission](platform-admission.md)), so a node image upgrade that
+keeps the capabilities does not change the verdict; the report marks kernels
+without native suite runs `unverified`. No new kernel, VM, host runtime
+installation or global sysctl change is included.
 
 ## Verified scope
 

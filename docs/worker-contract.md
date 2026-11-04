@@ -16,14 +16,15 @@ Go runtime.
 
 ## Platform and deployment
 
-Ordinary worker execution recognizes Linux AMD64 with kernel
-`7.2.8-9-omarchy` and the separate local ARM64 profile with kernel
-`7.0.14-orbstack-00380-ga7e0a2dc9535`. Both use 4096-byte pages, cgroup v2 and
-the tested same-host Docker/local-volume storage path. The ARM64 profile does
-not promote a new production candidate or rewrite the historical AMD64 pilot.
-`factorybox doctor` checks the platform tuple; it does not establish component
-or lifecycle qualification. Cross-compilation, another filesystem, a different
-ARM64 kernel/page size or a successful image build does not qualify another host.
+Ordinary worker execution admits Linux on amd64 or arm64 with 4096-byte pages, a
+kernel of at least 5.15, cgroup v2 and the kernel facilities listed in
+[platform admission](platform-admission.md). The release string is not compared
+with a list. `factorybox doctor` and `worker-status` report every failing
+capability and `qualification: verified|unverified`; unverified kernels are
+admitted. The boot ID still identifies a retained worker. Neither report
+establishes component or lifecycle qualification. Cross-compilation, another
+filesystem, a different page size or a successful image build does not qualify
+another host.
 The local ARM64 tuple has Factory/worker functional evidence. The declared
 Systemd proc fixture now checks the host's actual kcore capability: original
 read-denial assertions for an existing node, strict guest absence and a failed

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"syscall"
 
 	"factorybox/internal/sandboxnetwork"
@@ -429,16 +430,59 @@ func (e *Engine) copyForkImagesTo(ctx context.Context, sourceLock *os.File, gene
 	if err != nil {
 		return err
 	}
-	for _, entry := range entries {
-		file, err := targetEngine.root.Open(destination + "/images/" + entry.Name())
-		if err != nil {
-			return err
-		}
-		if err := errors.Join(file.Sync(), file.Close()); err != nil {
-			return err
-		}
+	paths := make([]string, len(entries))
+	for index, entry := range entries {
+		paths[index] = destination + "/images/" + entry.Name()
+	}
+	if err := syncFiles(ctx, targetEngine.root, paths, checkpointHashWorkers()); err != nil {
+		return err
 	}
 	return target.Sync()
+}
+
+// syncFiles makes every named file durable. Concurrent fsyncs let the filesystem
+// commit their journal records together, but each file is still synced before
+// the caller publishes anything.
+func syncFiles(ctx context.Context, root *os.Root, paths []string, workers int) error {
+	if workers > len(paths) {
+		workers = len(paths)
+	}
+	if workers < 1 {
+		return nil
+	}
+	jobs := make(chan string)
+	failures := make(chan error, workers)
+	var wait sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for path := range jobs {
+				if err := ctx.Err(); err != nil {
+					failures <- err
+					continue
+				}
+				file, err := root.Open(path)
+				if err == nil {
+					err = errors.Join(file.Sync(), file.Close())
+				}
+				if err != nil {
+					failures <- err
+				}
+			}
+		}()
+	}
+	for _, path := range paths {
+		jobs <- path
+	}
+	close(jobs)
+	wait.Wait()
+	close(failures)
+	var result error
+	for err := range failures {
+		result = errors.Join(result, err)
+	}
+	return result
 }
 
 func (e *Engine) writeForkFile(relative, name string, data []byte) error {

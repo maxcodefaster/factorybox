@@ -14,9 +14,10 @@ Factory Connector or Dev Containers dependency. Those applications may run
 inside or beside a sandbox as consumers.
 
 The AMD64 profile selects the locally validated v0.1 reference. Production
-qualification is separate. The supported tuple is
-Linux AMD64, 4096-byte pages, kernel `7.2.8-9-omarchy`. A different kernel,
-architecture or worker requires its own native evidence.
+qualification is separate. The worker admits Linux amd64 or arm64 with
+4096-byte pages and the [required kernel facilities](platform-admission.md).
+A kernel on which the project has not run its native suites is reported
+`unverified`; it needs its own native evidence before production use.
 
 ## Build locally
 

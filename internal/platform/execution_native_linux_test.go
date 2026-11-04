@@ -9,11 +9,9 @@ func TestCurrentExecutionWorker(t *testing.T) {
 	if os.Getenv("FACTORYBOX_EXECUTION_NATIVE") != "1" {
 		t.Skip("requires the declared current native execution worker")
 	}
-	info, err := Current()
+	report, err := CheckHost()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := info.CheckExecution(); err != nil {
-		t.Fatal(err)
-	}
+	t.Logf("qualification=%s kernel=%s capabilities=%+v", report.Qualification, report.Platform.Kernel, report.Capabilities)
 }

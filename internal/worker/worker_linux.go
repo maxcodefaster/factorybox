@@ -69,6 +69,9 @@ type Status struct {
 	ReadyAt          string                `json:"ready_at"`
 	Lifecycle        lifecycle.Config      `json:"lifecycle"`
 	BoundedCapacity  *boundedCapacityRange `json:"bounded_capacity,omitempty"`
+	// Exact kernel and whether the project ran its native suites on it. The
+	// boot ID above remains the identity that pins a retained worker.
+	Platform platform.Summary `json:"platform"`
 }
 
 type child struct {
@@ -495,10 +498,7 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	if err := validateHealthListen(config.HealthListen); err != nil {
 		return err
 	}
-	info, err := platform.Current()
-	if err == nil {
-		err = info.CheckExecution()
-	}
+	platformReport, err := platform.CheckHost()
 	if err != nil {
 		return err
 	}
@@ -604,6 +604,7 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	}
 	defer manager.stop()
 	status := Status{Schema: 1, Store: config.Store, StoreID: identity.ID, Epoch: epoch, Components: binaries,
+		Platform:        platformReport.Summary(),
 		Manager:         manager.identity,
 		BoundedCapacity: boundedRange(config),
 		Lifecycle: lifecycle.Config{Root: root + "/controller", Runtime: config.Components + "/sysbox-runc", RuntimeSHA256: binaries["sysbox-runc"],
@@ -679,7 +680,8 @@ func Run(ctx context.Context, config Config) (runErr error) {
 		return err
 	}
 	engine.Close()
-	status.ReadyAt = time.Now().UTC().Format(time.RFC3339Nano)
+	readyTime := time.Now()
+	status.ReadyAt = readyTime.UTC().Format(time.RFC3339Nano)
 	exitStatus = status
 	if err := writeNew(config.RunRoot+"/worker.json", status); err != nil {
 		return err
@@ -715,6 +717,11 @@ func Run(ctx context.Context, config Config) (runErr error) {
 	for {
 		select {
 		case <-ctx.Done():
+			// The supervisor has no timer, lease or epoch recycle. It exits only
+			// after SIGTERM or SIGINT from outside this container. Record that
+			// with its age so a replacement can be attributed to the signal sender.
+			fmt.Fprintf(os.Stderr, "worker termination requested after %s of readiness; draining\n",
+				time.Since(readyTime).Round(time.Second))
 			if bounded != nil {
 				var current Status
 				if err := readJSON(config.RunRoot+"/worker.json", &current); err != nil || !reflect.DeepEqual(current, status) {

@@ -266,17 +266,12 @@ func (e *Engine) prepareResume(ctx context.Context, lock *os.File, record Record
 }
 
 func (e *Engine) syncResumeBacking(ctx context.Context, relative string, files []CheckpointFile) error {
-	for _, saved := range files {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		file, err := e.root.Open(relative + "/" + saved.Name)
-		if err != nil {
-			return err
-		}
-		if err := errors.Join(file.Sync(), file.Close()); err != nil {
-			return err
-		}
+	paths := make([]string, len(files))
+	for index, saved := range files {
+		paths[index] = relative + "/" + saved.Name
+	}
+	if err := syncFiles(ctx, e.root, paths, checkpointHashWorkers()); err != nil {
+		return err
 	}
 	for _, path := range []string{relative + "/images", relative} {
 		directory, err := e.root.Open(path)

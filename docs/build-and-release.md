@@ -51,11 +51,11 @@ and failed approaches.
 
 ## Build and integrate
 
-Ordinary execution admits two explicit local Linux tuples: AMD64 with kernel
-`7.2.8-9-omarchy`, and ARM64 with kernel `7.0.14-orbstack-00380-ga7e0a2dc9535`.
-Both require 4096-byte pages, cgroup v2 and the tested Docker/local-volume path.
-`factorybox doctor` checks the tuple; it does not replace native tests or qualify
-a new image. The historical AMD64 pilot remains unchanged. Cross-compilation
+Ordinary execution admits Linux amd64 and arm64 hosts by capability: 4096-byte
+pages, kernel 5.15 or newer, cgroup v2 and the facilities in
+[platform admission](platform-admission.md). `factorybox doctor` lists failing
+capabilities and reports `qualification: verified|unverified` for the exact
+kernel; it does not replace native tests or qualify a new image. The historical AMD64 pilot remains unchanged. Cross-compilation
 does not qualify another machine, kernel, page size or storage backend.
 
 The Systemd proc-security fixture observes `/proc/kcore` before starting Sysbox.
@@ -115,7 +115,7 @@ they do not replace exact-image native qualification.
 The 512-MiB capacity fixture compiles its guest test actor without unused DWARF
 debug data. ELF symbols, executable code and every native assertion remain intact;
 the store size and admission reserves stay unchanged. Regression checks compare
-the actual ELF code and preserve candidate kernel pinning. Exact recipe and
+the actual ELF code and preserve the candidate kernel link. Exact recipe and
 assertion hashes are declared in
 [`bounded-capacity-debug-info.json`](../tests/compatibility/bounded-capacity-debug-info.json).
 
@@ -388,8 +388,8 @@ checkout to the exact reviewed consumer commit. If that repository is private,
 configure `FACTORY_CONSUMER_READ_TOKEN` with read access to it; public checkouts
 can use the normal workflow token.
 
-ARM64 component and ordinary worker builds now use the admitted local ARM64
-tuple above. Other ARM64 kernels and page sizes remain rejected. The owned
+ARM64 component and ordinary worker builds now use the capability
+gate above. Other page sizes remain rejected. The owned
 timer reader runs natively on ARM64, using
 the iterator's referenced BTF layouts and an inline PID filter without kernel
 maps. The ARM64 timer CPU backend also passes native staged/native-wait
@@ -423,7 +423,8 @@ mise exec -- python3 tools/timer_arm64_native.py --native-base-build "$base_buil
 
 Explicit lifecycle candidates link only their selected architecture and the
 actual native Docker kernel. `--candidate-platform linux/arm64` is available to
-the native lifecycle runner; it does not change ordinary worker admission.
+the native lifecycle runner. The linked kernel is labelled `verified`;
+admission uses the same capability gate as ordinary builds.
 
 To test a delivered worker image before platform admission, pass
 `--native-candidate` to `tools/build_worker.py` with the exact component inputs

@@ -48,10 +48,9 @@ The ordinary ARM64 worker build is
 `factorybox-worker-28a65e26aff44e7484f55bd7c6dbf0c7@sha256:a3627f7ffdea8c4ce188c8a3b75977f2912c1fc538e4c24a28f6b9f254afce73`.
 Its delivered Factorybox executable SHA-256 is
 `41f615efcbdb36f6519ec835afedea183081d2629340b6d6c02a7c3f6add3c9b`.
-It was compiled without Candidate tags or a linked test kernel. Ordinary
-execution admits only the exact local Linux ARM64 kernel
-`7.0.14-orbstack-00380-ga7e0a2dc9535`, 4096-byte pages and the checked worker
-resources. Other kernels/page sizes remain rejected.
+It was compiled without Candidate tags or a linked test kernel. At that
+build, ordinary execution admitted only one exact local ARM64 kernel. Later
+builds admit by capability; see [platform admission](platform-admission.md).
 
 The real Factory runtime and separate Linux Bun proof image come from
 `factorybox-build-consumer-9303760253644018aaecbf4285ff5c5f`, frozen from Factory

@@ -82,8 +82,9 @@ and [local worker example](examples/worker). Check the
 
 AMD64 and ARM64 use one codebase and the same release gates. The release-only
 pipeline builds and tests each image on its matching Linux runner, then publishes
-the combined image manifest only after both jobs pass. Each worker still admits
-only its tested kernel, page size and local-storage profile.
+the combined image manifest only after both jobs pass. A worker admits any Linux
+kernel with the required capabilities and reports whether the project ran its suites on
+that exact kernel. See [platform admission](docs/platform-admission.md).
 
 The [current readiness checklist](docs/first-release-status.md) separates recent
 Factory integration results, remaining release checks and historical failures.
@@ -94,6 +95,7 @@ Cross-node migration and arbitrary hosts are outside that release's scope.
 [Release scope](docs/releases/0.1.0-rc.1.md) ·
 [Measurements](docs/first-release-performance.md) ·
 [Factory integration](docs/factory-consumer.md) ·
+[Platform admission](docs/platform-admission.md) ·
 [Kubernetes deployment contract](docs/kubernetes-worker.md)
 
 ## License

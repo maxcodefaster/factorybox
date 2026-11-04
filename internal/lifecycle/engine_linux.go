@@ -113,11 +113,7 @@ func Open(config Config) (_ *Engine, resultErr error) {
 			return nil, err
 		}
 	}
-	info, err := platform.Current()
-	if err == nil {
-		err = info.CheckExecution()
-	}
-	if err != nil {
+	if _, err := platform.CheckHost(); err != nil {
 		return nil, err
 	}
 	if err := canonical(config.Root); err != nil {
