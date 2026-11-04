@@ -46,14 +46,19 @@ func TestCaptureStopWaitUsesOriginalRemainingLifecycle(t *testing.T) {
 	pending := &captureStopPending{errors.New("original pidfd has not reported exit")}
 	validate := func() error {
 		poll := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-		n, err := unix.Poll(poll, 0)
-		if err != nil {
-			return err
+		for {
+			n, err := unix.Poll(poll, 0)
+			if errors.Is(err, unix.EINTR) {
+				continue // Match the production guard's interrupted read-only probe.
+			}
+			if err != nil {
+				return err
+			}
+			if n != 1 || poll[0].Revents&unix.POLLIN == 0 || poll[0].Revents&unix.POLLNVAL != 0 {
+				return pending
+			}
+			return nil
 		}
-		if n != 1 || poll[0].Revents&unix.POLLIN == 0 || poll[0].Revents&unix.POLLNVAL != 0 {
-			return pending
-		}
-		return nil
 	}
 	cleared := false
 	err = captureWaitStopped(ctx, validate, func() error {
