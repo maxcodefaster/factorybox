@@ -2,7 +2,7 @@
   "schema": 1,
   "source_commit": "b93ceca825b809e2a24d04009c63f7b9c59675fd",
   "previous_manifest": "tests/compatibility/native-manager-withdrawal.json",
-  "previous_manifest_sha256": "99fb79de5183f26ff81a028f9397c39a919661563839d9de6597fea7fd791f63",
+  "previous_manifest_sha256": "8087310d128dd1894bf973bb7514a5a84bdee43f88493377e041e9e2eb0f98d5",
   "assertions_preserved": true,
   "upstream_assertions_modified": false,
   "scope": "Add a native regression for an accepted manager retirement across actual unlinking of its original directory. Require the moved-original refusal, preservation of a replacement containing same-named foreign data, exact request completion with independent kernel inode-withdrawal evidence and unchanged original receipts. Keep every existing native test, assertion, proof field, resource ceiling and deadline.",

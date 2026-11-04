@@ -2,7 +2,7 @@
   "schema": 1,
   "source_commit": "46f68e787b2e79100f9ab26265139b2752e745f2",
   "previous_manifest": "tests/compatibility/native-epoch-retirement.json",
-  "previous_manifest_sha256": "54c181db65828515aadf07ac11c515f70d92c0c6326828c9d954cec53789daf8",
+  "previous_manifest_sha256": "0d177133a9d8d664b5b9ad462dec5c679ba34fbdd85ae7f31aac869809fa720f",
   "assertions_preserved": true,
   "upstream_assertions_modified": false,
   "scope": "Add required native retained-metadata and pending confirmed-Delete backing regressions to the existing backing-retirement lane. Keep every original test, assertion, proof field, resource ceiling and deadline. Provide a separate owned fixture directory; never use the retained installation.",

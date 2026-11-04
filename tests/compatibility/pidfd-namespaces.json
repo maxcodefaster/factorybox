@@ -2,14 +2,14 @@
   "schema": 1,
   "source_commit": "bb37845a641a8d6309952b81598bd58269b0bda2",
   "previous_manifests": {
-    "tests/compatibility/manager-root-withdrawal.json": "784dd081378c3573b17ff71a00f181292aaf29ce87a1d58687a8dcdf9ff6810b",
+    "tests/compatibility/manager-root-withdrawal.json": "f026075e7774ba157eaa9089d126de278b8d3bd0a3c67ee2f57d7dcc0b8f5cb3",
     "tests/compatibility/arm64-restore-hold.json": "def92fe7f44dd33e52c75829ac44b67259f32d7d86275b28c8ab7a96eaeb4568"
   },
   "assertions_preserved": true,
   "upstream_assertions_modified": false,
   "scope": "Add the delivered-worker PIDFD namespace suite without changing the existing suite inventory, assertions, resource ceilings, deadlines or cleanup. The ordinary timer fixture delegates with a nil configuration callback. Only the new PIDFD fixture adds the Factory consumer capabilities before Start. Reverse the exact declared patch and verify the original complete runner and helper bytes before applying their existing compatibility assertions.",
   "patch": "tests/compatibility/pidfd-namespaces-fixture.patch",
-  "patch_sha256": "935ef73fc87773d0f1371b1337b45981f1bee81f7b94930bff94b0374570ddef",
+  "patch_sha256": "2e4b24010bb099b559975f30efaccee73f8c0204ac2a856a0ff7ccf30f61dc8e",
   "files": {
     "internal/lifecycle/timer_fixture_native_linux_test.go": {
       "before_sha256": "89811146830886ff8ef7e1f43b24f7db003382ad04f2a89f2d70e0f11224c5c4",
@@ -17,7 +17,7 @@
     },
     "tools/bounded_store_native.py": {
       "before_sha256": "24fa88e1ebb1a18ec0014412812b31ecb66e84bf150807c6995dcb1139ce687f",
-      "after_sha256": "33266c04fc323ece43affd51fafbb22ab2870eaf30f915cacb176d7ce44f8adc"
+      "after_sha256": "9be8bf2dfbc1034c1e341adb4b859fac825d75db045c3861a441e787007ea8dd"
     }
   },
   "added_files": {
