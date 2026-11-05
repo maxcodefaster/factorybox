@@ -156,7 +156,11 @@ func (e *Engine) retirementPathDependencies(ctx context.Context, retiring string
 				return err
 			}
 		}
-		if record.Phase != "running" && record.Phase != "paused" && !retainedPause && !preparingResume {
+		// A Resume that never started a restore left the paused inputs unchanged too. A retained
+		// old epoch can hold one whose worker ended, and it must not block every later retirement.
+		retainedUnattemptedResume := e.metadataOnly && unattemptedResumeInputs(record)
+		if record.Phase != "running" && record.Phase != "paused" && !retainedPause && !preparingResume &&
+			!retainedUnattemptedResume {
 			return fmt.Errorf("unresolved Sandbox blocks private-backing retirement: %s (%s)", record.ID, record.Phase)
 		}
 		if overlaps(record.InputBundle) || overlaps(record.Rootfs) ||
