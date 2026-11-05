@@ -91,7 +91,7 @@ Local integration passes do not qualify an untested release image. The 24-hour
 endurance run and 100-run series are deferred from the first controlled release.
 Cross-node migration and arbitrary hosts are outside that release's scope.
 
-[Release scope](docs/releases/0.1.0-rc.1.md) ·
+[Release scope](docs/releases/0.1.0-beta.1.md) ·
 [Measurements](docs/first-release-performance.md) ·
 [Factory integration](docs/factory-consumer.md) ·
 [Platform admission](docs/platform-admission.md) ·

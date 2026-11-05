@@ -2,7 +2,7 @@
 
 Detailed source, native build and release automation instructions for Factorybox.
 Start with the [README](../README.md) and the
-[current release scope](releases/0.1.0-rc.1.md) for the supported boundary.
+[current release scope](releases/0.1.0-beta.1.md) for the supported boundary.
 Historical pilot packages and observations remain identified separately.
 
 ## What changed in Sysbox and CRIU
@@ -286,7 +286,7 @@ the same Android SDK space preparation as the portable CI.
 
 The [release publication workflow](../.github/workflows/images.yaml) runs only when a
 GitHub release is published. It does not run on branch pushes, pull requests or
-manual dispatch. The canonical tag, initially `v0.1.0-rc.1`, must name a commit contained
+manual dispatch. The canonical tag, initially `v0.1.0-beta.1`, must name a commit contained
 in `main` and match `internal/version/VERSION`, the delivered CLI and image label.
 Each native job publishes its qualified
 `ghcr.io/<owner>/<repository>/worker:<version>-amd64` or `<version>-arm64` image.
