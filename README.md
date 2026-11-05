@@ -1,7 +1,5 @@
 # Factorybox
 
-[![Linux CI](https://github.com/maxcodefaster/factorybox/actions/workflows/ci.yaml/badge.svg)](https://github.com/maxcodefaster/factorybox/actions/workflows/ci.yaml)
-
 Pause a development environment. Resume where its processes left off.
 
 Factorybox is a Linux system-container runtime built on pinned, patched
@@ -80,11 +78,12 @@ and [local worker example](examples/worker). Check the
 
 ## Status
 
-AMD64 and ARM64 use one codebase and the same release gates. The release-only
-pipeline builds and tests each image on its matching Linux runner, then publishes
-the combined image manifest only after both jobs pass. A worker admits any Linux
-kernel with the required capabilities and reports whether the project ran its suites on
-that exact kernel. See [platform admission](docs/platform-admission.md).
+`v0.1.0-beta.1` is the first public beta. Linux on arm64 is the one verified platform: the published
+worker image passed the native conformance on a single-node Kubernetes cluster, and Open Software
+Factory ran its install, upgrade and soak checks on it. amd64 and Azure AKS are not supported yet.
+The worker needs only what a standard Linux Kubernetes node offers. It admits any Linux kernel with
+the required capabilities, names a missing capability in its own report and reports whether the
+project ran its suites on that exact kernel. See [platform admission](docs/platform-admission.md).
 
 The [current readiness checklist](docs/first-release-status.md) separates recent
 Factory integration results, remaining release checks and historical failures.

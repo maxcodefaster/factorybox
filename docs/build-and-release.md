@@ -240,8 +240,9 @@ of every executable, component platform agreement and the final image platform.
 Its receipt records the image and Factorybox executable digest. There is no
 push, installation or automatic runtime admission.
 
-The [Linux CI workflow](../.github/workflows/ci.yaml) runs portable checks on pull
-requests and pushes to `main`, avoiding duplicate runs on feature-branch pushes.
+The [Linux CI workflow](../.github/workflows/ci.yaml) runs portable checks only when started by
+hand. No workflow runs on pushes or pull requests; the maintainer runs the same checks locally
+before a release.
 It uses GitHub's `ubuntu-24.04` AMD64 and
 `ubuntu-24.04-arm` ARM64 runners. Each job runs the Linux Go and Python suites,
 including the unprivileged ownership refusals. A separate lifecycle-metadata pass runs
