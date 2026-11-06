@@ -9,7 +9,16 @@
  options = parser.parse_args()
  if options.exit_hold_socket and not options.exit_hold:
      parser.error("--exit-hold-socket requires --exit-hold")
-@@ -56,6 +58,13 @@
+@@ -48,6 +50,8 @@
+ if options.nested_overlay:
+     patch_inputs.append(
+         (root / "upstream/patches/criu-nested-overlay-candidate.patch", "nested-overlay.patch"))
++    patch_inputs.append(
++        (root / "upstream/patches/criu-openat2-retry-candidate.patch", "openat2-retry.patch"))
+ if options.nested_overlay_stable_paths:
+     patch_inputs.append(
+         (root / "upstream/patches/criu-nested-overlay-stable-path-candidate.patch",
+@@ -56,6 +60,13 @@
      patch_inputs.append(
          (root / "upstream/patches/criu-nested-overlay-shared-root-candidate.patch",
           "nested-overlay-shared-root.patch"))
@@ -23,17 +32,17 @@
  lock = json.loads((root / "upstream/lock.json").read_text())
  original = lock["components"]["criu"]
  sources.validate_inputs(original)
-@@ -93,7 +102,8 @@
+@@ -93,7 +104,8 @@
      "criu/cr-dump.c", "criu/parasite-syscall.c", "criu/Makefile.crtools",
      "criu/factorybox-retained.c", "criu/include/factorybox-retained.h",
      "compel/src/lib/infect.c",
 -] + (["criu/mount-v2.c"] if options.nested_overlay else []) + (
 +] + (["criu/cr-restore.c"] if options.pid_collision_diagnostics else []) + (
-+        ["criu/mount-v2.c"] if options.nested_overlay else []) + (
++        ["criu/mount-v2.c", "criu/include/mount-v2.h"] if options.nested_overlay else []) + (
          ["criu/include/factorybox-exit-observer.h"] if options.exit_hold else []):
      component.setdefault("prepared_files_sha256", {})[relative] = reference.sha(context / relative)
  (archive / "source-lock.json").write_text(json.dumps(candidate, indent=2) + "\n")
-@@ -181,6 +191,15 @@
+@@ -181,6 +193,15 @@
          "first passes bounded beneath-root/no-magiclink/no-cross-mount lookup. "
          "Namespace-root and overlapping covering-mount aliases remain unsupported."
      )

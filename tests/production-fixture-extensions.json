@@ -42,9 +42,9 @@
     },
     "tests/criu-retained-candidate/build.py": {
       "before_sha256": "3b1f3418c46f1bae9d89a89f5c6e95a5952e5776914cf90bc719141fa9633041",
-      "after_sha256": "51308b404f941a16789da702a31f2f191c3b3d2984d20a4a96c436a950774647",
+      "after_sha256": "de676031ed4dc552380543794ba6d9c7c3946b08964b2a79dad72eefb9d6fa15",
       "patch": "tests/compatibility/pid-diagnostic-builder.patch",
-      "patch_sha256": "437986e00b84e61a793f28b1a6c67e90b19c918d059cd497fca1bae8ebea772f",
+      "patch_sha256": "78727c72b15eb6ad796d999ee5ec203a7c1011d168f7270e1d5adc019bee2dd6",
       "before_file": "factorybox-pid-diagnostic-inputs-c00bf2dccc05474ab58d295b0088d21b/build.py",
       "reason": "Add an explicit optional ordered diagnostic patch to a new CRIU candidate only. Preserve every existing patch, source/test assertion, build command, native resource limit, unchanged-input check and cleanup. The default builder path stays unchanged. The new patch logs bounded process and pidfd metadata only after nested clone3 EEXIST, preserving errno and the failure. It does not signal, change PID allocation, retry, fix or select the failing runtime. Production qualification and upstream suites remain separately required. Ordered read-only follow-up additionally observes namespace-matched task, process-group and session references, including non-leader threads. A real kernel control proves EEXIST with an absent leader and validates the exact diagnostic through both local and ancestor proc views. No assertion, command or resource limit is removed. The historical restore failure remains unexplained and no repair is claimed."
     },

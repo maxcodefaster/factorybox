@@ -50,6 +50,8 @@ if options.exit_hold_socket:
 if options.nested_overlay:
     patch_inputs.append(
         (root / "upstream/patches/criu-nested-overlay-candidate.patch", "nested-overlay.patch"))
+    patch_inputs.append(
+        (root / "upstream/patches/criu-openat2-retry-candidate.patch", "openat2-retry.patch"))
 if options.nested_overlay_stable_paths:
     patch_inputs.append(
         (root / "upstream/patches/criu-nested-overlay-stable-path-candidate.patch",
@@ -103,7 +105,7 @@ for relative in [
     "criu/factorybox-retained.c", "criu/include/factorybox-retained.h",
     "compel/src/lib/infect.c",
 ] + (["criu/cr-restore.c"] if options.pid_collision_diagnostics else []) + (
-        ["criu/mount-v2.c"] if options.nested_overlay else []) + (
+        ["criu/mount-v2.c", "criu/include/mount-v2.h"] if options.nested_overlay else []) + (
         ["criu/include/factorybox-exit-observer.h"] if options.exit_hold else []):
     component.setdefault("prepared_files_sha256", {})[relative] = reference.sha(context / relative)
 (archive / "source-lock.json").write_text(json.dumps(candidate, indent=2) + "\n")

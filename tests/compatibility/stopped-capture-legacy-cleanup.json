@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "previous_manifest": "tests/compatibility/stopped-capture-delete.json",
-  "previous_manifest_sha256": "5a0558ebf81f8c750f40826adddc0858e06db9703e56cd2a3a4756aa778a8089",
+  "previous_manifest_sha256": "5356378ac9f9e66419ae7fdec554c1e744923c4b1b3e6de07c29fa81c86ca96f",
   "assertions_preserved": true,
   "upstream_assertions_modified": false,
   "scope": "A standalone newer cleanup CLI can be tested against an older frozen worker by adding only the two stopped-capture native fixtures. Every original old-worker test remains byte-identical. New API unit tests remain in the current-worker lane rather than being compiled against an API that never contained them. The default complete current-test overlay is unchanged. This maintenance lane grants no worker replacement or platform qualification.",

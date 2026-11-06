@@ -92,7 +92,7 @@ def load(name, *, base_lock=None):
         if file not in {"retained.patch", "early-hold.patch", "exact-wait.patch", "exit-hold.patch",
                         "exit-hold-socket.patch", "nested-overlay.patch",
                         "nested-overlay-stable-path.patch",
-                        "nested-overlay-shared-root.patch", "pid-collision-diagnostics.patch",
+                        "nested-overlay-shared-root.patch", "openat2-retry.patch", "pid-collision-diagnostics.patch",
                         "pid-collision-references.patch", "nested-pid-counter.patch",
                         "pstree-error-propagation.patch", "nested-zombie-peer-pidns.patch", "shared-fds.patch",
                         "namespace-access.patch", "shared-fds-packets.patch",

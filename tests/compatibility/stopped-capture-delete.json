@@ -4,7 +4,7 @@
   "previous_manifest": "tests/compatibility/pidfd-namespaces.json",
   "previous_manifest_sha256": "076dc23bc1107dbcf16b0a91b41744d373093043741182a8bed7281431c52465",
   "production_manifest": "tests/production-fixture-extensions.json",
-  "production_manifest_sha256": "5de8dfadd90fe3b69df051f8f29a062444d806e47be437c66d7f9f7ed209f944",
+  "production_manifest_sha256": "9538c80c459735f151551b68afe09abbdf91a54f04e055cf734af5ba9decba54",
   "assertions_preserved": true,
   "upstream_assertions_modified": false,
   "scope": "Add the stopped-capture cleanup lane without removing any existing suite, assertion, resource ceiling, lifecycle deadline or ownership check. Reverse this exact patch before verifying the unchanged PIDFD and prior native fixture declarations.",

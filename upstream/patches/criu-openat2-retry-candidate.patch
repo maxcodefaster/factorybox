@@ -1,0 +1,30 @@
+--- a/criu/include/mount-v2.h
++++ b/criu/include/mount-v2.h
+@@ -1,6 +1,8 @@
+ #ifndef __CR_MOUNT_V2_H__
+ #define __CR_MOUNT_V2_H__
+ 
++#include <errno.h>
++
+ #include "linux/mount.h"
+ #include "linux/openat2.h"
+ 
+@@ -54,7 +56,17 @@
+ 
+ static inline long sys_openat2(int dirfd, const char *pathname, struct open_how *how, size_t size)
+ {
+-	return syscall(__NR_openat2, dirfd, pathname, how, size);
++	long ret;
++	int attempts = 0;
++
++	/* With RESOLVE_BENEATH or RESOLVE_IN_ROOT the kernel answers EAGAIN when a
++	 * concurrent rename or mount change keeps it from proving the walk stayed
++	 * inside the root. The openat2 manual page tells callers to retry.
++	 */
++	do {
++		ret = syscall(__NR_openat2, dirfd, pathname, how, size);
++	} while (ret < 0 && errno == EAGAIN && ++attempts < 100);
++	return ret;
+ }
+ 
+ extern int check_mount_v2(void);
