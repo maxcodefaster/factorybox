@@ -10,7 +10,7 @@ and [CRIU](https://criu.org). It runs on ordinary Kubernetes nodes and needs no 
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-2c5a7a)](LICENSE)
 [![Release](https://img.shields.io/badge/release-v0.1.0--beta.1-2c5a7a)](https://github.com/maxcodefaster/factorybox/tags)
-[![Verified on](https://img.shields.io/badge/verified%20on-Linux%20arm64-2c5a7a)](#status)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20arm64%20%7C%20amd64-2c5a7a)](#status)
 
 [Why](#why) · [What it does](#what-it-does) · [Compared with](#compared-with-other-isolation) · [How it works](#how-it-works) · [Status](#status) · [Build](#build-and-check)
 
@@ -37,7 +37,8 @@ has no IDE or agent dependency.
 - **Checkpoint and fork.** Create an independent environment with its own memory and mutable filesystem,
   then branch it again.
 - **Pause and resume.** Save the running state, release the Sandbox's anonymous RAM and continue from that
-  state. Measured on one node: pause takes about 3 seconds and resume about 2.5 seconds.
+  state. Ten warm cycles on an amd64 node measured a 4.07-second median pause and a 2.99-second
+  median resume to a healthy App response, with state preserved in every cycle.
 - **Recover a committed pause.** Replace a worker on the same host and recover from its intact persistent
   store and verified operation records.
 - **A real machine inside.** Each Sandbox is a system container with its own Docker daemon, without a
@@ -48,11 +49,11 @@ has no IDE or agent dependency.
 | | Plain container | gVisor | MicroVM (Firecracker, Kata) | **Factorybox** |
 | --- | --- | --- | --- | --- |
 | Kernel | Shared with the node | Userspace kernel | Own guest kernel | Shared with the node |
-| Docker daemon inside | Needs a privileged container | Limited | Yes | Yes, private per Sandbox |
-| Pause with memory | No | Checkpoint support | Snapshot | Yes |
+| Docker daemon inside | Suitable privileges or rootless Docker | Depends on runtime support | Guest Docker | Yes, private per Sandbox |
+| Pause with memory | Requires checkpoint tooling | Checkpoint support | Depends on runtime | Yes |
 | Needs hardware virtualization | No | No | Yes | No |
-| Runs on ordinary managed nodes | Yes | With a runtime class | Rarely | Yes |
-| Strength of the wall | Weakest | Medium | Strongest | Medium |
+| Node requirement | Container runtime | Configured sandbox runtime | Virtualization and runtime | Linux capabilities and privileged worker |
+| Trust boundary | Shared kernel | Userspace kernel intercepts system calls | Separate guest kernel | User namespaces; shared kernel |
 
 And compared with Sysbox alone: Sysbox is the system-container foundation. Factorybox adds the lifecycle
 that preserves and branches a running environment.
@@ -106,17 +107,21 @@ Each change has regression evidence, and the imported upstream tests keep their 
 
 ## Status
 
-`v0.1.0-beta.1` is the first public beta. Linux on arm64 is the verified platform: the published worker
-image passed the native conformance on a single-node Kubernetes cluster, and Open Software Factory ran its
-install, upgrade and pause and resume checks on it. amd64 and Azure AKS are not verified yet.
+`v0.1.0-beta.1` is the first public beta, with signed workers for Linux arm64 and amd64.
+Each released worker is tied to its image digest and executable hash.
 
 The worker needs only what a standard Linux Kubernetes node offers. It admits any Linux kernel with the
 required capabilities (cgroup v2, 4 KiB pages, the checkpoint and restore facilities) and names a missing
 capability in its own report. Cross-node migration is not supported.
 
-The signed worker image is `ghcr.io/maxcodefaster/factorybox-worker`. Its digest and the hash of its
-executable are the defaults of the Open Software Factory chart, and its signature verifies with the public
-key in that repository.
+The signed worker image is `ghcr.io/maxcodefaster/factorybox-worker`. The Open Software Factory chart pins
+its image and executable hash, with a separate values file for amd64. Its signature verifies with the
+public key in that repository.
+
+The [measurement and samples](https://github.com/maxcodefaster/open-software-factory/blob/main/assets/story/lifecycle.json)
+cover two Node containers, a volume and 256 MiB of random application memory. The worker had a 3-CPU /
+3-GiB limit on a Ryzen 7 4800U Linux node with k3s. Times include Kubernetes transport, and resume ends on
+an App state probe. These warm restores are not cold-start times or a provider benchmark ranking.
 
 ## Build and check
 
