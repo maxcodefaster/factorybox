@@ -30,9 +30,6 @@ run = "python3 tools/reference.py build"
 [tasks."reference:native"]
 run = "python3 tools/reference.py native"
 
-[tasks."core:native"]
-run = "python3 tools/native_core.py"
-
 [tasks."failure:native"]
 run = "python3 tools/native_failure.py"
 
