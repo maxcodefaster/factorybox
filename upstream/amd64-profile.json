@@ -30,6 +30,6 @@
   "lifecycle_deadline_seconds": 420,
   "trust_boundary": "separate workers per customer or trust domain",
   "unqualified": ["attached exec sessions in flight across PID namespaces", "MPTCP", "foreign binary handlers", "allocated hugepage/GPU/RDMA workloads", "guard loss before cure authorization", "earlier controller loss windows", "worker-restart RAM recovery", "cross-node migration", "arbitrary Kubernetes nodes", "latency percentiles"],
-  "qualification_report": "docs/amd64-validation.md",
+  "qualification_report": null,
   "native_gate_selection": "factorybox-amd64-reference-5dc988b7837f47949e2df2fbfe4bd6ad"
 }

@@ -145,7 +145,7 @@
     "path": "tests/pilot-fixture-extensions.json",
     "sha256": "3a38d939b016bab692662365589c85290e4af4d178458e73c63328c192181b3e"
   },
-  "qualification_report": "docs/pilot-validation.md",
+  "qualification_report": null,
   "gates": {
     "attached-exec": {
       "artifact": "factorybox-consumer-worker-loss-0caf42c882724c9bafe0bf3b09999ea7",
