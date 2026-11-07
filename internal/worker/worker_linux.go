@@ -255,8 +255,8 @@ func delegate() error {
 		return fmt.Errorf("worker must be PID 1 in its private bounded Docker PID/cgroup namespaces")
 	}
 	group, err := os.ReadFile("/proc/1/cgroup")
-	if err != nil || strings.TrimSpace(string(group)) != "0::/" {
-		return fmt.Errorf("worker lacks a private cgroup namespace: %v", err)
+	if err := checkPrivateCgroupRoot(group, err); err != nil {
+		return err
 	}
 	memory, err := os.ReadFile("/sys/fs/cgroup/memory.max")
 	if err != nil {

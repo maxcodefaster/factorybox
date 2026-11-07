@@ -18,6 +18,16 @@ import (
 )
 
 func runLifecycle(args []string) error {
+	// Containerd gives privileged Pods the host cgroup namespace, Docker a private
+	// one. The worker creates its own, and commands run by exec join it, so both
+	// runtimes present the same root to the lifecycle checks.
+	if len(args) > 0 && args[0] == "worker" {
+		if err := worker.EnsurePrivateCgroupNamespace(); err != nil {
+			return err
+		}
+	} else if err := worker.JoinWorkerCgroupNamespace(); err != nil {
+		return err
+	}
 	if handled, err := runWorker(args); handled {
 		return err
 	}
