@@ -133,10 +133,15 @@ class NativeReleaseQualificationTests(unittest.TestCase):
         self.assertLess(workflow.index(command),
                         workflow.index("Run Go, Python and immutable reference checks"))
 
-    def test_workflow_only_publishes_releases_after_native_qualification_and_license_resolution(self):
+    def test_manual_workflow_only_publishes_after_native_qualification_and_license_resolution(self):
         workflow = (reference.ROOT / ".github/workflows/images.yaml").read_text()
-        self.assertEqual(workflow.split("on:", 1)[1].split("permissions:", 1)[0],
-                         "\n  release:\n    types: [published]\n")
+        trigger = workflow.split("on:", 1)[1].split("permissions:", 1)[0]
+        self.assertIn("workflow_dispatch:", trigger)
+        self.assertIn("release_tag:", trigger)
+        self.assertIn("required: true", trigger)
+        self.assertNotIn("types: [published]", trigger)
+        self.assertIn("RELEASE_TAG: ${{ inputs.release_tag }}", workflow)
+        self.assertIn("ref: ${{ inputs.release_tag }}", workflow)
         for required in ["arch: [amd64, arm64]", 'runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]',
                          '[[ ! -s LICENSE ]]', "git merge-base --is-ancestor HEAD origin/main",
                          "tools/release_native.py", "release_native.completed_receipt",
@@ -153,10 +158,10 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                          '--shm-startup-reexec --clean --compare "$original_sysbox"',
                          '--compare "$WORKER_BUILD" --image-only',
                          "ci-independent-result.json",
-                         "094a84ca63befa5e6ecbbc14312fa5683b790a5b",
+                          "b5a858c61f69d37d90b56f59dd4177db8c116807",
                          "SHA256SUMS-$ARCH", "sources-$ARCH.json", "native-result-$ARCH.json"]:
             self.assertIn(required, workflow)
-        for forbidden in ["workflow_dispatch", "pull_request:", "push:", "setup-qemu", "--native-candidate",
+        for forbidden in ["pull_request:", "push:", "setup-qemu", "--native-candidate",
                           ":latest", "cancel-in-progress: true", "docker system prune"]:
             self.assertNotIn(forbidden, workflow)
         self.assertLess(workflow.index("tools/release_sources.py"), workflow.index("docker push"))

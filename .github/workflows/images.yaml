@@ -1,11 +1,15 @@
 name: Publish native worker images
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to qualify on native runners
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: worker-images-${{ github.event.release.tag_name }}
+  group: worker-images-${{ inputs.release_tag }}
   cancel-in-progress: false
 defaults:
   run:
@@ -18,12 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          ref: ${{ inputs.release_tag }}
           fetch-depth: 0
           persist-credentials: false
       - name: Validate release source and distribution license
         id: version
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
@@ -62,13 +67,14 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           path: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+          ref: ${{ inputs.release_tag }}
           clean: false
           persist-credentials: false
       - name: Check out the exact tested Factory consumer
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           repository: maxcodefaster/open-software-factory
-          ref: 094a84ca63befa5e6ecbbc14312fa5683b790a5b
+          ref: b5a858c61f69d37d90b56f59dd4177db8c116807
           token: ${{ secrets.FACTORY_CONSUMER_READ_TOKEN || github.token }}
           path: consumer-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           clean: false
