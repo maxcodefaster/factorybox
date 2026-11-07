@@ -107,6 +107,9 @@ def main():
                    "--mount", f"type=bind,source={artifact},target=/proof,readonly",
                    "--env", "FACTORYBOX_FDSTORE_CRIU_CLIENT=/proof/criu-client",
                    "--entrypoint", "/proof/fdstore.test", image, "-test.v"]
+        # The proof container runs as root without CAP_DAC_OVERRIDE, so on a Linux
+        # host it needs search permission on the owner-only artifact directory.
+        artifact.chmod(0o711)
         attempted = True
         subprocess.run(command, check=True, capture_output=True, timeout=30)
         tested = subprocess.run([*reference.DOCKER, "start", "-a", name], capture_output=True, text=True, timeout=90)
