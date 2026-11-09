@@ -328,6 +328,10 @@ jobs:
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-independent-result.json
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-builder-identity.json
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/ci-*.log
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-build-pipeline-*/*.stdout
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-build-pipeline-*/*.stderr
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-build-worker-*/result.json
+            factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-build-worker-*/*.log
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-cli-sources-*/go-verification.log
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-cli-sources-*/result.json
             factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}/artifacts/factorybox-release-sysbox-sources-*/go-verification.log
