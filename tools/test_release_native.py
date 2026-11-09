@@ -124,6 +124,13 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                 self.assertIn("--network=none", command)
                 self.assertIn("--read-only", command)
                 self.assertNotIn("--privileged", command)
+                if command[0] == "run":
+                    self.assertIn("--cap-drop=ALL", command)
+                    self.assertIn("--security-opt=no-new-privileges", command)
+                    self.assertIn("--device=/dev/loop-control:/dev/loop-control:r", command)
+                    self.assertIn("--device=/dev/fuse:/dev/fuse:r", command)
+                else:
+                    self.assertFalse(any(arg.startswith("--device") for arg in command))
 
     def test_portable_ci_retains_read_only_host_tuples_without_granting_native_qualification(self):
         workflow = (reference.ROOT / ".github/workflows/ci.yaml").read_text()

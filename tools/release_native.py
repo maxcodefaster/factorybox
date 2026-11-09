@@ -148,7 +148,7 @@ def retain_input_image(artifact, result, owner, role, image):
     command = ["create", "--pull=never", "--name", name,
                "--label", "com.factorybox.run=" + owner,
                "--network=none", "--read-only", "--cpus=.1", "--memory=16m", "--pids-limit=8",
-               "--cap-drop=ALL", "--security-opt=no-new-privileges",
+                    "--cap-drop=ALL", "--security-opt=no-new-privileges",
                *[argument for path in volumes for argument in ["--tmpfs", path + ":rw,size=16m"]],
                "--entrypoint", "/bin/true", image["image"]]
     # An inspected local image is not a lease. Node image GC can remove an
@@ -248,6 +248,10 @@ def main():
         command = ["run", "--pull=never", "--name", helper, "--label", "com.factorybox.run=" + owner,
                    "--network=none", "--read-only", "--cpus=1", "--memory=128m", "--pids-limit=32",
                    "--cap-drop=ALL", "--security-opt=no-new-privileges",
+                   # doctor checks host device presence. Expose only these
+                   # read-only nodes, not privileged execution or write access.
+                   "--device=/dev/loop-control:/dev/loop-control:r",
+                   "--device=/dev/fuse:/dev/fuse:r",
                    *[argument for path in volumes for argument in ["--tmpfs", path + ":rw,size=16m"]],
                    "--entrypoint", "/bin/sh", worker["image"], "-ec",
                    "/opt/factorybox/factorybox doctor; /opt/factorybox/factorybox version; "
