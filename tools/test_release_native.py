@@ -135,6 +135,10 @@ class NativeReleaseQualificationTests(unittest.TestCase):
 
     def test_manual_workflow_only_publishes_after_native_qualification_and_license_resolution(self):
         workflow = (reference.ROOT / ".github/workflows/images.yaml").read_text()
+        self.assertIn("uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db", workflow)
+        self.assertIn("install: false", workflow)
+        self.assertLess(workflow.index("Install the pinned mise runtime manager"),
+                        workflow.index("Prepare pinned tools and an isolated Docker client"))
         trigger = workflow.split("on:", 1)[1].split("permissions:", 1)[0]
         self.assertIn("workflow_dispatch:", trigger)
         self.assertIn("release_tag:", trigger)

@@ -91,6 +91,12 @@ jobs:
           token: ${{ secrets.FACTORY_CONSUMER_READ_TOKEN || github.token }}
           path: consumer-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           persist-credentials: false
+      - name: Install the pinned mise runtime manager
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db
+        with:
+          version: 2026.10.19
+          install: false
+          working_directory: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
       - name: Prepare pinned tools and an isolated Docker client
         run: |
           set -euo pipefail
