@@ -28,7 +28,15 @@ func retainedControllerConfiguration(current Config, source, boot string, epoch 
 	config := current
 	config.Root = source
 	validate := validateRetainedStoreEpoch
+	validationBoot := boot
 	if metadataOnly {
+		if boot == "" || epoch.BootID == "" {
+			return Config{}, storefs.Active{}, fmt.Errorf("retained metadata requires current and historical boot identities")
+		}
+		// Dependency inventory reads the immutable historical boot record. It
+		// neither executes that recipe nor restores processes from that boot.
+		// Recovery keeps the current-boot equality check below unchanged.
+		validationBoot = epoch.BootID
 		if !digest.MatchString(current.RuntimeSHA256) || !digest.MatchString(epoch.Lifecycle.RuntimeSHA256) {
 			return Config{}, storefs.Active{}, fmt.Errorf("retained metadata requires valid current and historical runtime identities")
 		}
@@ -38,7 +46,7 @@ func retainedControllerConfiguration(current Config, source, boot string, epoch 
 		config.RuntimeSHA256 = epoch.Lifecycle.RuntimeSHA256
 		validate = validateRetainedStoreMetadata
 	}
-	previous, err := validate(config, boot, epoch)
+	previous, err := validate(config, validationBoot, epoch)
 	if err != nil {
 		return Config{}, storefs.Active{}, err
 	}

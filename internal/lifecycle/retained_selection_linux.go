@@ -75,6 +75,7 @@ func (e *Engine) openRetained(source string, metadataOnly bool) (_ *Engine, resu
 	old := &Engine{config: config, boot: e.boot, root: retained, metadataOnly: metadataOnly}
 	if metadataOnly {
 		old.retainedStorage = &previous
+		old.boot = epoch.BootID
 	}
 	defer func() {
 		if resultErr != nil {

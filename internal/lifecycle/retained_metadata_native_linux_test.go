@@ -17,6 +17,15 @@ import (
 )
 
 func TestNativeRetainedMetadataAcrossRuntimeUpgrade(t *testing.T) {
+	nativeRetainedMetadata(t, false)
+}
+
+func TestNativeRetainedMetadataAcrossPreviousBoot(t *testing.T) {
+	nativeRetainedMetadata(t, true)
+}
+
+func nativeRetainedMetadata(t *testing.T, previousBoot bool) {
+	t.Helper()
 	storage := os.Getenv("FACTORYBOX_NATIVE_RETAINED_METADATA_ROOT")
 	if storage == "" {
 		t.Skip("requires separately owned native fixed-store fixture")
@@ -95,13 +104,21 @@ func TestNativeRetainedMetadataAcrossRuntimeUpgrade(t *testing.T) {
 		historical.Root = historicalRoot
 		// Synthetic, explicitly owned epoch metadata reproduces the observed
 		// historical Sysbox digest. No old execution or worker loss is claimed.
-		historical.RuntimeSHA256 = "f2dff633157c3e447bd78fd804b202f28ec98ef813b3151c333e46cc3a605dfb"
-		if historical.RuntimeSHA256 == config.RuntimeSHA256 {
-			t.Fatal("fixture did not exercise a runtime recipe upgrade")
+		historicalBoot := strings.TrimSpace(string(boot))
+		if previousBoot {
+			historicalBoot = "11111111-2222-4333-8444-555555555555"
+			if historicalBoot == strings.TrimSpace(string(boot)) {
+				t.Fatal("fixture did not exercise a previous boot")
+			}
+		} else {
+			historical.RuntimeSHA256 = "f2dff633157c3e447bd78fd804b202f28ec98ef813b3151c333e46cc3a605dfb"
+			if historical.RuntimeSHA256 == config.RuntimeSHA256 {
+				t.Fatal("fixture did not exercise a runtime recipe upgrade")
+			}
 		}
 		header, err := json.Marshal(map[string]any{
 			"schema": 1, "store": store, "store_id": image.Owner,
-			"epoch": historicalID, "boot_id": strings.TrimSpace(string(boot)),
+			"epoch": historicalID, "boot_id": historicalBoot,
 			"lifecycle": historical,
 		})
 		if err != nil {
@@ -124,7 +141,7 @@ func TestNativeRetainedMetadataAcrossRuntimeUpgrade(t *testing.T) {
 		}
 		defer forest.close()
 		old := forest.controllers[historicalRoot]
-		if old == nil || !old.metadataOnly || old.config.RuntimeSHA256 != historical.RuntimeSHA256 {
+		if old == nil || !old.metadataOnly || old.config.RuntimeSHA256 != historical.RuntimeSHA256 || old.boot != historicalBoot {
 			t.Fatal("dependency inventory did not retain the historical metadata-only recipe")
 		}
 		if _, err := old.lock(); err == nil || !strings.Contains(err.Error(), "metadata handle") {
