@@ -142,7 +142,7 @@ class NativeReleaseQualificationTests(unittest.TestCase):
         self.assertNotIn("types: [published]", trigger)
         self.assertIn("RELEASE_TAG: ${{ inputs.release_tag }}", workflow)
         self.assertIn("ref: ${{ inputs.release_tag }}", workflow)
-        for required in ["arch: [amd64, arm64]", 'runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]',
+        for required in ["arch: amd64", "arch: arm64", "runner: ubuntu-24.04", "runner: ubuntu-24.04-arm", 'runs-on: ${{ matrix.runner }}',
                          '[[ ! -s LICENSE ]]', "git merge-base --is-ancestor HEAD origin/main",
                          "tools/release_native.py", "release_native.completed_receipt",
                          "QUALIFIED_IMAGE: ${{ steps.qualify.outputs.image }}",
@@ -161,7 +161,7 @@ class NativeReleaseQualificationTests(unittest.TestCase):
                           "b5a858c61f69d37d90b56f59dd4177db8c116807",
                          "SHA256SUMS-$ARCH", "sources-$ARCH.json", "native-result-$ARCH.json"]:
             self.assertIn(required, workflow)
-        for forbidden in ["pull_request:", "push:", "setup-qemu", "--native-candidate",
+        for forbidden in ["pull_request:", "push:", "setup-qemu", "--native-candidate", "self-hosted", "factorybox-native-${{ matrix.arch }}",
                           ":latest", "cancel-in-progress: true", "docker system prune"]:
             self.assertNotIn(forbidden, workflow)
         self.assertLess(workflow.index("tools/release_sources.py"), workflow.index("docker push"))
@@ -218,7 +218,9 @@ class NativeReleaseQualificationTests(unittest.TestCase):
             })
             for suite in ["resume-retirement", "backing-retirement", "failed-capture-retirement", "stopped-capture-retirement", "pidfd-namespaces"]:
                 command = dict(commands)["runtime-" + suite]
-                self.assertEqual(command[1:], ["tools/bounded_store_native.py",
+                runner = ("tools/backing_retirement_previous_boot.py" if suite == "backing-retirement"
+                          else "tools/bounded_store_native.py")
+                self.assertEqual(command[1:], [runner,
                     "--worker-build", "exact-worker", "--suite", suite])
             for required in ["criu-core", "sysbox-unit", "sysbox-integration", "bats-lifecycle", "bats-systemd",
                              "recovery-planned", "recovery-abrupt", "factory-source", "factory-reserve",

@@ -51,8 +51,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
-    runs-on: [self-hosted, linux, "factorybox-native-${{ matrix.arch }}"]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     env:
       RELEASE: ${{ needs.release.outputs.version }}
       ARCH: ${{ matrix.arch }}
@@ -64,11 +68,20 @@ jobs:
       run:
         working-directory: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
     steps:
+      - name: Reclaim unused Android SDK space on the disposable GitHub VM
+        if: runner.environment == 'github-hosted' && runner.arch == 'X64'
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          if [[ "${ANDROID_HOME:-}" = /usr/local/lib/android/sdk && -d /usr/local/lib/android/sdk ]]; then
+            test "$(realpath /usr/local/lib/android/sdk)" = /usr/local/lib/android/sdk
+            sudo rm -rf -- /usr/local/lib/android/sdk
+          fi
+          df -h .
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           path: factorybox-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           ref: ${{ inputs.release_tag }}
-          clean: false
           persist-credentials: false
       - name: Check out the exact tested Factory consumer
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -77,7 +90,6 @@ jobs:
           ref: b5a858c61f69d37d90b56f59dd4177db8c116807
           token: ${{ secrets.FACTORY_CONSUMER_READ_TOKEN || github.token }}
           path: consumer-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
-          clean: false
           persist-credentials: false
       - name: Prepare pinned tools and an isolated Docker client
         run: |

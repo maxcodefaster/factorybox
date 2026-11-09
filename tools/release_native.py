@@ -75,7 +75,9 @@ def native_commands(options, worker, bats_images):
                          "--images", bats_images, *upstream_target, *bounded]),
     ]
     for suite in RUNTIME_SUITES:
-        commands.append(("runtime-" + suite, [python, "tools/bounded_store_native.py",
+        runner = ("tools/backing_retirement_previous_boot.py" if suite == "backing-retirement"
+                  else "tools/bounded_store_native.py")
+        commands.append(("runtime-" + suite, [python, runner,
             "--worker-build", options.worker_build, "--suite", suite]))
     for loss in ["planned", "abrupt"]:
         commands.append(("recovery-" + loss, [python, "tools/bounded_store_loss.py",
