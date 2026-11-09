@@ -139,6 +139,7 @@ class NativeReleaseQualificationTests(unittest.TestCase):
         self.assertIn("install: false", workflow)
         self.assertLess(workflow.index("Install the pinned mise runtime manager"),
                         workflow.index("Prepare pinned tools and an isolated Docker client"))
+        self.assertLess(workflow.index("mkdir -p artifacts"), workflow.index("tools/check.py"))
         trigger = workflow.split("on:", 1)[1].split("permissions:", 1)[0]
         self.assertIn("workflow_dispatch:", trigger)
         self.assertIn("release_tag:", trigger)

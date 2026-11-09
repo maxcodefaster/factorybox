@@ -109,6 +109,7 @@ jobs:
           mise exec -- python3 tools/release_native.py --check-host --platform "linux/$ARCH"
           factory="$GITHUB_WORKSPACE/consumer-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH"
           (cd "$factory" && mise install bun && mise exec -- bun install --frozen-lockfile)
+          mkdir -p artifacts
           mise exec -- python3 tools/check.py
           mise exec -- python3 tools/sources.py prepare
       - name: Create one owned bounded builder
