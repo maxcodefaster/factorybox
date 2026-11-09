@@ -140,6 +140,13 @@ class NativeReleaseQualificationTests(unittest.TestCase):
         self.assertLess(workflow.index("Install the pinned mise runtime manager"),
                         workflow.index("Prepare pinned tools and an isolated Docker client"))
         self.assertLess(workflow.index("mkdir -p artifacts"), workflow.index("tools/check.py"))
+        self.assertIn("uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1", workflow)
+        self.assertIn("python-version: '3.13.7'", workflow)
+        self.assertIn('mise link python@3.13.7 "$pythonLocation"', workflow)
+        self.assertIn("features['containerd-snapshotter'] = True", workflow)
+        self.assertIn('io.containerd.snapshotter.v1', workflow)
+        self.assertLess(workflow.index("Configure the disposable runner OCI image store"),
+                        workflow.index("Create one owned bounded builder"))
         trigger = workflow.split("on:", 1)[1].split("permissions:", 1)[0]
         self.assertIn("workflow_dispatch:", trigger)
         self.assertIn("release_tag:", trigger)

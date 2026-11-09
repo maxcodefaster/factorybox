@@ -91,6 +91,11 @@ jobs:
           token: ${{ secrets.FACTORY_CONSUMER_READ_TOKEN || github.token }}
           path: consumer-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
           persist-credentials: false
+      - name: Prepare the exact Python version from the hosted tool cache
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13.7'
+          architecture: ${{ matrix.arch == 'amd64' && 'x64' || 'arm64' }}
       - name: Install the pinned mise runtime manager
         uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db
         with:
@@ -104,6 +109,10 @@ jobs:
           printf 'DOCKER_CONFIG=%s\n' "$DOCKER_CONFIG" >> "$GITHUB_ENV"
           test ! -e "$DOCKER_CONFIG"
           install -d -m 0700 "$DOCKER_CONFIG"
+          "$pythonLocation/bin/python3" -c 'import sys; assert sys.version_info[:3] == (3,13,7)'
+          if ! mise where python@3.13.7 > /dev/null 2>&1; then
+            mise link python@3.13.7 "$pythonLocation"
+          fi
           mise install
           mise exec -- go mod download
           mise exec -- python3 tools/release_native.py --check-host --platform "linux/$ARCH"
@@ -112,6 +121,23 @@ jobs:
           mkdir -p artifacts
           mise exec -- python3 tools/check.py
           mise exec -- python3 tools/sources.py prepare
+      - name: Configure the disposable runner OCI image store
+        run: |
+          set -euo pipefail
+          prepared="$RUNNER_TEMP/factorybox-daemon-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$ARCH.json"
+          mise exec -- python3 - "$prepared" <<'PY'
+          import json, pathlib, sys
+          path = pathlib.Path('/etc/docker/daemon.json')
+          config = json.loads(path.read_text()) if path.exists() else {}
+          features = config.setdefault('features', {})
+          assert isinstance(features, dict)
+          features['containerd-snapshotter'] = True
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(config) + '\n')
+          PY
+          sudo -n install -m 0644 "$prepared" /etc/docker/daemon.json
+          sudo -n systemctl restart docker
+          docker info --format '{{json .DriverStatus}}' | mise exec -- python3 -c \
+            'import json,sys; assert ["driver-type","io.containerd.snapshotter.v1"] in json.load(sys.stdin)'
       - name: Create one owned bounded builder
         run: |
           set -euo pipefail
