@@ -139,6 +139,10 @@ class NativeReleaseQualificationTests(unittest.TestCase):
         self.assertIn("install: false", workflow)
         self.assertLess(workflow.index("Install the pinned mise runtime manager"),
                         workflow.index("Prepare pinned tools and an isolated Docker client"))
+        self.assertIn("--retry 3 --retry-max-time 360", workflow)
+        self.assertIn('"$archive_sha" "$stage/mise.tar.zst" | sha256sum --check --strict', workflow)
+        self.assertIn('"$binary_sha" "$stage/mise/bin/mise" | sha256sum --check --strict', workflow)
+        self.assertIn("cache: false", workflow)
         self.assertLess(workflow.index("mkdir -p artifacts"), workflow.index("tools/check.py"))
         self.assertIn("uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1", workflow)
         self.assertIn("python-version: '3.13.7'", workflow)
